@@ -5,6 +5,7 @@ export default {
     theme: {
         extend: {
             colors: {
+                // Legacy (keep for compatibility with existing components)
                 brand: {
                     50: '#eef2ff',
                     100: '#e0e7ff',
@@ -25,10 +26,47 @@ export default {
                     800: '#0f172a',
                     900: '#020617',
                 },
+                // Legacy aliases (keep existing pages working)
+                'app-bg': '#0D0F14',
+                'app-sidebar': '#111318',
+                'app-card': '#334155',
+                'app-text': '#F0F0F0',
+                'app-muted': '#94A3B8',
+                'app-accent': '#4F8EF7',
+                'app-success': '#4ADE80',
+                'app-warning': '#FBBF24',
+                'app-danger': '#F87171',
+
+                // V2 Design System
+                v2: {
+                    bg: '#0D0F14',
+                    sidebar: '#111318',
+                    card: 'rgba(255,255,255,0.03)',
+                    'border-subtle': 'rgba(255,255,255,0.07)',
+                    'border-hover': 'rgba(255,255,255,0.12)',
+                    'accent-blue': '#4F8EF7',
+                    'accent-purple': '#7B5CE0',
+                    'text-primary': '#F0F0F0',
+                    'text-secondary': 'rgba(255,255,255,0.55)',
+                    'text-muted': 'rgba(255,255,255,0.3)',
+                    success: '#4ADE80',
+                    danger: '#F87171',
+                    warning: '#FBBF24',
+                },
             },
             fontFamily: {
-                sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                sans: ['DM Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                display: ['Syne', 'DM Sans', 'system-ui', 'sans-serif'],
                 mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+            },
+            borderRadius: {
+                'card': '12px',
+                'btn': '7px',
+                'badge': '5px',
+            },
+            boxShadow: {
+                'dropdown': '0 8px 32px rgba(0,0,0,0.4)',
+                'modal': '0 8px 32px rgba(0,0,0,0.4)',
             },
         },
     },

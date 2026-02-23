@@ -1,0 +1,47 @@
+# requirements.txt — Google Ads Helper
+# All versions pinned for reproducibility.
+# Install: pip install -r requirements.txt
+
+# === Core Framework ===
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# === Database ===
+sqlalchemy==2.0.27
+
+# === Google Ads API ===
+google-ads==24.1.0
+google-auth-oauthlib==1.2.0
+google-auth==2.27.0
+
+# === Credentials (Windows Credential Manager) ===
+keyring==24.3.1
+
+# === Data Processing ===
+pandas==2.2.0
+numpy==1.26.4
+
+# === HTTP ===
+requests==2.31.0
+httpx==0.27.0
+
+# === Desktop Wrapper ===
+pywebview==4.4.1
+
+# === Logging ===
+python-dotenv==1.0.1
+
+# === Build ===
+pyinstaller==6.4.0
+
+# === Testing ===
+pytest==8.0.1
+pytest-asyncio==0.23.5
+
+# === NOT included in MVP (future v1.1+) ===
+# scipy==1.12.0              # Statistical anomaly detection
+# scikit-learn==1.4.0        # ML features
+# sentence-transformers==2.3.1  # Semantic clustering
+# apscheduler==3.10.4        # Auto-sync scheduling

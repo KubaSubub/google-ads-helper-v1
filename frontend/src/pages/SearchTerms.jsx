@@ -1,23 +1,49 @@
 import { useState, useEffect } from 'react'
-import { LoadingSpinner, ErrorMessage, PageHeader } from '../components/UI'
+import { ErrorMessage } from '../components/UI'
 import { getSearchTerms, getSegmentedSearchTerms } from '../api'
+import { useApp } from '../contexts/AppContext'
+import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
     TrendingUp, AlertTriangle, HelpCircle, XCircle, LayoutGrid,
-    List,
+    List, Loader2,
 } from 'lucide-react'
 
 const SEGMENT_CONFIG = {
-    ALL: { label: 'Wszystkie', icon: List, color: 'text-white', bg: 'bg-gray-600/20', border: 'border-gray-500/30' },
-    HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30' },
-    WASTE: { label: 'Waste (strata)', icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' },
-    TESTING: { label: 'Do obserwacji', icon: HelpCircle, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
-    IRRELEVANT: { label: 'Nieistotne', icon: XCircle, color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/30' },
-    OTHER: { label: 'Inne', icon: LayoutGrid, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
+    HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: '#4ADE80', bg: 'rgba(74,222,128,0.1)',   border: 'rgba(74,222,128,0.2)'  },
+    WASTE:          { label: 'Waste',            icon: AlertTriangle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
+    TESTING:        { label: 'Do obserwacji',    icon: HelpCircle,    color: '#FBBF24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.2)'  },
+    IRRELEVANT:     { label: 'Nieistotne',       icon: XCircle,       color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.1)' },
+    OTHER:          { label: 'Inne',             icon: LayoutGrid,    color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',  border: 'rgba(79,142,247,0.2)'  },
+}
+
+const TH_STYLE = {
+    padding: '10px 12px',
+    fontSize: 10, fontWeight: 500,
+    color: 'rgba(255,255,255,0.35)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    whiteSpace: 'nowrap',
+    textAlign: 'left',
+}
+
+function SegmentBadge({ seg }) {
+    const conf = SEGMENT_CONFIG[seg] || SEGMENT_CONFIG.OTHER
+    const Icon = conf.icon
+    return (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+            background: conf.bg, color: conf.color, border: `1px solid ${conf.border}`,
+        }}>
+            <Icon size={9} />{conf.label}
+        </span>
+    )
 }
 
 export default function SearchTerms() {
-    const [viewMode, setViewMode] = useState('segments') // 'segments' or 'list'
+    const { selectedClientId } = useApp()
+    const [viewMode, setViewMode] = useState('segments')
     const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
     const [segData, setSegData] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -29,29 +55,24 @@ export default function SearchTerms() {
     const [activeSegment, setActiveSegment] = useState('ALL')
 
     useEffect(() => {
+        if (!selectedClientId) return
         if (viewMode === 'list') loadListData()
         else loadSegmentedData()
-    }, [viewMode, page, search, sortBy, sortOrder])
+    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId])
 
     async function loadListData() {
-        setLoading(true)
-        setError(null)
+        setLoading(true); setError(null)
         try {
-            const res = await getSearchTerms({
-                page, page_size: 50, search,
-                sort_by: sortBy, sort_order: sortOrder,
-                client_id: 1
-            })
+            const res = await getSearchTerms({ page, page_size: 50, search, sort_by: sortBy, sort_order: sortOrder, client_id: selectedClientId })
             setData(res)
         } catch (err) { setError(err.message) }
         finally { setLoading(false) }
     }
 
     async function loadSegmentedData() {
-        setLoading(true)
-        setError(null)
+        setLoading(true); setError(null)
         try {
-            const res = await getSegmentedSearchTerms(1, 30)
+            const res = await getSegmentedSearchTerms(selectedClientId)
             setSegData(res)
         } catch (err) { setError(err.message) }
         finally { setLoading(false) }
@@ -63,225 +84,248 @@ export default function SearchTerms() {
     }
 
     function handleSearch(e) {
-        e.preventDefault()
-        setPage(1)
+        e.preventDefault(); setPage(1)
         if (viewMode === 'list') loadListData()
     }
 
     function handleExport(format) {
-        const params = new URLSearchParams({ client_id: 1, format })
+        const params = new URLSearchParams({ client_id: selectedClientId, format })
         window.location.href = `/api/v1/export/search-terms?${params.toString()}`
     }
 
-    const SortHeader = ({ field, children }) => (
-        <th
-            onClick={() => handleSort(field)}
-            className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase tracking-wider cursor-pointer hover:text-surface-200/70 transition-colors select-none"
-        >
-            <span className="inline-flex items-center gap-1">
-                {children}
-                {sortBy === field && <ArrowUpDown size={12} className="text-brand-400" />}
-            </span>
-        </th>
-    )
-
+    if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (error) return <ErrorMessage message={error} onRetry={() => viewMode === 'list' ? loadListData() : loadSegmentedData()} />
 
-    // Get items for active segment
     const segmentItems = segData && activeSegment !== 'ALL'
         ? segData.segments?.[activeSegment] || []
-        : segData
-            ? Object.values(segData.segments || {}).flat()
-            : []
+        : segData ? Object.values(segData.segments || {}).flat() : []
 
     return (
-        <div className="max-w-[1400px] mx-auto">
-            <PageHeader
-                title="Search Terms"
-                subtitle={viewMode === 'segments'
-                    ? `Intelligence — ${segData?.summary?.total || 0} wyszukiwań`
-                    : `${data.total} wyszukiwań`}
-            >
-                <div className="flex items-center gap-4">
+        <div style={{ maxWidth: 1400 }}>
+            {/* Header */}
+            <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
+                <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                        Wyszukiwane frazy
+                    </h1>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                        {viewMode === 'segments' ? `${segData?.summary?.total || 0} wyszukiwań` : `${data.total} wyszukiwań`}
+                    </p>
+                </div>
+
+                <div className="flex items-center gap-3 flex-wrap">
                     {/* View mode toggle */}
-                    <div className="flex bg-surface-700/40 rounded-lg p-0.5">
-                        <button
-                            onClick={() => setViewMode('segments')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'segments' ? 'bg-brand-600 text-white' : 'text-surface-200/60 hover:text-white'
-                                }`}
-                        >
-                            <LayoutGrid size={14} className="inline mr-1" />Segmenty
-                        </button>
-                        <button
-                            onClick={() => setViewMode('list')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'list' ? 'bg-brand-600 text-white' : 'text-surface-200/60 hover:text-white'
-                                }`}
-                        >
-                            <List size={14} className="inline mr-1" />Lista
-                        </button>
+                    <div className="flex items-center gap-1">
+                        {[{ v: 'segments', label: 'Segmenty', icon: LayoutGrid }, { v: 'list', label: 'Lista', icon: List }].map(({ v, label, icon: Icon }) => {
+                            const active = viewMode === v
+                            return (
+                                <button key={v} onClick={() => setViewMode(v)} style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: active ? 500 : 400,
+                                    border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
+                                    background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
+                                    color: active ? 'white' : 'rgba(255,255,255,0.45)', cursor: 'pointer',
+                                }}>
+                                    <Icon size={12} />{label}
+                                </button>
+                            )
+                        })}
                     </div>
 
                     {viewMode === 'list' && (
-                        <form onSubmit={handleSearch} className="flex gap-2">
-                            <div className="relative">
-                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-200/30" />
+                        <form onSubmit={handleSearch} className="flex items-center gap-2">
+                            <div style={{ position: 'relative' }}>
+                                <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)' }} />
                                 <input
                                     type="text" value={search}
                                     onChange={e => setSearch(e.target.value)}
                                     placeholder="Szukaj frazy..."
-                                    className="pl-9 pr-4 py-2 rounded-lg bg-surface-700/40 border border-surface-700/60 text-sm text-white placeholder:text-surface-200/30 focus:outline-none focus:border-brand-500/50 transition-colors w-56"
+                                    style={{
+                                        paddingLeft: 30, paddingRight: 12, paddingTop: 6, paddingBottom: 6,
+                                        borderRadius: 7, background: 'rgba(255,255,255,0.04)',
+                                        border: '1px solid rgba(255,255,255,0.1)', color: '#F0F0F0',
+                                        fontSize: 12, width: 200, outline: 'none',
+                                    }}
                                 />
                             </div>
-                            <button type="submit" className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-500 transition-colors">
-                                Szukaj
-                            </button>
+                            <button type="submit" style={{
+                                padding: '6px 12px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                                background: '#4F8EF7', color: 'white', border: 'none', cursor: 'pointer',
+                            }}>Szukaj</button>
                         </form>
                     )}
 
-                    <div className="flex gap-1">
-                        <button onClick={() => handleExport('csv')} className="p-2 rounded-lg bg-surface-700/40 text-surface-200/60 hover:text-surface-200 hover:bg-surface-700/60 transition-colors" title="Eksportuj CSV">
-                            <Download size={18} />
+                    {/* Export */}
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => handleExport('csv')} title="CSV" style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Download size={11} />CSV
                         </button>
-                        <button onClick={() => handleExport('xlsx')} className="p-2 rounded-lg bg-surface-700/40 text-green-400/80 hover:text-green-400 hover:bg-surface-700/60 transition-colors" title="Eksportuj Excel">
-                            <Download size={18} />
+                        <button onClick={() => handleExport('xlsx')} title="Excel" style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Download size={11} />XLSX
                         </button>
                     </div>
                 </div>
-            </PageHeader>
+            </div>
 
             {/* ===== SEGMENTS VIEW ===== */}
             {viewMode === 'segments' && (
                 <>
                     {/* Summary cards */}
                     {segData?.summary && (
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                            {Object.entries(SEGMENT_CONFIG).filter(([k]) => k !== 'ALL').map(([key, conf]) => {
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 }}>
+                            {Object.entries(SEGMENT_CONFIG).map(([key, conf]) => {
                                 const count = segData.summary.counts?.[key] || 0
+                                const active = activeSegment === key
                                 const Icon = conf.icon
                                 return (
                                     <button
                                         key={key}
-                                        onClick={() => setActiveSegment(activeSegment === key ? 'ALL' : key)}
-                                        className={`${conf.bg} ${conf.border} border rounded-xl p-4 text-left transition-all hover:scale-[1.02] ${activeSegment === key ? 'ring-2 ring-brand-500/50' : ''
-                                            }`}
+                                        onClick={() => setActiveSegment(active ? 'ALL' : key)}
+                                        style={{
+                                            padding: '12px 14px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                                            background: conf.bg, border: `1px solid ${active ? conf.color : conf.border}`,
+                                            outline: active ? `2px solid ${conf.color}40` : 'none',
+                                            transition: 'all 0.15s',
+                                        }}
                                     >
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <Icon className={`w-4 h-4 ${conf.color}`} />
-                                            <span className={`text-xs font-medium ${conf.color}`}>{conf.label}</span>
+                                        <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
+                                            <Icon size={12} style={{ color: conf.color }} />
+                                            <span style={{ fontSize: 11, fontWeight: 500, color: conf.color }}>{conf.label}</span>
                                         </div>
-                                        <p className={`text-2xl font-bold ${conf.color}`}>{count}</p>
+                                        <span style={{ fontSize: 22, fontWeight: 700, color: conf.color, fontFamily: 'Syne' }}>{count}</span>
                                     </button>
                                 )
                             })}
                         </div>
                     )}
 
-                    {/* Waste cost callout */}
+                    {/* Waste callout */}
                     {segData?.summary?.waste_cost > 0 && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
-                            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                        <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <AlertTriangle size={15} style={{ color: '#F87171', flexShrink: 0 }} />
                             <div>
-                                <p className="text-red-400 font-semibold text-sm">
-                                    Zmarnowany budżet: ${segData.summary.waste_cost.toFixed(2)}
-                                </p>
-                                <p className="text-red-400/60 text-xs">
-                                    Frazy z segmentu WASTE — kliknięcia bez konwersji. Rozważ dodanie jako negatywne.
-                                </p>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: '#F87171' }}>
+                                    Zmarnowany budżet: {segData.summary.waste_cost.toFixed(2)} zł
+                                </span>
+                                <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.6)', marginLeft: 8 }}>
+                                    Rozważ dodanie fraz WASTE jako wykluczenia.
+                                </span>
                             </div>
                         </div>
                     )}
 
-                    {/* Segment table */}
-                    <div className="glass rounded-xl overflow-hidden animate-fade-in">
-                        {loading ? <LoadingSpinner /> : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                    {/* Table */}
+                    <div className="v2-card" style={{ overflow: 'hidden' }}>
+                        {loading ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
+                                <Loader2 size={24} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr className="border-b border-surface-700/40">
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">Segment</th>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">Fraza</th>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">Kliknięcia</th>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">Koszt</th>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">Konwersje</th>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">CVR</th>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase">Powód</th>
+                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <th style={TH_STYLE}>Segment</th>
+                                            <th style={TH_STYLE}>Fraza</th>
+                                            <th style={TH_STYLE}>Kliknięcia</th>
+                                            <th style={TH_STYLE}>Koszt</th>
+                                            <th style={TH_STYLE}>Konwersje</th>
+                                            <th style={TH_STYLE}>CVR</th>
+                                            <th style={TH_STYLE}>Powód</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-surface-700/20">
-                                        {segmentItems.map((t, i) => {
-                                            // Determine which segment this term belongs to
+                                    <tbody>
+                                        {segmentItems.length === 0 ? (
+                                            <tr><td colSpan={7} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
+                                        ) : segmentItems.map((t, i) => {
                                             let seg = 'OTHER'
                                             for (const [key, items] of Object.entries(segData?.segments || {})) {
                                                 if (items.some(item => item.id === t.id)) { seg = key; break }
                                             }
-                                            const conf = SEGMENT_CONFIG[seg] || SEGMENT_CONFIG.OTHER
-                                            const Icon = conf.icon
-
                                             return (
-                                                <tr key={t.id || i} className={`${conf.bg} hover:bg-surface-700/20 transition-colors`}>
-                                                    <td className="py-3 px-3">
-                                                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${conf.bg} ${conf.color} border ${conf.border}`}>
-                                                            <Icon size={10} />{conf.label}
-                                                        </span>
+                                                <tr key={t.id || i}
+                                                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s' }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <td style={{ padding: '10px 12px' }}><SegmentBadge seg={seg} /></td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 280 }}>
+                                                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
                                                     </td>
-                                                    <td className="py-3 px-3 font-medium text-white max-w-xs truncate">{t.text}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/80">{t.clicks?.toLocaleString()}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/80">${t.cost?.toFixed(2)}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/80">{t.conversions?.toFixed(1)}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/60">{t.cvr?.toFixed(2)}%</td>
-                                                    <td className="py-3 px-3 text-xs text-surface-200/50 max-w-xs truncate">{t.segment_reason || '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString() ?? '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost != null ? `${t.cost.toFixed(2)} zł` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions?.toFixed(1) ?? '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.cvr != null ? `${t.cvr.toFixed(2)}%` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 11, color: 'rgba(255,255,255,0.4)', maxWidth: 200 }}>
+                                                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.segment_reason || '—'}</span>
+                                                    </td>
                                                 </tr>
                                             )
                                         })}
                                     </tbody>
                                 </table>
-                                {segmentItems.length === 0 && (
-                                    <div className="text-center py-12 text-surface-200/40">
-                                        Brak wyników dla tego segmentu.
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>
                 </>
             )}
 
-            {/* ===== LIST VIEW (original) ===== */}
+            {/* ===== LIST VIEW ===== */}
             {viewMode === 'list' && (
-                <div className="glass rounded-xl overflow-hidden animate-fade-in">
-                    {loading ? <LoadingSpinner /> : (
+                <div className="v2-card" style={{ overflow: 'hidden' }}>
+                    {loading ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
+                            <Loader2 size={24} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                        </div>
+                    ) : (
                         <>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr className="border-b border-surface-700/40">
-                                            <SortHeader field="text">Fraza</SortHeader>
-                                            <SortHeader field="clicks">Kliknięcia</SortHeader>
-                                            <SortHeader field="impressions">Wyświetlenia</SortHeader>
-                                            <SortHeader field="cost">Koszt</SortHeader>
-                                            <SortHeader field="conversions">Konwersje</SortHeader>
-                                            <SortHeader field="ctr">CTR</SortHeader>
-                                            <th className="text-left py-3 px-3 text-xs font-medium text-surface-200/40 uppercase tracking-wider">Koszt/konw.</th>
+                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                            {[
+                                                { f: 'text', label: 'Fraza' },
+                                                { f: 'clicks', label: 'Kliknięcia' },
+                                                { f: 'impressions', label: 'Wyświetlenia' },
+                                                { f: 'cost', label: 'Koszt' },
+                                                { f: 'conversions', label: 'Konwersje' },
+                                                { f: 'ctr', label: 'CTR' },
+                                                { f: null, label: 'Koszt/konw.' },
+                                            ].map(({ f, label }) => (
+                                                <th key={label}
+                                                    style={{ ...TH_STYLE, cursor: f ? 'pointer' : 'default' }}
+                                                    onClick={() => f && handleSort(f)}
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        {label}
+                                                        {f && sortBy === f && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}
+                                                    </span>
+                                                </th>
+                                            ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-surface-700/20">
+                                    <tbody>
                                         {data.items.map((t, i) => {
                                             const isWaste = t.cost > 20 && t.conversions === 0
                                             return (
-                                                <tr key={t.id || i} className={`hover:bg-surface-700/20 transition-colors ${isWaste ? 'bg-red-500/5' : ''}`}>
-                                                    <td className="py-3 px-3 font-medium text-white max-w-xs truncate">
-                                                        {t.text}
-                                                        {isWaste && (
-                                                            <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-red-500/20 text-red-400">💸 waste</span>
-                                                        )}
+                                                <tr key={t.id || i}
+                                                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isWaste ? 'rgba(248,113,113,0.03)' : 'transparent', transition: 'background 0.12s' }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = isWaste ? 'rgba(248,113,113,0.06)' : 'rgba(255,255,255,0.025)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = isWaste ? 'rgba(248,113,113,0.03)' : 'transparent'}
+                                                >
+                                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 320 }}>
+                                                        <span className="flex items-center gap-2">
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
+                                                            {isWaste && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(248,113,113,0.15)', color: '#F87171', flexShrink: 0 }}>WASTE</span>}
+                                                        </span>
                                                     </td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/80">{t.clicks.toLocaleString()}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/60">{t.impressions.toLocaleString()}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/80">{t.cost.toFixed(2)} zł</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/80">{t.conversions.toFixed(1)}</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/60">{t.ctr.toFixed(2)}%</td>
-                                                    <td className="py-3 px-3 font-mono text-surface-200/60">
-                                                        {t.conversions > 0 ? (t.cost / t.conversions).toFixed(2) + ' zł' : '—'}
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString()}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.impressions?.toLocaleString()}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost?.toFixed(2)} zł</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions?.toFixed(1)}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.ctr?.toFixed(2)}%</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>
+                                                        {t.conversions > 0 ? `${(t.cost / t.conversions).toFixed(2)} zł` : '—'}
                                                     </td>
                                                 </tr>
                                             )
@@ -289,27 +333,12 @@ export default function SearchTerms() {
                                     </tbody>
                                 </table>
                             </div>
-
                             {/* Pagination */}
-                            <div className="flex items-center justify-between px-4 py-3 border-t border-surface-700/40">
-                                <span className="text-xs text-surface-200/40">
-                                    Strona {data.page} z {data.total_pages} ({data.total} wyników)
-                                </span>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page <= 1}
-                                        className="p-2 rounded-lg bg-surface-700/40 text-surface-200/60 hover:bg-surface-700/60 disabled:opacity-30 transition-colors"
-                                    >
-                                        <ChevronLeft size={14} />
-                                    </button>
-                                    <button
-                                        onClick={() => setPage(p => Math.min(data.total_pages, p + 1))}
-                                        disabled={page >= data.total_pages}
-                                        className="p-2 rounded-lg bg-surface-700/40 text-surface-200/60 hover:bg-surface-700/60 disabled:opacity-30 transition-colors"
-                                    >
-                                        <ChevronRight size={14} />
-                                    </button>
+                            <div className="flex items-center justify-between" style={{ padding: '10px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Strona {data.page} z {data.total_pages} ({data.total} wyników)</span>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: '5px 8px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', opacity: page <= 1 ? 0.3 : 1 }}><ChevronLeft size={13} /></button>
+                                    <button onClick={() => setPage(p => Math.min(data.total_pages, p + 1))} disabled={page >= data.total_pages} style={{ padding: '5px 8px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', opacity: page >= data.total_pages ? 0.3 : 1 }}><ChevronRight size={13} /></button>
                                 </div>
                             </div>
                         </>

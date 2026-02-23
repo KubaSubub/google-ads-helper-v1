@@ -33,18 +33,24 @@ def trigger_sync(
 
     date_from = date.today() - timedelta(days=days)
     date_to = date.today() - timedelta(days=1)
+    cid = client.google_customer_id
 
-    campaigns_synced = google_ads_service.sync_campaigns(db, client.google_customer_id)
-    metrics_synced = google_ads_service.sync_daily_metrics(
-        db, client.google_customer_id, date_from, date_to
-    )
-    terms_synced = google_ads_service.sync_search_terms(
-        db, client.google_customer_id, date_from, date_to
-    )
+    # Phase 1: Campaigns
+    campaigns_synced = google_ads_service.sync_campaigns(db, cid)
+    # Phase 2: Ad Groups (depends on campaigns)
+    ad_groups_synced = google_ads_service.sync_ad_groups(db, cid)
+    # Phase 3: Keywords (depends on ad groups)
+    keywords_synced = google_ads_service.sync_keywords(db, cid)
+    # Phase 4: Daily metrics (depends on campaigns)
+    metrics_synced = google_ads_service.sync_daily_metrics(db, cid, date_from, date_to)
+    # Phase 5: Search terms (depends on ad groups)
+    terms_synced = google_ads_service.sync_search_terms(db, cid, date_from, date_to)
 
     return {
         "success": True,
         "campaigns_synced": campaigns_synced,
+        "ad_groups_synced": ad_groups_synced,
+        "keywords_synced": keywords_synced,
         "metrics_synced": metrics_synced,
         "search_terms_synced": terms_synced,
     }

@@ -1,110 +1,159 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts'
-import { AlertTriangle, CheckCircle, HelpCircle, ArrowRight } from 'lucide-react'
-import { LoadingSpinner, ErrorMessage, PageHeader } from '../components/UI'
+import { AlertTriangle, CheckCircle, HelpCircle, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
 import { getQualityScoreAudit } from '../api'
+import { useApp } from '../contexts/AppContext'
+import EmptyState from '../components/EmptyState'
+
+const QS_COLORS = { low: '#F87171', mid: '#FBBF24', high: '#4ADE80' }
+
+function getQSColor(score) {
+    if (score <= 3) return QS_COLORS.low
+    if (score <= 6) return QS_COLORS.mid
+    return QS_COLORS.high
+}
 
 export default function QualityScore() {
+    const { selectedClientId } = useApp()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
 
-    useEffect(() => {
-        loadData()
-    }, [])
-
-    async function loadData() {
+    const loadData = useCallback(async () => {
+        if (!selectedClientId) return
         setLoading(true)
+        setError(null)
         try {
-            const res = await getQualityScoreAudit(1) // Hardcoded client_id=1
+            const res = await getQualityScoreAudit(selectedClientId)
             setData(res)
         } catch (err) {
             setError(err.message)
         } finally {
             setLoading(false)
         }
+    }, [selectedClientId])
+
+    useEffect(() => { loadData() }, [loadData])
+
+    if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
+
+    if (error) {
+        return (
+            <div style={{ maxWidth: 1200, padding: '40px 0', textAlign: 'center' }}>
+                <div style={{ fontSize: 14, color: '#F87171', marginBottom: 12 }}>Błąd: {error}</div>
+                <button onClick={loadData} style={{ padding: '6px 16px', borderRadius: 7, fontSize: 12, background: '#4F8EF7', color: 'white', border: 'none', cursor: 'pointer' }}>
+                    Spróbuj ponownie
+                </button>
+            </div>
+        )
     }
 
-    if (error) return <ErrorMessage message={error} onRetry={loadData} />
-    if (loading) return <LoadingSpinner />
+    if (loading || !data) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
+                <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+            </div>
+        )
+    }
 
-    // Prepare chart data
     const chartData = Array.from({ length: 10 }, (_, i) => {
         const score = i + 1
         return {
             score: score.toString(),
-            count: data.qs_distribution[`qs_${score}`] || 0,
-            color: score <= 4 ? '#ef4444' : score <= 7 ? '#eab308' : '#22c55e'
+            count: data.qs_distribution?.[`qs_${score}`] || 0,
+            color: getQSColor(score),
         }
     })
 
-    return (
-        <div className="max-w-[1400px] mx-auto space-y-6">
-            <PageHeader
-                title="Audyt Wyniku Jakości (Quality Score)"
-                subtitle={`Analiza ${data.total_keywords} słów kluczowych`}
-            >
-                <div className="flex items-center gap-2 text-sm text-surface-200/60 bg-surface-700/30 px-3 py-1.5 rounded-lg border border-surface-700/50">
-                    <HelpCircle size={14} />
-                    <span>Cel: Utrzymaj średni QS powyżej 7.0</span>
-                </div>
-            </PageHeader>
+    const highQSCount = chartData.filter(d => parseInt(d.score) >= 8).reduce((a, c) => a + c.count, 0)
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="glass p-5 rounded-xl border-l-4 border-l-brand-500">
-                    <p className="text-sm text-surface-200/60 font-medium">Średni Wynik Jakości</p>
-                    <p className="text-3xl font-bold text-white mt-1">{data.average_qs.toFixed(1)}/10</p>
+    return (
+        <div style={{ maxWidth: 1200 }}>
+            {/* Header */}
+            <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
+                <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                        Audyt Quality Score
+                    </h1>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                        Analiza {data.total_keywords} słów kluczowych
+                    </p>
                 </div>
-                <div className="glass p-5 rounded-xl border-l-4 border-l-red-500">
-                    <p className="text-sm text-surface-200/60 font-medium">Słowa z niskim QS (&lt;{data.qs_threshold})</p>
-                    <div className="flex items-baseline gap-2 mt-1">
-                        <p className="text-3xl font-bold text-red-400">{data.low_qs_count}</p>
-                        <span className="text-xs text-red-400/60">wymagają uwagi</span>
+                <div className="flex items-center gap-3">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                        <HelpCircle size={12} />
+                        Cel: średni QS powyżej 7.0
                     </div>
-                </div>
-                <div className="glass p-5 rounded-xl border-l-4 border-l-green-500">
-                    <p className="text-sm text-surface-200/60 font-medium">Słowa z wysokim QS (8-10)</p>
-                    <div className="flex items-baseline gap-2 mt-1">
-                        <p className="text-3xl font-bold text-green-400">
-                            {chartData.filter(d => parseInt(d.score) >= 8).reduce((acc, curr) => acc + curr.count, 0)}
-                        </p>
-                        <span className="text-xs text-green-400/60">świetna robota!</span>
-                    </div>
+                    <button
+                        onClick={loadData}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, fontSize: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}
+                        className="hover:border-white/20 hover:text-white/80"
+                    >
+                        <RefreshCw size={12} /> Odśwież
+                    </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Chart Section */}
-                <div className="lg:col-span-1 glass p-6 rounded-xl">
-                    <h3 className="text-lg font-semibold text-white mb-6">Rozkład Wyniku Jakości</h3>
-                    <div className="h-64 w-full">
+            {/* Summary row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+                <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #4F8EF7' }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                        Średni QS
+                    </div>
+                    <span style={{ fontSize: 26, fontWeight: 700, color: getQSColor(data.average_qs), fontFamily: 'Syne' }}>
+                        {data.average_qs.toFixed(1)}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>/10</span>
+                </div>
+                <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #F87171' }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                        Niski QS (&lt;{data.qs_threshold})
+                    </div>
+                    <span style={{ fontSize: 26, fontWeight: 700, color: '#F87171', fontFamily: 'Syne' }}>
+                        {data.low_qs_count}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.5)', marginLeft: 6 }}>wymaga uwagi</span>
+                </div>
+                <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #4ADE80' }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                        Wysoki QS (8-10)
+                    </div>
+                    <span style={{ fontSize: 26, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>
+                        {highQSCount}
+                    </span>
+                </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
+                {/* Chart */}
+                <div className="v2-card" style={{ padding: '18px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 16 }}>
+                        Rozkład QS
+                    </div>
+                    <div style={{ height: 220 }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.5} vertical={false} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                 <XAxis
                                     dataKey="score"
-                                    stroke="#9ca3af"
-                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
-                                    axisLine={false}
-                                    tickLine={false}
+                                    tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                                    axisLine={false} tickLine={false}
                                 />
                                 <YAxis
-                                    stroke="#9ca3af"
-                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
-                                    axisLine={false}
-                                    tickLine={false}
-                                    allowDecimals={false}
+                                    tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                                    axisLine={false} tickLine={false}
+                                    allowDecimals={false} width={24}
                                 />
                                 <Tooltip
-                                    cursor={{ fill: '#374151', opacity: 0.2 }}
+                                    cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                                     contentStyle={{
-                                        backgroundColor: '#1f2937',
-                                        borderColor: '#374151',
+                                        backgroundColor: '#1a1d24',
+                                        borderColor: 'rgba(255,255,255,0.12)',
                                         borderRadius: '8px',
-                                        color: '#f3f4f6'
+                                        color: '#F0F0F0',
+                                        fontSize: 12,
                                     }}
                                 />
                                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
@@ -115,69 +164,82 @@ export default function QualityScore() {
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                    <div className="mt-4 flex justify-between text-xs text-surface-200/40 px-2">
-                        <span>Niski (1-4)</span>
-                        <span>Średni (5-7)</span>
-                        <span>Wysoki (8-10)</span>
+                    <div className="flex justify-between" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 8, padding: '0 4px' }}>
+                        <span style={{ color: '#F87171' }}>Niski (1-3)</span>
+                        <span style={{ color: '#FBBF24' }}>Średni (4-6)</span>
+                        <span style={{ color: '#4ADE80' }}>Wysoki (7-10)</span>
                     </div>
                 </div>
 
-                {/* Issues Table */}
-                <div className="lg:col-span-2 glass rounded-xl overflow-hidden">
-                    <div className="p-6 border-b border-surface-700/40">
-                        <h3 className="text-lg font-semibold text-white">Słowa wymagające optymalizacji</h3>
-                        <p className="text-sm text-surface-200/60 mt-1">
-                            Te słowa mają wynik jakości poniżej {data.qs_threshold}. Popraw je, aby obniżyć CPC.
+                {/* Issues table */}
+                <div className="v2-card" style={{ overflow: 'hidden' }}>
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                            Słowa wymagające optymalizacji
+                        </div>
+                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
+                            Wynik jakości poniżej {data.qs_threshold} — popraw je, aby obniżyć CPC.
                         </p>
                     </div>
 
                     {data.low_qs_keywords.length === 0 ? (
-                        <div className="p-12 text-center">
-                            <CheckCircle className="mx-auto h-12 w-12 text-green-500/50 mb-3" />
-                            <h3 className="text-lg font-medium text-white">Brak problemów z Quality Score!</h3>
-                            <p className="text-surface-200/60 mt-1">Wszystkie aktywne słowa kluczowe mają wynik {data.qs_threshold} lub wyższy.</p>
+                        <div style={{ padding: '40px', textAlign: 'center' }}>
+                            <CheckCircle size={32} style={{ color: '#4ADE80', margin: '0 auto 10px' }} />
+                            <div style={{ fontSize: 14, fontWeight: 500, color: '#F0F0F0', marginBottom: 4 }}>Brak problemów!</div>
+                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Wszystkie aktywne słowa mają QS ≥ {data.qs_threshold}.</div>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-surface-800/50">
-                                    <tr>
-                                        <th className="text-left py-3 px-4 font-medium text-surface-200/40 uppercase text-xs">Słowo kluczowe</th>
-                                        <th className="text-center py-3 px-4 font-medium text-surface-200/40 uppercase text-xs">QS</th>
-                                        <th className="text-left py-3 px-4 font-medium text-surface-200/40 uppercase text-xs">Diagnostyka</th>
-                                        <th className="text-left py-3 px-4 font-medium text-surface-200/40 uppercase text-xs">Rekomendacja</th>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        {['Słowo kluczowe', 'QS', 'Diagnostyka', 'Rekomendacja'].map(h => (
+                                            <th key={h} style={{
+                                                padding: '10px 14px', textAlign: h === 'QS' ? 'center' : 'left',
+                                                fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)',
+                                                textTransform: 'uppercase', letterSpacing: '0.08em',
+                                            }}>{h}</th>
+                                        ))}
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-surface-700/20">
+                                <tbody>
                                     {data.low_qs_keywords.map((item, i) => (
-                                        <tr key={i} className="hover:bg-surface-700/20 transition-colors">
-                                            <td className="py-4 px-4">
-                                                <div className="font-medium text-white">{item.keyword}</div>
-                                                <div className="text-xs text-surface-200/50 mt-0.5">{item.campaign}</div>
+                                        <tr key={i}
+                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s' }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <td style={{ padding: '12px 14px' }}>
+                                                <div style={{ fontSize: 13, fontWeight: 500, color: '#F0F0F0' }}>{item.keyword}</div>
+                                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{item.campaign}</div>
                                             </td>
-                                            <td className="py-4 px-4 text-center">
-                                                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-bold ${item.quality_score <= 3 ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
-                                                    }`}>
+                                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                                <span style={{
+                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                    width: 30, height: 30, borderRadius: 8, fontWeight: 700, fontSize: 13,
+                                                    background: `${getQSColor(item.quality_score)}15`,
+                                                    color: getQSColor(item.quality_score),
+                                                }}>
                                                     {item.quality_score}
                                                 </span>
                                             </td>
-                                            <td className="py-4 px-4">
-                                                {item.issues.length > 0 ? (
-                                                    <div className="space-y-1">
+                                            <td style={{ padding: '12px 14px' }}>
+                                                {item.issues?.length > 0 ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                                                         {item.issues.map((issue, idx) => (
-                                                            <div key={idx} className="flex items-start gap-1.5 text-xs text-red-300/80">
-                                                                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                                                            <div key={idx} className="flex items-start gap-1.5" style={{ fontSize: 11, color: 'rgba(248,113,113,0.7)' }}>
+                                                                <AlertTriangle size={10} style={{ marginTop: 2, flexShrink: 0 }} />
                                                                 <span>{issue}</span>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <span className="text-xs text-surface-200/30 italic">Brak wyraźnych problemów</span>
+                                                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Brak wyraźnych problemów</span>
                                                 )}
                                             </td>
-                                            <td className="py-4 px-4">
-                                                <div className="flex items-start gap-2 text-xs text-surface-200/70 bg-surface-700/30 p-2 rounded border border-surface-700/50">
-                                                    <ArrowRight size={12} className="mt-0.5 text-brand-400 shrink-0" />
+                                            <td style={{ padding: '12px 14px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.03)', padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                    <ArrowRight size={10} style={{ color: '#4F8EF7', marginTop: 2, flexShrink: 0 }} />
                                                     {item.recommendation}
                                                 </div>
                                             </td>

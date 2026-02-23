@@ -1,95 +1,140 @@
-const API_BASE = '/api/v1';
+import axios from 'axios';
 
-async function fetchAPI(endpoint, options = {}) {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        ...options,
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || 'API Error');
+const api = axios.create({
+    baseURL: '/api/v1',
+    timeout: 30000,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+// Response interceptor: unwrap data, handle errors
+api.interceptors.response.use(
+    (response) => response.data,
+    (error) => {
+        const message = error.response?.data?.detail || error.message || 'Nieznany blad';
+        console.error('API Error:', message);
+        return Promise.reject({ message, status: error.response?.status });
     }
-    return res.json();
-}
+);
 
-// Clients
-export const getClients = (page = 1) => fetchAPI(`/clients/?page=${page}`);
-export const getClient = (id) => fetchAPI(`/clients/${id}`);
+export default api;
 
-// Campaigns
-export const getCampaigns = (clientId, params = {}) => {
-    const qs = new URLSearchParams({ client_id: clientId, ...params }).toString();
-    return fetchAPI(`/campaigns/?${qs}`);
-};
+// ═══════ Auth ═══════
+export const getAuthStatus = () => api.get('/auth/status');
+export const getLoginUrl = () => api.get('/auth/login');
+export const logout = () => api.post('/auth/logout');
+
+// ═══════ Clients ═══════
+export const getClients = () => api.get('/clients/');
+export const getClient = (id) => api.get(`/clients/${id}`);
+export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
+export const syncClient = (id) => api.post('/sync/trigger', null, { params: { client_id: id } });
+export const discoverClients = () => api.post('/clients/discover');
+
+// ═══════ Campaigns ═══════
+export const getCampaigns = (clientId) =>
+    api.get('/campaigns/', { params: { client_id: clientId } });
 export const getCampaignKPIs = (campaignId, days = 30) =>
-    fetchAPI(`/campaigns/${campaignId}/kpis?days=${days}`);
+    api.get(`/campaigns/${campaignId}/kpis`, { params: { days } });
 export const getCampaignMetrics = (campaignId, dateFrom, dateTo) => {
-    const params = new URLSearchParams();
-    if (dateFrom) params.set('date_from', dateFrom);
-    if (dateTo) params.set('date_to', dateTo);
-    return fetchAPI(`/campaigns/${campaignId}/metrics?${params}`);
+    const params = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    return api.get(`/campaigns/${campaignId}/metrics`, { params });
 };
 
-// Search Terms
-export const getSearchTerms = (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return fetchAPI(`/search-terms/?${qs}`);
-};
-export const getSearchTermsSummary = (campaignId, days = 30) =>
-    fetchAPI(`/search-terms/summary?campaign_id=${campaignId}&days=${days}`);
+// ═══════ Keywords ═══════
+export const getKeywords = (params = {}) =>
+    api.get('/keywords/', { params: typeof params === 'object' ? params : { campaign_id: params } });
 
-// Keywords
-export const getKeywords = (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return fetchAPI(`/keywords/?${qs}`);
-};
-
-// Ads
-export const getAds = (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return fetchAPI(`/ads/?${qs}`);
+// ═══════ Search Terms ═══════
+export const getSegmentedSearchTerms = (clientId) =>
+    api.get('/search-terms/segmented', { params: { client_id: clientId } });
+export const getSearchTerms = (clientIdOrParams, params = {}) => {
+    if (typeof clientIdOrParams === 'object') {
+        return api.get('/search-terms/', { params: clientIdOrParams });
+    }
+    return api.get('/search-terms/', { params: { client_id: clientIdOrParams, ...params } });
 };
 
-// Analytics
-export const getDashboardKPIs = (clientId, days = 30) =>
-    fetchAPI(`/analytics/dashboard-kpis?client_id=${clientId}&days=${days}`);
-export const getCorrelationMatrix = (data) =>
-    fetchAPI('/analytics/correlation', { method: 'POST', body: JSON.stringify(data) });
-export const getAnomalies = (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return fetchAPI(`/analytics/anomalies?${qs}`);
+// ═══════ Recommendations ═══════
+export const getRecommendations = (clientId, params = {}) => {
+    const queryParams = typeof params === 'number'
+        ? { client_id: clientId, days: params }
+        : { client_id: clientId, ...params };
+    return api.get('/recommendations/', { params: queryParams });
 };
-
-// Sync
-export const getSyncStatus = () => fetchAPI('/sync/status');
-
-export const updateClient = (id, data) => fetchAPI(`/clients/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
-
-export const getSemanticClusters = (params) => {
-    const query = new URLSearchParams(params).toString();
-    return fetchAPI(`/semantic/clusters?${query}`);
-};
-
-// Recommendations
-export const getRecommendations = (clientId, days = 30) =>
-    fetchAPI(`/recommendations/?client_id=${clientId}&days=${days}`);
-export const getRecommendationsSummary = (clientId, days = 30) =>
-    fetchAPI(`/recommendations/summary?client_id=${clientId}&days=${days}`);
-
-// Search Terms Intelligence
-export const getSegmentedSearchTerms = (clientId, days = 30) =>
-    fetchAPI(`/search-terms/segmented?client_id=${clientId}&days=${days}`);
-
-// Phase 4: Audit & Forecast
-export const getQualityScoreAudit = (clientId) =>
-    fetchAPI(`/analytics/quality-score-audit?client_id=${clientId}`);
-
-export const getForecast = (campaignId, metric = 'cost', forecastDays = 7) =>
-    fetchAPI(`/analytics/forecast?campaign_id=${campaignId}&metric=${metric}&forecast_days=${forecastDays}`);
-
-// Action Execution
-export const applyRecommendation = (action, entityId, params = {}) =>
-    fetchAPI(`/recommendations/apply`, {
-        method: 'POST',
-        body: JSON.stringify({ action, entity_id: entityId, params })
+export const getRecommendationsSummary = (clientId) =>
+    api.get('/recommendations/summary', { params: { client_id: clientId } });
+export const applyRecommendation = (id, clientId, dryRun = false) =>
+    api.post(`/recommendations/${id}/apply`, null, {
+        params: { client_id: clientId, dry_run: dryRun },
     });
+// Legacy: old Recommendations.jsx calls (actionType, entityId, params)
+export const applyRecommendationLegacy = (action, entityId, params = {}) =>
+    api.post('/recommendations/apply', { action, entity_id: entityId, params });
+export const dismissRecommendation = (id) =>
+    api.post(`/recommendations/${id}/dismiss`);
+
+// ═══════ Actions ═══════
+export const getActionHistory = (clientId, params = {}) =>
+    api.get('/actions/', { params: { client_id: clientId, ...params } });
+export const revertAction = (actionLogId, clientId) =>
+    api.post(`/actions/revert/${actionLogId}`, null, {
+        params: { client_id: clientId },
+    });
+
+// ═══════ Analytics ═══════
+export const getDashboardKPIs = (clientId, days = 30) =>
+    api.get('/analytics/dashboard-kpis', { params: { client_id: clientId, days } });
+export const getKPIs = (clientId) =>
+    api.get('/analytics/kpis', { params: { client_id: clientId } });
+export const getQualityScoreAudit = (clientId) =>
+    api.get('/analytics/quality-score-audit', { params: { client_id: clientId } });
+export const getForecast = (campaignId, metric = 'cost', forecastDays = 7) =>
+    api.get('/analytics/forecast', {
+        params: { campaign_id: campaignId, metric, forecast_days: forecastDays },
+    });
+export const getCampaignAnalytics = (clientId) =>
+    api.get('/analytics/campaigns', { params: { client_id: clientId } });
+export const getAnomalies = (clientId, status = 'unresolved') =>
+    api.get('/analytics/anomalies', { params: { client_id: clientId, status } });
+export const getAnomaliesDetection = (params = {}) =>
+    api.get('/analytics/anomalies', { params });
+export const resolveAnomaly = (alertId, clientId) =>
+    api.post(`/analytics/anomalies/${alertId}/resolve`, null, {
+        params: { client_id: clientId },
+    });
+export const detectAnomalies = (clientId) =>
+    api.post('/analytics/detect', null, {
+        params: { client_id: clientId },
+    });
+
+// ═══════ Export ═══════
+export const exportSearchTerms = (clientId, format = 'xlsx') =>
+    api.get('/export/search-terms', {
+        params: { client_id: clientId, format },
+        responseType: 'blob',
+    });
+export const exportKeywords = (clientId, format = 'xlsx') =>
+    api.get('/export/keywords', {
+        params: { client_id: clientId, format },
+        responseType: 'blob',
+    });
+
+// ═══════ Sync ═══════
+export const getSyncStatus = () => api.get('/sync/status');
+
+// ═══════ Semantic ═══════
+export const getSemanticClusters = (params) =>
+    api.get('/semantic/clusters', { params });
+
+// ═══════ Health ═══════
+export const getHealth = () => api.get('/health');
+
+// ═══════ V2 Analytics ═══════
+export const getTrends = (clientId, params = {}) =>
+    api.get('/analytics/trends', { params: { client_id: clientId, ...params } });
+export const getHealthScore = (clientId) =>
+    api.get('/analytics/health-score', { params: { client_id: clientId } });
+export const getCampaignTrends = (clientId, days = 7) =>
+    api.get('/analytics/campaign-trends', { params: { client_id: clientId, days } });

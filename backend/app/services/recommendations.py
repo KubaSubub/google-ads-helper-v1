@@ -27,6 +27,16 @@ from app.models import (
 )
 
 
+def _micros_to_usd(micros) -> float:
+    """Convert micros (BigInteger) to USD float."""
+    return (micros or 0) / 1_000_000
+
+
+def _ctr_micros_to_pct(ctr_micros) -> float:
+    """Convert CTR stored as micros (50000 = 5%) to percentage float."""
+    return (ctr_micros or 0) / 10_000
+
+
 class RecommendationType(str, Enum):
     PAUSE_KEYWORD = "PAUSE_KEYWORD"
     INCREASE_BID = "INCREASE_BID"
@@ -155,11 +165,14 @@ class RecommendationsEngine:
             )
             camp_name = campaign.name if campaign else "Unknown"
 
+            kw_cost = _micros_to_usd(kw.cost_micros)
+            kw_ctr = _ctr_micros_to_pct(kw.ctr)
+
             # Check 1: High spend, no conversions
             if (
-                kw.cost >= t["r1_min_spend"]
-                and kw.conversions == 0
-                and kw.clicks >= t["r1_min_clicks"]
+                kw_cost >= t["r1_min_spend"]
+                and (kw.conversions or 0) == 0
+                and (kw.clicks or 0) >= t["r1_min_clicks"]
             ):
                 recs.append(Recommendation(
                     type=RecommendationType.PAUSE_KEYWORD,
@@ -169,19 +182,19 @@ class RecommendationsEngine:
                     entity_name=kw.text,
                     campaign_name=camp_name,
                     reason=(
-                        f"Spent ${kw.cost:.2f} with {kw.clicks} clicks "
+                        f"Spent ${kw_cost:.2f} with {kw.clicks} clicks "
                         f"but 0 conversions in the last {days} days."
                     ),
-                    current_value=f"Spend: ${kw.cost:.2f}, Clicks: {kw.clicks}",
+                    current_value=f"Spend: ${kw_cost:.2f}, Clicks: {kw.clicks}",
                     recommended_action="Pause this keyword",
-                    estimated_impact=f"Save ~${kw.cost:.2f}/month",
-                    metadata={"spend": kw.cost, "clicks": kw.clicks},
+                    estimated_impact=f"Save ~${kw_cost:.2f}/month",
+                    metadata={"spend": kw_cost, "clicks": kw.clicks},
                 ))
 
             # Check 2: Very low CTR (irrelevant keyword)
             elif (
-                kw.impressions >= t["r1_low_ctr_min_impr"]
-                and kw.ctr < t["r1_low_ctr_threshold"]
+                (kw.impressions or 0) >= t["r1_low_ctr_min_impr"]
+                and kw_ctr < t["r1_low_ctr_threshold"]
             ):
                 recs.append(Recommendation(
                     type=RecommendationType.PAUSE_KEYWORD,
@@ -191,12 +204,12 @@ class RecommendationsEngine:
                     entity_name=kw.text,
                     campaign_name=camp_name,
                     reason=(
-                        f"CTR is only {kw.ctr:.2f}% with {kw.impressions} impressions. "
+                        f"CTR is only {kw_ctr:.2f}% with {kw.impressions} impressions. "
                         f"This keyword appears irrelevant to users."
                     ),
-                    current_value=f"CTR: {kw.ctr:.2f}%, Impr: {kw.impressions}",
+                    current_value=f"CTR: {kw_ctr:.2f}%, Impr: {kw.impressions}",
                     recommended_action="Pause this keyword or improve ad relevance",
-                    metadata={"ctr": kw.ctr, "impressions": kw.impressions},
+                    metadata={"ctr": kw_ctr, "impressions": kw.impressions},
                 ))
 
         return recs
@@ -210,7 +223,6 @@ class RecommendationsEngine:
         recs = []
         t = self.thresholds
 
-        # Get campaign averages
         campaigns = (
             db.query(Campaign)
             .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
@@ -232,21 +244,19 @@ class RecommendationsEngine:
             if not keywords:
                 continue
 
-            # Calculate campaign average CVR
-            total_clicks = sum(k.clicks for k in keywords)
-            total_conv = sum(k.conversions for k in keywords)
+            total_clicks = sum(k.clicks or 0 for k in keywords)
+            total_conv = sum(k.conversions or 0 for k in keywords)
             avg_cvr = (total_conv / total_clicks * 100) if total_clicks > 0 else 0
 
             for kw in keywords:
-                if kw.clicks == 0 or kw.conversions < 2:
+                if (kw.clicks or 0) == 0 or (kw.conversions or 0) < 2:
                     continue
                 kw_cvr = (kw.conversions / kw.clicks * 100)
-                kw_cpa = (kw.cost / kw.conversions) if kw.conversions > 0 else 999999
+                kw_cost = _micros_to_usd(kw.cost_micros)
+                kw_cpa = (kw_cost / kw.conversions) if kw.conversions > 0 else 999999
 
-                # High CVR + reasonable CPA
-                avg_cpa = (
-                    sum(k.cost for k in keywords) / total_conv
-                ) if total_conv > 0 else 999999
+                total_cost_usd = sum(_micros_to_usd(k.cost_micros) for k in keywords)
+                avg_cpa = (total_cost_usd / total_conv) if total_conv > 0 else 999999
 
                 if kw_cvr > avg_cvr * t["r2_cvr_multiplier"] and kw_cpa < avg_cpa * t["r2_cpa_multiplier"]:
                     recs.append(Recommendation(
@@ -302,14 +312,15 @@ class RecommendationsEngine:
             if not keywords:
                 continue
 
-            total_cost = sum(k.cost for k in keywords)
-            total_conv = sum(k.conversions for k in keywords)
+            total_cost = sum(_micros_to_usd(k.cost_micros) for k in keywords)
+            total_conv = sum(k.conversions or 0 for k in keywords)
             avg_cpa = total_cost / total_conv if total_conv > 0 else 0
 
             for kw in keywords:
-                if kw.cost < t["r3_min_spend"] or kw.conversions == 0:
+                kw_cost = _micros_to_usd(kw.cost_micros)
+                if kw_cost < t["r3_min_spend"] or (kw.conversions or 0) == 0:
                     continue
-                kw_cpa = kw.cost / kw.conversions
+                kw_cpa = kw_cost / kw.conversions
 
                 if kw_cpa > avg_cpa * t["r3_cpa_multiplier"]:
                     recs.append(Recommendation(
@@ -343,15 +354,12 @@ class RecommendationsEngine:
         recs = []
         t = self.thresholds
 
-        # Get search terms aggregated
-        cutoff = date.today() - timedelta(days=days)
-
         terms = (
             db.query(
                 SearchTerm.text,
                 func.sum(SearchTerm.conversions).label("total_conv"),
                 func.sum(SearchTerm.clicks).label("total_clicks"),
-                func.sum(SearchTerm.cost).label("total_cost"),
+                func.sum(SearchTerm.cost_micros).label("total_cost_micros"),
                 func.sum(SearchTerm.impressions).label("total_impr"),
                 Campaign.name.label("campaign_name"),
                 Campaign.id.label("campaign_id"),
@@ -381,9 +389,9 @@ class RecommendationsEngine:
 
             total_clicks = term.total_clicks or 0
             total_conv = term.total_conv or 0
+            total_cost = (term.total_cost_micros or 0) / 1_000_000
             cvr = (total_conv / total_clicks * 100) if total_clicks > 0 else 0
 
-            # Check: high conversions
             if total_conv >= t["r4_min_conversions"]:
                 recs.append(Recommendation(
                     type=RecommendationType.ADD_KEYWORD,
@@ -396,7 +404,7 @@ class RecommendationsEngine:
                         f"Search term has {total_conv:.0f} conversions "
                         f"with {cvr:.1f}% CVR. Not yet a keyword."
                     ),
-                    current_value=f"Conv: {total_conv:.0f}, CVR: {cvr:.1f}%, Cost: ${term.total_cost:.2f}",
+                    current_value=f"Conv: {total_conv:.0f}, CVR: {cvr:.1f}%, Cost: ${total_cost:.2f}",
                     recommended_action="Add as EXACT match keyword",
                     estimated_impact="Capture more of this high-converting traffic",
                     metadata={
@@ -406,7 +414,6 @@ class RecommendationsEngine:
                     },
                 ))
 
-            # Check: high CTR / many clicks (add as phrase)
             elif total_clicks >= t["r4_min_clicks_phrase"] and cvr == 0:
                 ctr = (total_clicks / (term.total_impr or 1)) * 100
                 if ctr >= t["r4_min_ctr_phrase"]:
@@ -446,7 +453,7 @@ class RecommendationsEngine:
                 SearchTerm.text,
                 func.sum(SearchTerm.conversions).label("total_conv"),
                 func.sum(SearchTerm.clicks).label("total_clicks"),
-                func.sum(SearchTerm.cost).label("total_cost"),
+                func.sum(SearchTerm.cost_micros).label("total_cost_micros"),
                 func.sum(SearchTerm.impressions).label("total_impr"),
                 Campaign.name.label("campaign_name"),
             )
@@ -460,7 +467,7 @@ class RecommendationsEngine:
         for term in terms:
             total_clicks = term.total_clicks or 0
             total_conv = term.total_conv or 0
-            total_cost = term.total_cost or 0
+            total_cost = (term.total_cost_micros or 0) / 1_000_000
             total_impr = term.total_impr or 1
             ctr = (total_clicks / total_impr) * 100
 
@@ -538,7 +545,6 @@ class RecommendationsEngine:
         recs = []
         t = self.thresholds
 
-        # Get all ad groups for this client
         ad_groups = (
             db.query(AdGroup)
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
@@ -556,18 +562,20 @@ class RecommendationsEngine:
             if len(ads) < 2:
                 continue
 
-            # Find best CTR ad in group
-            eligible_ads = [a for a in ads if a.impressions >= t["r6_min_impressions"]]
+            eligible_ads = [a for a in ads if (a.impressions or 0) >= t["r6_min_impressions"]]
             if not eligible_ads:
                 continue
 
-            best_ctr = max(a.ctr for a in eligible_ads)
+            best_ctr = max(_ctr_micros_to_pct(a.ctr) for a in eligible_ads)
             campaign = db.query(Campaign).filter(Campaign.id == ag.campaign_id).first()
             camp_name = campaign.name if campaign else "Unknown"
 
             for ad in eligible_ads:
+                ad_ctr = _ctr_micros_to_pct(ad.ctr)
+                ad_cost = _micros_to_usd(ad.cost_micros)
+
                 # Check 1: CTR significantly lower than best
-                if best_ctr > 0 and ad.ctr < best_ctr * t["r6_ctr_ratio"]:
+                if best_ctr > 0 and ad_ctr < best_ctr * t["r6_ctr_ratio"]:
                     headline = ad.headline_1 or ad.headline_2 or f"Ad #{ad.id}"
                     recs.append(Recommendation(
                         type=RecommendationType.PAUSE_AD,
@@ -577,20 +585,20 @@ class RecommendationsEngine:
                         entity_name=headline,
                         campaign_name=camp_name,
                         reason=(
-                            f"CTR ({ad.ctr:.2f}%) is less than 50% of best "
+                            f"CTR ({ad_ctr:.2f}%) is less than 50% of best "
                             f"ad ({best_ctr:.2f}%) in the same ad group."
                         ),
-                        current_value=f"CTR: {ad.ctr:.2f}%, Best: {best_ctr:.2f}%",
+                        current_value=f"CTR: {ad_ctr:.2f}%, Best: {best_ctr:.2f}%",
                         recommended_action="Pause this ad and create a new variant",
                         metadata={
-                            "ad_ctr": ad.ctr,
+                            "ad_ctr": ad_ctr,
                             "best_ctr": best_ctr,
                             "ad_group": ag.name,
                         },
                     ))
 
                 # Check 2: High spend, zero conversions
-                if ad.cost >= t["r6_min_cost"] and ad.conversions == 0:
+                if ad_cost >= t["r6_min_cost"] and (ad.conversions or 0) == 0:
                     headline = ad.headline_1 or ad.headline_2 or f"Ad #{ad.id}"
                     recs.append(Recommendation(
                         type=RecommendationType.PAUSE_AD,
@@ -600,12 +608,12 @@ class RecommendationsEngine:
                         entity_name=headline,
                         campaign_name=camp_name,
                         reason=(
-                            f"Spent ${ad.cost:.2f} with 0 conversions."
+                            f"Spent ${ad_cost:.2f} with 0 conversions."
                         ),
-                        current_value=f"Spend: ${ad.cost:.2f}, Conv: 0",
+                        current_value=f"Spend: ${ad_cost:.2f}, Conv: 0",
                         recommended_action="Pause this ad",
-                        estimated_impact=f"Save ~${ad.cost:.2f}",
-                        metadata={"spend": ad.cost},
+                        estimated_impact=f"Save ~${ad_cost:.2f}",
+                        metadata={"spend": ad_cost},
                     ))
 
         return recs
@@ -628,7 +636,6 @@ class RecommendationsEngine:
             .all()
         )
 
-        # Calculate ROAS per campaign
         campaign_roas = []
         for campaign in campaigns:
             metrics = (
@@ -643,8 +650,8 @@ class RecommendationsEngine:
             if not metrics:
                 continue
 
-            total_cost = sum(m.cost for m in metrics)
-            total_conv = sum(m.conversions for m in metrics)
+            total_cost = sum(_micros_to_usd(m.cost_micros) for m in metrics)
+            total_conv = sum(m.conversions or 0 for m in metrics)
             roas = (total_conv / total_cost * 100) if total_cost > 0 else 0
 
             campaign_roas.append({
@@ -657,18 +664,20 @@ class RecommendationsEngine:
         if len(campaign_roas) < 2:
             return recs
 
-        # Sort by ROAS descending
         campaign_roas.sort(key=lambda x: x["roas"], reverse=True)
 
         best = campaign_roas[0]
         worst = campaign_roas[-1]
 
+        best_budget = _micros_to_usd(best["campaign"].budget_micros)
+        worst_budget = _micros_to_usd(worst["campaign"].budget_micros)
+
         if (
             worst["roas"] > 0
             and best["roas"] > worst["roas"] * t["r7_roas_ratio"]
-            and worst["campaign"].budget_amount > best["campaign"].budget_amount
+            and worst_budget > best_budget
         ):
-            move_amount = worst["campaign"].budget_amount * t["r7_budget_move_pct"] / 100
+            move_amount = worst_budget * t["r7_budget_move_pct"] / 100
             recs.append(Recommendation(
                 type=RecommendationType.REALLOCATE_BUDGET,
                 priority=Priority.HIGH,
@@ -682,8 +691,8 @@ class RecommendationsEngine:
                     f"Move budget from low to high performer."
                 ),
                 current_value=(
-                    f"Best: ${best['campaign'].budget_amount}/day, "
-                    f"Worst: ${worst['campaign'].budget_amount}/day"
+                    f"Best: ${best_budget:.2f}/day, "
+                    f"Worst: ${worst_budget:.2f}/day"
                 ),
                 recommended_action=(
                     f"Move ${move_amount:.0f}/day from '{worst['campaign'].name}' "

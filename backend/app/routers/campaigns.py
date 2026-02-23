@@ -109,18 +109,19 @@ def get_campaign_kpis(
         if not metrics:
             return {"clicks": 0, "impressions": 0, "cost": 0, "conversions": 0, "ctr": 0, "roas": 0}
 
-        total_clicks = sum(m.clicks for m in metrics)
-        total_impressions = sum(m.impressions for m in metrics)
-        total_cost = sum(m.cost for m in metrics)
-        total_conversions = sum(m.conversions for m in metrics)
+        total_clicks = sum(m.clicks or 0 for m in metrics)
+        total_impressions = sum(m.impressions or 0 for m in metrics)
+        total_cost_micros = sum(m.cost_micros or 0 for m in metrics)
+        total_conversions = sum(m.conversions or 0 for m in metrics)
+        total_cost_usd = total_cost_micros / 1_000_000
 
         return {
             "clicks": total_clicks,
             "impressions": total_impressions,
-            "cost": round(total_cost, 2),
-            "conversions": round(total_conversions, 2),
+            "cost": round(total_cost_usd, 2),
+            "conversions": total_conversions,
             "ctr": round((total_clicks / total_impressions * 100) if total_impressions else 0, 2),
-            "roas": round((total_conversions / total_cost) if total_cost else 0, 2),
+            "roas": round((total_conversions / total_cost_usd) if total_cost_usd else 0, 2),
         }
 
     current = _aggregate(current_start, today)

@@ -47,7 +47,9 @@ def list_keywords(
     if search:
         query = query.filter(Keyword.text.ilike(f"%{search}%"))
 
-    sort_col = getattr(Keyword, sort_by, Keyword.cost)
+    _kw_sort_map = {"cost": "cost_micros", "bid": "bid_micros", "avg_cpc": "avg_cpc_micros", "cpa": "cpa_micros"}
+    sort_field = _kw_sort_map.get(sort_by, sort_by)
+    sort_col = getattr(Keyword, sort_field, Keyword.cost_micros)
     query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 
     total = query.count()
@@ -92,7 +94,9 @@ def list_ads(
     if status:
         query = query.filter(Ad.status == status.upper())
 
-    sort_col = getattr(Ad, sort_by, Ad.cost)
+    _ad_sort_map = {"cost": "cost_micros"}
+    ad_sort_field = _ad_sort_map.get(sort_by, sort_by)
+    sort_col = getattr(Ad, ad_sort_field, Ad.cost_micros)
     query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 
     total = query.count()

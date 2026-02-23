@@ -18,6 +18,7 @@ from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily
 )
 from app.services.cache import get_cached, set_cached
+from app.services.credentials_service import CredentialsService
 
 # Optional: Import google-ads client (only if credentials are configured)
 try:
@@ -33,22 +34,45 @@ class GoogleAdsService:
 
     def __init__(self):
         self.client = None
-        if GOOGLE_ADS_AVAILABLE and settings.google_ads_developer_token:
-            try:
-                self.client = GoogleAdsClient.load_from_dict({
-                    "developer_token": settings.google_ads_developer_token,
-                    "client_id": settings.google_ads_client_id,
-                    "client_secret": settings.google_ads_client_secret,
-                    "login_customer_id": settings.google_ads_login_customer_id,
-                    "use_proto_plus": True,
-                })
-                logger.info("Google Ads API client initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Google Ads client: {e}")
-                self.client = None
+        self._try_init()
+
+    def _try_init(self):
+        """Attempt to initialize GoogleAdsClient using keyring refresh_token."""
+        if not GOOGLE_ADS_AVAILABLE:
+            return
+
+        refresh_token = CredentialsService.get(CredentialsService.REFRESH_TOKEN)
+        if not refresh_token:
+            logger.info("No refresh_token in keyring — user must complete OAuth first")
+            return
+
+        if not settings.google_ads_developer_token:
+            logger.warning("No developer_token in .env")
+            return
+
+        try:
+            self.client = GoogleAdsClient.load_from_dict({
+                "developer_token": settings.google_ads_developer_token,
+                "client_id": settings.google_ads_client_id,
+                "client_secret": settings.google_ads_client_secret,
+                "refresh_token": refresh_token,
+                "login_customer_id": settings.google_ads_login_customer_id,
+                "use_proto_plus": True,
+            })
+            logger.info("Google Ads API client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Google Ads client: {e}")
+            self.client = None
+
+    def reinitialize(self):
+        """Re-init client (call after OAuth completion)."""
+        self.client = None
+        self._try_init()
 
     @property
     def is_connected(self) -> bool:
+        if self.client is None:
+            self._try_init()
         return self.client is not None
 
     # -----------------------------------------------------------------------
@@ -105,7 +129,7 @@ class GoogleAdsService:
                     "name": campaign.name,
                     "status": campaign.status.name,
                     "campaign_type": campaign.advertising_channel_type.name,
-                    "budget_amount": budget.amount_micros / 1_000_000 if budget.amount_micros else None,
+                    "budget_micros": budget.amount_micros if budget.amount_micros else 0,
                     "bidding_strategy": campaign.bidding_strategy_type.name if campaign.bidding_strategy_type else None,
                 }
 
@@ -122,6 +146,181 @@ class GoogleAdsService:
 
         except Exception as e:
             logger.error(f"Error syncing campaigns: {e}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Ad Groups Sync
+    # -----------------------------------------------------------------------
+
+    def sync_ad_groups(self, db: Session, customer_id: str) -> int:
+        """Fetch all ad groups from Google Ads API and upsert into local DB."""
+        if not self.is_connected:
+            return 0
+
+        client_record = db.query(Client).filter(
+            Client.google_customer_id == customer_id
+        ).first()
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                ad_group.id,
+                ad_group.name,
+                ad_group.status,
+                ad_group.cpc_bid_micros,
+                campaign.id
+            FROM ad_group
+            WHERE ad_group.status != 'REMOVED'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=customer_id, query=query)
+            count = 0
+            for row in response:
+                ag = row.ad_group
+                campaign_google_id = str(row.campaign.id)
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                existing = db.query(AdGroup).filter(
+                    AdGroup.campaign_id == campaign.id,
+                    AdGroup.google_ad_group_id == str(ag.id),
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "google_ad_group_id": str(ag.id),
+                    "name": ag.name,
+                    "status": ag.status.name,
+                    "bid_micros": ag.cpc_bid_micros if ag.cpc_bid_micros else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(AdGroup(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} ad groups for customer {customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing ad groups: {e}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Keywords Sync
+    # -----------------------------------------------------------------------
+
+    def sync_keywords(self, db: Session, customer_id: str) -> int:
+        """Fetch all keywords from Google Ads API and upsert into local DB."""
+        if not self.is_connected:
+            return 0
+
+        client_record = db.query(Client).filter(
+            Client.google_customer_id == customer_id
+        ).first()
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                ad_group.id,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.keyword.text,
+                ad_group_criterion.keyword.match_type,
+                ad_group_criterion.status,
+                ad_group_criterion.final_urls,
+                ad_group_criterion.effective_cpc_bid_micros,
+                ad_group_criterion.quality_info.quality_score,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.cost_micros,
+                metrics.average_cpc
+            FROM keyword_view
+            WHERE ad_group_criterion.status != 'REMOVED'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=customer_id, query=query)
+            count = 0
+            for row in response:
+                ad_group_google_id = str(row.ad_group.id)
+                criterion = row.ad_group_criterion
+
+                ad_group = (
+                    db.query(AdGroup)
+                    .join(Campaign)
+                    .filter(
+                        Campaign.client_id == client_record.id,
+                        AdGroup.google_ad_group_id == ad_group_google_id,
+                    )
+                    .first()
+                )
+                if not ad_group:
+                    continue
+
+                google_keyword_id = str(criterion.criterion_id)
+
+                existing = db.query(Keyword).filter(
+                    Keyword.ad_group_id == ad_group.id,
+                    Keyword.google_keyword_id == google_keyword_id,
+                ).first()
+
+                clicks = row.metrics.clicks
+                impressions = row.metrics.impressions
+                conversions = int(row.metrics.conversions)
+                cost_micros = row.metrics.cost_micros
+                avg_cpc_micros = int(row.metrics.average_cpc) if row.metrics.average_cpc else 0
+                cpa_micros = int(cost_micros / conversions) if conversions > 0 else 0
+
+                data = {
+                    "ad_group_id": ad_group.id,
+                    "google_keyword_id": google_keyword_id,
+                    "text": criterion.keyword.text,
+                    "match_type": criterion.keyword.match_type.name,
+                    "status": criterion.status.name,
+                    "final_url": criterion.final_urls[0] if criterion.final_urls else None,
+                    "bid_micros": criterion.effective_cpc_bid_micros or 0,
+                    "quality_score": criterion.quality_info.quality_score if criterion.quality_info.quality_score else 0,
+                    "clicks": clicks,
+                    "impressions": impressions,
+                    "cost_micros": cost_micros,
+                    "conversions": conversions,
+                    "ctr": int(row.metrics.ctr * 1_000_000),
+                    "avg_cpc_micros": avg_cpc_micros,
+                    "cpa_micros": cpa_micros,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(Keyword(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} keywords for customer {customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing keywords: {e}")
             db.rollback()
             return 0
 
@@ -180,9 +379,10 @@ class GoogleAdsService:
                 if not campaign:
                     continue
 
-                cost = row.metrics.cost_micros / 1_000_000
-                conversions = row.metrics.conversions
-                roas = conversions / cost if cost > 0 else 0
+                cost_micros = row.metrics.cost_micros
+                conversions = int(row.metrics.conversions)
+                cost_usd = cost_micros / 1_000_000 if cost_micros else 0
+                roas = conversions / cost_usd if cost_usd > 0 else 0
 
                 existing = db.query(MetricDaily).filter(
                     MetricDaily.campaign_id == campaign.id,
@@ -197,10 +397,9 @@ class GoogleAdsService:
                     "ctr": row.metrics.ctr * 100,  # API returns as fraction
                     "conversions": conversions,
                     "conversion_rate": row.metrics.conversions_from_interactions_rate * 100,
-                    "cost": cost,
-                    "cost_per_conversion": row.metrics.cost_per_conversion / 1_000_000,
+                    "cost_micros": cost_micros,
                     "roas": roas,
-                    "avg_cpc": row.metrics.average_cpc / 1_000_000,
+                    "avg_cpc_micros": int(row.metrics.average_cpc) if row.metrics.average_cpc else 0,
                 }
 
                 if existing:
@@ -279,8 +478,6 @@ class GoogleAdsService:
                 if not ad_group:
                     continue
 
-                cost = row.metrics.cost_micros / 1_000_000
-
                 db.add(SearchTerm(
                     ad_group_id=ad_group.id,
                     text=row.search_term_view.search_term,
@@ -288,11 +485,10 @@ class GoogleAdsService:
                     match_type=row.segments.keyword.info.match_type.name if row.segments.keyword.info.match_type else None,
                     clicks=row.metrics.clicks,
                     impressions=row.metrics.impressions,
-                    cost=cost,
+                    cost_micros=row.metrics.cost_micros,
                     conversions=row.metrics.conversions,
-                    ctr=row.metrics.ctr * 100,
-                    conversion_rate=row.metrics.conversions_from_interactions_rate * 100,
-                    cost_per_conversion=row.metrics.cost_per_conversion / 1_000_000 if row.metrics.cost_per_conversion else 0,
+                    ctr=int(row.metrics.ctr * 1_000_000),
+                    conversion_rate=int(row.metrics.conversions_from_interactions_rate * 1_000_000),
                     date_from=date_from,
                     date_to=date_to,
                 ))
@@ -340,7 +536,7 @@ class GoogleAdsService:
                 # params: {"amount": 1.50}
                 kw = db.query(Keyword).get(entity_id)
                 if kw and params and "amount" in params:
-                    kw.cpc_bid = float(params["amount"])
+                    kw.bid_micros = int(float(params["amount"]) * 1_000_000)
                     # self.google_ads_client.set_keyword_bid(kw.google_keyword_id, amount) # MOCKED
 
             elif action_type == "ADD_KEYWORD":
@@ -364,7 +560,7 @@ class GoogleAdsService:
                             match_type=match_type,
                             status="ENABLED",
                             google_keyword_id=f"new-{int(datetime.utcnow().timestamp())}", # Mock ID
-                            clicks=0, impressions=0, cost=0, conversions=0
+                            clicks=0, impressions=0, cost_micros=0, conversions=0
                         )
                         db.add(new_kw)
 
@@ -375,6 +571,60 @@ class GoogleAdsService:
             db.rollback()
             logger.error(f"❌ ACTION FAILED: {str(e)}")
             return {"status": "error", "message": str(e)}
+
+
+    # -----------------------------------------------------------------------
+    # Discover Accounts (MCC → list of client accounts)
+    # -----------------------------------------------------------------------
+
+    def discover_accounts(self) -> list[dict]:
+        """
+        Fetch client accounts accessible from the MCC (login_customer_id).
+        Uses customer_client resource queried through the MCC.
+        Returns list of dicts: [{customer_id, name}, ...]
+        """
+        if not self.is_connected:
+            logger.warning("Google Ads API not connected — cannot discover accounts")
+            return []
+
+        mcc_id = settings.google_ads_login_customer_id
+        if not mcc_id:
+            logger.warning("No login_customer_id (MCC) configured")
+            return []
+
+        ga_service = self.client.get_service("GoogleAdsService")
+
+        try:
+            # Query customer_client through the MCC to find all sub-accounts
+            query = """
+                SELECT
+                    customer_client.client_customer,
+                    customer_client.id,
+                    customer_client.descriptive_name,
+                    customer_client.manager,
+                    customer_client.level
+                FROM customer_client
+                WHERE customer_client.level <= 1
+            """
+            response = ga_service.search(customer_id=mcc_id, query=query)
+
+            accounts = []
+            for row in response:
+                cc = row.customer_client
+                # Skip the MCC itself (manager accounts)
+                if cc.manager:
+                    continue
+                accounts.append({
+                    "customer_id": str(cc.id),
+                    "name": cc.descriptive_name or f"Account {cc.id}",
+                })
+
+            logger.info(f"Discovered {len(accounts)} client accounts under MCC {mcc_id}")
+            return accounts
+
+        except Exception as e:
+            logger.error(f"Error discovering accounts via MCC {mcc_id}: {e}")
+            return []
 
 
 # Singleton instance

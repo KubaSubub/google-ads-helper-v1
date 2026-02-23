@@ -5,8 +5,10 @@ import {
 import { TrendingUp, TrendingDown, Activity, AlertCircle, Calendar } from 'lucide-react'
 import { LoadingSpinner, ErrorMessage, PageHeader } from '../components/UI'
 import { getForecast, getCampaigns } from '../api'
+import { useApp } from '../contexts/AppContext'
 
 export default function Forecast() {
+    const { selectedClientId } = useApp()
     const [campaigns, setCampaigns] = useState([])
     const [selectedCampaign, setSelectedCampaign] = useState(null)
     const [metric, setMetric] = useState('cost')
@@ -15,8 +17,8 @@ export default function Forecast() {
     const [error, setError] = useState(null)
 
     useEffect(() => {
-        loadCampaigns()
-    }, [])
+        if (selectedClientId) loadCampaigns()
+    }, [selectedClientId])
 
     useEffect(() => {
         if (selectedCampaign) {
@@ -26,7 +28,7 @@ export default function Forecast() {
 
     async function loadCampaigns() {
         try {
-            const res = await getCampaigns({ client_id: 1, page_size: 100 })
+            const res = await getCampaigns(selectedClientId)
             setCampaigns(res.items)
             if (res.items.length > 0) {
                 setSelectedCampaign(res.items[0].id)
@@ -60,7 +62,7 @@ export default function Forecast() {
     return (
         <div className="max-w-[1400px] mx-auto space-y-6">
             <PageHeader
-                title="Prognozowanie (Forecast)"
+                title="Prognozowanie"
                 subtitle="Predykcja wyników na najbliższe 7 dni (model liniowy)"
             >
                 <div className="flex gap-4">
@@ -79,9 +81,9 @@ export default function Forecast() {
                         onChange={e => setMetric(e.target.value)}
                         className="bg-surface-700/40 border border-surface-700/60 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-500"
                     >
-                        <option value="cost">Koszt (Cost)</option>
-                        <option value="clicks">Kliknięcia (Clicks)</option>
-                        <option value="conversions">Konwersje (Conversions)</option>
+                        <option value="cost">Koszt</option>
+                        <option value="clicks">Kliknięcia</option>
+                        <option value="conversions">Konwersje</option>
                         <option value="ctr">CTR</option>
                     </select>
                 </div>

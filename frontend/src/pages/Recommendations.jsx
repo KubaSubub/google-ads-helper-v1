@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
     AlertTriangle,
     TrendingUp,
@@ -6,96 +6,114 @@ import {
     PauseCircle,
     PlusCircle,
     MinusCircle,
-    ArrowRightLeft,
     CheckCircle2,
     XCircle,
     Loader2,
-    Filter,
     Zap,
-    Play
+    Play,
+    RefreshCw,
 } from 'lucide-react'
-import { LoadingSpinner, ErrorMessage, PageHeader } from '../components/UI'
-import { getRecommendations, applyRecommendation } from '../api'
+import { LoadingSpinner } from '../components/UI'
+import { useApp } from '../contexts/AppContext'
+import { useRecommendations } from '../hooks/useRecommendations'
+import ConfirmationModal from '../components/ConfirmationModal'
+import EmptyState from '../components/EmptyState'
 
 const TYPE_CONFIG = {
-    PAUSE_KEYWORD: { icon: PauseCircle, color: 'text-red-400', bg: 'bg-red-500/10', label: 'Pause Keyword' },
-    INCREASE_BID: { icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10', label: 'Increase Bid' },
-    DECREASE_BID: { icon: TrendingDown, color: 'text-orange-400', bg: 'bg-orange-500/10', label: 'Decrease Bid' },
-    ADD_KEYWORD: { icon: PlusCircle, color: 'text-blue-400', bg: 'bg-blue-500/10', label: 'Add Keyword' },
-    ADD_NEGATIVE: { icon: MinusCircle, color: 'text-rose-400', bg: 'bg-rose-500/10', label: 'Add Negative' },
-    PAUSE_AD: { icon: PauseCircle, color: 'text-yellow-400', bg: 'bg-yellow-500/10', label: 'Pause Ad' },
-    REALLOCATE_BUDGET: { icon: ArrowRightLeft, color: 'text-purple-400', bg: 'bg-purple-500/10', label: 'Reallocate Budget' },
+    PAUSE_KEYWORD: { icon: PauseCircle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Pauzuj słowo' },
+    UPDATE_BID: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zmień stawkę' },
+    ADD_KEYWORD: { icon: PlusCircle, color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)', label: 'Dodaj słowo' },
+    ADD_NEGATIVE: { icon: MinusCircle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Dodaj wykluczenie' },
+    PAUSE_AD: { icon: PauseCircle, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Pauzuj reklamę' },
+    INCREASE_BUDGET: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zwiększ budżet' },
+    DECREASE_BUDGET: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Zmniejsz budżet' },
+    ENABLE_KEYWORD: { icon: Play, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Włącz słowo' },
 }
 
 const PRIORITY_CONFIG = {
-    HIGH: { color: 'text-red-400', bg: 'bg-red-500/20', border: 'border-red-500/30', label: '🔴 HIGH' },
-    MEDIUM: { color: 'text-yellow-400', bg: 'bg-yellow-500/20', border: 'border-yellow-500/30', label: '🟡 MEDIUM' },
-    LOW: { color: 'text-gray-400', bg: 'bg-gray-500/20', border: 'border-gray-500/30', label: '⚪ LOW' },
+    HIGH: { color: '#F87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)', label: 'WYSOKI' },
+    MEDIUM: { color: '#FBBF24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)', label: 'ŚREDNI' },
+    LOW: { color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.1)', label: 'NISKI' },
 }
 
-function RecommendationCard({ rec, onApply, isApplying }) {
-    const typeConf = TYPE_CONFIG[rec.type] || TYPE_CONFIG.PAUSE_KEYWORD
-    const prioConf = PRIORITY_CONFIG[rec.priority] || PRIORITY_CONFIG.LOW
+function PriorityPill({ priority }) {
+    const cfg = PRIORITY_CONFIG[priority] || PRIORITY_CONFIG.LOW
+    return (
+        <span style={{
+            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+            background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+        }}>
+            {cfg.label}
+        </span>
+    )
+}
+
+function TypePill({ actionType }) {
+    const cfg = TYPE_CONFIG[actionType] || { icon: Zap, color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', label: actionType }
+    const Icon = cfg.icon
+    return (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 10, fontWeight: 500, padding: '2px 8px 2px 6px', borderRadius: 999,
+            background: cfg.bg, color: cfg.color,
+        }}>
+            <Icon size={10} />
+            {cfg.label}
+        </span>
+    )
+}
+
+function RecommendationCard({ rec, onApply, onDismiss, isApplying }) {
+    const actionType = rec.suggested_action || rec.type
+    const typeConf = TYPE_CONFIG[actionType] || { icon: Zap, color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', label: actionType }
     const Icon = typeConf.icon
 
     return (
-        <div className={`bg-gray-800/50 border ${prioConf.border} rounded-xl p-5 hover:bg-gray-800/70 transition-all group`}>
-            <div className="flex items-start gap-4">
-                <div className={`p-2.5 rounded-lg ${typeConf.bg} shrink-0`}>
-                    <Icon className={`w-5 h-5 ${typeConf.color}`} />
+        <div className="v2-card" style={{ padding: '16px 18px' }}>
+            <div className="flex items-start gap-3">
+                <div style={{
+                    width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                    background: typeConf.bg,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <Icon size={16} style={{ color: typeConf.color }} />
                 </div>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${prioConf.bg} ${prioConf.color}`}>
-                            {prioConf.label}
-                        </span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeConf.bg} ${typeConf.color}`}>
-                            {typeConf.label}
-                        </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 6 }}>
+                        <PriorityPill priority={rec.priority} />
+                        <TypePill actionType={actionType} />
                     </div>
-                    <h3 className="text-white font-semibold text-sm mt-2 truncate" title={rec.entity_name}>
-                        {rec.entity_name}
-                    </h3>
-                    <p className="text-gray-400 text-xs mt-0.5">
-                        Campaign: <span className="text-gray-300">{rec.campaign_name}</span>
+                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5, marginBottom: 12 }}>
+                        {rec.reason}
                     </p>
-                    <p className="text-gray-300 text-sm mt-2">{rec.reason}</p>
-
-                    <div className="mt-3 flex items-center justify-between">
-                        <div className="space-y-1">
-                            {rec.current_value && (
-                                <p className="text-gray-500 text-xs">
-                                    Current: <span className="text-gray-400">{rec.current_value}</span>
-                                </p>
-                            )}
-                            {rec.recommended_action && (
-                                <p className="text-emerald-400/80 text-xs font-medium">
-                                    → {rec.recommended_action}
-                                </p>
-                            )}
-                        </div>
-
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={() => onApply(rec)}
                             disabled={isApplying}
-                            className={`
-                                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                                ${isApplying
-                                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                                    : 'bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-500/20'}
-                            `}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '6px 14px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                                background: '#4F8EF7', color: 'white', cursor: 'pointer', border: 'none',
+                                opacity: isApplying ? 0.6 : 1,
+                            }}
                         >
-                            {isApplying ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Applying...
-                                </>
-                            ) : (
-                                <>
-                                    <Play className="w-4 h-4 fill-current" />
-                                    Apply
-                                </>
-                            )}
+                            {isApplying
+                                ? <><Loader2 size={12} className="animate-spin" /> Wykonuje...</>
+                                : <><Play size={12} style={{ fill: 'white' }} /> Zastosuj</>
+                            }
+                        </button>
+                        <button
+                            onClick={() => onDismiss(rec)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '6px 12px', borderRadius: 7, fontSize: 12,
+                                background: 'transparent', color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                            }}
+                            className="hover:border-white/20 hover:text-white/60"
+                        >
+                            <XCircle size={12} /> Odrzuć
                         </button>
                     </div>
                 </div>
@@ -104,215 +122,163 @@ function RecommendationCard({ rec, onApply, isApplying }) {
     )
 }
 
-function SummaryCards({ data }) {
-    if (!data) return null
-    const { by_priority, by_type, total } = data
-
-    return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-gray-800/60 rounded-xl p-4 border border-gray-700/50">
-                <div className="flex items-center gap-2 mb-1">
-                    <Zap className="w-4 h-4 text-yellow-400" />
-                    <span className="text-gray-400 text-xs uppercase">Total</span>
-                </div>
-                <p className="text-2xl font-bold text-white">{total}</p>
-            </div>
-            <div className="bg-red-500/10 rounded-xl p-4 border border-red-500/20">
-                <div className="flex items-center gap-2 mb-1">
-                    <AlertTriangle className="w-4 h-4 text-red-400" />
-                    <span className="text-red-400/80 text-xs uppercase">High Priority</span>
-                </div>
-                <p className="text-2xl font-bold text-red-400">{by_priority?.HIGH || 0}</p>
-            </div>
-            <div className="bg-yellow-500/10 rounded-xl p-4 border border-yellow-500/20">
-                <span className="text-yellow-400/80 text-xs uppercase">Medium</span>
-                <p className="text-2xl font-bold text-yellow-400">{by_priority?.MEDIUM || 0}</p>
-            </div>
-            <div className="bg-gray-500/10 rounded-xl p-4 border border-gray-500/20">
-                <span className="text-gray-400/80 text-xs uppercase">Low</span>
-                <p className="text-2xl font-bold text-gray-400">{by_priority?.LOW || 0}</p>
-            </div>
-        </div>
-    )
-}
-
 export default function Recommendations() {
-    const [data, setData] = useState(null)
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState(null)
-    const [filterType, setFilterType] = useState('ALL')
+    const { selectedClientId, showToast } = useApp()
+    const { recommendations, summary, loading, refetch, apply, dismiss } = useRecommendations(selectedClientId)
+
     const [filterPriority, setFilterPriority] = useState('ALL')
-
-    // Applying state
     const [applyingId, setApplyingId] = useState(null)
-    const [toast, setToast] = useState(null) // { type: 'success'|'error', message: '' }
+    const [confirmModal, setConfirmModal] = useState(null)
+    const [dryRunData, setDryRunData] = useState(null)
 
-    useEffect(() => {
-        loadData()
-    }, [])
-
-    useEffect(() => {
-        if (toast) {
-            const timer = setTimeout(() => setToast(null), 3000)
-            return () => clearTimeout(timer)
-        }
-    }, [toast])
-
-    async function loadData() {
-        try {
-            setLoading(true)
-            setError(null)
-            const result = await getRecommendations(1, 100)
-            setData(result)
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setLoading(false)
-        }
-    }
+    if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
+    if (loading) return <LoadingSpinner />
 
     async function handleApply(rec) {
-        setApplyingId(rec.unique_id) // Assuming we have some unique ID, if not use index or composition
-        // Wait, recommendations from backend might not have 'id'. Let's check.
-        // The Service constructs them. It puts 'entity_id' but not a recommendation ID.
-        // We can use entity_id + type as key.
-
+        setApplyingId(rec.id)
         try {
-            // For MVP: Parse recommended_action or use type logic.
-            // The API expects: action, entity_id, params
-            // We need to map rec.type to action string
-
-            const params = {}
-            if (rec.type === 'INCREASE_BID' || rec.type === 'DECREASE_BID') {
-                // Parse amount from recommended_action string which looks like "Increase bid to 1.50"
-                const match = rec.recommended_action.match(/([\d.]+)/)
-                if (match) params.amount = parseFloat(match[1])
-            }
-            if (rec.type === 'ADD_KEYWORD') {
-                params.text = rec.term // Search term text
-                params.ad_group_id = rec.ad_group_id
-            }
-
-            // Map type to action
-            let actionType = rec.type
-            if (rec.type === 'ADD_KEYWORD') actionType = 'ADD_KEYWORD' // Same
-            if (rec.type === 'INCREASE_BID' || rec.type === 'DECREASE_BID') actionType = 'SET_KEYWORD_BID'
-
-            // Call API
-            const result = await applyRecommendation(actionType, rec.entity_id, params)
-
-            setToast({ type: 'success', message: `Successfully executed: ${rec.recommended_action}` })
-
-            // Remove from list or reload
-            loadData()
-
+            const preview = await apply(rec.id, true)
+            setDryRunData(preview)
+            setConfirmModal(rec)
         } catch (err) {
-            setToast({ type: 'error', message: `Failed: ${err.message}` })
+            showToast('Błąd podglądu: ' + err.message, 'error')
         } finally {
             setApplyingId(null)
         }
     }
 
-    if (loading) return <LoadingSpinner />
-    if (error) return <ErrorMessage message={error} onRetry={loadData} />
+    async function handleConfirm() {
+        if (!confirmModal) return
+        setApplyingId(confirmModal.id)
+        try {
+            await apply(confirmModal.id, false)
+            showToast('Akcja wykonana', 'success')
+            setConfirmModal(null)
+            setDryRunData(null)
+            refetch()
+        } catch (err) {
+            showToast('Błąd wykonania: ' + err.message, 'error')
+        } finally {
+            setApplyingId(null)
+        }
+    }
 
-    const recommendations = (data?.recommendations || []).map((r, i) => ({ ...r, unique_id: i }))
+    async function handleDismiss(rec) {
+        try {
+            await dismiss(rec.id)
+            showToast('Rekomendacja odrzucona', 'info')
+        } catch (err) {
+            showToast('Błąd: ' + err.message, 'error')
+        }
+    }
 
-    const filtered = recommendations.filter(r => {
-        if (filterType !== 'ALL' && r.type !== filterType) return false
+    const filtered = (recommendations || []).filter(r => {
         if (filterPriority !== 'ALL' && r.priority !== filterPriority) return false
         return true
     })
 
-    const typeOptions = ['ALL', ...Object.keys(TYPE_CONFIG)]
-    const priorityOptions = ['ALL', 'HIGH', 'MEDIUM', 'LOW']
-
     return (
-        <div className="relative">
-            {/* Toast Notification */}
-            {toast && (
-                <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-5 border ${toast.type === 'success'
-                    ? 'bg-green-900/90 border-green-700 text-green-100'
-                    : 'bg-red-900/90 border-red-700 text-red-100'
-                    }`}>
-                    {toast.type === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-                    <p className="text-sm font-medium">{toast.message}</p>
-                </div>
-            )}
-
-            <PageHeader
-                title="Rekomendacje Optymalizacyjne"
-                subtitle={`${data?.total || 0} sugestii z 7 reguł Playbooka`}
-            >
-                <div className="flex items-center gap-2 text-sm bg-brand-500/10 text-brand-300 px-3 py-1.5 rounded-lg border border-brand-500/20">
-                    <Zap size={14} />
-                    <span>Akcje są wykonywane natychmiastowo via Google Ads API (Mock)</span>
-                </div>
-            </PageHeader>
-
-            <SummaryCards data={data} />
-
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 mb-6 bg-surface-800/40 p-3 rounded-xl border border-surface-700/50">
-                <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-400" />
-                    <select
-                        className="bg-surface-700 border border-surface-600 text-white text-sm rounded-lg px-3 py-1.5 focus:border-brand-500 focus:outline-none"
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
-                    >
-                        {typeOptions.map(opt => (
-                            <option key={opt} value={opt}>
-                                {opt === 'ALL' ? 'Wszystkie Typy' : TYPE_CONFIG[opt]?.label || opt}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+        <div style={{ maxWidth: 1100 }}>
+            {/* Header */}
+            <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div>
-                    <select
-                        className="bg-surface-700 border border-surface-600 text-white text-sm rounded-lg px-3 py-1.5 focus:border-brand-500 focus:outline-none"
-                        value={filterPriority}
-                        onChange={(e) => setFilterPriority(e.target.value)}
-                    >
-                        {priorityOptions.map(opt => (
-                            <option key={opt} value={opt}>
-                                {opt === 'ALL' ? 'Wszystkie Priorytety' : PRIORITY_CONFIG[opt]?.label}
-                            </option>
-                        ))}
-                    </select>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                        Rekomendacje
+                    </h1>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                        {(summary && summary.total) || (recommendations && recommendations.length) || 0} sugestii optymalizacyjnych
+                    </p>
                 </div>
                 <button
-                    onClick={loadData}
-                    className="ml-auto bg-surface-700 hover:bg-surface-600 text-white text-sm px-4 py-1.5 rounded-lg transition-colors flex items-center gap-2 border border-surface-600"
+                    onClick={() => refetch()}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '6px 14px', borderRadius: 7, fontSize: 12,
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
+                    }}
+                    className="hover:border-white/20 hover:text-white/80"
                 >
-                    <Loader2 className="w-3.5 h-3.5" />
-                    Odśwież
+                    <RefreshCw size={12} /> Odśwież
                 </button>
             </div>
 
-            {/* Recommendations List */}
+            {/* Summary + priority filter row */}
+            <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
+                {/* Summary mini cards */}
+                <div className="flex items-center gap-3">
+                    <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Razem</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>{(summary && summary.total) || (recommendations && recommendations.length) || 0}</span>
+                    </div>
+                    <div style={{ padding: '8px 16px', borderRadius: 12, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Wysoki</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: '#F87171', fontFamily: 'Syne' }}>{summary?.high_priority || 0}</span>
+                    </div>
+                    <div style={{ padding: '8px 16px', borderRadius: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'rgba(251,191,36,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Średni</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: '#FBBF24', fontFamily: 'Syne' }}>{summary?.medium || 0}</span>
+                    </div>
+                </div>
+
+                {/* Priority filter pills */}
+                <div className="flex items-center gap-1.5">
+                    {['ALL', 'HIGH', 'MEDIUM', 'LOW'].map(p => {
+                        const active = filterPriority === p
+                        const cfg = p !== 'ALL' ? PRIORITY_CONFIG[p] : null
+                        return (
+                            <button
+                                key={p}
+                                onClick={() => setFilterPriority(p)}
+                                style={{
+                                    padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: active ? 500 : 400,
+                                    border: `1px solid ${active ? (cfg?.color || '#4F8EF7') : 'rgba(255,255,255,0.1)'}`,
+                                    background: active ? (cfg ? cfg.bg : 'rgba(79,142,247,0.18)') : 'transparent',
+                                    color: active ? (cfg?.color || 'white') : 'rgba(255,255,255,0.4)',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                {p === 'ALL' ? 'Wszystkie' : cfg?.label}
+                            </button>
+                        )
+                    })}
+                </div>
+            </div>
+
+            {/* List */}
             {filtered.length === 0 ? (
-                <div className="text-center py-16 bg-surface-800/30 rounded-xl border border-surface-700/30">
-                    <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
-                    <h3 className="text-lg font-semibold text-white">Wszystko czyste!</h3>
-                    <p className="text-gray-400 mt-1">Brak rekomendacji spełniających kryteria.</p>
+                <div style={{ padding: '48px 0', textAlign: 'center' }}>
+                    <CheckCircle2 size={40} style={{ color: '#4ADE80', margin: '0 auto 12px' }} />
+                    <div style={{ fontSize: 15, fontWeight: 500, color: '#F0F0F0', marginBottom: 4 }}>Wszystko czyste!</div>
+                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Brak rekomendacji spełniających kryteria.</div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: 12 }}>
                     {filtered.map((rec) => (
                         <RecommendationCard
-                            key={rec.unique_id}
+                            key={rec.id}
                             rec={rec}
                             onApply={handleApply}
-                            isApplying={applyingId === rec.unique_id}
+                            onDismiss={handleDismiss}
+                            isApplying={applyingId === rec.id}
                         />
                     ))}
                 </div>
             )}
+
+            {/* Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={!!confirmModal}
+                onClose={() => { setConfirmModal(null); setDryRunData(null); }}
+                onConfirm={handleConfirm}
+                title="Potwierdź akcję"
+                actionType={dryRunData?.action_type || confirmModal?.suggested_action}
+                reason={confirmModal?.reason}
+                beforeState={dryRunData?.current_val ? { wartosc: dryRunData.current_val } : undefined}
+                afterState={dryRunData?.new_val ? { wartosc: dryRunData.new_val } : undefined}
+                isLoading={!!applyingId}
+            />
         </div>
     )
 }
-
-
-
-

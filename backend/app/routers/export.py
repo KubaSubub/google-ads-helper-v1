@@ -2,15 +2,32 @@
 
 import io
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from openpyxl import Workbook
 
 from app.database import get_db
-from app.models import SearchTerm, MetricDaily, Campaign, AdGroup, Keyword
+from app.models import SearchTerm, MetricDaily, Campaign, AdGroup, Keyword, Client
+from app.utils.formatters import micros_to_currency
 
 router = APIRouter(prefix="/export", tags=["Export"])
+
+
+def _validate_client(db: Session, client_id: int) -> Client:
+    """Validate client exists, raise 404 if not."""
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+    return client
+
+
+def _validate_campaign(db: Session, campaign_id: int) -> Campaign:
+    """Validate campaign exists, raise 404 if not."""
+    campaign = db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail=f"Campaign {campaign_id} not found")
+    return campaign
 
 
 @router.get("/search-terms")
@@ -20,24 +37,32 @@ def export_search_terms(
     db: Session = Depends(get_db),
 ):
     """Export all search terms for a client as XLSX or CSV."""
+    _validate_client(db, client_id)
+
     terms = (
         db.query(SearchTerm)
         .join(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
         .join(Campaign, AdGroup.campaign_id == Campaign.id)
         .filter(Campaign.client_id == client_id)
-        .order_by(SearchTerm.cost.desc())
+        .order_by(SearchTerm.cost_micros.desc())
         .all()
     )
 
-    headers = ["Fraza", "Kliknięcia", "Wyświetlenia", "Koszt", "Konwersje", "CTR", "CPC", "Koszt/konw."]
+    headers = ["Fraza", "Klikniecia", "Wyswietlenia", "Koszt (USD)", "Konwersje", "CTR %", "CPC (USD)", "Koszt/konw. (USD)"]
+
+    def _row(t):
+        cost_usd = micros_to_currency(t.cost_micros)
+        cpc = cost_usd / t.clicks if t.clicks else 0
+        cpconv = cost_usd / t.conversions if (t.conversions or 0) > 0 else 0
+        ctr_pct = round((t.ctr or 0) / 10_000, 2)
+        return [t.text, t.clicks or 0, t.impressions or 0, cost_usd, t.conversions or 0, ctr_pct, round(cpc, 2), round(cpconv, 2)]
 
     if format == "csv":
         output = io.StringIO()
         output.write(",".join(headers) + "\n")
         for t in terms:
-            cpc = t.cost / t.clicks if t.clicks else 0
-            cpconv = t.cost / t.conversions if t.conversions > 0 else 0
-            output.write(f'"{t.text}",{t.clicks},{t.impressions},{t.cost:.2f},{t.conversions:.1f},{t.ctr:.2f},{cpc:.2f},{cpconv:.2f}\n')
+            row = _row(t)
+            output.write(f'"{row[0]}",{row[1]},{row[2]},{row[3]},{row[4]},{row[5]},{row[6]},{row[7]}\n')
         output.seek(0)
         return StreamingResponse(
             io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -50,13 +75,9 @@ def export_search_terms(
     ws = wb.active
     ws.title = "Search Terms"
     ws.append(headers)
-
     for t in terms:
-        cpc = t.cost / t.clicks if t.clicks else 0
-        cpconv = t.cost / t.conversions if t.conversions > 0 else 0
-        ws.append([t.text, t.clicks, t.impressions, round(t.cost, 2), round(t.conversions, 1), round(t.ctr, 2), round(cpc, 2), round(cpconv, 2)])
+        ws.append(_row(t))
 
-    # Auto-width columns
     for col in ws.columns:
         max_len = max(len(str(c.value or "")) for c in col)
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
@@ -80,6 +101,8 @@ def export_metrics(
     db: Session = Depends(get_db),
 ):
     """Export daily metrics for a campaign as XLSX or CSV."""
+    _validate_campaign(db, campaign_id)
+
     cutoff = date.today() - timedelta(days=days)
     metrics = (
         db.query(MetricDaily)
@@ -88,13 +111,21 @@ def export_metrics(
         .all()
     )
 
-    headers = ["Data", "Kliknięcia", "Wyświetlenia", "CTR", "Koszt", "Konwersje", "CPA", "ROAS", "Avg CPC"]
+    headers = ["Data", "Klikniecia", "Wyswietlenia", "CTR %", "Koszt (USD)", "Konwersje", "CPA (USD)", "ROAS", "Avg CPC (USD)"]
+
+    def _row(m):
+        cost_usd = micros_to_currency(m.cost_micros)
+        cpa = cost_usd / m.conversions if (m.conversions or 0) > 0 else 0
+        ctr_pct = round((m.ctr or 0) / 10_000, 2)
+        avg_cpc_usd = micros_to_currency(m.avg_cpc_micros)
+        return [str(m.date), m.clicks or 0, m.impressions or 0, ctr_pct, cost_usd, m.conversions or 0, round(cpa, 2), round(m.roas or 0, 2), avg_cpc_usd]
 
     if format == "csv":
         output = io.StringIO()
         output.write(",".join(headers) + "\n")
         for m in metrics:
-            output.write(f"{m.date},{m.clicks},{m.impressions},{m.ctr:.2f},{m.cost:.2f},{m.conversions:.1f},{m.cost_per_conversion:.2f},{m.roas:.2f},{m.avg_cpc:.2f}\n")
+            row = _row(m)
+            output.write(",".join(str(v) for v in row) + "\n")
         output.seek(0)
         return StreamingResponse(
             io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -106,9 +137,8 @@ def export_metrics(
     ws = wb.active
     ws.title = "Daily Metrics"
     ws.append(headers)
-
     for m in metrics:
-        ws.append([str(m.date), m.clicks, m.impressions, round(m.ctr, 2), round(m.cost, 2), round(m.conversions, 1), round(m.cost_per_conversion, 2), round(m.roas, 2), round(m.avg_cpc, 2)])
+        ws.append(_row(m))
 
     for col in ws.columns:
         max_len = max(len(str(c.value or "")) for c in col)
@@ -132,22 +162,31 @@ def export_keywords(
     db: Session = Depends(get_db),
 ):
     """Export all keywords for a client as XLSX or CSV."""
+    _validate_client(db, client_id)
+
     keywords = (
         db.query(Keyword)
         .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
         .join(Campaign, AdGroup.campaign_id == Campaign.id)
         .filter(Campaign.client_id == client_id)
-        .order_by(Keyword.cost.desc())
+        .order_by(Keyword.cost_micros.desc())
         .all()
     )
 
-    headers = ["Słowo kluczowe", "Dopasowanie", "Status", "Kliknięcia", "Wyświetlenia", "Koszt", "Konwersje", "CTR", "Avg CPC"]
+    headers = ["Slowo kluczowe", "Dopasowanie", "Status", "Klikniecia", "Wyswietlenia", "Koszt (USD)", "Konwersje", "CTR %", "Avg CPC (USD)"]
+
+    def _row(k):
+        cost_usd = micros_to_currency(k.cost_micros)
+        ctr_pct = round((k.ctr or 0) / 10_000, 2)
+        avg_cpc_usd = micros_to_currency(k.avg_cpc_micros)
+        return [k.text, k.match_type, k.status, k.clicks or 0, k.impressions or 0, cost_usd, k.conversions or 0, ctr_pct, avg_cpc_usd]
 
     if format == "csv":
         output = io.StringIO()
         output.write(",".join(headers) + "\n")
         for k in keywords:
-            output.write(f'"{k.text}",{k.match_type},{k.status},{k.clicks},{k.impressions},{k.cost:.2f},{k.conversions:.1f},{k.ctr:.2f},{k.avg_cpc:.2f}\n')
+            row = _row(k)
+            output.write(f'"{row[0]}",{row[1]},{row[2]},{row[3]},{row[4]},{row[5]},{row[6]},{row[7]},{row[8]}\n')
         output.seek(0)
         return StreamingResponse(
             io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -159,9 +198,8 @@ def export_keywords(
     ws = wb.active
     ws.title = "Keywords"
     ws.append(headers)
-
     for k in keywords:
-        ws.append([k.text, k.match_type, k.status, k.clicks, k.impressions, round(k.cost, 2), round(k.conversions, 1), round(k.ctr, 2), round(k.avg_cpc, 2)])
+        ws.append(_row(k))
 
     for col in ws.columns:
         max_len = max(len(str(c.value or "")) for c in col)

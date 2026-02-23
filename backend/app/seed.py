@@ -72,7 +72,7 @@ def seed_demo_data():
             name=name,
             status=status,
             campaign_type=ctype,
-            budget_amount=budget,
+            budget_micros=int(budget * 1_000_000),  # Convert USD to micros
             budget_type="DAILY",
             bidding_strategy="TARGET_CPA" if ctype == "SEARCH" else "TARGET_ROAS",
             start_date=date(2025, 1, 1),
@@ -135,7 +135,7 @@ def seed_demo_data():
                 google_ad_group_id=str(2000 + campaign.id * 10 + j),
                 name=ag_name,
                 status="ENABLED",
-                cpc_bid=round(random.uniform(1.0, 5.0), 2),
+                bid_micros=int(random.uniform(1.0, 5.0) * 1_000_000),  # Convert to micros
             )
             db.add(ag)
             db.flush()
@@ -150,10 +150,10 @@ def seed_demo_data():
                     status="ENABLED",
                     clicks=random.randint(10, 500),
                     impressions=random.randint(200, 10000),
-                    cost=round(random.uniform(20, 800), 2),
-                    conversions=round(random.uniform(0, 30), 1),
-                    ctr=round(random.uniform(1.0, 8.0), 2),
-                    avg_cpc=round(random.uniform(0.5, 5.0), 2),
+                    cost_micros=int(random.uniform(20, 800) * 1_000_000),  # Convert to micros
+                    conversions=random.randint(0, 30),  # Integer, not float
+                    ctr=int(random.uniform(1.0, 8.0) * 10_000),  # Store as micros (e.g., 50000 = 5%)
+                    avg_cpc_micros=int(random.uniform(0.5, 5.0) * 1_000_000),  # Convert to micros
                     quality_score=random.choices(
                         range(1, 11),
                         weights=[2, 3, 5, 8, 12, 15, 18, 20, 12, 5],  # realistic distribution
@@ -189,22 +189,29 @@ def seed_demo_data():
         for term_text in terms:
             clicks = random.randint(1, 150)
             impressions = random.randint(clicks * 5, clicks * 30)
-            cost = round(clicks * random.uniform(0.5, 4.0), 2)
-            conversions = round(random.uniform(0, clicks * 0.1), 1)
+            cost = clicks * random.uniform(0.5, 4.0)
+            conversions = int(random.uniform(0, clicks * 0.1))
+
+            # Simplified keyword_text assignment
+            campaign = db.get(Campaign, ag.campaign_id)
+            campaign_name = campaign.name if campaign else ""
+            keywords_for_campaign = ad_groups_config.get(campaign_name, [])
+            if keywords_for_campaign:
+                keyword_text = random.choice([kw for kw, _ in keywords_for_campaign[0][1]])
+            else:
+                keyword_text = "generic keyword"
 
             st = SearchTerm(
                 ad_group_id=ag.id,
                 text=term_text,
-                keyword_text=random.choice([kw_text for kw_text, _ in ad_groups_config.get(
-                    db.query(Campaign).get(ag.campaign_id).name, [("", [])]
-                )[0][1]] if ad_groups_config.get(db.query(Campaign).get(ag.campaign_id).name) else [None]),
+                keyword_text=keyword_text,
                 clicks=clicks,
                 impressions=impressions,
-                cost=cost,
+                cost_micros=int(cost * 1_000_000),  # Convert to micros
                 conversions=conversions,
-                ctr=round(clicks / impressions * 100 if impressions else 0, 2),
-                conversion_rate=round(conversions / clicks * 100 if clicks else 0, 2),
-                cost_per_conversion=round(cost / conversions if conversions > 0 else 0, 2),
+                ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),  # Store as micros
+                conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),  # Store as micros
+                # cost_per_conversion removed - it's calculated, not stored
                 date_from=date.today() - timedelta(days=30),
                 date_to=date.today(),
             )
@@ -217,8 +224,8 @@ def seed_demo_data():
         for ad_idx in range(random.randint(1, 3)):
             clicks = random.randint(50, 1000)
             impressions = random.randint(clicks * 8, clicks * 25)
-            cost = round(clicks * random.uniform(0.8, 3.5), 2)
-            conversions = round(random.uniform(0, clicks * 0.08), 1)
+            cost = clicks * random.uniform(0.8, 3.5)
+            conversions = int(random.uniform(0, clicks * 0.08))
 
             ad = Ad(
                 ad_group_id=ag.id,
@@ -238,9 +245,9 @@ def seed_demo_data():
                 ],
                 clicks=clicks,
                 impressions=impressions,
-                cost=cost,
+                cost_micros=int(cost * 1_000_000),  # Convert to micros
                 conversions=conversions,
-                ctr=round(clicks / impressions * 100, 2),
+                ctr=int((clicks / impressions * 100) * 10_000),  # Store as micros
             )
             db.add(ad)
 

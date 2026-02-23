@@ -54,7 +54,7 @@ def get_semantic_clusters(
     stmt = (
         db.query(
             SearchTerm.text,
-            func.sum(SearchTerm.cost).label("cost"),
+            func.sum(SearchTerm.cost_micros).label("cost_micros"),
             func.sum(SearchTerm.conversions).label("conversions"),
             func.sum(SearchTerm.clicks).label("clicks"),
             func.sum(SearchTerm.impressions).label("impressions"),
@@ -64,7 +64,7 @@ def get_semantic_clusters(
         .join(Campaign, AdGroup.campaign_id == Campaign.id)
         .filter(Campaign.client_id == client_id)
         .group_by(SearchTerm.text)
-        .order_by(desc("cost"))
+        .order_by(desc("cost_micros"))
         .limit(top_n)
     )
     
@@ -73,7 +73,7 @@ def get_semantic_clusters(
     terms_data = [
         {
             "text": r.text,
-            "cost": r.cost or 0.0,
+            "cost": (r.cost_micros or 0) / 1_000_000,
             "conversions": r.conversions or 0.0,
             "clicks": r.clicks or 0,
             "impressions": r.impressions or 0

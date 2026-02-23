@@ -38,9 +38,7 @@ class Settings(BaseSettings):
     @property
     def data_dir(self) -> Path:
         """Directory for persistent data (SQLite DB, logs, etc.)."""
-        path = Path("./data")
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return Path("./data")
 
 
 settings = Settings()

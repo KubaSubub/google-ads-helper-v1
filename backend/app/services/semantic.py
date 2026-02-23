@@ -1,3 +1,5 @@
+import threading
+
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import AgglomerativeClustering
 import numpy as np
@@ -8,13 +10,16 @@ logger = logging.getLogger(__name__)
 
 class SemanticService:
     _model = None
+    _lock = threading.Lock()
 
     @classmethod
     def get_model(cls):
         if cls._model is None:
-            logger.info("Loading SentenceTransformer model...")
-            cls._model = SentenceTransformer('all-MiniLM-L6-v2')
-            logger.info("Model loaded.")
+            with cls._lock:
+                if cls._model is None:  # double-check locking
+                    logger.info("Loading SentenceTransformer model...")
+                    cls._model = SentenceTransformer('all-MiniLM-L6-v2')
+                    logger.info("Model loaded.")
         return cls._model
 
     def cluster_terms(self, terms_data: list[dict], distance_threshold=1.0):

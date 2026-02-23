@@ -11,6 +11,19 @@ from loguru import logger
 
 from app.config import settings
 from app.database import init_db
+from app.routers import (
+    auth,
+    clients,
+    campaigns,
+    search_terms,
+    analytics,
+    keywords_ads,
+    sync,
+    export,
+    semantic,
+    recommendations,
+    actions,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -21,6 +34,7 @@ from app.database import init_db
 async def lifespan(app: FastAPI):
     """Initialize DB tables on startup, cleanup on shutdown."""
     logger.info("Starting Google Ads Helper API...")
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
     init_db()
     logger.info(f"Database ready: {settings.database_url}")
     yield
@@ -57,10 +71,9 @@ app.add_middleware(
 # Register routers
 # ---------------------------------------------------------------------------
 
-from app.routers import clients, campaigns, search_terms, analytics, keywords_ads, sync, export, semantic, recommendations, actions  # noqa: E402
-
 API_PREFIX = "/api/v1"
 
+app.include_router(auth.router, prefix=API_PREFIX, tags=["auth"])
 app.include_router(clients.router, prefix=API_PREFIX, tags=["clients"])
 app.include_router(campaigns.router, prefix=API_PREFIX, tags=["campaigns"])
 app.include_router(search_terms.router, prefix=API_PREFIX, tags=["search-terms"])
@@ -70,7 +83,7 @@ app.include_router(sync.router, prefix=API_PREFIX, tags=["sync"])
 app.include_router(export.router, prefix=API_PREFIX, tags=["export"])
 app.include_router(semantic.router, prefix=API_PREFIX, tags=["semantic"])
 app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendations"])
-app.include_router(actions.router, prefix=f"{API_PREFIX}/recommendations", tags=["recommendations", "actions"])
+app.include_router(actions.router, prefix=API_PREFIX, tags=["actions"])
 
 
 # ---------------------------------------------------------------------------

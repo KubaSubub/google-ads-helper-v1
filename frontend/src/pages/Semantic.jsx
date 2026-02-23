@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { LoadingSpinner, ErrorMessage, PageHeader, Badge } from '../components/UI'
 import { getSemanticClusters } from '../api'
+import { useApp } from '../contexts/AppContext'
 import { Brain, ChevronDown, ChevronUp, AlertCircle, TrendingUp, MousePointer2, DollarSign, Layers } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function Semantic() {
+    const { selectedClientId } = useApp()
     const [clusters, setClusters] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -19,7 +21,7 @@ export default function Semantic() {
         setLoading(true)
         try {
             // Default to client 1, last 30 days
-            const data = await getSemanticClusters({ client_id: 1, days: 30, top_n: 500 })
+            const data = await getSemanticClusters({ client_id: selectedClientId, days: 30, top_n: 500 })
             setClusters(data)
         } catch (err) {
             setError(err.message)

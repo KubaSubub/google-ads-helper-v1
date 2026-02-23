@@ -12,13 +12,8 @@ def get_cached(key: str):
     return cache.get(key)
 
 
-def set_cached(key: str, value, ttl: int = None):
-    """
-    Set a value in the cache.
-    Note: cachetools TTLCache uses a global TTL, not per-key.
-    For per-key TTL, we'd need a different approach, but global TTL
-    is sufficient for our use case (API response caching).
-    """
+def set_cached(key: str, value):
+    """Set a value in the cache. TTL is global (set in TTLCache constructor)."""
     cache[key] = value
 
 

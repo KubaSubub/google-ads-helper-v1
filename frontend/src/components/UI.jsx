@@ -29,10 +29,10 @@ export function ErrorMessage({ message, onRetry }) {
 
 export function PageHeader({ title, subtitle, children }) {
     return (
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
             <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">{title}</h1>
-                {subtitle && <p className="text-sm text-surface-200/50 mt-1">{subtitle}</p>}
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>{title}</h1>
+                {subtitle && <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>{subtitle}</p>}
             </div>
             {children}
         </div>

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { LoadingSpinner, ErrorMessage, PageHeader, Badge } from '../components/UI'
 import { getClient, updateClient } from '../api'
+import { useApp } from '../contexts/AppContext'
+import EmptyState from '../components/EmptyState'
 import { Save, Plus, X, Globe, Building2, Target, StickyNote, ShieldAlert, BarChart3, Users, DollarSign } from 'lucide-react'
 
 export default function Settings() {
+    const { selectedClientId } = useApp()
     const [formData, setFormData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -11,13 +14,13 @@ export default function Settings() {
     const [success, setSuccess] = useState(false)
 
     useEffect(() => {
-        loadClient()
-    }, [])
+        if (selectedClientId) loadClient()
+    }, [selectedClientId])
 
     async function loadClient() {
         setLoading(true)
         try {
-            const data = await getClient(1) // Demo client
+            const data = await getClient(selectedClientId)
             setFormData(data)
         } catch (err) {
             setError(err.message)

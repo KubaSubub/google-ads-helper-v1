@@ -2,11 +2,48 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from loguru import logger
 from app.database import get_db
 from app.models import Client
 from app.schemas import ClientCreate, ClientUpdate, ClientResponse, PaginatedResponse
+from app.services.google_ads import google_ads_service
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
+
+
+@router.post("/discover")
+def discover_clients(db: Session = Depends(get_db)):
+    """Auto-discover client accounts from Google Ads MCC and add them to DB."""
+    if not google_ads_service.is_connected:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Ads API nie jest połączone. Zaloguj się najpierw.",
+        )
+
+    accounts = google_ads_service.discover_accounts()
+    if not accounts:
+        return {"message": "Nie znaleziono kont klienckich.", "added": 0, "skipped": 0}
+
+    added = 0
+    skipped = 0
+    for acc in accounts:
+        existing = db.query(Client).filter(
+            Client.google_customer_id == acc["customer_id"]
+        ).first()
+        if existing:
+            skipped += 1
+            continue
+
+        db.add(Client(name=acc["name"], google_customer_id=acc["customer_id"]))
+        added += 1
+
+    db.commit()
+    logger.info(f"Discover: added={added}, skipped={skipped}")
+    return {
+        "message": f"Dodano {added} klientów ({skipped} już istniało).",
+        "added": added,
+        "skipped": skipped,
+    }
 
 
 @router.get("/", response_model=PaginatedResponse)

@@ -16,6 +16,9 @@ env/
 
 # Environment
 .env
+*.env.backup
+.env.*
+!.env.example
 
 # Database
 data/
@@ -26,10 +29,14 @@ data/
 Thumbs.db
 desktop.ini
 
-# Distribution
+# Distribution / Build
 dist/
 build/
 *.egg-info/
+*.spec
+
+# Frontend build output
+frontend/dist/
 
 # Node
 node_modules/
@@ -38,3 +45,14 @@ node_modules/
 # Logs
 *.log
 logs/
+
+# Backups
+backend_backup/
+
+# Claude Code
+.claude/
+
+# Credential files
+**/client_secret*.json
+**/credentials.json
+**/token.json

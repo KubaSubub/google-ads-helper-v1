@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { LoadingSpinner, ErrorMessage, PageHeader, Badge } from '../components/UI'
-import { getAnomalies } from '../api'
+import { getAnomaliesDetection as getAnomalies } from '../api'
+import { useApp } from '../contexts/AppContext'
+import EmptyState from '../components/EmptyState'
 import { AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
 
 const METRICS = [
@@ -12,6 +14,7 @@ const METRICS = [
 ]
 
 export default function Anomalies() {
+    const { selectedClientId } = useApp()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -20,14 +23,14 @@ export default function Anomalies() {
     const [days, setDays] = useState(90)
 
     useEffect(() => {
-        loadData()
-    }, [metric, threshold, days])
+        if (selectedClientId) loadData()
+    }, [metric, threshold, days, selectedClientId])
 
     async function loadData() {
         setLoading(true)
         setError(null)
         try {
-            const result = await getAnomalies({ metric, threshold, days })
+            const result = await getAnomalies({ metric, threshold, days, client_id: selectedClientId })
             setData(result)
         } catch (err) {
             setError(err.message)
@@ -35,6 +38,8 @@ export default function Anomalies() {
             setLoading(false)
         }
     }
+
+    if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
 
     return (
         <div className="max-w-[1200px] mx-auto">
