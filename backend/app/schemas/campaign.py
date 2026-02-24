@@ -45,6 +45,24 @@ class CampaignResponse(BaseModel):
     bidding_strategy: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+
+    # Impression share (campaign-level)
+    search_impression_share: Optional[float] = None
+    search_top_impression_share: Optional[float] = None
+    search_abs_top_impression_share: Optional[float] = None
+    search_budget_lost_is: Optional[float] = None
+    search_budget_lost_top_is: Optional[float] = None
+    search_budget_lost_abs_top_is: Optional[float] = None
+    search_rank_lost_is: Optional[float] = None
+    search_rank_lost_top_is: Optional[float] = None
+    search_rank_lost_abs_top_is: Optional[float] = None
+    search_click_share: Optional[float] = None
+    search_exact_match_is: Optional[float] = None
+
+    # Top impression %
+    abs_top_impression_pct: Optional[float] = None
+    top_impression_pct: Optional[float] = None
+
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

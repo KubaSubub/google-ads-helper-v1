@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.stats import ttest_ind
 
 from app.database import get_db
-from app.models import MetricDaily, Campaign, Keyword, AdGroup, Alert
+from app.models import MetricDaily, Campaign, Keyword, AdGroup, Alert, MetricSegmented
 from app.schemas import PeriodComparisonRequest, PeriodComparisonResponse, CorrelationRequest
 from app.services.analytics_service import AnalyticsService
 from app.utils.formatters import micros_to_currency
@@ -379,14 +379,25 @@ def forecast_metric(
     ss_tot = np.sum((y - np.mean(y)) ** 2)
     r_squared = float(1 - (ss_res / ss_tot)) if ss_tot > 0 else 0
 
+    # Standard error for confidence intervals
+    n = len(values)
+    se = float(np.sqrt(ss_res / max(n - 2, 1)))  # residual standard error
+    x_mean = np.mean(x)
+    x_var = np.sum((x - x_mean) ** 2)
+
     forecast = []
     for i in range(1, forecast_days + 1):
         forecast_x = len(values) - 1 + i
         predicted = max(0, slope * forecast_x + intercept)
+        # 95% prediction interval
+        leverage = 1 + 1 / n + (forecast_x - x_mean) ** 2 / max(x_var, 1e-9)
+        margin = 1.96 * se * float(np.sqrt(leverage))
         forecast_date = dates[-1] + timedelta(days=i)
         forecast.append({
             "date": str(forecast_date),
             "predicted": round(predicted, 2),
+            "ci_lower": round(max(0, predicted - margin), 2),
+            "ci_upper": round(predicted + margin, 2),
         })
 
     recent_avg = float(np.mean(values[-7:]))
@@ -475,3 +486,145 @@ def get_campaign_trends(
     """
     service = AnalyticsService(db)
     return service.get_campaign_trends(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# Budget Pacing — underspend / overspend tracking
+# ---------------------------------------------------------------------------
+
+
+@router.get("/budget-pacing")
+def get_budget_pacing(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """Budget pacing for all campaigns: actual vs expected spend this month.
+
+    Returns per-campaign pacing status (on_track / underspend / overspend)
+    and a projected month-end spend.
+    """
+    from sqlalchemy import func
+
+    today = date.today()
+    month_start = today.replace(day=1)
+    days_elapsed = (today - month_start).days + 1
+    import calendar
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    pacing_ratio = days_elapsed / days_in_month  # expected fraction of budget spent
+
+    campaigns = (
+        db.query(Campaign)
+        .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+        .all()
+    )
+
+    results = []
+    for camp in campaigns:
+        budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month  # daily budget × days
+
+        # Actual spend this month from MetricDaily
+        actual_spend_micros = (
+            db.query(func.sum(MetricDaily.cost_micros))
+            .filter(
+                MetricDaily.campaign_id == camp.id,
+                MetricDaily.date >= month_start,
+                MetricDaily.date <= today,
+            )
+            .scalar()
+        ) or 0
+        actual_spend = micros_to_currency(actual_spend_micros)
+
+        expected_spend = budget_monthly * pacing_ratio
+        projected_spend = (actual_spend / pacing_ratio) if pacing_ratio > 0 else 0
+
+        # Determine status
+        if expected_spend == 0:
+            status = "no_data"
+            pct = 0
+        else:
+            pct = actual_spend / expected_spend
+            if pct < 0.8:
+                status = "underspend"
+            elif pct > 1.15:
+                status = "overspend"
+            else:
+                status = "on_track"
+
+        results.append({
+            "campaign_id": camp.id,
+            "campaign_name": camp.name,
+            "daily_budget_usd": round(micros_to_currency(camp.budget_micros), 2),
+            "monthly_budget_usd": round(budget_monthly, 2),
+            "actual_spend_usd": round(actual_spend, 2),
+            "expected_spend_usd": round(expected_spend, 2),
+            "projected_spend_usd": round(projected_spend, 2),
+            "pacing_pct": round(pct * 100, 1),
+            "status": status,
+            "days_elapsed": days_elapsed,
+            "days_in_month": days_in_month,
+        })
+
+    return {
+        "month": today.strftime("%Y-%m"),
+        "days_elapsed": days_elapsed,
+        "days_in_month": days_in_month,
+        "campaigns": results,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Impression Share Trends
+# ---------------------------------------------------------------------------
+
+
+@router.get("/impression-share")
+def get_impression_share(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    campaign_id: int = Query(None, description="Optional campaign filter"),
+    db: Session = Depends(get_db),
+):
+    """Daily impression share trends for SEARCH campaigns."""
+    service = AnalyticsService(db)
+    return service.get_impression_share_trends(
+        client_id=client_id, days=days, campaign_id=campaign_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Device Breakdown
+# ---------------------------------------------------------------------------
+
+
+@router.get("/device-breakdown")
+def get_device_breakdown(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=1, le=90, description="Lookback period"),
+    campaign_id: int = Query(None, description="Optional campaign filter"),
+    db: Session = Depends(get_db),
+):
+    """Performance breakdown by device (Mobile/Desktop/Tablet)."""
+    service = AnalyticsService(db)
+    return service.get_device_breakdown(
+        client_id=client_id, days=days, campaign_id=campaign_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Geo Breakdown
+# ---------------------------------------------------------------------------
+
+
+@router.get("/geo-breakdown")
+def get_geo_breakdown(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(7, ge=1, le=30, description="Lookback period"),
+    campaign_id: int = Query(None, description="Optional campaign filter"),
+    limit: int = Query(20, ge=1, le=50, description="Max cities"),
+    db: Session = Depends(get_db),
+):
+    """Performance breakdown by city/geography."""
+    service = AnalyticsService(db)
+    return service.get_geo_breakdown(
+        client_id=client_id, days=days, campaign_id=campaign_id, limit=limit,
+    )

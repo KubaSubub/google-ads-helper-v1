@@ -12,10 +12,12 @@ class SearchTermResponse(BaseModel):
     text: str
     keyword_text: Optional[str] = None
     match_type: Optional[str] = None
+    segment: Optional[str] = None
     clicks: int = 0
     impressions: int = 0
     cost_micros: int = 0
-    conversions: float = 0
+    conversions: float = 0.0
+    conversion_value_micros: int = 0
     ctr: int = 0  # Stored as micros
     conversion_rate: int = 0  # Stored as micros
     date_from: date
@@ -46,5 +48,19 @@ class SearchTermResponse(BaseModel):
         if self.conversions > 0:
             return round(self.cost_micros / self.conversions / 1_000_000, 2)
         return 0.0
+
+    @computed_field
+    @property
+    def conversion_value_usd(self) -> float:
+        """Revenue in USD."""
+        return round(self.conversion_value_micros / 1_000_000, 2)
+
+    @computed_field
+    @property
+    def roas(self) -> float:
+        """Real ROAS = revenue / cost."""
+        cost = self.cost_micros / 1_000_000
+        cv = self.conversion_value_micros / 1_000_000
+        return round(cv / cost, 2) if cost > 0 else 0.0
 
     model_config = {"from_attributes": True}

@@ -51,9 +51,9 @@ export default function ActionHistory() {
     };
 
     const STATUS_COLORS = {
-        SUCCESS: 'text-green-400',
-        FAILED: 'text-red-400',
-        REVERTED: 'text-gray-400',
+        SUCCESS: '#4ADE80',
+        FAILED: '#F87171',
+        REVERTED: 'rgba(255,255,255,0.35)',
     };
 
     const columns = [
@@ -63,13 +63,31 @@ export default function ActionHistory() {
             cell: ({ getValue }) => new Date(getValue()).toLocaleString('pl-PL'),
         },
         { accessorKey: 'action_type', header: 'Akcja' },
-        { accessorKey: 'entity_type', header: 'Typ' },
-        { accessorKey: 'entity_id', header: 'Entity ID' },
+        {
+            accessorKey: 'entity_name',
+            header: 'Encja',
+            cell: ({ row }) => {
+                const name = row.original.entity_name;
+                const type = row.original.entity_type;
+                return (
+                    <span>
+                        {name || `${type} #${row.original.entity_id}`}
+                    </span>
+                );
+            },
+        },
+        {
+            accessorKey: 'campaign_name',
+            header: 'Kampania',
+            cell: ({ getValue }) => (
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>{getValue() || '—'}</span>
+            ),
+        },
         {
             accessorKey: 'status',
             header: 'Status',
             cell: ({ getValue }) => (
-                <span className={STATUS_COLORS[getValue()] || 'text-app-muted'}>
+                <span style={{ color: STATUS_COLORS[getValue()] || 'rgba(255,255,255,0.4)' }}>
                     {getValue()}
                 </span>
             ),
@@ -84,9 +102,14 @@ export default function ActionHistory() {
                             e.stopPropagation();
                             setRevertModal(row.original);
                         }}
-                        className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 4,
+                            fontSize: 11, fontWeight: 500,
+                            color: '#FBBF24', background: 'none', border: 'none',
+                            cursor: 'pointer',
+                        }}
                     >
-                        <Undo2 className="w-3 h-3" /> Cofnij
+                        <Undo2 size={12} /> Cofnij
                     </button>
                 ) : null,
         },
@@ -96,15 +119,23 @@ export default function ActionHistory() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-app-muted" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
+                <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
             </div>
         );
     }
 
     return (
-        <div className="p-6">
-            <h1 className="text-2xl font-bold text-app-text mb-6">Historia akcji</h1>
+        <div style={{ maxWidth: 1100 }}>
+            <div style={{ marginBottom: 24 }}>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    Historia akcji
+                </h1>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    Wszystkie wykonane operacje z możliwością cofnięcia
+                </p>
+            </div>
+
             <DataTable
                 data={actions}
                 columns={columns}
@@ -118,7 +149,7 @@ export default function ActionHistory() {
                 onConfirm={handleRevert}
                 title="Cofnij akcję?"
                 actionType={revertModal?.action_type}
-                entity={revertModal?.entity_id}
+                entity={revertModal?.entity_name || revertModal?.entity_id}
                 reason="Akcja zostanie cofnięta do poprzedniego stanu"
                 isLoading={reverting}
             />

@@ -9,6 +9,7 @@ from openpyxl import Workbook
 
 from app.database import get_db
 from app.models import SearchTerm, MetricDaily, Campaign, AdGroup, Keyword, Client
+from app.services.recommendations import recommendations_engine
 from app.utils.formatters import micros_to_currency
 
 router = APIRouter(prefix="/export", tags=["Export"])
@@ -213,4 +214,65 @@ def export_keywords(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=keywords.xlsx"},
+    )
+
+
+@router.get("/recommendations")
+def export_recommendations(
+    client_id: int = Query(...),
+    days: int = Query(30, ge=1, le=365),
+    format: str = Query("xlsx"),
+    db: Session = Depends(get_db),
+):
+    """Export recommendations for a client as XLSX or CSV."""
+    _validate_client(db, client_id)
+
+    results = recommendations_engine.generate_all(db, client_id, days)
+
+    headers = ["Priorytet", "Typ", "Encja", "Kampania", "Powod", "Obecna wartosc", "Rekomendacja", "Szacowany wplyw"]
+
+    def _row(r):
+        return [
+            r.get("priority", ""),
+            r.get("type", ""),
+            r.get("entity_name", ""),
+            r.get("campaign_name", ""),
+            r.get("reason", ""),
+            r.get("current_value", ""),
+            r.get("recommended_action", ""),
+            r.get("estimated_impact", ""),
+        ]
+
+    if format == "csv":
+        output = io.StringIO()
+        output.write(",".join(headers) + "\n")
+        for r in results:
+            row = _row(r)
+            output.write(",".join(f'"{v}"' for v in row) + "\n")
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode("utf-8-sig")),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=recommendations.csv"},
+        )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Recommendations"
+    ws.append(headers)
+    for r in results:
+        ws.append(_row(r))
+
+    for col in ws.columns:
+        max_len = max(len(str(c.value or "")) for c in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=recommendations.xlsx"},
     )

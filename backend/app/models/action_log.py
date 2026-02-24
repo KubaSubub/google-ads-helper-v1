@@ -26,7 +26,7 @@ class ActionLog(Base):
     status = Column(String, default="SUCCESS")          # SUCCESS, FAILED, REVERTED
     error_message = Column(Text, nullable=True)
     reverted_at = Column(DateTime, nullable=True)       # When action was reverted
-    executed_at = Column(DateTime, default=datetime.utcnow)
+    executed_at = Column(DateTime, default=lambda: datetime.utcnow())
 
     # Relationships
     client = relationship("Client")

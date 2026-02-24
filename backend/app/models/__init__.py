@@ -10,6 +10,7 @@ from .keyword import Keyword
 from .search_term import SearchTerm
 from .ad import Ad
 from .metric_daily import MetricDaily
+from .metric_segmented import MetricSegmented
 from .recommendation import Recommendation
 from .action_log import ActionLog
 from .alert import Alert
@@ -22,6 +23,7 @@ __all__ = [
     "SearchTerm",
     "Ad",
     "MetricDaily",
+    "MetricSegmented",
     "Recommendation",
     "ActionLog",
     "Alert",

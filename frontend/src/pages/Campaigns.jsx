@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { MetricsAreaChart } from '../components/Charts'
 import { LoadingSpinner, ErrorMessage } from '../components/UI'
 import { getCampaigns, getCampaignKPIs, getCampaignMetrics } from '../api'
@@ -6,7 +7,7 @@ import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import FilterBar from '../components/FilterBar'
 import EmptyState from '../components/EmptyState'
-import { MousePointerClick, DollarSign, Target, TrendingUp, TrendingDown } from 'lucide-react'
+import { MousePointerClick, DollarSign, Target, TrendingUp, TrendingDown, KeyRound, Search } from 'lucide-react'
 
 const STATUS_CONFIG = {
     ENABLED: { dot: '#4ADE80', color: '#4ADE80', label: 'Aktywna'    },
@@ -26,16 +27,16 @@ function KpiRow({ kpis }) {
         { label: 'Kliknięcia', value: current?.clicks, change: change_pct?.clicks, icon: MousePointerClick, color: '#4F8EF7' },
         { label: 'Koszt', value: current?.cost, change: change_pct?.cost, suffix: ' zł', icon: DollarSign, color: '#7B5CE0' },
         { label: 'Konwersje', value: current?.conversions, change: change_pct?.conversions, icon: Target, color: '#4ADE80' },
-        { label: 'CTR', value: current?.ctr, change: change_pct?.ctr, suffix: '%', icon: TrendingUp, color: '#FBBF24' },
+        { label: 'CTR', value: current?.ctr, change: change_pct?.ctr, suffix: '%', icon: TrendingUp, color: '#FBBF24', tooltip: 'Click-Through Rate — stosunek kliknięć do wyświetleń' },
     ]
     return (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            {items.map(({ label, value, change, suffix = '', icon: Icon, color }) => {
+            {items.map(({ label, value, change, suffix = '', icon: Icon, color, tooltip }) => {
                 const isUp = change > 0, isDown = change < 0
                 return (
                     <div key={label} className="v2-card" style={{ padding: '12px 14px' }}>
                         <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
+                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }} title={tooltip || undefined}>{label}</span>
                             <div style={{ width: 24, height: 24, borderRadius: 6, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <Icon size={12} style={{ color }} />
                             </div>
@@ -57,6 +58,7 @@ function KpiRow({ kpis }) {
 }
 
 export default function Campaigns() {
+    const navigate = useNavigate()
     const { selectedClientId } = useApp()
     const { filters } = useFilter()
     const [campaigns, setCampaigns] = useState([])
@@ -186,7 +188,52 @@ export default function Campaigns() {
                                     )
                                 })()}
                             </div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                                <button
+                                    onClick={() => navigate(`/keywords?campaign_id=${selected.id}&campaign_name=${encodeURIComponent(selected.name)}`)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 5,
+                                        padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                        background: 'rgba(79,142,247,0.1)', border: '1px solid rgba(79,142,247,0.25)',
+                                        color: '#4F8EF7', cursor: 'pointer',
+                                    }}
+                                >
+                                    <KeyRound size={12} /> Słowa kluczowe
+                                </button>
+                                <button
+                                    onClick={() => navigate(`/search-terms?campaign_id=${selected.id}&campaign_name=${encodeURIComponent(selected.name)}`)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 5,
+                                        padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                        background: 'rgba(123,92,224,0.1)', border: '1px solid rgba(123,92,224,0.25)',
+                                        color: '#7B5CE0', cursor: 'pointer',
+                                    }}
+                                >
+                                    <Search size={12} /> Wyszukiwane frazy
+                                </button>
+                            </div>
                             <KpiRow kpis={kpis} />
+                            {/* IS summary for SEARCH campaigns */}
+                            {selected.campaign_type === 'SEARCH' && selected.search_impression_share != null && (
+                                <div className="v2-card" style={{ padding: '12px 16px', marginBottom: 12 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                                        Impression Share
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                                        {[
+                                            { label: 'IS', value: selected.search_impression_share, color: '#4F8EF7' },
+                                            { label: 'Top IS', value: selected.search_top_impression_share, color: '#7B5CE0' },
+                                            { label: 'Budget Lost', value: selected.search_budget_lost_is, color: '#F87171' },
+                                            { label: 'Rank Lost', value: selected.search_rank_lost_is, color: '#FBBF24' },
+                                        ].map(({ label, value, color }) => (
+                                            <div key={label} style={{ textAlign: 'center' }}>
+                                                <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'Syne', color }}>{value != null ? `${(value * 100).toFixed(1)}%` : '—'}</div>
+                                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             {metrics.length > 0 && (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                     <MetricsAreaChart data={metrics} dataKey="cost" title="Koszt dzienny" color="#4F8EF7" />

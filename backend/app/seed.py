@@ -9,8 +9,30 @@ from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
 from app.models import (
-    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily
+    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented
 )
+
+
+# Deterministic seed for reproducibility
+RNG = random.Random(42)
+
+# Polish cities for geo breakdown
+GEO_CITIES = [
+    "Warszawa", "Kraków", "Wrocław", "Poznań", "Gdańsk",
+    "Łódź", "Katowice", "Lublin", "Szczecin", "Bydgoszcz",
+]
+
+DEVICES = ["MOBILE", "DESKTOP", "TABLET"]
+
+
+def _rand_is(rng, low=0.10, high=0.95):
+    """Generate a random impression share value (0.0-1.0)."""
+    return round(rng.uniform(low, high), 4)
+
+
+def _rand_qs_enum(rng):
+    """Generate a random QS enum value: 1=BELOW_AVERAGE, 2=AVERAGE, 3=ABOVE_AVERAGE."""
+    return rng.choices([1, 2, 3], weights=[20, 50, 30], k=1)[0]
 
 
 def seed_demo_data():
@@ -53,7 +75,7 @@ def seed_demo_data():
     db.flush()
 
     # -----------------------------------------------------------------------
-    # Campaigns
+    # Campaigns (with impression share + top impression %)
     # -----------------------------------------------------------------------
     campaigns_data = [
         ("Branded Search", "SEARCH", 150, "ENABLED"),
@@ -66,23 +88,38 @@ def seed_demo_data():
 
     campaigns = []
     for i, (name, ctype, budget, status) in enumerate(campaigns_data, start=1):
+        is_search = ctype == "SEARCH"
         c = Campaign(
             client_id=client.id,
             google_campaign_id=str(1000 + i),
             name=name,
             status=status,
             campaign_type=ctype,
-            budget_micros=int(budget * 1_000_000),  # Convert USD to micros
+            budget_micros=int(budget * 1_000_000),
             budget_type="DAILY",
-            bidding_strategy="TARGET_CPA" if ctype == "SEARCH" else "TARGET_ROAS",
+            bidding_strategy="TARGET_CPA" if is_search else "TARGET_ROAS",
             start_date=date(2025, 1, 1),
+            # Impression share (only for SEARCH)
+            search_impression_share=_rand_is(RNG, 0.30, 0.85) if is_search else None,
+            search_top_impression_share=_rand_is(RNG, 0.20, 0.70) if is_search else None,
+            search_abs_top_impression_share=_rand_is(RNG, 0.10, 0.50) if is_search else None,
+            search_budget_lost_is=_rand_is(RNG, 0.01, 0.15) if is_search else None,
+            search_budget_lost_top_is=_rand_is(RNG, 0.02, 0.20) if is_search else None,
+            search_budget_lost_abs_top_is=_rand_is(RNG, 0.03, 0.25) if is_search else None,
+            search_rank_lost_is=_rand_is(RNG, 0.05, 0.30) if is_search else None,
+            search_rank_lost_top_is=_rand_is(RNG, 0.10, 0.40) if is_search else None,
+            search_rank_lost_abs_top_is=_rand_is(RNG, 0.15, 0.50) if is_search else None,
+            search_click_share=_rand_is(RNG, 0.20, 0.75) if is_search else None,
+            search_exact_match_is=_rand_is(RNG, 0.40, 0.95) if is_search else None,
+            abs_top_impression_pct=_rand_is(RNG, 0.10, 0.45) if is_search else None,
+            top_impression_pct=_rand_is(RNG, 0.25, 0.70) if is_search else None,
         )
         db.add(c)
         campaigns.append(c)
     db.flush()
 
     # -----------------------------------------------------------------------
-    # Ad Groups & Keywords per campaign
+    # Ad Groups & Keywords per campaign (with IS, QS, extended conv)
     # -----------------------------------------------------------------------
     ad_groups_config = {
         "Branded Search": [
@@ -135,37 +172,65 @@ def seed_demo_data():
                 google_ad_group_id=str(2000 + campaign.id * 10 + j),
                 name=ag_name,
                 status="ENABLED",
-                bid_micros=int(random.uniform(1.0, 5.0) * 1_000_000),  # Convert to micros
+                bid_micros=int(RNG.uniform(1.0, 5.0) * 1_000_000),
             )
             db.add(ag)
             db.flush()
             all_ad_groups.append(ag)
 
             for kw_text, match in keywords_list:
+                clicks = RNG.randint(10, 500)
+                impressions = RNG.randint(200, 10000)
+                cost = RNG.uniform(20, 800)
+                conversions = round(RNG.uniform(0, 30), 2)
+                conv_value = round(conversions * RNG.uniform(100, 250), 2)
+                cpa = round(cost / conversions, 2) if conversions > 0 else 0
+                qs = RNG.choices(range(1, 11), weights=[2, 3, 5, 8, 12, 15, 18, 20, 12, 5], k=1)[0]
+
                 kw = Keyword(
                     ad_group_id=ag.id,
-                    google_keyword_id=str(random.randint(30000, 99999)),
+                    google_keyword_id=str(RNG.randint(30000, 99999)),
                     text=kw_text,
                     match_type=match,
                     status="ENABLED",
-                    clicks=random.randint(10, 500),
-                    impressions=random.randint(200, 10000),
-                    cost_micros=int(random.uniform(20, 800) * 1_000_000),  # Convert to micros
-                    conversions=random.randint(0, 30),  # Integer, not float
-                    ctr=int(random.uniform(1.0, 8.0) * 10_000),  # Store as micros (e.g., 50000 = 5%)
-                    avg_cpc_micros=int(random.uniform(0.5, 5.0) * 1_000_000),  # Convert to micros
-                    quality_score=random.choices(
-                        range(1, 11),
-                        weights=[2, 3, 5, 8, 12, 15, 18, 20, 12, 5],  # realistic distribution
-                        k=1
-                    )[0],
+                    clicks=clicks,
+                    impressions=impressions,
+                    cost_micros=int(cost * 1_000_000),
+                    conversions=conversions,
+                    conversion_value_micros=int(conv_value * 1_000_000),
+                    ctr=int(RNG.uniform(1.0, 8.0) * 10_000),
+                    avg_cpc_micros=int(RNG.uniform(0.5, 5.0) * 1_000_000),
+                    cpa_micros=int(cpa * 1_000_000),
+                    quality_score=qs,
+                    # Impression share (rank-based only for keywords)
+                    search_impression_share=_rand_is(RNG, 0.20, 0.90),
+                    search_top_impression_share=_rand_is(RNG, 0.15, 0.70),
+                    search_abs_top_impression_share=_rand_is(RNG, 0.05, 0.45),
+                    search_rank_lost_is=_rand_is(RNG, 0.05, 0.35),
+                    search_rank_lost_top_is=_rand_is(RNG, 0.10, 0.45),
+                    search_rank_lost_abs_top_is=_rand_is(RNG, 0.15, 0.55),
+                    search_exact_match_is=_rand_is(RNG, 0.30, 0.95),
+                    # Historical QS components
+                    historical_quality_score=qs,
+                    historical_creative_quality=_rand_qs_enum(RNG),
+                    historical_landing_page_quality=_rand_qs_enum(RNG),
+                    historical_search_predicted_ctr=_rand_qs_enum(RNG),
+                    # Extended conversions
+                    all_conversions=round(conversions * RNG.uniform(1.0, 1.3), 2),
+                    all_conversions_value_micros=int(conv_value * RNG.uniform(1.0, 1.3) * 1_000_000),
+                    cross_device_conversions=round(conversions * RNG.uniform(0.05, 0.25), 2),
+                    value_per_conversion_micros=int((conv_value / conversions) * 1_000_000) if conversions > 0 else 0,
+                    conversions_value_per_cost=round(conv_value / cost, 2) if cost > 0 else 0,
+                    # Top impression %
+                    abs_top_impression_pct=round(RNG.uniform(0.05, 0.40), 4),
+                    top_impression_pct=round(RNG.uniform(0.15, 0.65), 4),
                 )
                 db.add(kw)
 
     db.flush()
 
     # -----------------------------------------------------------------------
-    # Search Terms
+    # Search Terms (with extended conversions)
     # -----------------------------------------------------------------------
     search_terms_pool = [
         "łóżko drewniane do sypialni", "łóżko sosnowe 160x200 cena",
@@ -178,26 +243,25 @@ def seed_demo_data():
         "biurko regulowane elektrycznie cena",
         "demo meble opinie", "demo meble sklep", "meble demo pl",
         "łóżko tapicerowane szare 180x200", "łóżko kontynentalne",
-        "jak wybrać łóżko do sypialni",  # Informational! Should be excluded
-        "ikea łóżko malm",  # Competitor brand!
-        "materac do łóżka",  # Loosely related, maybe exclude
+        "jak wybrać łóżko do sypialni",  # Informational
+        "ikea łóżko malm",  # Competitor brand
+        "materac do łóżka",  # Loosely related
     ]
 
     for ag in all_ad_groups:
-        # Each ad group gets 5-12 random search terms
-        terms = random.sample(search_terms_pool, min(len(search_terms_pool), random.randint(5, 12)))
+        terms = RNG.sample(search_terms_pool, min(len(search_terms_pool), RNG.randint(5, 12)))
         for term_text in terms:
-            clicks = random.randint(1, 150)
-            impressions = random.randint(clicks * 5, clicks * 30)
-            cost = clicks * random.uniform(0.5, 4.0)
-            conversions = int(random.uniform(0, clicks * 0.1))
+            clicks = RNG.randint(1, 150)
+            impressions = RNG.randint(clicks * 5, clicks * 30)
+            cost = clicks * RNG.uniform(0.5, 4.0)
+            conversions = round(RNG.uniform(0, clicks * 0.1), 2)
+            conv_value = round(conversions * RNG.uniform(80, 200), 2)
 
-            # Simplified keyword_text assignment
             campaign = db.get(Campaign, ag.campaign_id)
             campaign_name = campaign.name if campaign else ""
             keywords_for_campaign = ad_groups_config.get(campaign_name, [])
             if keywords_for_campaign:
-                keyword_text = random.choice([kw for kw, _ in keywords_for_campaign[0][1]])
+                keyword_text = RNG.choice([kw for kw, _ in keywords_for_campaign[0][1]])
             else:
                 keyword_text = "generic keyword"
 
@@ -207,13 +271,19 @@ def seed_demo_data():
                 keyword_text=keyword_text,
                 clicks=clicks,
                 impressions=impressions,
-                cost_micros=int(cost * 1_000_000),  # Convert to micros
+                cost_micros=int(cost * 1_000_000),
                 conversions=conversions,
-                ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),  # Store as micros
-                conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),  # Store as micros
-                # cost_per_conversion removed - it's calculated, not stored
+                conversion_value_micros=int(conv_value * 1_000_000),
+                ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),
+                conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),
                 date_from=date.today() - timedelta(days=30),
                 date_to=date.today(),
+                # Extended conversions
+                all_conversions=round(conversions * RNG.uniform(1.0, 1.2), 2) if conversions > 0 else None,
+                all_conversions_value_micros=int(conv_value * RNG.uniform(1.0, 1.2) * 1_000_000) if conv_value > 0 else None,
+                cross_device_conversions=round(conversions * RNG.uniform(0.03, 0.15), 2) if conversions > 0 else None,
+                value_per_conversion_micros=int((conv_value / conversions) * 1_000_000) if conversions > 0 else None,
+                conversions_value_per_cost=round(conv_value / cost, 2) if cost > 0 else None,
             )
             db.add(st)
 
@@ -221,15 +291,15 @@ def seed_demo_data():
     # Ads (RSA)
     # -----------------------------------------------------------------------
     for ag in all_ad_groups:
-        for ad_idx in range(random.randint(1, 3)):
-            clicks = random.randint(50, 1000)
-            impressions = random.randint(clicks * 8, clicks * 25)
-            cost = clicks * random.uniform(0.8, 3.5)
-            conversions = int(random.uniform(0, clicks * 0.08))
+        for ad_idx in range(RNG.randint(1, 3)):
+            clicks = RNG.randint(50, 1000)
+            impressions = RNG.randint(clicks * 8, clicks * 25)
+            cost = clicks * RNG.uniform(0.8, 3.5)
+            conversions = int(RNG.uniform(0, clicks * 0.08))
 
             ad = Ad(
                 ad_group_id=ag.id,
-                google_ad_id=str(random.randint(50000, 99999)),
+                google_ad_id=str(RNG.randint(50000, 99999)),
                 ad_type="RESPONSIVE_SEARCH_AD",
                 status="ENABLED",
                 final_url="https://demo-meble.pl/produkty",
@@ -245,32 +315,33 @@ def seed_demo_data():
                 ],
                 clicks=clicks,
                 impressions=impressions,
-                cost_micros=int(cost * 1_000_000),  # Convert to micros
+                cost_micros=int(cost * 1_000_000),
                 conversions=conversions,
-                ctr=int((clicks / impressions * 100) * 10_000),  # Store as micros
+                ctr=int((clicks / impressions * 100) * 10_000),
             )
             db.add(ad)
 
     # -----------------------------------------------------------------------
-    # Daily Metrics (last 90 days)
+    # Daily Metrics (last 90 days, with IS + extended conv + top impression)
     # -----------------------------------------------------------------------
     for campaign in campaigns:
         if campaign.status == "PAUSED":
             continue
 
-        base_clicks = random.randint(30, 200)
-        base_cost = round(base_clicks * random.uniform(1.0, 3.0), 2)
+        base_clicks = RNG.randint(30, 200)
+        base_cost = round(base_clicks * RNG.uniform(1.0, 3.0), 2)
+        is_search = campaign.campaign_type == "SEARCH"
 
         for day_offset in range(90):
             d = date.today() - timedelta(days=day_offset)
-            # Add some daily variance and a slight upward trend
-            trend_factor = 1 + (90 - day_offset) * 0.002  # Slight growth
-            day_of_week_factor = 0.7 if d.weekday() >= 5 else 1.0  # Weekends lower
+            trend_factor = 1 + (90 - day_offset) * 0.002
+            day_of_week_factor = 0.7 if d.weekday() >= 5 else 1.0
 
-            clicks = max(1, int(base_clicks * trend_factor * day_of_week_factor * random.uniform(0.6, 1.4)))
-            impressions = int(clicks * random.uniform(10, 25))
-            cost = round(clicks * random.uniform(0.8, 3.5) * day_of_week_factor, 2)
-            conversions = round(max(0, clicks * random.uniform(0.01, 0.08)), 1)
+            clicks = max(1, int(base_clicks * trend_factor * day_of_week_factor * RNG.uniform(0.6, 1.4)))
+            impressions = int(clicks * RNG.uniform(10, 25))
+            cost_usd = round(clicks * RNG.uniform(0.8, 3.5) * day_of_week_factor, 2)
+            conversions = round(max(0.0, clicks * RNG.uniform(0.01, 0.08)), 2)
+            conv_value = round(conversions * RNG.uniform(100, 250), 2)
 
             dm = MetricDaily(
                 campaign_id=campaign.id,
@@ -279,22 +350,115 @@ def seed_demo_data():
                 impressions=impressions,
                 ctr=round(clicks / impressions * 100 if impressions else 0, 2),
                 conversions=conversions,
+                conversion_value_micros=int(conv_value * 1_000_000),
                 conversion_rate=round(conversions / clicks * 100 if clicks else 0, 2),
-                cost=cost,
-                cost_per_conversion=round(cost / conversions if conversions > 0 else 0, 2),
-                roas=round(conversions * 150 / cost if cost > 0 else 0, 2),  # Assuming avg order value ~150 PLN
-                avg_cpc=round(cost / clicks if clicks else 0, 2),
+                cost_micros=int(cost_usd * 1_000_000),
+                roas=round(conv_value / cost_usd if cost_usd > 0 else 0, 2),
+                avg_cpc_micros=int((cost_usd / clicks) * 1_000_000 if clicks else 0),
+                # Impression share (daily, only for SEARCH)
+                search_impression_share=_rand_is(RNG, 0.25, 0.85) if is_search else None,
+                search_top_impression_share=_rand_is(RNG, 0.15, 0.65) if is_search else None,
+                search_abs_top_impression_share=_rand_is(RNG, 0.05, 0.40) if is_search else None,
+                search_budget_lost_is=_rand_is(RNG, 0.01, 0.12) if is_search else None,
+                search_budget_lost_top_is=_rand_is(RNG, 0.02, 0.18) if is_search else None,
+                search_budget_lost_abs_top_is=_rand_is(RNG, 0.03, 0.22) if is_search else None,
+                search_rank_lost_is=_rand_is(RNG, 0.05, 0.25) if is_search else None,
+                search_rank_lost_top_is=_rand_is(RNG, 0.08, 0.35) if is_search else None,
+                search_rank_lost_abs_top_is=_rand_is(RNG, 0.12, 0.45) if is_search else None,
+                search_click_share=_rand_is(RNG, 0.20, 0.70) if is_search else None,
+                # Extended conversions
+                all_conversions=round(conversions * RNG.uniform(1.0, 1.25), 2) if conversions > 0 else None,
+                all_conversions_value_micros=int(conv_value * RNG.uniform(1.0, 1.25) * 1_000_000) if conv_value > 0 else None,
+                cross_device_conversions=round(conversions * RNG.uniform(0.05, 0.20), 2) if conversions > 0 else None,
+                value_per_conversion_micros=int((conv_value / conversions) * 1_000_000) if conversions > 0 else None,
+                conversions_value_per_cost=round(conv_value / cost_usd, 2) if cost_usd > 0 else None,
+                # Top impression %
+                abs_top_impression_pct=round(RNG.uniform(0.05, 0.40), 4) if is_search else None,
+                top_impression_pct=round(RNG.uniform(0.15, 0.65), 4) if is_search else None,
             )
             db.add(dm)
+
+    # -----------------------------------------------------------------------
+    # MetricSegmented — device breakdown (last 30 days, SEARCH campaigns only)
+    # -----------------------------------------------------------------------
+    search_campaigns = [c for c in campaigns if c.campaign_type == "SEARCH" and c.status == "ENABLED"]
+
+    for campaign in search_campaigns:
+        for day_offset in range(30):
+            d = date.today() - timedelta(days=day_offset)
+            day_of_week_factor = 0.7 if d.weekday() >= 5 else 1.0
+
+            # Device distribution: mobile ~55%, desktop ~35%, tablet ~10%
+            device_weights = {"MOBILE": 0.55, "DESKTOP": 0.35, "TABLET": 0.10}
+            total_clicks = int(RNG.randint(30, 150) * day_of_week_factor)
+
+            for device, weight in device_weights.items():
+                dev_clicks = max(1, int(total_clicks * weight * RNG.uniform(0.7, 1.3)))
+                dev_impressions = int(dev_clicks * RNG.uniform(10, 25))
+                dev_cost = round(dev_clicks * RNG.uniform(0.8, 3.5), 2)
+                dev_conv = round(max(0.0, dev_clicks * RNG.uniform(0.01, 0.06)), 2)
+                dev_conv_value = round(dev_conv * RNG.uniform(100, 250), 2)
+
+                ms = MetricSegmented(
+                    campaign_id=campaign.id,
+                    date=d,
+                    device=device,
+                    geo_city=None,
+                    clicks=dev_clicks,
+                    impressions=dev_impressions,
+                    ctr=round(dev_clicks / dev_impressions * 100 if dev_impressions else 0, 2),
+                    conversions=dev_conv,
+                    conversion_value_micros=int(dev_conv_value * 1_000_000),
+                    cost_micros=int(dev_cost * 1_000_000),
+                    avg_cpc_micros=int((dev_cost / dev_clicks) * 1_000_000) if dev_clicks else 0,
+                    search_impression_share=_rand_is(RNG, 0.20, 0.80),
+                )
+                db.add(ms)
+
+    # -----------------------------------------------------------------------
+    # MetricSegmented — geo breakdown (last 7 days, SEARCH campaigns only)
+    # -----------------------------------------------------------------------
+    for campaign in search_campaigns:
+        for day_offset in range(7):
+            d = date.today() - timedelta(days=day_offset)
+
+            # Pick 4-6 random cities per day per campaign
+            day_cities = RNG.sample(GEO_CITIES, RNG.randint(4, 6))
+            for city in day_cities:
+                geo_clicks = RNG.randint(3, 50)
+                geo_impressions = int(geo_clicks * RNG.uniform(8, 20))
+                geo_cost = round(geo_clicks * RNG.uniform(0.8, 3.0), 2)
+                geo_conv = round(max(0.0, geo_clicks * RNG.uniform(0.01, 0.06)), 2)
+                geo_conv_value = round(geo_conv * RNG.uniform(100, 250), 2)
+
+                ms = MetricSegmented(
+                    campaign_id=campaign.id,
+                    date=d,
+                    device=None,
+                    geo_city=city,
+                    clicks=geo_clicks,
+                    impressions=geo_impressions,
+                    ctr=round(geo_clicks / geo_impressions * 100 if geo_impressions else 0, 2),
+                    conversions=geo_conv,
+                    conversion_value_micros=int(geo_conv_value * 1_000_000),
+                    cost_micros=int(geo_cost * 1_000_000),
+                    avg_cpc_micros=int((geo_cost / geo_clicks) * 1_000_000) if geo_clicks else 0,
+                    search_impression_share=_rand_is(RNG, 0.15, 0.75),
+                )
+                db.add(ms)
 
     db.commit()
     db.close()
 
     print("✅ Demo data seeded successfully!")
     print("   - 1 client (Demo Meble)")
-    print(f"   - {len(campaigns)} campaigns")
+    print(f"   - {len(campaigns)} campaigns (with IS + top impression %)")
     print(f"   - {len(all_ad_groups)} ad groups")
-    print("   - Keywords, search terms, ads, and 90 days of metrics")
+    print("   - Keywords (with IS, QS historical, extended conv, top impression %)")
+    print("   - Search terms (with extended conversions)")
+    print("   - 90 days of daily metrics (with IS, extended conv, top impression %)")
+    print("   - 30 days of device breakdown (MetricSegmented)")
+    print("   - 7 days of geo breakdown (MetricSegmented)")
 
 
 if __name__ == "__main__":

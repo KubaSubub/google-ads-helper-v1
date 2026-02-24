@@ -1,7 +1,7 @@
 """SearchTerm model."""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, Date, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, BigInteger, Float, String, Date, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -14,14 +14,23 @@ class SearchTerm(Base):
     text = Column(String(1000), nullable=False)
     keyword_text = Column(String(500))  # The keyword that matched
     match_type = Column(String(20))
+    segment = Column(String(20))  # IRRELEVANT, HIGH_PERFORMER, WASTE, OTHER
 
-    # Metrics
+    # ── Core metrics ──
     clicks = Column(Integer, default=0)
     impressions = Column(Integer, default=0)
     cost_micros = Column(BigInteger, default=0)
-    conversions = Column(Integer, default=0)
+    conversions = Column(Float, default=0.0)  # Float — Google Ads returns fractional values
+    conversion_value_micros = Column(BigInteger, default=0)  # Revenue in micros
     ctr = Column(Integer, default=0)  # Stored as micros (e.g., 50000 = 5%)
     conversion_rate = Column(Integer, default=0)  # Stored as micros
+
+    # ── Extended Conversions ──
+    all_conversions = Column(Float, nullable=True)
+    all_conversions_value_micros = Column(BigInteger, nullable=True)
+    cross_device_conversions = Column(Float, nullable=True)
+    value_per_conversion_micros = Column(BigInteger, nullable=True)
+    conversions_value_per_cost = Column(Float, nullable=True)  # Google's ROAS
 
     # Date range this data covers
     date_from = Column(Date, nullable=False)

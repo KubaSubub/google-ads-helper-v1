@@ -14,6 +14,7 @@ Rules implemented:
   R7: Reallocate Budget (ROAS comparison between campaigns)
 """
 
+import re
 from dataclasses import dataclass, field, asdict
 from datetime import date, timedelta
 from enum import Enum
@@ -84,7 +85,7 @@ class RecommendationsEngine:
         "r1_min_clicks": 30,            # Rule 1: min clicks to trigger pause
         "r1_low_ctr_threshold": 0.5,    # Rule 1: CTR below this = irrelevant
         "r1_low_ctr_min_impr": 1000,    # Rule 1: min impressions for CTR check
-        "r2_cvr_multiplier": 1.2,       # Rule 2: CVR must be > avg * this
+        "r2_cvr_multiplier": 1.5,       # Rule 2: CVR must be > avg * 1.5× (per SAFETY_LIMITS)
         "r2_cpa_multiplier": 0.8,       # Rule 2: CPA must be < target * this
         "r2_bid_increase_pct": 20,      # Rule 2: suggested bid increase %
         "r3_cpa_multiplier": 1.5,       # Rule 3: CPA must be > target * this
@@ -103,11 +104,22 @@ class RecommendationsEngine:
         "r7_budget_move_pct": 20,       # Rule 7: % of budget to move
     }
 
-    # Words that indicate irrelevant intent
+    # Words that indicate irrelevant intent (word boundary matched)
     IRRELEVANT_WORDS = [
+        # English
         "free", "cheap", "how to", "why", "download", "torrent",
-        "darmowe", "za darmo", "jak", "dlaczego", "pobierz",
-        "praca", "job", "salary", "wynagrodzenie",
+        "tutorial", "coupon", "discount code", "sample", "template",
+        "job", "salary", "career", "internship", "reddit", "youtube",
+        # Polish
+        "darmowe", "za darmo", "jak zrobić", "dlaczego", "pobierz",
+        "praca", "wynagrodzenie", "staż", "allegro", "olx",
+        "recenzja", "opinie", "forum", "wikipedia", "pdf",
+    ]
+
+    # Pre-compiled word boundary patterns for irrelevant words
+    _IRRELEVANT_PATTERNS = [
+        re.compile(r'\b' + re.escape(w) + r'\b', re.IGNORECASE)
+        for w in IRRELEVANT_WORDS
     ]
 
     def __init__(self, thresholds: dict = None):
@@ -138,6 +150,8 @@ class RecommendationsEngine:
 
     # -----------------------------------------------------------------------
     # RULE 1: Pause Keyword (high spend, zero conversions)
+    # Uses Keyword model data (refreshed during sync from Google Ads API
+    # with date_from/date_to range, typically last 30 days)
     # -----------------------------------------------------------------------
     def _rule_1_pause_keywords(
         self, db: Session, client_id: int, days: int
@@ -248,15 +262,15 @@ class RecommendationsEngine:
             total_conv = sum(k.conversions or 0 for k in keywords)
             avg_cvr = (total_conv / total_clicks * 100) if total_clicks > 0 else 0
 
+            total_cost_usd = sum(_micros_to_usd(k.cost_micros) for k in keywords)
+            avg_cpa = (total_cost_usd / total_conv) if total_conv > 0 else 999999
+
             for kw in keywords:
                 if (kw.clicks or 0) == 0 or (kw.conversions or 0) < 2:
                     continue
                 kw_cvr = (kw.conversions / kw.clicks * 100)
                 kw_cost = _micros_to_usd(kw.cost_micros)
                 kw_cpa = (kw_cost / kw.conversions) if kw.conversions > 0 else 999999
-
-                total_cost_usd = sum(_micros_to_usd(k.cost_micros) for k in keywords)
-                avg_cpa = (total_cost_usd / total_conv) if total_conv > 0 else 999999
 
                 if kw_cvr > avg_cvr * t["r2_cvr_multiplier"] and kw_cpa < avg_cpa * t["r2_cpa_multiplier"]:
                     recs.append(Recommendation(
@@ -383,14 +397,36 @@ class RecommendationsEngine:
             )
         )
 
+        # Get existing negative keywords to avoid recommending terms already negated
+        existing_negatives = set()
+        neg_keywords = (
+            db.query(Keyword.text)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                Keyword.status == "PAUSED",
+            )
+            .all()
+        )
+        for nk in neg_keywords:
+            existing_negatives.add(nk.text.lower())
+
         for term in terms:
-            if term.text.lower() in existing_keywords:
+            text_lower = term.text.lower()
+            if text_lower in existing_keywords:
+                continue
+            if text_lower in existing_negatives:
                 continue
 
             total_clicks = term.total_clicks or 0
             total_conv = term.total_conv or 0
             total_cost = (term.total_cost_micros or 0) / 1_000_000
             cvr = (total_conv / total_clicks * 100) if total_clicks > 0 else 0
+
+            # Choose match type based on word count: EXACT for 1-2 words, PHRASE for 3+
+            word_count = len(term.text.strip().split())
+            match_type = "EXACT" if word_count <= 2 else "PHRASE"
 
             if total_conv >= t["r4_min_conversions"]:
                 recs.append(Recommendation(
@@ -405,12 +441,12 @@ class RecommendationsEngine:
                         f"with {cvr:.1f}% CVR. Not yet a keyword."
                     ),
                     current_value=f"Conv: {total_conv:.0f}, CVR: {cvr:.1f}%, Cost: ${total_cost:.2f}",
-                    recommended_action="Add as EXACT match keyword",
+                    recommended_action=f"Add as {match_type} match keyword",
                     estimated_impact="Capture more of this high-converting traffic",
                     metadata={
                         "conversions": float(total_conv),
                         "cvr": round(cvr, 2),
-                        "match_type": "EXACT",
+                        "match_type": match_type,
                     },
                 ))
 
@@ -429,7 +465,7 @@ class RecommendationsEngine:
                             f"Worth testing as a keyword."
                         ),
                         current_value=f"Clicks: {total_clicks}, CTR: {ctr:.1f}%",
-                        recommended_action="Add as PHRASE match keyword",
+                        recommended_action=f"Add as PHRASE match keyword",
                         metadata={
                             "clicks": int(total_clicks),
                             "ctr": round(ctr, 2),
@@ -471,9 +507,12 @@ class RecommendationsEngine:
             total_impr = term.total_impr or 1
             ctr = (total_clicks / total_impr) * 100
 
-            # Check 1: Irrelevant words
+            # Check 1: Irrelevant words (word boundary match)
             text_lower = term.text.lower()
-            matched_words = [w for w in self.IRRELEVANT_WORDS if w in text_lower]
+            matched_words = [
+                p.pattern.replace(r'\b', '').replace('\\', '')
+                for p in self._IRRELEVANT_PATTERNS if p.search(text_lower)
+            ]
             if matched_words:
                 recs.append(Recommendation(
                     type=RecommendationType.ADD_NEGATIVE,
@@ -652,13 +691,15 @@ class RecommendationsEngine:
 
             total_cost = sum(_micros_to_usd(m.cost_micros) for m in metrics)
             total_conv = sum(m.conversions or 0 for m in metrics)
-            roas = (total_conv / total_cost * 100) if total_cost > 0 else 0
+            total_revenue = sum(_micros_to_usd(m.conversion_value_micros) for m in metrics)
+            roas = (total_revenue / total_cost) if total_cost > 0 else 0
 
             campaign_roas.append({
                 "campaign": campaign,
                 "roas": roas,
                 "cost": total_cost,
                 "conversions": total_conv,
+                "revenue": total_revenue,
             })
 
         if len(campaign_roas) < 2:
@@ -686,8 +727,8 @@ class RecommendationsEngine:
                 entity_name=f"{worst['campaign'].name} → {best['campaign'].name}",
                 campaign_name=f"{worst['campaign'].name} → {best['campaign'].name}",
                 reason=(
-                    f"'{best['campaign'].name}' has ROAS {best['roas']:.0f}% vs "
-                    f"'{worst['campaign'].name}' ROAS {worst['roas']:.0f}%. "
+                    f"'{best['campaign'].name}' has ROAS {best['roas']:.2f}x vs "
+                    f"'{worst['campaign'].name}' ROAS {worst['roas']:.2f}x. "
                     f"Move budget from low to high performer."
                 ),
                 current_value=(

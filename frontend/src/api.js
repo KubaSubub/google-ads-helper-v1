@@ -138,3 +138,11 @@ export const getHealthScore = (clientId) =>
     api.get('/analytics/health-score', { params: { client_id: clientId } });
 export const getCampaignTrends = (clientId, days = 7) =>
     api.get('/analytics/campaign-trends', { params: { client_id: clientId, days } });
+export const getBudgetPacing = (clientId) =>
+    api.get('/analytics/budget-pacing', { params: { client_id: clientId } });
+export const getImpressionShare = (clientId, params = {}) =>
+    api.get('/analytics/impression-share', { params: { client_id: clientId, ...params } });
+export const getDeviceBreakdown = (clientId, params = {}) =>
+    api.get('/analytics/device-breakdown', { params: { client_id: clientId, ...params } });
+export const getGeoBreakdown = (clientId, params = {}) =>
+    api.get('/analytics/geo-breakdown', { params: { client_id: clientId, ...params } });

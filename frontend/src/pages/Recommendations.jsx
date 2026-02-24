@@ -12,6 +12,7 @@ import {
     Zap,
     Play,
     RefreshCw,
+    Download,
 } from 'lucide-react'
 import { LoadingSpinner } from '../components/UI'
 import { useApp } from '../contexts/AppContext'
@@ -64,14 +65,20 @@ function TypePill({ actionType }) {
     )
 }
 
-function RecommendationCard({ rec, onApply, onDismiss, isApplying }) {
+function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onToggle }) {
     const actionType = rec.suggested_action || rec.type
     const typeConf = TYPE_CONFIG[actionType] || { icon: Zap, color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', label: actionType }
     const Icon = typeConf.icon
 
     return (
-        <div className="v2-card" style={{ padding: '16px 18px' }}>
+        <div className="v2-card" style={{ padding: '16px 18px', border: selected ? '1px solid rgba(79,142,247,0.4)' : undefined }}>
             <div className="flex items-start gap-3">
+                <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => onToggle(rec.id)}
+                    style={{ marginTop: 10, accentColor: '#4F8EF7', cursor: 'pointer', flexShrink: 0 }}
+                />
                 <div style={{
                     width: 34, height: 34, borderRadius: 8, flexShrink: 0,
                     background: typeConf.bg,
@@ -130,6 +137,8 @@ export default function Recommendations() {
     const [applyingId, setApplyingId] = useState(null)
     const [confirmModal, setConfirmModal] = useState(null)
     const [dryRunData, setDryRunData] = useState(null)
+    const [selectedIds, setSelectedIds] = useState(new Set())
+    const [bulkApplying, setBulkApplying] = useState(false)
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (loading) return <LoadingSpinner />
@@ -172,6 +181,52 @@ export default function Recommendations() {
         }
     }
 
+    function toggleSelect(id) {
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+
+    function selectAll() {
+        if (selectedIds.size === filtered.length) {
+            setSelectedIds(new Set())
+        } else {
+            setSelectedIds(new Set(filtered.map(r => r.id)))
+        }
+    }
+
+    async function handleBulkApply() {
+        if (selectedIds.size === 0) return
+        setBulkApplying(true)
+        let success = 0, failed = 0
+        for (const id of selectedIds) {
+            try {
+                await apply(id, false)
+                success++
+            } catch {
+                failed++
+            }
+        }
+        setBulkApplying(false)
+        setSelectedIds(new Set())
+        showToast(`Zastosowano ${success} akcji${failed ? `, ${failed} błędów` : ''}`, success > 0 ? 'success' : 'error')
+        refetch()
+    }
+
+    async function handleBulkDismiss() {
+        if (selectedIds.size === 0) return
+        setBulkApplying(true)
+        for (const id of selectedIds) {
+            try { await dismiss(id) } catch {}
+        }
+        setBulkApplying(false)
+        setSelectedIds(new Set())
+        showToast('Zaznaczone odrzucone', 'info')
+    }
+
     const filtered = (recommendations || []).filter(r => {
         if (filterPriority !== 'ALL' && r.priority !== filterPriority) return false
         return true
@@ -189,19 +244,35 @@ export default function Recommendations() {
                         {(summary && summary.total) || (recommendations && recommendations.length) || 0} sugestii optymalizacyjnych
                     </p>
                 </div>
-                <button
-                    onClick={() => refetch()}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '6px 14px', borderRadius: 7, fontSize: 12,
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
-                    }}
-                    className="hover:border-white/20 hover:text-white/80"
-                >
-                    <RefreshCw size={12} /> Odśwież
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => {
+                            const params = new URLSearchParams({ client_id: selectedClientId, format: 'xlsx' })
+                            window.location.href = `/api/v1/export/recommendations?${params.toString()}`
+                        }}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 5,
+                            padding: '6px 12px', borderRadius: 7, fontSize: 11,
+                            background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)',
+                            color: '#4ADE80', cursor: 'pointer',
+                        }}
+                    >
+                        <Download size={11} /> Export
+                    </button>
+                    <button
+                        onClick={() => refetch()}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '6px 14px', borderRadius: 7, fontSize: 12,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
+                        }}
+                        className="hover:border-white/20 hover:text-white/80"
+                    >
+                        <RefreshCw size={12} /> Odśwież
+                    </button>
+                </div>
             </div>
 
             {/* Summary + priority filter row */}
@@ -246,6 +317,53 @@ export default function Recommendations() {
                 </div>
             </div>
 
+            {/* Bulk action bar */}
+            {filtered.length > 0 && (
+                <div className="flex items-center gap-3 flex-wrap" style={{ marginBottom: 12 }}>
+                    <button
+                        onClick={selectAll}
+                        style={{
+                            padding: '5px 12px', borderRadius: 7, fontSize: 11,
+                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
+                        }}
+                    >
+                        {selectedIds.size === filtered.length ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+                    </button>
+                    {selectedIds.size > 0 && (
+                        <>
+                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                                {selectedIds.size} zaznaczonych
+                            </span>
+                            <button
+                                onClick={handleBulkApply}
+                                disabled={bulkApplying}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '5px 14px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                                    background: '#4F8EF7', color: 'white', border: 'none', cursor: 'pointer',
+                                    opacity: bulkApplying ? 0.6 : 1,
+                                }}
+                            >
+                                {bulkApplying ? <><Loader2 size={12} className="animate-spin" /> Wykonuję...</> : <><Play size={12} style={{ fill: 'white' }} /> Zastosuj zaznaczone</>}
+                            </button>
+                            <button
+                                onClick={handleBulkDismiss}
+                                disabled={bulkApplying}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '5px 12px', borderRadius: 7, fontSize: 11,
+                                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+                                    color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
+                                }}
+                            >
+                                <XCircle size={11} /> Odrzuć zaznaczone
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+
             {/* List */}
             {filtered.length === 0 ? (
                 <div style={{ padding: '48px 0', textAlign: 'center' }}>
@@ -262,6 +380,8 @@ export default function Recommendations() {
                             onApply={handleApply}
                             onDismiss={handleDismiss}
                             isApplying={applyingId === rec.id}
+                            selected={selectedIds.has(rec.id)}
+                            onToggle={toggleSelect}
                         />
                     ))}
                 </div>

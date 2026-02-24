@@ -5,7 +5,6 @@ import {
     Megaphone,
     Search,
     KeyRound,
-    AlertTriangle,
     Settings,
     Brain,
     Lightbulb,
@@ -51,8 +50,7 @@ const NAV_GROUPS = [
     {
         label: 'MONITORING',
         items: [
-            { to: '/alerts', label: 'Alerty', icon: Bell, showBadge: true },
-            { to: '/anomalies', label: 'Anomalie', icon: AlertTriangle },
+            { to: '/alerts', label: 'Monitoring', icon: Bell, showBadge: true },
         ],
     },
     {

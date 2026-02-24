@@ -23,21 +23,13 @@ SAFETY_LIMITS = {
 }
 
 IRRELEVANT_KEYWORDS = [
+    # English irrelevant terms
+    "free", "cheap", "how to", "why", "download", "torrent",
+    "tutorial", "coupon", "discount code", "sample", "template",
+    "job", "salary", "career", "internship", "reddit", "youtube",
     # Polish irrelevant terms
-    "darmowe",
-    "free",
-    "za darmo",
-    "recenzja",
-    "opinie",
-    "jak",
-    "co to",
-    "wikipedia",
-    "forum",
-    "allegro",
-    "olx",
-    "youtube",
-    "pdf",
-    "praca",
-    "oferta pracy",
-    # Add more as needed
+    "darmowe", "za darmo", "jak zrobić", "dlaczego", "pobierz",
+    "praca", "wynagrodzenie", "staż", "allegro", "olx",
+    "recenzja", "opinie", "forum", "wikipedia", "pdf",
+    "co to", "oferta pracy",
 ]

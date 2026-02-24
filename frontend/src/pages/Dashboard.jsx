@@ -7,6 +7,7 @@ import {
 import {
     getDashboardKPIs, getCampaigns,
     getHealthScore, getCampaignTrends, getRecommendations,
+    getBudgetPacing, getDeviceBreakdown, getGeoBreakdown,
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
@@ -100,7 +101,7 @@ function HealthScoreCard({ score, issues, loading }) {
 }
 
 // ─── Mini KPI card ───────────────────────────────────────────────────────────
-function MiniKPI({ title, value, change, suffix = '', prefix = '', icon: Icon, iconColor = '#4F8EF7' }) {
+function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon: Icon, iconColor = '#4F8EF7' }) {
     const isUp = change > 0
     const isDown = change < 0
     const display = typeof value === 'number'
@@ -110,7 +111,7 @@ function MiniKPI({ title, value, change, suffix = '', prefix = '', icon: Icon, i
     return (
         <div className="v2-card" style={{ padding: '14px 18px' }}>
             <div className="flex items-center justify-between mb-2">
-                <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em' }} title={tooltip || undefined}>
                     {title}
                 </span>
                 {Icon && (
@@ -156,6 +157,9 @@ export default function Dashboard() {
     const [healthScore, setHealthScore]     = useState(null)
     const [campaignTrends, setCampaignTrends] = useState(null)
     const [recommendations, setRecs]        = useState([])
+    const [budgetPacing, setBudgetPacing]   = useState(null)
+    const [deviceData, setDeviceData]       = useState(null)
+    const [geoData, setGeoData]             = useState(null)
 
     const [loading, setLoading]             = useState(false)
     const [healthLoading, setHealthLoading] = useState(false)
@@ -185,10 +189,16 @@ export default function Dashboard() {
             getHealthScore(selectedClientId).catch(() => null),
             getCampaignTrends(selectedClientId, 7).catch(() => null),
             getRecommendations(selectedClientId).catch(() => ({ recommendations: [] })),
-        ]).then(([hs, ct, recs]) => {
+            getBudgetPacing(selectedClientId).catch(() => null),
+            getDeviceBreakdown(selectedClientId).catch(() => null),
+            getGeoBreakdown(selectedClientId).catch(() => null),
+        ]).then(([hs, ct, recs, bp, dev, geo]) => {
             setHealthScore(hs)
             setCampaignTrends(ct)
             setRecs(recs?.recommendations || recs?.items || [])
+            setBudgetPacing(bp)
+            setDeviceData(dev)
+            setGeoData(geo)
             setHealthLoading(false)
         })
     }, [selectedClientId, filters.period])
@@ -271,6 +281,7 @@ export default function Dashboard() {
                     />
                     <MiniKPI
                         title="ROAS"
+                        tooltip="Return On Ad Spend — przychód na każdą wydaną złotówkę"
                         value={current?.roas}
                         change={change_pct?.roas}
                         suffix="×"
@@ -293,6 +304,109 @@ export default function Dashboard() {
             <div style={{ marginBottom: 16 }}>
                 <TrendExplorer />
             </div>
+
+            {/* ── Budget Pacing ─────────────────────────────────────────── */}
+            {budgetPacing?.campaigns?.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 8, fontFamily: 'Syne' }}>
+                        Pacing budżetu ({budgetPacing.month})
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+                        {budgetPacing.campaigns.map(c => {
+                            const color = c.status === 'overspend' ? '#F87171' : c.status === 'underspend' ? '#FBBF24' : '#4ADE80'
+                            const bg = c.status === 'overspend' ? 'rgba(248,113,113,0.08)' : c.status === 'underspend' ? 'rgba(251,191,36,0.08)' : 'rgba(74,222,128,0.08)'
+                            const label = c.status === 'overspend' ? 'Przekroczenie' : c.status === 'underspend' ? 'Niedostateczne' : 'Na torze'
+                            const progressPct = Math.min(c.pacing_pct, 150)
+                            return (
+                                <div key={c.campaign_id} className="v2-card" style={{ padding: '12px 14px' }}>
+                                    <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
+                                            {c.campaign_name}
+                                        </span>
+                                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: bg, color, border: `1px solid ${color}30` }}>
+                                            {label}
+                                        </span>
+                                    </div>
+                                    {/* Progress bar */}
+                                    <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', marginBottom: 6 }}>
+                                        <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(progressPct, 100)}%`, transition: 'width 0.3s' }} />
+                                    </div>
+                                    <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                                        <span>{c.actual_spend_usd.toFixed(0)} / {c.expected_spend_usd.toFixed(0)} zł</span>
+                                        <span style={{ color }}>{c.pacing_pct}%</span>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Device + Geo Breakdown ────────────────────────────────── */}
+            {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                    {/* Device breakdown */}
+                    {deviceData?.devices?.length > 0 && (
+                        <div className="v2-card" style={{ padding: '16px 20px' }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 12, fontFamily: 'Syne' }}>
+                                Urządzenia
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {deviceData.devices.map(d => {
+                                    const color = d.device === 'MOBILE' ? '#4F8EF7' : d.device === 'DESKTOP' ? '#7B5CE0' : '#FBBF24'
+                                    return (
+                                        <div key={d.device}>
+                                            <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                                                <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
+                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
+                                            </div>
+                                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                                <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
+                                            </div>
+                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                                <span>CTR {d.ctr}% · CPC {d.cpc.toFixed(2)} zł</span>
+                                                <span>ROAS {d.roas}×</span>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Geo breakdown */}
+                    {geoData?.cities?.length > 0 && (
+                        <div className="v2-card" style={{ padding: '16px 20px' }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 12, fontFamily: 'Syne' }}>
+                                Top miasta
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>
+                                        {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
+                                            <th key={h} style={{
+                                                padding: '4px 6px', fontSize: 10, fontWeight: 500,
+                                                color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+                                                letterSpacing: '0.08em', textAlign: h === 'Miasto' ? 'left' : 'right',
+                                            }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {geoData.cities.slice(0, 8).map(c => (
+                                        <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                            <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd.toFixed(0)} zł</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? '#4ADE80' : c.roas >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas.toFixed(2)}×</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── Campaign Table ──────────────────────────────────────────── */}
             <div className="v2-card" style={{ overflow: 'hidden' }}>

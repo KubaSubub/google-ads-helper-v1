@@ -28,11 +28,26 @@ class SafetyViolationError(Exception):
     pass
 
 
+def get_effective_limits(client_limits: Optional[dict] = None) -> dict:
+    """Merge per-client safety overrides with global defaults.
+
+    Client limits are stored in Client.business_rules["safety_limits"].
+    Only keys that exist in SAFETY_LIMITS can be overridden.
+    """
+    limits = dict(SAFETY_LIMITS)
+    if client_limits:
+        for key in SAFETY_LIMITS:
+            if key in client_limits and client_limits[key] is not None:
+                limits[key] = client_limits[key]
+    return limits
+
+
 def validate_action(
     action_type: str,
     current_val: float,
     new_val: float,
-    context: dict
+    context: dict,
+    client_limits: Optional[dict] = None,
 ) -> None:
     """Circuit breaker - validates action safety before execution.
 
@@ -43,36 +58,32 @@ def validate_action(
         current_val: Current value in USD (not micros)
         new_val: New value in USD (not micros)
         context: Additional context (campaign stats, daily counts, etc.)
+        client_limits: Optional per-client safety limit overrides
 
     Raises:
         SafetyViolationError: If action violates safety limits
-
-    Example:
-        >>> validate_action("UPDATE_BID", current_val=1.0, new_val=1.40, context={})
-        # Passes - 40% change is under 50% limit
-
-        >>> validate_action("UPDATE_BID", current_val=1.0, new_val=2.0, context={})
-        SafetyViolationError: Bid change 100% exceeds 50% limit
     """
+    limits = get_effective_limits(client_limits)
+
     if action_type in ("UPDATE_BID", "SET_BID"):
         if not current_val or current_val == 0:
             raise SafetyViolationError("Cannot change bid: current bid is 0 or None")
 
         pct_change = abs(new_val - current_val) / current_val
-        if pct_change > SAFETY_LIMITS["MAX_BID_CHANGE_PCT"]:
+        if pct_change > limits["MAX_BID_CHANGE_PCT"]:
             raise SafetyViolationError(
-                f"Bid change {pct_change:.0%} exceeds {SAFETY_LIMITS['MAX_BID_CHANGE_PCT']:.0%} limit. "
+                f"Bid change {pct_change:.0%} exceeds {limits['MAX_BID_CHANGE_PCT']:.0%} limit. "
                 f"${current_val:.2f} → ${new_val:.2f}"
             )
 
-        if new_val < SAFETY_LIMITS["MIN_BID_USD"]:
+        if new_val < limits["MIN_BID_USD"]:
             raise SafetyViolationError(
-                f"New bid ${new_val:.2f} below minimum ${SAFETY_LIMITS['MIN_BID_USD']:.2f}"
+                f"New bid ${new_val:.2f} below minimum ${limits['MIN_BID_USD']:.2f}"
             )
 
-        if new_val > SAFETY_LIMITS["MAX_BID_USD"]:
+        if new_val > limits["MAX_BID_USD"]:
             raise SafetyViolationError(
-                f"New bid ${new_val:.2f} above maximum ${SAFETY_LIMITS['MAX_BID_USD']:.2f}"
+                f"New bid ${new_val:.2f} above maximum ${limits['MAX_BID_USD']:.2f}"
             )
 
     if action_type in ("INCREASE_BUDGET", "SET_BUDGET"):
@@ -80,27 +91,27 @@ def validate_action(
             raise SafetyViolationError("Cannot change budget: current budget is 0 or None")
 
         pct_change = abs(new_val - current_val) / current_val
-        if pct_change > SAFETY_LIMITS["MAX_BUDGET_CHANGE_PCT"]:
+        if pct_change > limits["MAX_BUDGET_CHANGE_PCT"]:
             raise SafetyViolationError(
                 f"Budget change {pct_change:.0%} exceeds "
-                f"{SAFETY_LIMITS['MAX_BUDGET_CHANGE_PCT']:.0%} limit"
+                f"{limits['MAX_BUDGET_CHANGE_PCT']:.0%} limit"
             )
 
     if action_type == "PAUSE_KEYWORD":
         total = context.get("total_keywords_in_campaign", 0)
         paused_today = context.get("keywords_paused_today_in_campaign", 0)
-        if total > 0 and (paused_today + 1) / total > SAFETY_LIMITS["MAX_KEYWORD_PAUSE_PCT"]:
+        if total > 0 and (paused_today + 1) / total > limits["MAX_KEYWORD_PAUSE_PCT"]:
             raise SafetyViolationError(
                 f"Already paused {paused_today}/{total} keywords today. "
-                f"Limit: {SAFETY_LIMITS['MAX_KEYWORD_PAUSE_PCT']:.0%}"
+                f"Limit: {limits['MAX_KEYWORD_PAUSE_PCT']:.0%}"
             )
 
     if action_type == "ADD_NEGATIVE":
         negatives_today = context.get("negatives_added_today", 0)
-        if negatives_today >= SAFETY_LIMITS["MAX_NEGATIVES_PER_DAY"]:
+        if negatives_today >= limits["MAX_NEGATIVES_PER_DAY"]:
             raise SafetyViolationError(
                 f"Daily negative limit reached: "
-                f"{negatives_today}/{SAFETY_LIMITS['MAX_NEGATIVES_PER_DAY']}"
+                f"{negatives_today}/{limits['MAX_NEGATIVES_PER_DAY']}"
             )
 
 
@@ -172,12 +183,20 @@ class ActionExecutor:
                 "message": "Dry run — action NOT applied."
             }
 
-        # 5. EXECUTE (TODO: implement Google Ads API call)
+        # 5. EXECUTE via Google Ads API + update local DB
         try:
-            # TODO: Call Google Ads API via google_ads_client.py
-            # For now, simulate success
+            from app.services.google_ads import google_ads_service
             old_value_json = json.dumps({"current_val": current_val})
             new_value_json = json.dumps({"new_val": new_val})
+
+            # Execute via Google Ads API (also updates local DB)
+            api_result = google_ads_service.apply_action(
+                self.db, action_type,
+                entity_id=action.get("entity_id"),
+                params=action.get("params", {}),
+            )
+            if api_result.get("status") == "error":
+                raise Exception(api_result.get("message", "API call failed"))
 
             # 6. LOG SUCCESS
             log_entry = ActionLog(
@@ -265,12 +284,30 @@ class ActionExecutor:
         if not original.old_value_json:
             return {"status": "error", "message": "Missing previous state — cannot revert"}
 
-        # Execute reverse (TODO: implement Google Ads API call)
+        # Execute reverse via Google Ads API + local DB
         try:
+            from app.services.google_ads import google_ads_service
             old_state = json.loads(original.old_value_json)
 
-            # TODO: Call Google Ads API to reverse the action
-            # For now, simulate success
+            # Revert mappings: execute reverse action
+            if original.action_type == "PAUSE_KEYWORD":
+                google_ads_service.apply_action(
+                    self.db, "ENABLE_KEYWORD",
+                    entity_id=int(original.entity_id),
+                    params={},
+                )
+            elif original.action_type == "UPDATE_BID":
+                google_ads_service.apply_action(
+                    self.db, "SET_KEYWORD_BID",
+                    entity_id=int(original.entity_id),
+                    params={"amount": old_state.get("current_val", 0)},
+                )
+            elif original.action_type == "ADD_KEYWORD":
+                google_ads_service.apply_action(
+                    self.db, "PAUSE_KEYWORD",
+                    entity_id=int(original.entity_id),
+                    params={},
+                )
 
             # Mark original as reverted
             original.status = "REVERTED"

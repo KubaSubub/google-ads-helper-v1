@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ErrorMessage } from '../components/UI'
 import { getSearchTerms, getSegmentedSearchTerms } from '../api'
 import { useApp } from '../contexts/AppContext'
@@ -6,7 +7,7 @@ import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
     TrendingUp, AlertTriangle, HelpCircle, XCircle, LayoutGrid,
-    List, Loader2,
+    List, Loader2, X,
 } from 'lucide-react'
 
 const SEGMENT_CONFIG = {
@@ -43,7 +44,10 @@ function SegmentBadge({ seg }) {
 
 export default function SearchTerms() {
     const { selectedClientId } = useApp()
-    const [viewMode, setViewMode] = useState('segments')
+    const [searchParams, setSearchParams] = useSearchParams()
+    const campaignId = searchParams.get('campaign_id')
+    const campaignName = searchParams.get('campaign_name')
+    const [viewMode, setViewMode] = useState(campaignId ? 'list' : 'segments')
     const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
     const [segData, setSegData] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -58,15 +62,24 @@ export default function SearchTerms() {
         if (!selectedClientId) return
         if (viewMode === 'list') loadListData()
         else loadSegmentedData()
-    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId])
+    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId])
 
     async function loadListData() {
         setLoading(true); setError(null)
         try {
-            const res = await getSearchTerms({ page, page_size: 50, search, sort_by: sortBy, sort_order: sortOrder, client_id: selectedClientId })
+            const params = { page, page_size: 50, search, sort_by: sortBy, sort_order: sortOrder, client_id: selectedClientId }
+            if (campaignId) params.campaign_id = campaignId
+            const res = await getSearchTerms(params)
             setData(res)
         } catch (err) { setError(err.message) }
         finally { setLoading(false) }
+    }
+
+    function clearCampaignFilter() {
+        searchParams.delete('campaign_id')
+        searchParams.delete('campaign_name')
+        setSearchParams(searchParams)
+        setPage(1)
     }
 
     async function loadSegmentedData() {
@@ -110,6 +123,16 @@ export default function SearchTerms() {
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
                         {viewMode === 'segments' ? `${segData?.summary?.total || 0} wyszukiwań` : `${data.total} wyszukiwań`}
+                        {campaignName && (
+                            <span style={{
+                                marginLeft: 8, padding: '2px 8px', borderRadius: 999, fontSize: 11,
+                                background: 'rgba(123,92,224,0.12)', border: '1px solid rgba(123,92,224,0.25)',
+                                color: '#7B5CE0', display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}>
+                                {decodeURIComponent(campaignName)}
+                                <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={clearCampaignFilter} />
+                            </span>
+                        )}
                     </p>
                 </div>
 
@@ -230,7 +253,7 @@ export default function SearchTerms() {
                                             <th style={TH_STYLE}>Kliknięcia</th>
                                             <th style={TH_STYLE}>Koszt</th>
                                             <th style={TH_STYLE}>Konwersje</th>
-                                            <th style={TH_STYLE}>CVR</th>
+                                            <th style={TH_STYLE} title="Conversion Rate — procent kliknięć zakończonych konwersją">CVR</th>
                                             <th style={TH_STYLE}>Powód</th>
                                         </tr>
                                     </thead>
@@ -289,12 +312,13 @@ export default function SearchTerms() {
                                                 { f: 'impressions', label: 'Wyświetlenia' },
                                                 { f: 'cost', label: 'Koszt' },
                                                 { f: 'conversions', label: 'Konwersje' },
-                                                { f: 'ctr', label: 'CTR' },
-                                                { f: null, label: 'Koszt/konw.' },
-                                            ].map(({ f, label }) => (
+                                                { f: 'ctr', label: 'CTR', tooltip: 'Click-Through Rate — stosunek kliknięć do wyświetleń' },
+                                                { f: null, label: 'Koszt/konw.', tooltip: 'Cost Per Conversion — koszt jednej konwersji (CPA)' },
+                                            ].map(({ f, label, tooltip }) => (
                                                 <th key={label}
                                                     style={{ ...TH_STYLE, cursor: f ? 'pointer' : 'default' }}
                                                     onClick={() => f && handleSort(f)}
+                                                    title={tooltip || undefined}
                                                 >
                                                     <span className="flex items-center gap-1">
                                                         {label}

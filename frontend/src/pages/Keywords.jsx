@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { ErrorMessage } from '../components/UI'
 import { getKeywords } from '../api'
 import { useApp } from '../contexts/AppContext'
 import EmptyState from '../components/EmptyState'
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react'
+import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Loader2, X } from 'lucide-react'
 
 const MATCH_COLORS = {
     EXACT: { color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', border: 'rgba(74,222,128,0.2)' },
@@ -37,6 +38,11 @@ const TH_STYLE = {
 
 export default function Keywords() {
     const { selectedClientId } = useApp()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const navigate = useNavigate()
+    const campaignId = searchParams.get('campaign_id')
+    const campaignName = searchParams.get('campaign_name')
+
     const [data, setData] = useState({ items: [], total: 0, page: 1, total_pages: 0 })
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -47,7 +53,7 @@ export default function Keywords() {
 
     useEffect(() => {
         if (selectedClientId) loadData()
-    }, [page, matchFilter, sortBy, sortOrder, selectedClientId])
+    }, [page, matchFilter, sortBy, sortOrder, selectedClientId, campaignId])
 
     async function loadData() {
         setLoading(true)
@@ -60,6 +66,7 @@ export default function Keywords() {
                 sort_order: sortOrder,
                 client_id: selectedClientId
             }
+            if (campaignId) params.campaign_id = campaignId
             if (matchFilter) params.match_type = matchFilter
             const res = await getKeywords(params)
             setData(res)
@@ -68,6 +75,13 @@ export default function Keywords() {
         } finally {
             setLoading(false)
         }
+    }
+
+    function clearCampaignFilter() {
+        searchParams.delete('campaign_id')
+        searchParams.delete('campaign_name')
+        setSearchParams(searchParams)
+        setPage(1)
     }
 
     function handleSort(field) {
@@ -93,6 +107,16 @@ export default function Keywords() {
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
                         {data.total} słów kluczowych
+                        {campaignName && (
+                            <span style={{
+                                marginLeft: 8, padding: '2px 8px', borderRadius: 999, fontSize: 11,
+                                background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.25)',
+                                color: '#4F8EF7', display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}>
+                                {decodeURIComponent(campaignName)}
+                                <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={clearCampaignFilter} />
+                            </span>
+                        )}
                     </p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
@@ -179,12 +203,14 @@ export default function Keywords() {
                                             <span className="flex items-center gap-1">Konwersje {sortBy === 'conversions' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
                                         </th>
                                         <th style={{ ...TH_STYLE, cursor: 'pointer' }} onClick={() => handleSort('ctr')}>
-                                            <span className="flex items-center gap-1">CTR {sortBy === 'ctr' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
+                                            <span className="flex items-center gap-1" title="Click-Through Rate — stosunek kliknięć do wyświetleń">CTR {sortBy === 'ctr' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
                                         </th>
                                         <th style={{ ...TH_STYLE, cursor: 'pointer' }} onClick={() => handleSort('avg_cpc')}>
-                                            <span className="flex items-center gap-1">Avg CPC {sortBy === 'avg_cpc' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
+                                            <span className="flex items-center gap-1" title="Cost Per Click — średni koszt jednego kliknięcia">Avg CPC {sortBy === 'avg_cpc' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
                                         </th>
-                                        <th style={TH_STYLE}>QS</th>
+                                        <th style={TH_STYLE} title="Quality Score — ocena Google jakości słowa kluczowego (1-10)">QS</th>
+                                        <th style={TH_STYLE} title="Return On Ad Spend — przychód / koszt">ROAS</th>
+                                        <th style={TH_STYLE} title="Impression Share — udział w wyświetleniach aukcji (0-100%)">IS %</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -222,6 +248,12 @@ export default function Keywords() {
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{k.avg_cpc != null ? `${k.avg_cpc.toFixed(2)} zł` : '—'}</td>
                                                 <td style={{ padding: '10px 12px' }}>
                                                     <QSBadge score={k.quality_score} />
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>
+                                                    {k.roas != null ? k.roas.toFixed(2) : '—'}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>
+                                                    {k.search_impression_share != null ? `${(k.search_impression_share * 100).toFixed(1)}%` : '—'}
                                                 </td>
                                             </tr>
                                         )

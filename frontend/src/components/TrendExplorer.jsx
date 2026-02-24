@@ -15,11 +15,11 @@ const METRIC_OPTIONS = [
     { key: 'clicks', label: 'Kliknięcia', unit: '' },
     { key: 'impressions', label: 'Wyświetlenia', unit: '' },
     { key: 'conversions', label: 'Konwersje', unit: '' },
-    { key: 'ctr', label: 'CTR (%)', unit: '%' },
-    { key: 'cpc', label: 'CPC (avg)', unit: 'PLN' },
-    { key: 'roas', label: 'ROAS', unit: '' },
-    { key: 'cpa', label: 'CPA', unit: 'PLN' },
-    { key: 'cvr', label: 'CVR (%)', unit: '%' },
+    { key: 'ctr', label: 'CTR (%)', unit: '%', tooltip: 'Click-Through Rate — stosunek kliknięć do wyświetleń' },
+    { key: 'cpc', label: 'CPC (avg)', unit: 'PLN', tooltip: 'Cost Per Click — średni koszt kliknięcia' },
+    { key: 'roas', label: 'ROAS', unit: '', tooltip: 'Return On Ad Spend — przychód na wydaną złotówkę' },
+    { key: 'cpa', label: 'CPA', unit: 'PLN', tooltip: 'Cost Per Acquisition — koszt pozyskania konwersji' },
+    { key: 'cvr', label: 'CVR (%)', unit: '%', tooltip: 'Conversion Rate — procent kliknięć zakończonych konwersją' },
 ]
 
 // Pearson correlation coefficient
@@ -161,7 +161,7 @@ export default function TrendExplorer() {
                                     color: METRIC_COLORS[idx],
                                 }}
                             >
-                                {opt?.label ?? key}
+                                <span title={opt?.tooltip || undefined}>{opt?.label ?? key}</span>
                                 {activeMetrics.length > 1 && (
                                     <button
                                         onClick={() => removeMetric(key)}

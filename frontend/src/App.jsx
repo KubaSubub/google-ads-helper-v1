@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Campaigns from './pages/Campaigns'
 import SearchTerms from './pages/SearchTerms'
 import Keywords from './pages/Keywords'
-import Anomalies from './pages/Anomalies'
+import { Navigate } from 'react-router-dom'
 import Settings from './pages/Settings'
 import Semantic from './pages/Semantic'
 import Recommendations from './pages/Recommendations'
@@ -43,7 +43,7 @@ function AppContent() {
                     <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/search-terms" element={<SearchTerms />} />
                     <Route path="/keywords" element={<Keywords />} />
-                    <Route path="/anomalies" element={<Anomalies />} />
+                    <Route path="/anomalies" element={<Navigate to="/alerts" replace />} />
                     <Route path="/semantic" element={<Semantic />} />
                     <Route path="/recommendations" element={<Recommendations />} />
                     <Route path="/quality-score" element={<QualityScore />} />
