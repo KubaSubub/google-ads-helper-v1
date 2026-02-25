@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { getAnomalies, resolveAnomaly, getAnomaliesDetection } from '../api';
+import api from '../api';
+import { getAnomalies, resolveAnomaly } from '../api';
 import EmptyState from '../components/EmptyState';
 import { Bell, CheckCircle, Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 
@@ -193,7 +194,7 @@ function AnomaliesTab({ selectedClientId }) {
         setLoading(true);
         setError(null);
         try {
-            const result = await getAnomaliesDetection({ metric, threshold, days, client_id: selectedClientId });
+            const result = await api.get('/analytics/anomalies', { params: { metric, threshold, days, client_id: selectedClientId } });
             setData(result);
         } catch (err) {
             setError(err.message);

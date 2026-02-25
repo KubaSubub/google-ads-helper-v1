@@ -9,7 +9,8 @@ from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
 from app.models import (
-    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented
+    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
+    ActionLog, ChangeEvent,
 )
 
 
@@ -164,6 +165,7 @@ def seed_demo_data():
     }
 
     all_ad_groups = []
+    all_keywords = []
     for campaign in campaigns:
         ag_configs = ad_groups_config.get(campaign.name, [])
         for j, (ag_name, keywords_list) in enumerate(ag_configs, start=1):
@@ -226,6 +228,7 @@ def seed_demo_data():
                     top_impression_pct=round(RNG.uniform(0.15, 0.65), 4),
                 )
                 db.add(kw)
+                all_keywords.append(kw)
 
     db.flush()
 
@@ -448,9 +451,175 @@ def seed_demo_data():
                 db.add(ms)
 
     db.commit()
+
+    # -----------------------------------------------------------------------
+    # Action Log (Helper actions — for unified timeline demo)
+    # -----------------------------------------------------------------------
+    import json
+
+    action_log_data = [
+        {
+            "client_id": client.id,
+            "action_type": "PAUSE_KEYWORD",
+            "entity_type": "keyword",
+            "entity_id": str(all_keywords[0].id) if all_keywords else "1",
+            "old_value_json": json.dumps({"status": "ENABLED", "bid_micros": 2500000}),
+            "new_value_json": json.dumps({"status": "PAUSED"}),
+            "status": "SUCCESS",
+            "executed_at": datetime.utcnow() - timedelta(hours=3),
+        },
+        {
+            "client_id": client.id,
+            "action_type": "UPDATE_BID",
+            "entity_type": "keyword",
+            "entity_id": str(all_keywords[1].id) if len(all_keywords) > 1 else "2",
+            "old_value_json": json.dumps({"bid_micros": 1500000}),
+            "new_value_json": json.dumps({"bid_micros": 1800000}),
+            "status": "SUCCESS",
+            "executed_at": datetime.utcnow() - timedelta(hours=8),
+        },
+        {
+            "client_id": client.id,
+            "action_type": "ADD_NEGATIVE",
+            "entity_type": "search_term",
+            "entity_id": "999",
+            "old_value_json": None,
+            "new_value_json": json.dumps({"keyword_text": "meble za darmo", "match_type": "EXACT"}),
+            "status": "SUCCESS",
+            "executed_at": datetime.utcnow() - timedelta(days=1, hours=2),
+        },
+        {
+            "client_id": client.id,
+            "action_type": "INCREASE_BUDGET",
+            "entity_type": "campaign",
+            "entity_id": str(campaigns[0].id),
+            "old_value_json": json.dumps({"budget_micros": 50000000}),
+            "new_value_json": json.dumps({"budget_micros": 65000000}),
+            "status": "SUCCESS",
+            "executed_at": datetime.utcnow() - timedelta(days=2),
+        },
+        {
+            "client_id": client.id,
+            "action_type": "PAUSE_KEYWORD",
+            "entity_type": "keyword",
+            "entity_id": str(all_keywords[3].id) if len(all_keywords) > 3 else "4",
+            "old_value_json": json.dumps({"status": "ENABLED"}),
+            "new_value_json": json.dumps({"status": "PAUSED"}),
+            "status": "REVERTED",
+            "reverted_at": datetime.utcnow() - timedelta(days=3),
+            "executed_at": datetime.utcnow() - timedelta(days=4),
+        },
+    ]
+
+    all_action_logs = []
+    for ald in action_log_data:
+        al = ActionLog(**ald)
+        db.add(al)
+        all_action_logs.append(al)
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Change Events (external changes — from Google Ads UI / API / scripts)
+    # -----------------------------------------------------------------------
+    users = ["jan.kowalski@demo-meble.pl", "anna.nowak@demo-meble.pl", "api@agency.pl"]
+    client_types = ["GOOGLE_ADS_WEB_CLIENT", "GOOGLE_ADS_WEB_CLIENT", "GOOGLE_ADS_API"]
+    resource_types = [
+        "CAMPAIGN", "AD_GROUP_CRITERION", "CAMPAIGN_BUDGET",
+        "AD_GROUP", "AD_GROUP_AD", "CAMPAIGN_CRITERION",
+    ]
+    operations = ["UPDATE", "UPDATE", "UPDATE", "CREATE", "REMOVE"]
+    camp_names_for_events = [c.name for c in campaigns[:3]]
+
+    change_events_data = []
+    for i in range(35):
+        days_ago = RNG.randint(0, 29)
+        hours_ago = RNG.randint(0, 23)
+        minutes_ago = RNG.randint(0, 59)
+        event_time = datetime.utcnow() - timedelta(days=days_ago, hours=hours_ago, minutes=minutes_ago)
+
+        user_idx = RNG.randint(0, len(users) - 1)
+        res_type = RNG.choice(resource_types)
+        op = RNG.choice(operations)
+
+        # Build realistic old/new JSON based on resource type and operation
+        if res_type == "AD_GROUP_CRITERION" and op == "UPDATE":
+            old_json = json.dumps({"cpc_bid_micros": str(RNG.randint(500000, 5000000)), "status": "ENABLED"})
+            new_bid = RNG.randint(500000, 5000000)
+            new_json = json.dumps({"cpc_bid_micros": str(new_bid), "status": "ENABLED"})
+            changed = json.dumps(["cpc_bid_micros"])
+            ent_name = RNG.choice(["kanapa narożna", "łóżko podwójne", "stół drewniany", "krzesło biurowe", "szafa przesuwna"])
+        elif res_type == "CAMPAIGN_BUDGET" and op == "UPDATE":
+            old_budget = RNG.randint(30000000, 100000000)
+            new_budget = int(old_budget * RNG.uniform(0.8, 1.3))
+            old_json = json.dumps({"amount_micros": str(old_budget)})
+            new_json = json.dumps({"amount_micros": str(new_budget)})
+            changed = json.dumps(["amount_micros"])
+            ent_name = None
+        elif res_type == "CAMPAIGN" and op == "UPDATE":
+            statuses = ["ENABLED", "PAUSED"]
+            old_status = RNG.choice(statuses)
+            new_status = "PAUSED" if old_status == "ENABLED" else "ENABLED"
+            old_json = json.dumps({"status": old_status})
+            new_json = json.dumps({"status": new_status})
+            changed = json.dumps(["status"])
+            ent_name = RNG.choice(camp_names_for_events) if camp_names_for_events else None
+        elif op == "CREATE":
+            old_json = None
+            new_json = json.dumps({"name": f"New element {i}", "status": "ENABLED"})
+            changed = None
+            ent_name = f"New element {i}"
+        elif op == "REMOVE":
+            old_json = json.dumps({"name": f"Removed element {i}", "status": "ENABLED"})
+            new_json = None
+            changed = None
+            ent_name = f"Removed element {i}"
+        else:
+            old_json = json.dumps({"status": "ENABLED"})
+            new_json = json.dumps({"status": "PAUSED"})
+            changed = json.dumps(["status"])
+            ent_name = None
+
+        camp_id_str = str(campaigns[RNG.randint(0, min(2, len(campaigns) - 1))].google_campaign_id)
+        entity_id_str = str(RNG.randint(100000, 999999))
+        resource_name = f"customers/1234567890/changeEvents/{1000 + i}"
+        change_resource_name = f"customers/1234567890/campaigns/{camp_id_str}/adGroupCriteria/{entity_id_str}"
+
+        camp_name = None
+        for c in campaigns:
+            if str(c.google_campaign_id) == camp_id_str:
+                camp_name = c.name
+                break
+
+        # Link a couple of events to action_log entries
+        linked_action_id = None
+        if i < len(all_action_logs) and RNG.random() < 0.3:
+            linked_action_id = all_action_logs[i].id
+
+        change_events_data.append(ChangeEvent(
+            client_id=client.id,
+            resource_name=resource_name,
+            change_date_time=event_time,
+            user_email=users[user_idx],
+            client_type=client_types[user_idx],
+            change_resource_type=res_type,
+            change_resource_name=change_resource_name,
+            resource_change_operation=op,
+            changed_fields=changed,
+            old_resource_json=old_json,
+            new_resource_json=new_json,
+            action_log_id=linked_action_id,
+            entity_id=entity_id_str,
+            entity_name=ent_name,
+            campaign_name=camp_name,
+        ))
+
+    for ce in change_events_data:
+        db.add(ce)
+
+    db.commit()
     db.close()
 
-    print("✅ Demo data seeded successfully!")
+    print("Done! Demo data seeded successfully!")
     print("   - 1 client (Demo Meble)")
     print(f"   - {len(campaigns)} campaigns (with IS + top impression %)")
     print(f"   - {len(all_ad_groups)} ad groups")
@@ -459,6 +628,8 @@ def seed_demo_data():
     print("   - 90 days of daily metrics (with IS, extended conv, top impression %)")
     print("   - 30 days of device breakdown (MetricSegmented)")
     print("   - 7 days of geo breakdown (MetricSegmented)")
+    print(f"   - {len(all_action_logs)} action log entries")
+    print(f"   - {len(change_events_data)} change events (external history)")
 
 
 if __name__ == "__main__":

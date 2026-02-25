@@ -23,6 +23,7 @@ class Client(Base):
     notes = Column(Text)
     created_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc))
+    last_change_sync_at = Column(DateTime, nullable=True)  # Last successful change_event sync
 
     # Relationships
     campaigns = relationship("Campaign", back_populates="client", cascade="all, delete-orphan")

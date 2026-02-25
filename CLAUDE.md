@@ -24,12 +24,13 @@
 
 ---
 
-## FILE TREE (STRICT)
+## FILE TREE (ACTUAL)
 
 ```
 google-ads-helper/
 ├── main.py                              # PyWebView entry point
 ├── requirements.txt                     # Pinned Python deps
+├── .env                                 # Local env (GITIGNORED)
 ├── .env.example                         # Template (NO secrets)
 ├── .gitignore
 ├── CLAUDE.md                            # THIS FILE
@@ -42,49 +43,63 @@ google-ads-helper/
 │       ├── main.py                      # FastAPI app + router registration
 │       ├── config.py                    # pydantic-settings (reads .env)
 │       ├── database.py                  # SQLAlchemy engine + SessionLocal + Base
+│       ├── seed.py                      # Demo data seeder
 │       │
-│       ├── models/                      # Layer 3: SQLAlchemy ORM
+│       ├── models/                      # Layer 3: SQLAlchemy ORM (13 models)
 │       │   ├── __init__.py              # Exports all models
 │       │   ├── client.py
 │       │   ├── campaign.py
+│       │   ├── ad_group.py
 │       │   ├── keyword.py
+│       │   ├── ad.py
 │       │   ├── search_term.py
 │       │   ├── recommendation.py
 │       │   ├── action_log.py            # Has reverted_at column + REVERTED status
-│       │   └── alert.py
+│       │   ├── alert.py
+│       │   ├── metric_daily.py          # Campaign daily metrics
+│       │   ├── metric_segmented.py      # Device + geo breakdowns
+│       │   └── change_event.py          # Google Ads change history
 │       │
 │       ├── schemas/                     # Layer 4: Pydantic v2 schemas
 │       │   ├── __init__.py
-│       │   ├── common.py               # Enums: Priority, Status, ActionType
+│       │   ├── common.py               # Enums, PaginatedResponse
 │       │   ├── client.py
 │       │   ├── campaign.py             # Micros→USD conversion HERE
+│       │   ├── keyword.py
+│       │   ├── ad.py
+│       │   ├── search_term.py
 │       │   ├── recommendation.py
-│       │   └── search_term.py
+│       │   ├── analytics.py
+│       │   └── change_event.py
 │       │
-│       ├── routers/                     # Layer 6: FastAPI routes (thin)
+│       ├── routers/                     # Layer 6: FastAPI routes (12 routers)
 │       │   ├── __init__.py
 │       │   ├── auth.py                  # /auth/login, /auth/callback, /auth/status
-│       │   ├── clients.py              # /clients, /clients/{id}/sync
-│       │   ├── campaigns.py
-│       │   ├── keywords.py
+│       │   ├── clients.py              # /clients CRUD
+│       │   ├── campaigns.py            # /campaigns + /campaigns/{id}/kpis
+│       │   ├── keywords_ads.py         # /keywords + /ads
 │       │   ├── search_terms.py         # /search-terms/segmented, /search-terms/
-│       │   ├── recommendations.py
-│       │   ├── actions.py              # /actions/, /actions/revert/{id}
-│       │   └── analytics.py            # /analytics/kpis, /analytics/anomalies
+│       │   ├── recommendations.py      # /recommendations + apply/dismiss
+│       │   ├── actions.py              # /actions/ + /actions/revert/{id}
+│       │   ├── analytics.py            # /analytics/* (15+ endpoints)
+│       │   ├── sync.py                 # /sync/trigger, /sync/status
+│       │   ├── export.py               # /export/search-terms, keywords, etc.
+│       │   ├── semantic.py             # /semantic/clusters
+│       │   └── history.py              # /history/ + /history/unified
 │       │
 │       ├── services/                    # Layer 5: Business logic
 │       │   ├── __init__.py
 │       │   ├── credentials_service.py   # Keyring wrapper (ONLY place for tokens)
-│       │   ├── google_ads_client.py     # GAQL executor + write ops
-│       │   ├── sync_service.py          # 6-phase sync orchestrator
-│       │   ├── recommendations_engine.py # 7 optimization rules
+│       │   ├── google_ads.py            # GAQL executor + sync + write ops
+│       │   ├── recommendations.py       # 7 optimization rules
 │       │   ├── action_executor.py       # Apply + Revert + circuit breaker
-│       │   ├── analytics_service.py     # KPIs + anomaly detection
-│       │   └── search_terms_service.py  # Segmentation logic
+│       │   ├── analytics_service.py     # KPIs + anomaly detection + trends
+│       │   ├── search_terms_service.py  # Segmentation logic
+│       │   ├── semantic.py              # Semantic clustering
+│       │   └── cache.py                 # TTL cache
 │       │
 │       └── utils/
 │           ├── __init__.py
-│           ├── logger.py               # Rotating file logger
 │           ├── constants.py            # SAFETY_LIMITS + IRRELEVANT_KEYWORDS
 │           └── formatters.py           # micros_to_currency(), currency_to_micros()
 │
@@ -98,36 +113,51 @@ google-ads-helper/
 │   └── src/
 │       ├── main.jsx
 │       ├── App.jsx                      # React Router + Layout
-│       ├── api.js                       # Axios (baseURL: http://localhost:8000)
+│       ├── api.js                       # Axios (baseURL: /api/v1, Vite proxy)
+│       │
+│       ├── contexts/
+│       │   ├── AppContext.jsx           # selectedClientId, alertCount, showToast
+│       │   └── FilterContext.jsx        # campaignType, status, period filters
 │       │
 │       ├── components/
-│       │   ├── KPICard.jsx
-│       │   ├── Charts.jsx              # Recharts wrappers
 │       │   ├── Sidebar.jsx
+│       │   ├── Charts.jsx              # Recharts wrappers
+│       │   ├── DataTable.jsx           # TanStack Table wrapper
 │       │   ├── ConfirmationModal.jsx    # Before/After preview
 │       │   ├── Toast.jsx
-│       │   ├── DataTable.jsx           # TanStack Table wrapper
-│       │   └── SegmentBadge.jsx        # Color-coded segment labels
+│       │   ├── SegmentBadge.jsx        # Color-coded segment labels
+│       │   ├── EmptyState.jsx
+│       │   ├── FilterBar.jsx           # Pill filters (campaignType/status/period)
+│       │   ├── SyncButton.jsx
+│       │   ├── TrendExplorer.jsx       # Multi-metric correlation explorer
+│       │   ├── InsightsFeed.jsx        # Auto-insights from campaign data
+│       │   ├── MetricTooltip.jsx       # Metric definitions popup
+│       │   ├── DiffView.jsx            # Before/After JSON diff
+│       │   └── UI.jsx                  # Shared UI primitives
 │       │
 │       ├── pages/
-│       │   ├── Dashboard.jsx
+│       │   ├── Dashboard.jsx           # KPI cards + trends + health score
 │       │   ├── Clients.jsx
-│       │   ├── Campaigns.jsx
+│       │   ├── Campaigns.jsx           # Campaign table + sparklines
 │       │   ├── Keywords.jsx
 │       │   ├── SearchTerms.jsx         # Segment cards + filterable list
 │       │   ├── Recommendations.jsx     # Priority badges + Apply/Dismiss
-│       │   ├── ActionHistory.jsx       # Chronological + Undo button
+│       │   ├── ActionHistory.jsx       # Timeline + Tabs (Helper/External/All)
 │       │   ├── Alerts.jsx              # Unresolved/Resolved tabs
-│       │   └── Settings.jsx
+│       │   ├── Settings.jsx
+│       │   ├── QualityScore.jsx        # QS audit dashboard
+│       │   ├── Forecast.jsx            # Campaign forecasting
+│       │   ├── Semantic.jsx            # Keyword clustering
+│       │   ├── Anomalies.jsx
+│       │   └── Login.jsx
 │       │
 │       └── hooks/
 │           ├── useClients.js
 │           ├── useRecommendations.js
 │           └── useSync.js
 │
-├── database/
-│   ├── google_ads.db                    # SQLite — GITIGNORED
-│   └── backups/                         # Auto-backups before Apply
+├── data/
+│   └── google_ads_app.db               # SQLite — GITIGNORED
 │
 └── logs/
     └── app.log                          # Rotating — GITIGNORED
@@ -152,20 +182,21 @@ Layer 8: main.py (root)  — imports backend/app/main.py, starts PyWebView
 
 ---
 
-## SYNC FLOW (6 Phases)
+## SYNC FLOW (7 Phases)
 
 ```
-POST /clients/{id}/sync → SyncService.sync_client(client_id)
+POST /sync/trigger?client_id=X → google_ads_service methods
   │
-  ├─ PHASE 1: Campaigns (GAQL) → _upsert_campaign() × N → commit
-  ├─ PHASE 2: Keywords (GAQL) → _upsert_keyword() × N → commit
-  ├─ PHASE 3: Search Terms (GAQL) → delete old → _insert_search_term() × N → commit
-  ├─ PHASE 4: Segmentation → SearchTermsService.segment_all_search_terms() → commit
-  ├─ PHASE 5: Anomaly Detection → AnalyticsService.detect_and_save_anomalies() → commit
-  └─ PHASE 6: Update last_synced_at → commit → return stats
+  ├─ PHASE 1: Campaigns (GAQL) → sync_campaigns()
+  ├─ PHASE 2: Ad Groups (GAQL) → sync_ad_groups()
+  ├─ PHASE 3: Keywords (GAQL) → sync_keywords()
+  ├─ PHASE 4: Daily Metrics (GAQL) → sync_daily_metrics()
+  ├─ PHASE 5: Search Terms (GAQL) → sync_search_terms()
+  ├─ PHASE 6: Change Events (non-critical) → sync_change_events()
+  └─ return stats dict
 ```
 
-Phases 4-5 are non-critical: if they fail, log error but DON'T rollback sync data.
+Phase 6 is non-critical: if it fails, log error but DON'T rollback sync data.
 
 ---
 
@@ -233,13 +264,17 @@ SAFETY_LIMITS = {
 
 ---
 
-## UI DESIGN
+## UI DESIGN (v2)
 
-- **Dark mode** default
-- Colors: bg=#0F172A, sidebar=#1E293B, cards=#334155, text=#F1F5F9, accent=#3B82F6
-- Success=#10B981, Warning=#F59E0B, Danger=#EF4444
+- **Dark mode** only (MVP)
+- Fonts: **Syne** (headings/KPI, fontWeight 700), **DM Sans** (body/UI)
+- Colors: bg-primary=#0D0F14, sidebar=#111318, cards=rgba(255,255,255,0.03) with 0.07 border
+- accent-blue=#4F8EF7, accent-purple=#7B5CE0
+- Success=#4ADE80, Warning=#FBBF24, Danger=#F87171
+- PageHeader: fontSize 22, fontWeight 700, fontFamily 'Syne'
+- Table headers: fontSize 10, fontWeight 500, color rgba(255,255,255,0.35), uppercase
+- Pill buttons: borderRadius 999, active state with border + bg
 - Design reference: Linear, Vercel Dashboard
-- Use Tailwind CSS + shadcn/ui components
 - Charts: Recharts
 - Tables: @tanstack/react-table
 
@@ -254,22 +289,32 @@ SAFETY_LIMITS = {
 - `POST /auth/logout`
 
 ### Clients
-- `GET /clients` → list of clients
+- `GET /clients/` → paginated list
 - `GET /clients/{id}` → client detail
-- `POST /clients/{id}/sync` → trigger sync
+- `POST /clients/` → create client
+- `POST /clients/discover` → auto-discover from MCC
+- `PATCH /clients/{id}` → update client
+- `DELETE /clients/{id}` → delete client
+
+### Sync
+- `POST /sync/trigger?client_id=X&days=30` → trigger full sync
+- `GET /sync/status` → API connection status
 
 ### Campaigns
-- `GET /campaigns?client_id=X`
+- `GET /campaigns/?client_id=X`
+- `GET /campaigns/{id}/kpis?days=30`
+- `GET /campaigns/{id}/metrics?date_from&date_to`
 
-### Keywords
-- `GET /keywords?campaign_id=X`
+### Keywords + Ads
+- `GET /keywords/?campaign_id=X`
 
 ### Search Terms
-- `GET /search-terms/?client_id=X&segment=X`
-- `GET /search-terms/segmented?client_id=X` → grouped by segment + stats
+- `GET /search-terms/?client_id=X&search=&sort_by=&page=`
+- `GET /search-terms/segmented?client_id=X` → grouped by segment + summary
+- `GET /search-terms/summary?campaign_id=X`
 
 ### Recommendations
-- `GET /recommendations?client_id=X&priority=X&status=X`
+- `GET /recommendations/?client_id=X&priority=X&status=X`
 - `GET /recommendations/summary?client_id=X` → badge counts
 - `POST /recommendations/{id}/apply?client_id=X&dry_run=false`
 - `POST /recommendations/{id}/dismiss`
@@ -278,15 +323,39 @@ SAFETY_LIMITS = {
 - `GET /actions/?client_id=X&limit=50&offset=0`
 - `POST /actions/revert/{action_log_id}?client_id=X`
 
-### Analytics
+### Analytics (Core)
 - `GET /analytics/kpis?client_id=X`
+- `GET /analytics/dashboard-kpis?client_id=X&days=30`
 - `GET /analytics/campaigns?client_id=X`
 - `GET /analytics/anomalies?client_id=X&status=unresolved`
 - `POST /analytics/anomalies/{alert_id}/resolve?client_id=X`
 - `POST /analytics/detect?client_id=X`
 
+### Analytics (V2 — Trends & Insights)
+- `GET /analytics/trends?client_id=X&metrics=&days=`
+- `GET /analytics/health-score?client_id=X`
+- `GET /analytics/campaign-trends?client_id=X&days=7`
+- `GET /analytics/budget-pacing?client_id=X`
+- `GET /analytics/quality-score-audit?client_id=X`
+- `GET /analytics/forecast?campaign_id=X&metric=&forecast_days=`
+- `GET /analytics/impression-share?client_id=X`
+- `GET /analytics/device-breakdown?client_id=X`
+- `GET /analytics/geo-breakdown?client_id=X`
+
+### Export
+- `GET /export/search-terms?client_id=X&format=xlsx`
+- `GET /export/keywords?client_id=X&format=xlsx`
+
+### Semantic
+- `GET /semantic/clusters?client_id=X`
+
+### History (Change Events)
+- `GET /history/?client_id=X&date_from=&date_to=&resource_type=`
+- `GET /history/unified?client_id=X` → merged action_log + change_events
+- `GET /history/filters?client_id=X` → dropdown values
+
 ### Health
-- `GET /health` → {status: "ok"}
+- `GET /health` → {status: "ok", version, env}
 
 ---
 
@@ -295,10 +364,13 @@ SAFETY_LIMITS = {
 Read in this order when you need context:
 1. **CLAUDE.md** (this file) — quick reference, rules, architecture
 2. **PROGRESS.md** — what's done, what to build next
-3. **Implementation_Blueprint.md** — full backend code (copy-paste ready)
-4. **Blueprint_Patch_v2_1.md** — 3 critical additions (revert, analytics, segmentation)
-5. **PRD_Core.md** — product requirements, features, acceptance criteria
-6. **google_ads_optimization_playbook.md** — domain knowledge reference
+3. **DECISIONS.md** — 12 ADRs (architecture decisions)
+4. **Implementation_Blueprint.md** — original backend code reference
+5. **Blueprint_Patch_v2_1.md** — 3 critical additions (revert, analytics, segmentation)
+6. **PRD_Core.md** — product requirements, features, acceptance criteria
+7. **Technical_Spec.md** — frontend API contract
+8. **google_ads_optimization_playbook.md** — domain knowledge reference
+9. **JAK_ZDOBYC_CREDENTIALS.md** — Google Ads API credentials setup guide
 
 ---
 

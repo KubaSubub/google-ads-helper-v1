@@ -1,7 +1,7 @@
 """Ad model."""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, BigInteger, Float, String, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -24,7 +24,7 @@ class Ad(Base):
     clicks = Column(Integer, default=0)
     impressions = Column(Integer, default=0)
     cost_micros = Column(BigInteger, default=0)
-    conversions = Column(Integer, default=0)
+    conversions = Column(Float, default=0.0)
     ctr = Column(Integer, default=0)  # Stored as micros
 
     created_at = Column(DateTime, default=datetime.utcnow)

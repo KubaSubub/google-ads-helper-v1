@@ -6,14 +6,13 @@ import { useApp } from '../contexts/AppContext'
 import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
-    TrendingUp, AlertTriangle, HelpCircle, XCircle, LayoutGrid,
+    TrendingUp, AlertTriangle, XCircle, LayoutGrid,
     List, Loader2, X,
 } from 'lucide-react'
 
 const SEGMENT_CONFIG = {
     HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: '#4ADE80', bg: 'rgba(74,222,128,0.1)',   border: 'rgba(74,222,128,0.2)'  },
     WASTE:          { label: 'Waste',            icon: AlertTriangle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
-    TESTING:        { label: 'Do obserwacji',    icon: HelpCircle,    color: '#FBBF24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.2)'  },
     IRRELEVANT:     { label: 'Nieistotne',       icon: XCircle,       color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.1)' },
     OTHER:          { label: 'Inne',             icon: LayoutGrid,    color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',  border: 'rgba(79,142,247,0.2)'  },
 }

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
+from loguru import logger
 from app.database import get_db
 from app.models import Client
 from app.services.google_ads import google_ads_service
@@ -46,6 +47,13 @@ def trigger_sync(
     # Phase 5: Search terms (depends on ad groups)
     terms_synced = google_ads_service.sync_search_terms(db, cid, date_from, date_to)
 
+    # Phase 6: Change events (non-critical — log error but don't rollback)
+    change_events_synced = 0
+    try:
+        change_events_synced = google_ads_service.sync_change_events(db, cid, client.id, days=30)
+    except Exception as e:
+        logger.error(f"Change events sync failed (non-critical): {e}")
+
     return {
         "success": True,
         "campaigns_synced": campaigns_synced,
@@ -53,6 +61,7 @@ def trigger_sync(
         "keywords_synced": keywords_synced,
         "metrics_synced": metrics_synced,
         "search_terms_synced": terms_synced,
+        "change_events_synced": change_events_synced,
     }
 
 

@@ -23,6 +23,7 @@ from app.routers import (
     semantic,
     recommendations,
     actions,
+    history,
 )
 
 
@@ -84,6 +85,7 @@ app.include_router(export.router, prefix=API_PREFIX, tags=["export"])
 app.include_router(semantic.router, prefix=API_PREFIX, tags=["semantic"])
 app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendations"])
 app.include_router(actions.router, prefix=API_PREFIX, tags=["actions"])
+app.include_router(history.router, prefix=API_PREFIX, tags=["history"])
 
 
 # ---------------------------------------------------------------------------

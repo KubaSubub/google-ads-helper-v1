@@ -66,9 +66,23 @@ class SearchTermsService:
         self.db.commit()
         return segmented
 
+    # Reasons per segment for UI display
+    SEGMENT_REASONS = {
+        "IRRELEVANT": "Zawiera nieodpowiednie słowo kluczowe",
+        "HIGH_PERFORMER": "≥3 konwersje, CVR powyżej średniej kampanii",
+        "WASTE": "≥5 kliknięć, 0 konwersji, CTR<1%",
+        "OTHER": "Niewystarczające dane do klasyfikacji",
+    }
+
     def get_segmented_search_terms(self, client_id: int) -> dict:
-        """Return search terms grouped by segment with stats."""
-        # Make sure segments are assigned
+        """Return search terms grouped by segment with summary + segments.
+
+        Returns:
+            {
+                "summary": { "total": int, "counts": {...}, "waste_cost": float },
+                "segments": { "HIGH_PERFORMER": [termItem, ...], ... }
+            }
+        """
         terms = (
             self.db.query(SearchTerm)
             .join(AdGroup)
@@ -80,7 +94,6 @@ class SearchTermsService:
         # If no segments assigned yet, run segmentation first
         if terms and all(t.segment is None for t in terms):
             self.segment_search_terms(client_id)
-            # Re-fetch after commit
             terms = (
                 self.db.query(SearchTerm)
                 .join(AdGroup)
@@ -89,42 +102,45 @@ class SearchTermsService:
                 .all()
             )
 
+        segment_names = ["HIGH_PERFORMER", "WASTE", "IRRELEVANT", "OTHER"]
         segments = {}
-        for seg in ["HIGH_PERFORMER", "WASTE", "IRRELEVANT", "OTHER"]:
+        counts = {}
+        waste_cost = 0.0
+
+        for seg in segment_names:
             seg_terms = [t for t in terms if t.segment == seg]
+            counts[seg] = len(seg_terms)
 
-            total_cost = sum(t.cost_micros or 0 for t in seg_terms)
-            total_clicks = sum(t.clicks or 0 for t in seg_terms)
-            total_conv = sum(t.conversions or 0 for t in seg_terms)
-            total_conv_value = sum(t.conversion_value_micros or 0 for t in seg_terms)
+            if seg == "WASTE":
+                waste_cost = round(
+                    sum(t.cost_micros or 0 for t in seg_terms) / 1_000_000, 2
+                )
 
-            segments[seg] = {
-                "count": len(seg_terms),
-                "total_cost_usd": round(total_cost / 1_000_000, 2),
-                "total_clicks": total_clicks,
-                "total_conversions": round(total_conv, 2),
-                "total_conversion_value_usd": round(total_conv_value / 1_000_000, 2),
-                "terms": [
-                    {
-                        "id": t.id,
-                        "query_text": t.text,
-                        "keyword_text": t.keyword_text,
-                        "clicks": t.clicks or 0,
-                        "impressions": t.impressions or 0,
-                        "cost_usd": round((t.cost_micros or 0) / 1_000_000, 2),
-                        "conversions": round(t.conversions or 0, 2),
-                        "conversion_value_usd": round((t.conversion_value_micros or 0) / 1_000_000, 2),
-                        "ctr_pct": round((t.ctr or 0) / 10_000, 2),
-                        "roas": round(
-                            (t.conversion_value_micros or 0) / (t.cost_micros or 1), 2
-                        ) if (t.cost_micros or 0) > 0 else 0.0,
-                        "segment": seg,
-                    }
-                    for t in seg_terms
-                ],
-            }
+            segments[seg] = [
+                {
+                    "id": t.id,
+                    "text": t.text,
+                    "keyword_text": t.keyword_text,
+                    "clicks": t.clicks or 0,
+                    "impressions": t.impressions or 0,
+                    "cost": round((t.cost_micros or 0) / 1_000_000, 2),
+                    "conversions": round(t.conversions or 0, 2),
+                    "cvr": round(
+                        (t.conversions or 0) / (t.clicks or 1) * 100, 2
+                    ) if (t.clicks or 0) > 0 else 0.0,
+                    "segment_reason": self.SEGMENT_REASONS.get(seg, ""),
+                }
+                for t in seg_terms
+            ]
 
-        return segments
+        return {
+            "summary": {
+                "total": len(terms),
+                "counts": counts,
+                "waste_cost": waste_cost,
+            },
+            "segments": segments,
+        }
 
     def _classify(self, term: SearchTerm, campaign_cvrs: dict, irrelevant_patterns: list) -> str:
         """Classify single search term into segment."""

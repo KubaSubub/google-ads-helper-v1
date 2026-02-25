@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import (
-    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented
+    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
+    ChangeEvent, ActionLog,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.credentials_service import CredentialsService
@@ -1140,6 +1141,235 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error discovering accounts via MCC {mcc_id}: {e}")
             return []
+
+    # ------------------------------------------------------------------
+    # Change Events — fetch full account change history
+    # ------------------------------------------------------------------
+
+    def sync_change_events(self, db: Session, customer_id: str, client_id: int, days: int = 30) -> int:
+        """
+        Fetch change_event records from Google Ads API and upsert into local DB.
+
+        Uses timestamp-based cursor pagination to handle the 10,000 row LIMIT.
+        Max lookback: 30 days (API constraint).
+
+        Returns number of change events synced.
+        """
+        if not self.is_connected:
+            logger.warning("Google Ads API not connected — skipping change events sync")
+            return 0
+
+        import json
+        from datetime import datetime, timezone
+
+        days = min(days, 30)  # API hard limit
+        date_from = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
+        date_to = date.today().strftime("%Y-%m-%d")
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        total_count = 0
+        current_end = date_to
+
+        try:
+            while True:
+                query = f"""
+                    SELECT
+                        change_event.resource_name,
+                        change_event.change_date_time,
+                        change_event.change_resource_name,
+                        change_event.user_email,
+                        change_event.client_type,
+                        change_event.change_resource_type,
+                        change_event.old_resource,
+                        change_event.new_resource,
+                        change_event.resource_change_operation,
+                        change_event.changed_fields
+                    FROM change_event
+                    WHERE change_event.change_date_time >= '{date_from}'
+                      AND change_event.change_date_time <= '{current_end}'
+                    ORDER BY change_event.change_date_time DESC
+                    LIMIT 10000
+                """
+
+                response = ga_service.search(customer_id=customer_id, query=query)
+                page_count = 0
+                last_timestamp = None
+
+                for row in response:
+                    ce = row.change_event
+                    res_name = ce.resource_name
+
+                    # Dedup — skip if already in DB
+                    existing = db.query(ChangeEvent.id).filter(
+                        ChangeEvent.resource_name == res_name
+                    ).first()
+                    if existing:
+                        page_count += 1
+                        last_timestamp = ce.change_date_time
+                        continue
+
+                    # Serialize protobuf old/new resources to JSON
+                    old_json = _protobuf_to_json(ce.old_resource)
+                    new_json = _protobuf_to_json(ce.new_resource)
+
+                    # Extract changed_fields mask
+                    fields_list = list(ce.changed_fields.paths) if ce.changed_fields else []
+
+                    # Extract entity info
+                    entity_id = _extract_entity_id(ce.change_resource_name)
+                    entity_name = _extract_entity_name(new_json)
+                    campaign_name = _extract_campaign_name(ce.change_resource_name, db, client_id)
+
+                    # Map enum values to strings
+                    client_type_str = (
+                        ce.client_type.name
+                        if hasattr(ce.client_type, "name")
+                        else str(ce.client_type)
+                    )
+                    resource_type_str = (
+                        ce.change_resource_type.name
+                        if hasattr(ce.change_resource_type, "name")
+                        else str(ce.change_resource_type)
+                    )
+                    operation_str = (
+                        ce.resource_change_operation.name
+                        if hasattr(ce.resource_change_operation, "name")
+                        else str(ce.resource_change_operation)
+                    )
+
+                    event = ChangeEvent(
+                        client_id=client_id,
+                        resource_name=res_name,
+                        change_date_time=ce.change_date_time,
+                        user_email=ce.user_email or None,
+                        client_type=client_type_str,
+                        change_resource_type=resource_type_str,
+                        change_resource_name=ce.change_resource_name,
+                        resource_change_operation=operation_str,
+                        changed_fields=json.dumps(fields_list) if fields_list else None,
+                        old_resource_json=old_json,
+                        new_resource_json=new_json,
+                        entity_id=entity_id,
+                        entity_name=entity_name,
+                        campaign_name=campaign_name,
+                    )
+                    db.add(event)
+                    page_count += 1
+                    last_timestamp = ce.change_date_time
+
+                db.commit()
+                total_count += page_count
+
+                # If fewer than 10000, we got everything
+                if page_count < 10000:
+                    break
+
+                # Cursor: adjust end date to last seen timestamp
+                if last_timestamp:
+                    current_end = (last_timestamp - timedelta(seconds=1)).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                else:
+                    break
+
+            # Best-effort: match change events to our action_log entries
+            _match_change_events_to_actions(db, client_id)
+
+            # Update client's last_change_sync_at
+            client_record = db.query(Client).filter(Client.id == client_id).first()
+            if client_record:
+                client_record.last_change_sync_at = datetime.now(timezone.utc)
+                db.commit()
+
+            logger.info(f"Synced {total_count} change events for client {client_id}")
+            return total_count
+
+        except Exception as e:
+            logger.error(f"Error syncing change events for client {client_id}: {e}")
+            db.rollback()
+            return 0
+
+
+# ------------------------------------------------------------------
+# Change Event helpers (module-level)
+# ------------------------------------------------------------------
+
+def _protobuf_to_json(resource) -> str | None:
+    """Convert a protobuf resource to JSON string."""
+    if not resource:
+        return None
+    import json
+    try:
+        from google.protobuf.json_format import MessageToDict
+        pb = resource._pb if hasattr(resource, "_pb") else resource
+        d = MessageToDict(pb, preserving_proto_field_name=True)
+        return json.dumps(d, default=str) if d else None
+    except Exception:
+        return None
+
+
+def _extract_entity_id(change_resource_name: str) -> str | None:
+    """Extract numeric entity ID from resource path like 'customers/123/campaigns/456'."""
+    if not change_resource_name:
+        return None
+    parts = change_resource_name.strip("/").split("/")
+    return parts[-1] if parts else None
+
+
+def _extract_entity_name(new_resource_json: str | None) -> str | None:
+    """Try to extract entity name from new_resource JSON."""
+    if not new_resource_json:
+        return None
+    import json
+    try:
+        data = json.loads(new_resource_json)
+        return data.get("name") or data.get("ad", {}).get("name")
+    except Exception:
+        return None
+
+
+def _extract_campaign_name(change_resource_name: str, db: Session, client_id: int) -> str | None:
+    """Try to find campaign name by looking up campaign ID from resource path."""
+    if not change_resource_name:
+        return None
+    parts = change_resource_name.strip("/").split("/")
+    for i, part in enumerate(parts):
+        if part == "campaigns" and i + 1 < len(parts):
+            campaign_gid = parts[i + 1]
+            camp = db.query(Campaign).filter(
+                Campaign.client_id == client_id,
+                Campaign.google_campaign_id == campaign_gid,
+            ).first()
+            return camp.name if camp else None
+    return None
+
+
+def _match_change_events_to_actions(db: Session, client_id: int):
+    """Best-effort match: link change_events to action_log entries by entity + timestamp window."""
+    from datetime import datetime, timedelta
+
+    unmatched = db.query(ChangeEvent).filter(
+        ChangeEvent.client_id == client_id,
+        ChangeEvent.action_log_id.is_(None),
+    ).all()
+
+    for event in unmatched:
+        if not event.entity_id:
+            continue
+        window_start = event.change_date_time - timedelta(minutes=5)
+        window_end = event.change_date_time + timedelta(minutes=5)
+
+        action = db.query(ActionLog).filter(
+            ActionLog.client_id == client_id,
+            ActionLog.entity_id == event.entity_id,
+            ActionLog.executed_at >= window_start,
+            ActionLog.executed_at <= window_end,
+        ).first()
+
+        if action:
+            event.action_log_id = action.id
+
+    db.commit()
 
 
 # Singleton instance

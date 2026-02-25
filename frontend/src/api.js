@@ -69,9 +69,6 @@ export const applyRecommendation = (id, clientId, dryRun = false) =>
     api.post(`/recommendations/${id}/apply`, null, {
         params: { client_id: clientId, dry_run: dryRun },
     });
-// Legacy: old Recommendations.jsx calls (actionType, entityId, params)
-export const applyRecommendationLegacy = (action, entityId, params = {}) =>
-    api.post('/recommendations/apply', { action, entity_id: entityId, params });
 export const dismissRecommendation = (id) =>
     api.post(`/recommendations/${id}/dismiss`);
 
@@ -98,8 +95,6 @@ export const getCampaignAnalytics = (clientId) =>
     api.get('/analytics/campaigns', { params: { client_id: clientId } });
 export const getAnomalies = (clientId, status = 'unresolved') =>
     api.get('/analytics/anomalies', { params: { client_id: clientId, status } });
-export const getAnomaliesDetection = (params = {}) =>
-    api.get('/analytics/anomalies', { params });
 export const resolveAnomaly = (alertId, clientId) =>
     api.post(`/analytics/anomalies/${alertId}/resolve`, null, {
         params: { client_id: clientId },
@@ -146,3 +141,11 @@ export const getDeviceBreakdown = (clientId, params = {}) =>
     api.get('/analytics/device-breakdown', { params: { client_id: clientId, ...params } });
 export const getGeoBreakdown = (clientId, params = {}) =>
     api.get('/analytics/geo-breakdown', { params: { client_id: clientId, ...params } });
+
+// ======= History (Change Events) =======
+export const getChangeHistory = (clientId, params = {}) =>
+    api.get('/history/', { params: { client_id: clientId, ...params } });
+export const getUnifiedTimeline = (clientId, params = {}) =>
+    api.get('/history/unified', { params: { client_id: clientId, ...params } });
+export const getHistoryFilters = (clientId) =>
+    api.get('/history/filters', { params: { client_id: clientId } });

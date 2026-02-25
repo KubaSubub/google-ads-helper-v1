@@ -14,6 +14,7 @@ from .metric_segmented import MetricSegmented
 from .recommendation import Recommendation
 from .action_log import ActionLog
 from .alert import Alert
+from .change_event import ChangeEvent
 
 __all__ = [
     "Client",
@@ -27,4 +28,5 @@ __all__ = [
     "Recommendation",
     "ActionLog",
     "Alert",
+    "ChangeEvent",
 ]
