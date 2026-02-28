@@ -60,7 +60,7 @@ function KpiRow({ kpis }) {
 export default function Campaigns() {
     const navigate = useNavigate()
     const { selectedClientId } = useApp()
-    const { filters } = useFilter()
+    const { filters, days } = useFilter()
     const [campaigns, setCampaigns] = useState([])
     const [selected, setSelected] = useState(null)
     const [kpis, setKpis] = useState(null)
@@ -92,7 +92,7 @@ export default function Campaigns() {
         setMetrics([])
         try {
             const [kpiData, metricData] = await Promise.all([
-                getCampaignKPIs(campaign.id, filters.period),
+                getCampaignKPIs(campaign.id, days),
                 getCampaignMetrics(campaign.id),
             ])
             setKpis(kpiData)

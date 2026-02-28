@@ -393,6 +393,45 @@ pyinstaller --onefile --windowed main.py
 
 ---
 
+## COMPLETED FEATURES — DO NOT MODIFY UNLESS ASKED
+
+These features are done and tested. Do NOT refactor, "improve", or touch them without explicit user request.
+
+### PMax Search Terms
+- `sync_pmax_search_terms()` uses `campaign_search_term_view` (NOT `search_term_view`, NOT `campaign_search_term_insight`)
+- CRITICAL: Do NOT add `segments.keyword.info.*` to campaign_search_term_view queries — it filters out PMax data
+- SearchTerm model: `ad_group_id` is nullable (PMax has no ad_groups), `campaign_id` FK for PMax direct link, `source` column ("SEARCH"/"PMAX")
+- Sync Phase 5b calls `sync_pmax_search_terms()` after standard `sync_search_terms()`
+
+### Global Date Range Picker
+- DateRangePicker component lives in Sidebar.jsx (after client selector, before nav)
+- FilterContext exposes: `filters.period`, `filters.dateFrom`, `filters.dateTo`, computed `days`
+- Period preset (7/14/30/90) auto-sets dateFrom/dateTo. Custom dates clear period to null.
+- Pages using dates: Dashboard (`days`), Campaigns (`days`), TrendExplorer (`days`), SearchTerms (`date_from`/`date_to`)
+- Keywords and Campaigns list are snapshot data — NO date filtering (no dates in model)
+- FilterBar period pills hidden (`hidePeriod`) since dates are global in sidebar
+
+### AppContext — Centralized Client State
+- `clients`, `clientsLoading`, `refreshClients` live in AppContext (NOT useClients hook)
+- Sidebar.jsx reads clients from useApp(), NOT from useClients()
+- After discover, clients appear immediately in sidebar dropdown
+
+### Auth Setup Wizard
+- `GET /auth/setup-status`, `POST /auth/setup` endpoints in auth.py
+- Login.jsx has step-by-step credential setup before Google OAuth
+- All tokens stored in Windows Credential Manager via keyring
+
+---
+
+## SQLITE SCHEMA NOTES
+
+- No Alembic migrations. Adding/removing columns = delete DB file + reseed
+- DB location when running from `backend/`: `backend/data/google_ads_app.db`
+- DB location when running from root: `data/google_ads_app.db`
+- Run seed: `cd backend && PYTHONIOENCODING=utf-8 python -m app.seed`
+
+---
+
 ## WHEN IN DOUBT
 
 - If a requirement is ambiguous → check Blueprint v2.0 + Patch v2.1 first

@@ -42,17 +42,31 @@ def list_search_terms(
     db: Session = Depends(get_db),
 ):
     """List search terms with filtering, sorting, and pagination."""
+    from sqlalchemy import or_
+
     query = db.query(SearchTerm)
 
-    # Join through ad_group -> campaign when filtering by client or campaign
+    # Join through ad_group -> campaign for Search terms, OR direct campaign link for PMax
     if client_id or campaign_id:
-        query = query.join(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
-        if campaign_id:
-            query = query.filter(AdGroup.campaign_id == campaign_id)
-        if client_id:
-            query = query.join(Campaign, AdGroup.campaign_id == Campaign.id).filter(
-                Campaign.client_id == client_id
+        query = (
+            query.outerjoin(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
+            .outerjoin(
+                Campaign,
+                or_(
+                    AdGroup.campaign_id == Campaign.id,
+                    SearchTerm.campaign_id == Campaign.id,
+                ),
             )
+        )
+        if campaign_id:
+            query = query.filter(
+                or_(
+                    AdGroup.campaign_id == campaign_id,
+                    SearchTerm.campaign_id == campaign_id,
+                )
+            )
+        if client_id:
+            query = query.filter(Campaign.client_id == client_id)
 
     if ad_group_id:
         query = query.filter(SearchTerm.ad_group_id == ad_group_id)
@@ -142,8 +156,10 @@ def search_terms_summary(
 @router.get("/segmented")
 def segmented_search_terms(
     client_id: int = Query(..., description="Client ID"),
+    date_from: date = Query(None),
+    date_to: date = Query(None),
     db: Session = Depends(get_db),
 ):
     """Return search terms grouped by segment (HIGH_PERFORMER, WASTE, IRRELEVANT, OTHER)."""
     service = SearchTermsService(db)
-    return service.get_segmented_search_terms(client_id)
+    return service.get_segmented_search_terms(client_id, date_from=date_from, date_to=date_to)

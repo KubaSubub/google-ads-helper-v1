@@ -10,6 +10,8 @@ This logic is called during sync Phase 4.
 """
 
 import re
+from datetime import date as date_type
+from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
@@ -37,7 +39,8 @@ class SearchTermsService:
         3. WASTE -- clicks >= 5 AND conv = 0 AND CTR < 1%
         4. OTHER -- default
         """
-        terms = (
+        # Search terms via ad_group (Search campaigns)
+        search_terms = (
             self.db.query(SearchTerm)
             .join(AdGroup)
             .join(Campaign)
@@ -45,6 +48,18 @@ class SearchTermsService:
             .filter(Campaign.client_id == client_id)
             .all()
         )
+        # PMax terms linked directly to campaign
+        pmax_terms = (
+            self.db.query(SearchTerm)
+            .filter(
+                SearchTerm.campaign_id.isnot(None),
+                SearchTerm.ad_group_id.is_(None),
+            )
+            .join(Campaign, SearchTerm.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+        terms = search_terms + pmax_terms
 
         # Pre-compute campaign avg CVR from MetricDaily (last 30 days)
         campaign_cvrs = self._get_campaign_avg_cvrs(client_id)
@@ -74,7 +89,32 @@ class SearchTermsService:
         "OTHER": "Niewystarczające dane do klasyfikacji",
     }
 
-    def get_segmented_search_terms(self, client_id: int) -> dict:
+    def _fetch_terms(self, client_id: int, date_from: Optional[date_type] = None, date_to: Optional[date_type] = None):
+        """Fetch all search terms for a client, optionally filtered by date range."""
+        q1 = (
+            self.db.query(SearchTerm)
+            .join(AdGroup)
+            .join(Campaign)
+            .filter(Campaign.client_id == client_id)
+        )
+        q2 = (
+            self.db.query(SearchTerm)
+            .filter(
+                SearchTerm.campaign_id.isnot(None),
+                SearchTerm.ad_group_id.is_(None),
+            )
+            .join(Campaign, SearchTerm.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_id)
+        )
+        if date_from:
+            q1 = q1.filter(SearchTerm.date_from >= date_from)
+            q2 = q2.filter(SearchTerm.date_from >= date_from)
+        if date_to:
+            q1 = q1.filter(SearchTerm.date_to <= date_to)
+            q2 = q2.filter(SearchTerm.date_to <= date_to)
+        return q1.all() + q2.all()
+
+    def get_segmented_search_terms(self, client_id: int, date_from: Optional[date_type] = None, date_to: Optional[date_type] = None) -> dict:
         """Return search terms grouped by segment with summary + segments.
 
         Returns:
@@ -83,24 +123,12 @@ class SearchTermsService:
                 "segments": { "HIGH_PERFORMER": [termItem, ...], ... }
             }
         """
-        terms = (
-            self.db.query(SearchTerm)
-            .join(AdGroup)
-            .join(Campaign)
-            .filter(Campaign.client_id == client_id)
-            .all()
-        )
+        terms = self._fetch_terms(client_id, date_from, date_to)
 
         # If no segments assigned yet, run segmentation first
         if terms and all(t.segment is None for t in terms):
             self.segment_search_terms(client_id)
-            terms = (
-                self.db.query(SearchTerm)
-                .join(AdGroup)
-                .join(Campaign)
-                .filter(Campaign.client_id == client_id)
-                .all()
-            )
+            terms = self._fetch_terms(client_id, date_from, date_to)
 
         segment_names = ["HIGH_PERFORMER", "WASTE", "IRRELEVANT", "OTHER"]
         segments = {}
@@ -129,6 +157,7 @@ class SearchTermsService:
                         (t.conversions or 0) / (t.clicks or 1) * 100, 2
                     ) if (t.clicks or 0) > 0 else 0.0,
                     "segment_reason": self.SEGMENT_REASONS.get(seg, ""),
+                    "source": t.source or "SEARCH",
                 }
                 for t in seg_terms
             ]
@@ -155,7 +184,7 @@ class SearchTermsService:
 
         # 2. HIGH_PERFORMER - conv >= 3 AND CVR > campaign avg
         if conversions >= 3:
-            campaign_id = term.ad_group.campaign_id if term.ad_group else None
+            campaign_id = term.campaign_id or (term.ad_group.campaign_id if term.ad_group else None)
             campaign_cvr = campaign_cvrs.get(campaign_id, 0)
             term_cvr = (conversions / clicks) if clicks > 0 else 0
             if term_cvr > campaign_cvr:

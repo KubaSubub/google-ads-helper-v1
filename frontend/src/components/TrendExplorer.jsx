@@ -82,7 +82,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function TrendExplorer() {
     const { selectedClientId } = useApp()
-    const { filters } = useFilter()
+    const { filters, days } = useFilter()
     const [activeMetrics, setActiveMetrics] = useState(['cost', 'clicks'])
     const [showDropdown, setShowDropdown] = useState(false)
     const [data, setData] = useState([])
@@ -94,7 +94,7 @@ export default function TrendExplorer() {
         try {
             const result = await getTrends(selectedClientId, {
                 metrics: activeMetrics.join(','),
-                days: filters.period,
+                days: days,
                 campaign_type: filters.campaignType,
                 status: filters.status,
             })
@@ -104,7 +104,7 @@ export default function TrendExplorer() {
         } finally {
             setLoading(false)
         }
-    }, [selectedClientId, activeMetrics, filters.period, filters.campaignType, filters.status])
+    }, [selectedClientId, activeMetrics, days, filters.campaignType, filters.status])
 
     useEffect(() => { fetchData() }, [fetchData])
 

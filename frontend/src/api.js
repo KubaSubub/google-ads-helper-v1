@@ -20,6 +20,8 @@ export default api;
 
 // ═══════ Auth ═══════
 export const getAuthStatus = () => api.get('/auth/status');
+export const getSetupStatus = () => api.get('/auth/setup-status');
+export const saveSetup = (data) => api.post('/auth/setup', data);
 export const getLoginUrl = () => api.get('/auth/login');
 export const logout = () => api.post('/auth/logout');
 
@@ -47,8 +49,8 @@ export const getKeywords = (params = {}) =>
     api.get('/keywords/', { params: typeof params === 'object' ? params : { campaign_id: params } });
 
 // ═══════ Search Terms ═══════
-export const getSegmentedSearchTerms = (clientId) =>
-    api.get('/search-terms/segmented', { params: { client_id: clientId } });
+export const getSegmentedSearchTerms = (clientId, params = {}) =>
+    api.get('/search-terms/segmented', { params: { client_id: clientId, ...params } });
 export const getSearchTerms = (clientIdOrParams, params = {}) => {
     if (typeof clientIdOrParams === 'object') {
         return api.get('/search-terms/', { params: clientIdOrParams });

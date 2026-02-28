@@ -46,6 +46,8 @@ def trigger_sync(
     metrics_synced = google_ads_service.sync_daily_metrics(db, cid, date_from, date_to)
     # Phase 5: Search terms (depends on ad groups)
     terms_synced = google_ads_service.sync_search_terms(db, cid, date_from, date_to)
+    # Phase 5b: PMax search terms (campaign_search_term_insight — per campaign)
+    pmax_terms_synced = google_ads_service.sync_pmax_search_terms(db, cid, date_from, date_to)
 
     # Phase 6: Change events (non-critical — log error but don't rollback)
     change_events_synced = 0
@@ -61,6 +63,7 @@ def trigger_sync(
         "keywords_synced": keywords_synced,
         "metrics_synced": metrics_synced,
         "search_terms_synced": terms_synced,
+        "pmax_terms_synced": pmax_terms_synced,
         "change_events_synced": change_events_synced,
     }
 

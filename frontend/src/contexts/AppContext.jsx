@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getAuthStatus } from '../api';
+import { getAuthStatus, getClients } from '../api';
 
 const AppContext = createContext(null);
 
@@ -8,6 +8,8 @@ export function AppProvider({ children }) {
         const saved = localStorage.getItem('selectedClientId');
         return saved ? parseInt(saved, 10) : null;
     });
+    const [clients, setClients] = useState([]);
+    const [clientsLoading, setClientsLoading] = useState(true);
     const [alertCount, setAlertCount] = useState(0);
     const [toast, setToast] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(null);
@@ -24,9 +26,28 @@ export function AppProvider({ children }) {
         }
     }, []);
 
+    const refreshClients = useCallback(async () => {
+        try {
+            setClientsLoading(true);
+            const data = await getClients();
+            const list = Array.isArray(data) ? data : data.items || [];
+            setClients(list);
+            return list;
+        } catch {
+            return [];
+        } finally {
+            setClientsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
+
+    // Load clients once auth is confirmed
+    useEffect(() => {
+        if (isAuthenticated) refreshClients();
+    }, [isAuthenticated, refreshClients]);
 
     useEffect(() => {
         if (selectedClientId) {
@@ -46,6 +67,9 @@ export function AppProvider({ children }) {
             value={{
                 selectedClientId,
                 setSelectedClientId,
+                clients,
+                clientsLoading,
+                refreshClients,
                 alertCount,
                 setAlertCount,
                 toast,

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ErrorMessage } from '../components/UI'
 import { getSearchTerms, getSegmentedSearchTerms } from '../api'
 import { useApp } from '../contexts/AppContext'
+import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
@@ -43,6 +44,7 @@ function SegmentBadge({ seg }) {
 
 export default function SearchTerms() {
     const { selectedClientId } = useApp()
+    const { filters } = useFilter()
     const [searchParams, setSearchParams] = useSearchParams()
     const campaignId = searchParams.get('campaign_id')
     const campaignName = searchParams.get('campaign_name')
@@ -61,13 +63,15 @@ export default function SearchTerms() {
         if (!selectedClientId) return
         if (viewMode === 'list') loadListData()
         else loadSegmentedData()
-    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId])
+    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId, filters.dateFrom, filters.dateTo])
 
     async function loadListData() {
         setLoading(true); setError(null)
         try {
             const params = { page, page_size: 50, search, sort_by: sortBy, sort_order: sortOrder, client_id: selectedClientId }
             if (campaignId) params.campaign_id = campaignId
+            if (filters.dateFrom) params.date_from = filters.dateFrom
+            if (filters.dateTo) params.date_to = filters.dateTo
             const res = await getSearchTerms(params)
             setData(res)
         } catch (err) { setError(err.message) }
@@ -84,7 +88,10 @@ export default function SearchTerms() {
     async function loadSegmentedData() {
         setLoading(true); setError(null)
         try {
-            const res = await getSegmentedSearchTerms(selectedClientId)
+            const params = {}
+            if (filters.dateFrom) params.date_from = filters.dateFrom
+            if (filters.dateTo) params.date_to = filters.dateTo
+            const res = await getSegmentedSearchTerms(selectedClientId, params)
             setSegData(res)
         } catch (err) { setError(err.message) }
         finally { setLoading(false) }

@@ -8,11 +8,13 @@ from typing import Optional
 class SearchTermResponse(BaseModel):
     """Search term response with micros→USD conversion."""
     id: int
-    ad_group_id: int
+    ad_group_id: Optional[int] = None
+    campaign_id: Optional[int] = None
     text: str
     keyword_text: Optional[str] = None
     match_type: Optional[str] = None
     segment: Optional[str] = None
+    source: Optional[str] = "SEARCH"
     clicks: int = 0
     impressions: int = 0
     cost_micros: int = 0

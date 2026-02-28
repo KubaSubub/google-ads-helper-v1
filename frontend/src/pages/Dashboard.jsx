@@ -150,7 +150,7 @@ function Sparkline({ data, direction }) {
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function Dashboard() {
     const { selectedClientId } = useApp()
-    const { filters } = useFilter()
+    const { filters, days } = useFilter()
 
     const [kpis, setKpis]                   = useState(null)
     const [campaigns, setCampaigns]         = useState([])
@@ -173,7 +173,7 @@ export default function Dashboard() {
 
         try {
             const [kpiData, campData] = await Promise.all([
-                getDashboardKPIs(selectedClientId, filters.period),
+                getDashboardKPIs(selectedClientId, days),
                 getCampaigns(selectedClientId),
             ])
             setKpis(kpiData)
@@ -201,7 +201,7 @@ export default function Dashboard() {
             setGeoData(geo)
             setHealthLoading(false)
         })
-    }, [selectedClientId, filters.period])
+    }, [selectedClientId, days])
 
     useEffect(() => { loadData() }, [loadData])
 
@@ -234,10 +234,10 @@ export default function Dashboard() {
                         Pulpit
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Ostatnie {filters.period} dni
+                        Ostatnie {days} dni
                     </p>
                 </div>
-                <FilterBar />
+                <FilterBar hidePeriod />
             </div>
 
             {error && (

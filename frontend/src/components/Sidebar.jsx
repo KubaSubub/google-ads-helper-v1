@@ -20,8 +20,9 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useApp } from '../contexts/AppContext'
-import { useClients } from '../hooks/useClients'
+import { useFilter } from '../contexts/FilterContext'
 import { logout } from '../api'
+import { Calendar } from 'lucide-react'
 
 // Grupy nawigacyjne
 const NAV_GROUPS = [
@@ -102,9 +103,95 @@ function NavItem({ to, label, icon: Icon, showBadge, showRecBadge, alertCount, o
     )
 }
 
+const PERIOD_PRESETS = [
+    { label: '7d', value: 7 },
+    { label: '14d', value: 14 },
+    { label: '30d', value: 30 },
+    { label: '90d', value: 90 },
+]
+
+function DateRangePicker() {
+    const { filters, setFilter } = useFilter()
+    const [showCustom, setShowCustom] = useState(false)
+
+    return (
+        <div style={{ padding: '0 10px 8px' }}>
+            <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 10,
+                padding: '8px 10px',
+            }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+                    Zakres dat
+                </div>
+                {/* Period presets */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: showCustom ? 8 : 0 }}>
+                    {PERIOD_PRESETS.map(p => {
+                        const active = filters.period === p.value
+                        return (
+                            <button
+                                key={p.value}
+                                onClick={() => { setFilter('period', p.value); setShowCustom(false) }}
+                                style={{
+                                    flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: active ? 600 : 400,
+                                    border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
+                                    background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
+                                    color: active ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                            >
+                                {p.label}
+                            </button>
+                        )
+                    })}
+                    <button
+                        onClick={() => setShowCustom(!showCustom)}
+                        style={{
+                            padding: '4px 6px', borderRadius: 6, fontSize: 11,
+                            border: `1px solid ${!filters.period ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
+                            background: !filters.period ? 'rgba(79,142,247,0.18)' : 'transparent',
+                            color: !filters.period ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center',
+                        }}
+                        title="Własny zakres"
+                    >
+                        <Calendar size={11} />
+                    </button>
+                </div>
+                {/* Custom date inputs */}
+                {showCustom && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input
+                            type="date"
+                            value={filters.dateFrom}
+                            onChange={e => setFilter('dateFrom', e.target.value)}
+                            style={{
+                                flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 11,
+                                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.7)', outline: 'none',
+                            }}
+                        />
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>-</span>
+                        <input
+                            type="date"
+                            value={filters.dateTo}
+                            onChange={e => setFilter('dateTo', e.target.value)}
+                            style={{
+                                flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 11,
+                                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.7)', outline: 'none',
+                            }}
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
 function SidebarContent({ onNavigate }) {
-    const { selectedClientId, setSelectedClientId, alertCount } = useApp()
-    const { clients } = useClients()
+    const { selectedClientId, setSelectedClientId, alertCount, clients } = useApp()
 
     const selectedClient = clients.find(c => c.id === selectedClientId)
 
@@ -196,6 +283,9 @@ function SidebarContent({ onNavigate }) {
                     </select>
                 </div>
             </div>
+
+            {/* Date Range Picker */}
+            <DateRangePicker />
 
             {/* Navigation */}
             <nav className="flex-1 overflow-y-auto" style={{ padding: '4px 8px' }}>

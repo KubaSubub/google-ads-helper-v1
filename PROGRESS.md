@@ -1,5 +1,5 @@
 # PROGRESS.md — Stan implementacji
-# Aktualizacja: 2026-02-25
+# Aktualizacja: 2026-02-28
 # Claude Code: czytaj ten plik, aby wiedziec co jest gotowe, a co pozostalo.
 
 ---
@@ -139,13 +139,51 @@
 
 ---
 
+## ZMIANY Z SESJI 2026-02-27/28
+
+### OAuth + Credentials Setup Wizard — ✅ DONE
+- `GET /auth/setup-status` — sprawdza czy credentials sa skonfigurowane
+- `POST /auth/setup` — zapisuje client_id, client_secret, developer_token, login_customer_id do keyring
+- Login.jsx — kreator konfiguracji (krok po kroku) + przycisk "Zaloguj przez Google"
+- Credentials zapisywane TYLKO w Windows Credential Manager (keyring)
+
+### PMax Search Terms (campaign_search_term_view) — ✅ DONE
+- `sync_pmax_search_terms()` w google_ads.py — uzywa `campaign_search_term_view` (NIE `search_term_view`)
+- WAZNE: NIE uzywac `segments.keyword.info.*` z campaign_search_term_view — wyfiltruje PMax
+- SearchTerm model: `ad_group_id` nullable, dodane `campaign_id` (FK), `source` ("SEARCH"/"PMAX")
+- Campaign model: dodana relacja `search_terms`
+- search_terms router: outerjoin z or_() obsluguje oba typy (Search + PMax)
+- search_terms_service: `_fetch_terms()` helper, queries obsluguja PMax
+- Sync Phase 5b: sync_pmax_search_terms() po standardowym sync_search_terms()
+
+### Sidebar — Client State Centralization — ✅ DONE
+- Klienci przeniesieni do AppContext (clients, clientsLoading, refreshClients)
+- Sidebar.jsx uzywa useApp() zamiast osobnego useClients()
+- Clients.jsx uzywa refreshClients z AppContext
+- Po discover klienci od razu widoczni w dropdown
+
+### Global Date Range Picker — ✅ DONE
+- DateRangePicker w Sidebar.jsx — presety (7d/14d/30d/90d) + custom date inputs
+- FilterContext: dateFrom, dateTo, period (auto-sync), computed `days`
+- Dashboard, Campaigns, TrendExplorer — uzywaja `days` z useFilter()
+- SearchTerms (list + segmented) — wysylaja `date_from`/`date_to` do backendu
+- FilterBar: period pills ukryte (hidePeriod) — daty sa globalne w sidebarze
+- Segmented endpoint: przyjmuje `date_from`/`date_to`, przekazuje do service
+
+### Drobne fixy
+- Recommendations.jsx: key prop fallback `key={rec.id ?? \`rec-${idx}\`}`
+- Clients.jsx: syncingClientId per-client zamiast globalnego boolean
+- Auto-select pierwszego klienta po discover
+
+---
+
 ## INTEGRACJA I TESTY (Phase 5) — 🟡 W TOKU
 
 | Zadanie | Status | Uwagi |
 |---------|--------|-------|
 | Backend <-> Frontend wiring | ✅ | Vite proxy, Axios, CORS |
 | Seed data + demo mode | ✅ | seed.py z realistycznymi danymi |
-| OAuth end-to-end | ⬜ | Wymaga prawdziwego konta Google Ads |
+| OAuth end-to-end | ✅ | Setup wizard + Google OAuth flow |
 | Sync test (live API) | ⬜ | Wymaga credentials |
 | Recommendations test | ⬜ | 7 regul do przetestowania |
 | Apply/Revert test | ⬜ | dry_run + live |
@@ -161,14 +199,15 @@
 | 1 | CTR storage niespojne (Float vs Integer micros) miedzy modelami | MEDIUM | ⬜ |
 | 2 | Dashboard secondary data — silent error suppression | LOW | ⬜ |
 | 3 | Brak AbortController w useEffect (memory leaks) | LOW | ⬜ |
-| 4 | FilterContext uzywany tylko w 2/14 stronach | LOW | ⬜ |
-| 5 | TH_STYLE zduplikowane w 3 plikach (wyciagnac do theme.js) | LOW | ⬜ |
+| 4 | TH_STYLE zduplikowane w 3 plikach (wyciagnac do theme.js) | LOW | ⬜ |
+| 5 | Keywords/Campaigns nie maja dat w modelu — snapshot z synca, date picker ich nie dotyczy | INFO | N/A |
+| 6 | SQLite: brak Alembic, zmiana schematu = usun DB + reseed | INFO | N/A |
 
 ---
 
 ## NASTEPNE KROKI
 
-1. **Testy live** — podlaczenie prawdziwego konta Google Ads
+1. **Sync test** — zsynchronizowac prawdziwe konto Google Ads, zweryfikowac PMax search terms
 2. **PyWebView** — przetestowac native wrapper
 3. **PyInstaller** — zbudowac .exe
 4. **Code quality** — wyciagnac wspolne style do theme.js, dodac AbortController

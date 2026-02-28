@@ -10,11 +10,13 @@ class SearchTerm(Base):
     __tablename__ = "search_terms"
 
     id = Column(Integer, primary_key=True, index=True)
-    ad_group_id = Column(Integer, ForeignKey("ad_groups.id", ondelete="CASCADE"), nullable=False)
+    ad_group_id = Column(Integer, ForeignKey("ad_groups.id", ondelete="CASCADE"), nullable=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True)
     text = Column(String(1000), nullable=False)
     keyword_text = Column(String(500))  # The keyword that matched
     match_type = Column(String(20))
     segment = Column(String(20))  # IRRELEVANT, HIGH_PERFORMER, WASTE, OTHER
+    source = Column(String(20), default="SEARCH")  # SEARCH or PMAX
 
     # ── Core metrics ──
     clicks = Column(Integer, default=0)
@@ -46,3 +48,4 @@ class SearchTerm(Base):
 
     # Relationships
     ad_group = relationship("AdGroup", back_populates="search_terms")
+    campaign = relationship("Campaign", back_populates="search_terms")

@@ -72,7 +72,13 @@ class GoogleAdsService:
         self._try_init()
 
     def _try_init(self):
-        """Attempt to initialize GoogleAdsClient using keyring refresh_token."""
+        """Attempt to initialize GoogleAdsClient.
+
+        Credential priority:
+          1. Windows Credential Manager (keyring) — set after OAuth callback
+          2. .env / environment variables — dev fallback
+        This allows the .exe to work without .env once the user completes OAuth.
+        """
         if not GOOGLE_ADS_AVAILABLE:
             return
 
@@ -81,19 +87,41 @@ class GoogleAdsService:
             logger.info("No refresh_token in keyring — user must complete OAuth first")
             return
 
-        if not settings.google_ads_developer_token:
-            logger.warning("No developer_token in .env")
+        # Resolve each credential: keyring first, .env fallback
+        developer_token = (
+            CredentialsService.get(CredentialsService.DEVELOPER_TOKEN)
+            or settings.google_ads_developer_token
+        )
+        client_id = (
+            CredentialsService.get(CredentialsService.CLIENT_ID)
+            or settings.google_ads_client_id
+        )
+        client_secret = (
+            CredentialsService.get(CredentialsService.CLIENT_SECRET)
+            or settings.google_ads_client_secret
+        )
+
+        if not developer_token:
+            logger.warning("No developer_token found in keyring or .env")
             return
 
+        login_customer_id = (
+            CredentialsService.get("login_customer_id")
+            or settings.google_ads_login_customer_id
+        )
+
         try:
-            self.client = GoogleAdsClient.load_from_dict({
-                "developer_token": settings.google_ads_developer_token,
-                "client_id": settings.google_ads_client_id,
-                "client_secret": settings.google_ads_client_secret,
+            config = {
+                "developer_token": developer_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "refresh_token": refresh_token,
-                "login_customer_id": settings.google_ads_login_customer_id,
                 "use_proto_plus": True,
-            })
+            }
+            if login_customer_id:
+                config["login_customer_id"] = login_customer_id
+
+            self.client = GoogleAdsClient.load_from_dict(config)
             logger.info("Google Ads API client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Google Ads client: {e}")
@@ -712,6 +740,111 @@ class GoogleAdsService:
 
         except Exception as e:
             logger.error(f"Error syncing search terms: {e}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # PMax Search Terms Sync (via campaign_search_term_view)
+    # -----------------------------------------------------------------------
+
+    def sync_pmax_search_terms(
+        self, db: Session, customer_id: str,
+        date_from: date = None, date_to: date = None
+    ) -> int:
+        """Fetch PMax search terms via campaign_search_term_view.
+
+        campaign_search_term_view aggregates at campaign level and INCLUDES
+        Performance Max data (unlike search_term_view which is ad_group level).
+
+        IMPORTANT: Do NOT use segments.keyword.info.* fields — they filter
+        out all PMax data from results.
+        """
+        if not self.is_connected:
+            return 0
+
+        client_record = db.query(Client).filter(
+            Client.google_customer_id == customer_id
+        ).first()
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+
+        # Single query for all PMax campaigns — no keyword segments!
+        query = f"""
+            SELECT
+                campaign.id,
+                campaign_search_term_view.search_term,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros
+            FROM campaign_search_term_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+        """
+
+        try:
+            response = ga_service.search(customer_id=customer_id, query=query)
+            count = 0
+
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                m = row.metrics
+                search_term_text = row.campaign_search_term_view.search_term
+
+                if not search_term_text:
+                    continue
+
+                # Find local campaign
+                campaign = (
+                    db.query(Campaign)
+                    .filter(
+                        Campaign.client_id == client_record.id,
+                        Campaign.google_campaign_id == campaign_google_id,
+                    )
+                    .first()
+                )
+                if not campaign:
+                    continue
+
+                conv = float(m.conversions) if m.conversions else 0.0
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                db.add(SearchTerm(
+                    campaign_id=campaign.id,
+                    ad_group_id=None,
+                    text=search_term_text,
+                    keyword_text=None,
+                    match_type=None,
+                    source="PMAX",
+                    clicks=m.clicks,
+                    impressions=m.impressions,
+                    cost_micros=m.cost_micros,
+                    conversions=conv,
+                    conversion_value_micros=int(conv_value * 1_000_000),
+                    ctr=int(m.ctr * 1_000_000),
+                    conversion_rate=int(
+                        (conv / m.clicks * 1_000_000) if m.clicks > 0 else 0
+                    ),
+                    date_from=date_from,
+                    date_to=date_to,
+                ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} PMax search terms for customer {customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing PMax search terms: {e}")
             db.rollback()
             return 0
 

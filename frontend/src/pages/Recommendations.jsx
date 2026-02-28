@@ -373,9 +373,9 @@ export default function Recommendations() {
                 </div>
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: 12 }}>
-                    {filtered.map((rec) => (
+                    {filtered.map((rec, idx) => (
                         <RecommendationCard
-                            key={rec.id}
+                            key={rec.id ?? `rec-${idx}`}
                             rec={rec}
                             onApply={handleApply}
                             onDismiss={handleDismiss}

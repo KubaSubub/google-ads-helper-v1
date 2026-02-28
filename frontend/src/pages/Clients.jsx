@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useClients } from '../hooks/useClients';
 import { useSync } from '../hooks/useSync';
 import { useApp } from '../contexts/AppContext';
 import SyncButton from '../components/SyncButton';
@@ -8,18 +7,21 @@ import { discoverClients } from '../api';
 import { Users, Loader2, Download } from 'lucide-react';
 
 export default function Clients() {
-    const { clients, loading, refetch } = useClients();
-    const { sync, syncing } = useSync();
-    const { selectedClientId, setSelectedClientId, showToast } = useApp();
+    const { sync } = useSync();
+    const { selectedClientId, setSelectedClientId, showToast, clients, clientsLoading: loading, refreshClients } = useApp();
     const [discovering, setDiscovering] = useState(false);
+    const [syncingClientId, setSyncingClientId] = useState(null);
 
     const handleSync = async (clientId) => {
+        setSyncingClientId(clientId);
         try {
             await sync(clientId);
             showToast('Synchronizacja zakończona', 'success');
-            refetch();
+            refreshClients();
         } catch {
             showToast('Błąd synchronizacji', 'error');
+        } finally {
+            setSyncingClientId(null);
         }
     };
 
@@ -28,7 +30,11 @@ export default function Clients() {
         try {
             const result = await discoverClients();
             showToast(result.message, 'success');
-            refetch();
+            const updated = await refreshClients();
+            // Auto-select first client if none selected
+            if (!selectedClientId && updated && updated.length > 0) {
+                setSelectedClientId(updated[0].id);
+            }
         } catch (err) {
             showToast(err.message || 'Błąd pobierania klientów', 'error');
         } finally {
@@ -128,7 +134,7 @@ export default function Clients() {
                                             e.stopPropagation();
                                             handleSync(client.id);
                                         }}
-                                        loading={syncing}
+                                        loading={syncingClientId === client.id}
                                         lastSynced={client.last_synced_at}
                                     />
                                 </div>

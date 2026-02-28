@@ -10,7 +10,9 @@ export function useClients() {
         try {
             setLoading(true);
             const data = await getClients();
-            setClients(Array.isArray(data) ? data : data.items || []);
+            const list = Array.isArray(data) ? data : data.items || [];
+            setClients(list);
+            return list;
         } catch (err) {
             setError(err.message);
         } finally {

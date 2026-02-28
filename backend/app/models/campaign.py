@@ -54,3 +54,4 @@ class Campaign(Base):
     ad_groups = relationship("AdGroup", back_populates="campaign", cascade="all, delete-orphan")
     metrics_daily = relationship("MetricDaily", back_populates="campaign", cascade="all, delete-orphan")
     metrics_segmented = relationship("MetricSegmented", back_populates="campaign", cascade="all, delete-orphan")
+    search_terms = relationship("SearchTerm", back_populates="campaign", cascade="all, delete-orphan")
