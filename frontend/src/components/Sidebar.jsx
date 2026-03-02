@@ -57,6 +57,7 @@ const NAV_GROUPS = [
     {
         label: 'ANALIZA',
         items: [
+            { to: '/search-optimization', label: 'Optymalizacja', icon: Zap },
             { to: '/semantic', label: 'Inteligencja', icon: Brain },
             { to: '/quality-score', label: 'Quality Score', icon: Award },
         ],

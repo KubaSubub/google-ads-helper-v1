@@ -12,9 +12,10 @@ class MetricSegmented(Base):
     campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
     date = Column(Date, nullable=False)
 
-    # Segment dimensions (one or both may be populated)
+    # Segment dimensions (one or more may be populated)
     device = Column(String(20), nullable=True)    # MOBILE, DESKTOP, TABLET, OTHER
     geo_city = Column(String(200), nullable=True)  # City name (resolved from resource name)
+    hour_of_day = Column(Integer, nullable=True)  # 0-23 for hourly dayparting
 
     # Core metrics
     clicks = Column(Integer, default=0)
@@ -29,7 +30,7 @@ class MetricSegmented(Base):
     search_impression_share = Column(Float, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("campaign_id", "date", "device", "geo_city", name="uq_metric_segmented"),
+        UniqueConstraint("campaign_id", "date", "device", "geo_city", "hour_of_day", name="uq_metric_segmented"),
         Index("idx_metrics_segmented_date", "date"),
         Index("idx_metrics_segmented_device", "device"),
         Index("idx_metrics_segmented_geo", "geo_city"),

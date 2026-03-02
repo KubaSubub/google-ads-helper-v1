@@ -71,8 +71,10 @@ export const applyRecommendation = (id, clientId, dryRun = false) =>
     api.post(`/recommendations/${id}/apply`, null, {
         params: { client_id: clientId, dry_run: dryRun },
     });
-export const dismissRecommendation = (id) =>
-    api.post(`/recommendations/${id}/dismiss`);
+export const dismissRecommendation = (id, clientId) =>
+    api.post(`/recommendations/${id}/dismiss`, null, {
+        params: { client_id: clientId },
+    });
 
 // ═══════ Actions ═══════
 export const getActionHistory = (clientId, params = {}) =>
@@ -83,8 +85,8 @@ export const revertAction = (actionLogId, clientId) =>
     });
 
 // ═══════ Analytics ═══════
-export const getDashboardKPIs = (clientId, days = 30) =>
-    api.get('/analytics/dashboard-kpis', { params: { client_id: clientId, days } });
+export const getDashboardKPIs = (clientId, params = {}) =>
+    api.get('/analytics/dashboard-kpis', { params: { client_id: clientId, ...params } });
 export const getKPIs = (clientId) =>
     api.get('/analytics/kpis', { params: { client_id: clientId } });
 export const getQualityScoreAudit = (clientId) =>
@@ -143,6 +145,26 @@ export const getDeviceBreakdown = (clientId, params = {}) =>
     api.get('/analytics/device-breakdown', { params: { client_id: clientId, ...params } });
 export const getGeoBreakdown = (clientId, params = {}) =>
     api.get('/analytics/geo-breakdown', { params: { client_id: clientId, ...params } });
+
+// ═══════ SEARCH Optimization ═══════
+export const getDayparting = (clientId, days = 30) =>
+    api.get('/analytics/dayparting', { params: { client_id: clientId, days } });
+export const getRsaAnalysis = (clientId) =>
+    api.get('/analytics/rsa-analysis', { params: { client_id: clientId } });
+export const getNgramAnalysis = (clientId, params = {}) =>
+    api.get('/analytics/ngram-analysis', { params: { client_id: clientId, ...params } });
+export const getMatchTypeAnalysis = (clientId, days = 30) =>
+    api.get('/analytics/match-type-analysis', { params: { client_id: clientId, days } });
+export const getLandingPages = (clientId, days = 30) =>
+    api.get('/analytics/landing-pages', { params: { client_id: clientId, days } });
+export const getWastedSpend = (clientId, days = 30) =>
+    api.get('/analytics/wasted-spend', { params: { client_id: clientId, days } });
+export const getAccountStructure = (clientId) =>
+    api.get('/analytics/account-structure', { params: { client_id: clientId } });
+export const getBiddingAdvisor = (clientId, days = 30) =>
+    api.get('/analytics/bidding-advisor', { params: { client_id: clientId, days } });
+export const getHourlyDayparting = (clientId, days = 7) =>
+    api.get('/analytics/hourly-dayparting', { params: { client_id: clientId, days } });
 
 // ======= History (Change Events) =======
 export const getChangeHistory = (clientId, params = {}) =>

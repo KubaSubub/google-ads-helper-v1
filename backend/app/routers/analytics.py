@@ -202,6 +202,8 @@ def compare_periods(data: PeriodComparisonRequest, db: Session = Depends(get_db)
 def dashboard_kpis(
     client_id: int = Query(...),
     days: int = Query(30, ge=1, le=365),
+    campaign_type: str = Query("ALL"),
+    status: str = Query("ALL"),
     db: Session = Depends(get_db),
 ):
     """Aggregated KPIs with period-over-period comparison."""
@@ -209,9 +211,12 @@ def dashboard_kpis(
     current_start = today - timedelta(days=days)
     previous_start = current_start - timedelta(days=days)
 
-    campaign_ids = [
-        c.id for c in db.query(Campaign).filter(Campaign.client_id == client_id).all()
-    ]
+    q = db.query(Campaign).filter(Campaign.client_id == client_id)
+    if campaign_type and campaign_type != "ALL":
+        q = q.filter(Campaign.campaign_type == campaign_type)
+    if status and status != "ALL":
+        q = q.filter(Campaign.status == status)
+    campaign_ids = [c.id for c in q.all()]
     if not campaign_ids:
         return {"current": {}, "previous": {}, "change_pct": {}}
 
@@ -628,3 +633,148 @@ def get_geo_breakdown(
     return service.get_geo_breakdown(
         client_id=client_id, days=days, campaign_id=campaign_id, limit=limit,
     )
+
+
+# ---------------------------------------------------------------------------
+# Dayparting — day-of-week performance
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dayparting")
+def get_dayparting(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """SEARCH campaign performance by day of week."""
+    service = AnalyticsService(db)
+    return service.get_dayparting(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# RSA Analysis — ad copy performance
+# ---------------------------------------------------------------------------
+
+
+@router.get("/rsa-analysis")
+def get_rsa_analysis(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """RSA ad performance comparison per ad group."""
+    service = AnalyticsService(db)
+    return service.get_rsa_analysis(client_id=client_id)
+
+
+# ---------------------------------------------------------------------------
+# N-gram Analysis — word-level search term breakdown
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ngram-analysis")
+def get_ngram_analysis(
+    client_id: int = Query(..., description="Client ID"),
+    ngram_size: int = Query(1, ge=1, le=3, description="1=words, 2=bigrams, 3=trigrams"),
+    min_occurrences: int = Query(2, ge=1, description="Min occurrences to include"),
+    db: Session = Depends(get_db),
+):
+    """Search term word/n-gram aggregation by performance."""
+    service = AnalyticsService(db)
+    return service.get_ngram_analysis(
+        client_id=client_id, ngram_size=ngram_size, min_occurrences=min_occurrences,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Match Type Analysis — EXACT vs PHRASE vs BROAD
+# ---------------------------------------------------------------------------
+
+
+@router.get("/match-type-analysis")
+def get_match_type_analysis(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Keyword performance comparison by match type."""
+    service = AnalyticsService(db)
+    return service.get_match_type_analysis(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# Landing Page Analysis — performance by URL
+# ---------------------------------------------------------------------------
+
+
+@router.get("/landing-pages")
+def get_landing_pages(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Keyword metrics aggregated by landing page URL."""
+    service = AnalyticsService(db)
+    return service.get_landing_page_analysis(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# Wasted Spend — zero-conversion waste summary
+# ---------------------------------------------------------------------------
+
+
+@router.get("/wasted-spend")
+def get_wasted_spend(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Total wasted spend on keywords, search terms, and ads with 0 conversions."""
+    service = AnalyticsService(db)
+    return service.get_wasted_spend(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# Account Structure Audit — cannibalization, oversized groups, match mixing
+# ---------------------------------------------------------------------------
+
+
+@router.get("/account-structure")
+def get_account_structure(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """Account structure audit: oversized ad groups, match type mixing, keyword cannibalization."""
+    service = AnalyticsService(db)
+    return service.get_account_structure_audit(client_id)
+
+
+# ---------------------------------------------------------------------------
+# Bidding Strategy Advisor — recommend optimal strategy per campaign
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bidding-advisor")
+def get_bidding_advisor(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Conversion lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Bidding strategy recommendations based on conversion volume."""
+    service = AnalyticsService(db)
+    return service.get_bidding_advisor(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# Hourly Dayparting — performance by hour of day
+# ---------------------------------------------------------------------------
+
+
+@router.get("/hourly-dayparting")
+def get_hourly_dayparting(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(7, ge=1, le=30, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """SEARCH campaign performance by hour of day."""
+    service = AnalyticsService(db)
+    return service.get_hourly_dayparting(client_id=client_id, days=days)

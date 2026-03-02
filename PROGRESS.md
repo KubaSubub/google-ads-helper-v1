@@ -1,5 +1,5 @@
 # PROGRESS.md — Stan implementacji
-# Aktualizacja: 2026-02-28
+# Aktualizacja: 2026-03-01
 # Claude Code: czytaj ten plik, aby wiedziec co jest gotowe, a co pozostalo.
 
 ---
@@ -22,13 +22,14 @@
 | Database (SQLAlchemy + SQLite) | database.py | ✅ |
 | Seed data (demo) | seed.py | ✅ |
 
-### Modele ORM (Phase 1) — ✅ DONE (13 modeli)
+### Modele ORM (Phase 1) — ✅ DONE (14 modeli)
 | Model | Plik | Status |
 |-------|------|--------|
 | Client | models/client.py | ✅ |
 | Campaign | models/campaign.py | ✅ |
 | AdGroup | models/ad_group.py | ✅ |
 | Keyword | models/keyword.py | ✅ |
+| KeywordDaily | models/keyword_daily.py | ✅ |
 | Ad | models/ad.py | ✅ |
 | SearchTerm | models/search_term.py | ✅ |
 | Recommendation | models/recommendation.py | ✅ |
@@ -92,7 +93,7 @@
 | Axios API client | api.js | ✅ |
 | Dark mode v2 design | globalnie | ✅ |
 
-### Strony (Phase 4) — ✅ DONE (14 stron)
+### Strony (Phase 4) — ✅ DONE (15 stron)
 | Strona | Plik | Status |
 |--------|------|--------|
 | Dashboard | pages/Dashboard.jsx | ✅ |
@@ -108,6 +109,7 @@
 | Forecast | pages/Forecast.jsx | ✅ |
 | Semantic | pages/Semantic.jsx | ✅ |
 | Anomalies | pages/Anomalies.jsx | ✅ |
+| Search Optimization | pages/SearchOptimization.jsx | ✅ |
 | Login | pages/Login.jsx | ✅ |
 
 ### Komponenty (Phase 4) — ✅ DONE
@@ -177,6 +179,31 @@
 
 ---
 
+## ZMIANY Z SESJI 2026-03-01
+
+### KeywordDaily — metryki dzienne per keyword — ✅ DONE
+- Nowy model `KeywordDaily` (keyword_id + date → clicks, impressions, cost_micros, conversions, conversion_value_micros, avg_cpc_micros)
+- Router `keywords_ads.py`: dwie sciezki — agregacja z KeywordDaily (z date_from/date_to) vs snapshot (bez dat)
+- Seed: 90 dni per keyword z trend_factor + dow_factor + noise
+- Frontend Keywords.jsx: przekazuje date_from/date_to z FilterContext
+- Zmiana dat w sidebarze (7d/14d/30d/90d) teraz wplywa na dane w tabeli Keywords
+
+### SEARCH Optimization — 6 nowych analiz — ✅ DONE
+- Nowa strona `SearchOptimization.jsx` z 6 rozwijalnymi sekcjami
+- 6 nowych metod w analytics_service.py:
+  1. `get_dayparting()` — analiza dnia tygodnia (MetricDaily)
+  2. `get_rsa_analysis()` — analiza RSA reklam (CTR spread, headlines)
+  3. `get_ngram_analysis()` — n-gramy z search terms (1/2/3-gramy)
+  4. `get_match_type_analysis()` — porownanie EXACT/PHRASE/BROAD (KeywordDaily)
+  5. `get_landing_page_analysis()` — analiza landing pages (KeywordDaily + final_url)
+  6. `get_wasted_spend()` — zmarnowany budzet (keywords 0 conv, search terms 0 conv, ads 0 conv)
+- 6 nowych endpointow w analytics.py router
+- 6 nowych funkcji API w api.js
+- Sidebar: "Optymalizacja" (Zap icon) w grupie ANALIZA
+- Seed: final_url per keyword, waste_kw_ids (3 keywords z 0 conversions)
+
+---
+
 ## INTEGRACJA I TESTY (Phase 5) — 🟡 W TOKU
 
 | Zadanie | Status | Uwagi |
@@ -200,7 +227,7 @@
 | 2 | Dashboard secondary data — silent error suppression | LOW | ⬜ |
 | 3 | Brak AbortController w useEffect (memory leaks) | LOW | ⬜ |
 | 4 | TH_STYLE zduplikowane w 3 plikach (wyciagnac do theme.js) | LOW | ⬜ |
-| 5 | Keywords/Campaigns nie maja dat w modelu — snapshot z synca, date picker ich nie dotyczy | INFO | N/A |
+| 5 | Keywords maja KeywordDaily (date filtering dziala). Campaigns — nadal snapshot z synca | INFO | Czesciowo naprawione |
 | 6 | SQLite: brak Alembic, zmiana schematu = usun DB + reseed | INFO | N/A |
 
 ---

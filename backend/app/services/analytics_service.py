@@ -119,13 +119,24 @@ class AnalyticsService:
                 MetricDaily.date >= days_30_ago,
             ).all()
 
+            # Last 3 days for CPA sustained check
+            rows_3d = self.db.query(MetricDaily).filter(
+                MetricDaily.campaign_id == campaign.id,
+                MetricDaily.date >= today - timedelta(days=3),
+            ).order_by(MetricDaily.date).all()
+
             campaign_metrics[campaign.id] = {
                 "spend_7d": sum(r.cost_micros or 0 for r in rows_7d),
+                "spend_30d": sum(r.cost_micros or 0 for r in rows_30d),
                 "clicks_7d": sum(r.clicks or 0 for r in rows_7d),
                 "impressions_7d": sum(r.impressions or 0 for r in rows_7d),
                 "conversions_7d": sum(r.conversions or 0 for r in rows_7d),
                 "conversions_30d": sum(r.conversions or 0 for r in rows_30d),
                 "days_30d": len(rows_30d),
+                "daily_3d": [
+                    {"cost": r.cost_micros or 0, "conversions": r.conversions or 0}
+                    for r in rows_3d
+                ],
             }
 
         total_spend_7d = sum(m["spend_7d"] for m in campaign_metrics.values())
@@ -183,6 +194,66 @@ class AnalyticsService:
                     )
                     if alert:
                         alerts_created.append(alert)
+
+            # Rule 4: CPA_SUSTAINED — CPA > 150% of 30d average for 3+ consecutive days
+            conv_30d = m["conversions_30d"]
+            daily_3d = m.get("daily_3d", [])
+            if conv_30d > 0 and len(daily_3d) >= 3:
+                avg_cpa_30d = m["spend_30d"] / conv_30d
+                cpa_threshold = avg_cpa_30d * 1.5
+                all_high = True
+                for d in daily_3d:
+                    if d["conversions"] > 0:
+                        day_cpa = d["cost"] / d["conversions"]
+                        if day_cpa <= cpa_threshold:
+                            all_high = False
+                            break
+                    else:
+                        # 0 conversions with cost > 0 counts as infinite CPA
+                        if d["cost"] == 0:
+                            all_high = False
+                            break
+                if all_high:
+                    alert = self._create_alert(
+                        client_id=client_id,
+                        campaign_id=campaign.id,
+                        alert_type="CPA_SUSTAINED",
+                        severity="HIGH",
+                        title=f"Wysoki CPA przez 3+ dni: {campaign.name}",
+                        description=(
+                            f"CPA przekracza 150% sredniej z 30 dni "
+                            f"(srednia: {avg_cpa_30d/1_000_000:.2f} zl) przez ostatnie 3 dni"
+                        ),
+                    )
+                    if alert:
+                        alerts_created.append(alert)
+
+            # Rule 5: DISAPPROVED_ADS — any disapproved ads in ENABLED campaigns
+        from app.models.ad import Ad as AdModel
+        from app.models.ad_group import AdGroup as AGModel
+
+        disapproved_count = (
+            self.db.query(AdModel)
+            .join(AGModel, AdModel.ad_group_id == AGModel.id)
+            .join(Campaign, AGModel.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                AdModel.approval_status == "DISAPPROVED",
+            )
+            .count()
+        )
+        if disapproved_count > 0:
+            alert = self._create_alert(
+                client_id=client_id,
+                campaign_id=None,
+                alert_type="DISAPPROVED_ADS",
+                severity="HIGH",
+                title=f"Odrzucone reklamy: {disapproved_count} szt.",
+                description=f"{disapproved_count} reklam odrzuconych — kampanie traca ruch",
+            )
+            if alert:
+                alerts_created.append(alert)
 
         self.db.commit()
         return alerts_created
@@ -743,6 +814,744 @@ class AnalyticsService:
             })
 
         return {"period_days": days, "cities": cities}
+
+    # -----------------------------------------------------------------------
+    # Dayparting — day-of-week performance analysis
+    # -----------------------------------------------------------------------
+
+    def get_dayparting(self, client_id: int, days: int = 30) -> dict:
+        """Aggregate SEARCH campaign metrics by day of week from MetricDaily."""
+        today = date.today()
+        date_from = today - timedelta(days=days)
+
+        campaign_ids = [
+            c.id for c in self.db.query(Campaign).filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type == "SEARCH",
+            ).all()
+        ]
+        if not campaign_ids:
+            return {"period_days": days, "days": []}
+
+        rows = self.db.query(MetricDaily).filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= date_from,
+        ).all()
+
+        dow_agg: dict[int, dict] = {}
+        for r in rows:
+            dow = r.date.weekday()
+            if dow not in dow_agg:
+                dow_agg[dow] = {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                                "conversions": 0.0, "conv_value_micros": 0, "count": 0}
+            dow_agg[dow]["clicks"] += r.clicks or 0
+            dow_agg[dow]["impressions"] += r.impressions or 0
+            dow_agg[dow]["cost_micros"] += r.cost_micros or 0
+            dow_agg[dow]["conversions"] += r.conversions or 0
+            dow_agg[dow]["conv_value_micros"] += r.conversion_value_micros or 0
+            dow_agg[dow]["count"] += 1
+
+        DOW_NAMES = ["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"]
+        days_data = []
+        for dow in range(7):
+            a = dow_agg.get(dow, {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                                  "conversions": 0.0, "conv_value_micros": 0, "count": 0})
+            cost = a["cost_micros"] / 1_000_000
+            cv = a["conv_value_micros"] / 1_000_000
+            n = max(a["count"], 1)
+            days_data.append({
+                "day_of_week": dow,
+                "day_name": DOW_NAMES[dow],
+                "clicks": a["clicks"],
+                "impressions": a["impressions"],
+                "cost_usd": round(cost, 2),
+                "conversions": round(a["conversions"], 2),
+                "avg_clicks": round(a["clicks"] / n),
+                "avg_cost_usd": round(cost / n, 2),
+                "avg_conversions": round(a["conversions"] / n, 2),
+                "ctr": round(a["clicks"] / a["impressions"] * 100, 2) if a["impressions"] else 0,
+                "cpc": round(cost / a["clicks"], 2) if a["clicks"] else 0,
+                "cpa": round(cost / a["conversions"], 2) if a["conversions"] else 0,
+                "roas": round(cv / cost, 2) if cost > 0 else 0,
+                "cvr": round(a["conversions"] / a["clicks"] * 100, 2) if a["clicks"] else 0,
+            })
+        return {"period_days": days, "days": days_data}
+
+    # -----------------------------------------------------------------------
+    # RSA Analysis — ad copy performance per ad group
+    # -----------------------------------------------------------------------
+
+    def get_rsa_analysis(self, client_id: int) -> dict:
+        """Analyze RSA ad performance per ad group for SEARCH campaigns."""
+        from app.models.ad import Ad
+        from app.models.ad_group import AdGroup
+
+        ads = (
+            self.db.query(Ad)
+            .join(AdGroup, Ad.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type == "SEARCH",
+            )
+            .all()
+        )
+
+        # Pre-fetch all ad group names in one query
+        ag_ids = set(ad.ad_group_id for ad in ads)
+        ag_rows = (
+            self.db.query(AdGroup.id, AdGroup.name)
+            .filter(AdGroup.id.in_(ag_ids))
+            .all()
+        ) if ag_ids else []
+        ag_cache = {row.id: row.name for row in ag_rows}
+
+        by_group: dict[int, dict] = {}
+        for ad in ads:
+            gid = ad.ad_group_id
+            if gid not in by_group:
+                by_group[gid] = {"ad_group_name": ag_cache.get(gid, "Unknown"), "ads": []}
+
+            headlines = ad.headlines or []
+            descriptions = ad.descriptions or []
+            cost = (ad.cost_micros or 0) / 1_000_000
+            ctr_pct = (ad.ctr or 0) / 10_000
+
+            by_group[gid]["ads"].append({
+                "id": ad.id,
+                "status": ad.status,
+                "approval_status": ad.approval_status,
+                "ad_strength": ad.ad_strength,
+                "headline_count": len(headlines),
+                "description_count": len(descriptions),
+                "headlines": [
+                    h.get("text", h) if isinstance(h, dict) else str(h)
+                    for h in headlines[:5]
+                ],
+                "descriptions": [
+                    d.get("text", d) if isinstance(d, dict) else str(d)
+                    for d in descriptions[:3]
+                ],
+                "pinned_count": sum(
+                    1 for h in headlines
+                    if isinstance(h, dict) and h.get("pinned_position")
+                ),
+                "clicks": ad.clicks or 0,
+                "impressions": ad.impressions or 0,
+                "cost_usd": round(cost, 2),
+                "conversions": ad.conversions or 0,
+                "ctr_pct": round(ctr_pct, 2),
+                "cpc_usd": round(cost / (ad.clicks or 1), 2),
+            })
+
+        groups = []
+        for gid, data in by_group.items():
+            ads_list = data["ads"]
+            if not ads_list:
+                continue
+            ctrs = [a["ctr_pct"] for a in ads_list if a["impressions"] > 0]
+            best_ctr = max(ctrs) if ctrs else 0
+            worst_ctr = min(ctrs) if ctrs else 0
+            groups.append({
+                "ad_group_id": gid,
+                "ad_group_name": data["ad_group_name"],
+                "ad_count": len(ads_list),
+                "best_ctr": best_ctr,
+                "worst_ctr": worst_ctr,
+                "ctr_spread": round(best_ctr - worst_ctr, 2),
+                "ads": sorted(ads_list, key=lambda a: a["ctr_pct"], reverse=True),
+            })
+
+        return {
+            "ad_groups": sorted(groups, key=lambda g: g["ctr_spread"], reverse=True),
+        }
+
+    # -----------------------------------------------------------------------
+    # N-gram Analysis — word-level search term aggregation
+    # -----------------------------------------------------------------------
+
+    def get_ngram_analysis(
+        self, client_id: int, ngram_size: int = 1, min_occurrences: int = 2,
+    ) -> dict:
+        """Aggregate search term metrics by word/n-gram."""
+        from app.models.search_term import SearchTerm
+        from app.models.ad_group import AdGroup
+        from collections import defaultdict
+        from sqlalchemy import or_
+
+        # SEARCH terms link via ad_group_id, PMax terms link via campaign_id
+        terms = (
+            self.db.query(SearchTerm)
+            .outerjoin(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
+            .join(
+                Campaign,
+                or_(
+                    SearchTerm.campaign_id == Campaign.id,
+                    AdGroup.campaign_id == Campaign.id,
+                ),
+            )
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+
+        stats: dict[str, dict] = defaultdict(
+            lambda: {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                      "conversions": 0.0, "count": 0}
+        )
+        for term in terms:
+            words = term.text.lower().split()
+            for i in range(len(words) - ngram_size + 1):
+                ngram = " ".join(words[i:i + ngram_size])
+                if len(ngram) < 2:
+                    continue
+                stats[ngram]["clicks"] += term.clicks or 0
+                stats[ngram]["impressions"] += term.impressions or 0
+                stats[ngram]["cost_micros"] += term.cost_micros or 0
+                stats[ngram]["conversions"] += term.conversions or 0
+                stats[ngram]["count"] += 1
+
+        results = []
+        for ngram, s in stats.items():
+            if s["count"] < min_occurrences:
+                continue
+            cost = s["cost_micros"] / 1_000_000
+            results.append({
+                "ngram": ngram,
+                "occurrences": s["count"],
+                "clicks": s["clicks"],
+                "impressions": s["impressions"],
+                "cost_usd": round(cost, 2),
+                "conversions": round(s["conversions"], 2),
+                "ctr": round(s["clicks"] / s["impressions"] * 100, 2) if s["impressions"] else 0,
+                "cvr": round(s["conversions"] / s["clicks"] * 100, 2) if s["clicks"] else 0,
+                "cpa": round(cost / s["conversions"], 2) if s["conversions"] else 0,
+            })
+
+        results.sort(key=lambda x: x["cost_usd"], reverse=True)
+        return {"ngram_size": ngram_size, "total": len(results), "ngrams": results[:100]}
+
+    # -----------------------------------------------------------------------
+    # Match Type Analysis — keyword performance by match type
+    # -----------------------------------------------------------------------
+
+    def get_match_type_analysis(self, client_id: int, days: int = 30) -> dict:
+        """Compare keyword performance grouped by match type using KeywordDaily."""
+        from app.models.keyword_daily import KeywordDaily
+        from app.models.ad_group import AdGroup
+
+        today = date.today()
+        date_from = today - timedelta(days=days)
+
+        keywords = (
+            self.db.query(Keyword)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_id, Campaign.campaign_type == "SEARCH")
+            .all()
+        )
+        kw_match = {kw.id: kw.match_type for kw in keywords}
+        kw_ids = list(kw_match.keys())
+        if not kw_ids:
+            return {"period_days": days, "match_types": []}
+
+        daily = (
+            self.db.query(KeywordDaily)
+            .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from)
+            .all()
+        )
+
+        mt_agg: dict[str, dict] = {}
+        mt_kws: dict[str, set] = {}
+        for r in daily:
+            mt = kw_match.get(r.keyword_id, "UNKNOWN")
+            if mt not in mt_agg:
+                mt_agg[mt] = {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                              "conversions": 0.0, "conv_value_micros": 0}
+                mt_kws[mt] = set()
+            mt_agg[mt]["clicks"] += r.clicks or 0
+            mt_agg[mt]["impressions"] += r.impressions or 0
+            mt_agg[mt]["cost_micros"] += r.cost_micros or 0
+            mt_agg[mt]["conversions"] += r.conversions or 0
+            mt_agg[mt]["conv_value_micros"] += r.conversion_value_micros or 0
+            mt_kws[mt].add(r.keyword_id)
+
+        total_cost = sum(a["cost_micros"] for a in mt_agg.values())
+        match_types = []
+        for mt, a in mt_agg.items():
+            cost = a["cost_micros"] / 1_000_000
+            cv = a["conv_value_micros"] / 1_000_000
+            match_types.append({
+                "match_type": mt,
+                "keyword_count": len(mt_kws.get(mt, set())),
+                "clicks": a["clicks"],
+                "impressions": a["impressions"],
+                "cost_usd": round(cost, 2),
+                "conversions": round(a["conversions"], 2),
+                "ctr": round(a["clicks"] / a["impressions"] * 100, 2) if a["impressions"] else 0,
+                "cpc": round(cost / a["clicks"], 2) if a["clicks"] else 0,
+                "cpa": round(cost / a["conversions"], 2) if a["conversions"] else 0,
+                "roas": round(cv / cost, 2) if cost > 0 else 0,
+                "cvr": round(a["conversions"] / a["clicks"] * 100, 2) if a["clicks"] else 0,
+                "cost_share_pct": round(a["cost_micros"] / total_cost * 100, 1) if total_cost else 0,
+            })
+        match_types.sort(key=lambda x: x["cost_usd"], reverse=True)
+        return {"period_days": days, "match_types": match_types}
+
+    # -----------------------------------------------------------------------
+    # Landing Page Analysis — performance by final URL
+    # -----------------------------------------------------------------------
+
+    def get_landing_page_analysis(self, client_id: int, days: int = 30) -> dict:
+        """Aggregate keyword metrics grouped by landing page (final_url)."""
+        from app.models.keyword_daily import KeywordDaily
+        from app.models.ad_group import AdGroup
+
+        today = date.today()
+        date_from = today - timedelta(days=days)
+
+        keywords = (
+            self.db.query(Keyword)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+        kw_url = {kw.id: kw.final_url or "brak URL" for kw in keywords}
+        kw_ids = list(kw_url.keys())
+        if not kw_ids:
+            return {"period_days": days, "pages": []}
+
+        daily = (
+            self.db.query(KeywordDaily)
+            .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from)
+            .all()
+        )
+
+        url_agg: dict[str, dict] = {}
+        url_kws: dict[str, set] = {}
+        for r in daily:
+            url = kw_url.get(r.keyword_id, "brak URL")
+            if url not in url_agg:
+                url_agg[url] = {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                                "conversions": 0.0, "conv_value_micros": 0}
+                url_kws[url] = set()
+            url_agg[url]["clicks"] += r.clicks or 0
+            url_agg[url]["impressions"] += r.impressions or 0
+            url_agg[url]["cost_micros"] += r.cost_micros or 0
+            url_agg[url]["conversions"] += r.conversions or 0
+            url_agg[url]["conv_value_micros"] += r.conversion_value_micros or 0
+            url_kws[url].add(r.keyword_id)
+
+        pages = []
+        for url, a in url_agg.items():
+            cost = a["cost_micros"] / 1_000_000
+            cv = a["conv_value_micros"] / 1_000_000
+            pages.append({
+                "url": url,
+                "keyword_count": len(url_kws.get(url, set())),
+                "clicks": a["clicks"],
+                "impressions": a["impressions"],
+                "cost_usd": round(cost, 2),
+                "conversions": round(a["conversions"], 2),
+                "ctr": round(a["clicks"] / a["impressions"] * 100, 2) if a["impressions"] else 0,
+                "cvr": round(a["conversions"] / a["clicks"] * 100, 2) if a["clicks"] else 0,
+                "cpa": round(cost / a["conversions"], 2) if a["conversions"] else 0,
+                "roas": round(cv / cost, 2) if cost > 0 else 0,
+            })
+        pages.sort(key=lambda x: x["cost_usd"], reverse=True)
+        return {"period_days": days, "pages": pages}
+
+    # -----------------------------------------------------------------------
+    # Wasted Spend Summary — total waste across all entities
+    # -----------------------------------------------------------------------
+
+    def get_wasted_spend(self, client_id: int, days: int = 30) -> dict:
+        """Calculate wasted spend: keywords, search terms, ads with 0 conversions."""
+        from app.models.search_term import SearchTerm
+        from app.models.ad import Ad
+        from app.models.ad_group import AdGroup
+        from app.models.keyword_daily import KeywordDaily
+        from sqlalchemy import or_
+
+        today = date.today()
+        date_from = today - timedelta(days=days)
+
+        campaigns = self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+        ).all()
+        campaign_ids = [c.id for c in campaigns]
+        if not campaign_ids:
+            return {"period_days": days, "total_waste_usd": 0, "total_spend_usd": 0,
+                    "waste_pct": 0, "categories": {}}
+
+        # Total spend for context
+        total_spend_micros = (
+            self.db.query(func.sum(MetricDaily.cost_micros))
+            .filter(MetricDaily.campaign_id.in_(campaign_ids), MetricDaily.date >= date_from)
+            .scalar()
+        ) or 0
+        total_spend = total_spend_micros / 1_000_000
+
+        # 1. Keywords: 0 conversions + clicks >= 5 (from KeywordDaily)
+        keywords = (
+            self.db.query(Keyword)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids), Keyword.status == "ENABLED")
+            .all()
+        )
+        kw_ids = [kw.id for kw in keywords]
+        kw_map = {kw.id: kw.text for kw in keywords}
+
+        kw_waste = 0.0
+        kw_waste_items = []
+        if kw_ids:
+            kw_daily = (
+                self.db.query(
+                    KeywordDaily.keyword_id,
+                    func.sum(KeywordDaily.clicks).label("clicks"),
+                    func.sum(KeywordDaily.cost_micros).label("cost_micros"),
+                    func.sum(KeywordDaily.conversions).label("conversions"),
+                )
+                .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from)
+                .group_by(KeywordDaily.keyword_id)
+                .all()
+            )
+            for row in kw_daily:
+                if (row.conversions or 0) == 0 and (row.clicks or 0) >= 5:
+                    cost = (row.cost_micros or 0) / 1_000_000
+                    kw_waste += cost
+                    kw_waste_items.append({
+                        "text": kw_map.get(row.keyword_id, "?"),
+                        "clicks": row.clicks or 0,
+                        "cost_usd": round(cost, 2),
+                    })
+
+        # 2. Search terms: 0 conversions + clicks >= 3
+        st_waste = 0.0
+        st_waste_count = 0
+        st_waste_items = []
+        # SEARCH terms link via ad_group_id, PMax terms link via campaign_id
+        terms = (
+            self.db.query(SearchTerm)
+            .outerjoin(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
+            .filter(
+                or_(
+                    SearchTerm.campaign_id.in_(campaign_ids),
+                    AdGroup.campaign_id.in_(campaign_ids),
+                ),
+            )
+            .all()
+        )
+        for t in terms:
+            if (t.conversions or 0) == 0 and (t.clicks or 0) >= 3:
+                cost = (t.cost_micros or 0) / 1_000_000
+                st_waste += cost
+                st_waste_count += 1
+                st_waste_items.append({
+                    "text": t.text,
+                    "clicks": t.clicks or 0,
+                    "cost_usd": round(cost, 2),
+                })
+
+        # 3. Ads: 0 conversions + cost >= $20
+        ad_waste = 0.0
+        ad_waste_items = []
+        ads = (
+            self.db.query(Ad)
+            .join(AdGroup, Ad.ad_group_id == AdGroup.id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids), Ad.status == "ENABLED")
+            .all()
+        )
+        for ad in ads:
+            cost = (ad.cost_micros or 0) / 1_000_000
+            if (ad.conversions or 0) == 0 and cost >= 20:
+                ad_waste += cost
+                headlines = ad.headlines or []
+                headline = (
+                    (headlines[0].get("text") if isinstance(headlines[0], dict) else str(headlines[0]))
+                    if headlines else f"Ad #{ad.id}"
+                )
+                ad_waste_items.append({
+                    "text": headline,
+                    "clicks": ad.clicks or 0,
+                    "cost_usd": round(cost, 2),
+                })
+
+        total_waste = kw_waste + st_waste + ad_waste
+
+        return {
+            "period_days": days,
+            "total_waste_usd": round(total_waste, 2),
+            "total_spend_usd": round(total_spend, 2),
+            "waste_pct": round(total_waste / total_spend * 100, 1) if total_spend > 0 else 0,
+            "categories": {
+                "keywords": {
+                    "waste_usd": round(kw_waste, 2),
+                    "count": len(kw_waste_items),
+                    "top_items": sorted(kw_waste_items, key=lambda x: x["cost_usd"], reverse=True)[:10],
+                },
+                "search_terms": {
+                    "waste_usd": round(st_waste, 2),
+                    "count": st_waste_count,
+                    "top_items": sorted(st_waste_items, key=lambda x: x["cost_usd"], reverse=True)[:10],
+                },
+                "ads": {
+                    "waste_usd": round(ad_waste, 2),
+                    "count": len(ad_waste_items),
+                    "top_items": sorted(ad_waste_items, key=lambda x: x["cost_usd"], reverse=True)[:10],
+                },
+            },
+        }
+
+    # -----------------------------------------------------------------------
+    # Account Structure Audit — cannibalization, oversized groups, match mix
+    # -----------------------------------------------------------------------
+
+    def get_account_structure_audit(self, client_id: int) -> dict:
+        """Detect structural issues: keyword cannibalization, oversized ad groups, match type mixing."""
+        from app.models.ad_group import AdGroup
+        from collections import defaultdict
+
+        campaigns = self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.campaign_type == "SEARCH",
+        ).all()
+        campaign_ids = [c.id for c in campaigns]
+        campaign_map = {c.id: c.name for c in campaigns}
+        if not campaign_ids:
+            return {"total_keywords": 0, "total_ad_groups": 0, "issues": [],
+                    "oversized_ad_groups": [], "mixed_match_ad_groups": [], "cannibalized_keywords": []}
+
+        ad_groups = self.db.query(AdGroup).filter(
+            AdGroup.campaign_id.in_(campaign_ids)
+        ).all()
+        ag_map = {ag.id: ag for ag in ad_groups}
+        ag_ids = [ag.id for ag in ad_groups]
+
+        keywords = (
+            self.db.query(Keyword)
+            .filter(Keyword.ad_group_id.in_(ag_ids), Keyword.status == "ENABLED")
+            .all()
+        )
+
+        # 1. Oversized ad groups (> 20 keywords)
+        ag_kw_count: dict[int, int] = defaultdict(int)
+        for kw in keywords:
+            ag_kw_count[kw.ad_group_id] += 1
+
+        oversized = []
+        for ag_id, count in ag_kw_count.items():
+            if count > 20:
+                ag = ag_map.get(ag_id)
+                if ag:
+                    oversized.append({
+                        "ad_group_id": ag_id,
+                        "ad_group_name": ag.name,
+                        "campaign_name": campaign_map.get(ag.campaign_id, "?"),
+                        "keyword_count": count,
+                    })
+
+        # 2. Match type mixing (BROAD + EXACT in same ad group)
+        ag_match_types: dict[int, set] = defaultdict(set)
+        for kw in keywords:
+            ag_match_types[kw.ad_group_id].add(kw.match_type)
+
+        mixed_match = []
+        for ag_id, match_types in ag_match_types.items():
+            if "BROAD" in match_types and "EXACT" in match_types:
+                ag = ag_map.get(ag_id)
+                if ag:
+                    mixed_match.append({
+                        "ad_group_id": ag_id,
+                        "ad_group_name": ag.name,
+                        "campaign_name": campaign_map.get(ag.campaign_id, "?"),
+                        "match_types": sorted(match_types),
+                    })
+
+        # 3. Keyword cannibalization: same text + match_type across different ad groups
+        text_locations: dict[tuple, list] = defaultdict(list)
+        for kw in keywords:
+            key = (kw.text.lower().strip(), kw.match_type)
+            ag = ag_map.get(kw.ad_group_id)
+            if ag:
+                text_locations[key].append({
+                    "keyword_id": kw.id,
+                    "ad_group_id": kw.ad_group_id,
+                    "ad_group_name": ag.name,
+                    "campaign_name": campaign_map.get(ag.campaign_id, "?"),
+                    "clicks": kw.clicks or 0,
+                    "cost_usd": round((kw.cost_micros or 0) / 1_000_000, 2),
+                    "conversions": kw.conversions or 0,
+                })
+
+        cannibalized = []
+        for (text, match_type), locations in text_locations.items():
+            unique_ag_ids = set(loc["ad_group_id"] for loc in locations)
+            if len(unique_ag_ids) >= 2:
+                cannibalized.append({
+                    "keyword_text": text,
+                    "match_type": match_type,
+                    "occurrences": len(locations),
+                    "locations": locations,
+                    "total_cost_usd": round(sum(l["cost_usd"] for l in locations), 2),
+                    "total_clicks": sum(l["clicks"] for l in locations),
+                })
+        cannibalized.sort(key=lambda x: x["total_cost_usd"], reverse=True)
+
+        issues = []
+        if oversized:
+            issues.append({"type": "oversized_ad_groups", "count": len(oversized), "severity": "MEDIUM"})
+        if mixed_match:
+            issues.append({"type": "mixed_match_types", "count": len(mixed_match), "severity": "MEDIUM"})
+        if cannibalized:
+            issues.append({"type": "cannibalization", "count": len(cannibalized), "severity": "HIGH"})
+
+        return {
+            "total_keywords": len(keywords),
+            "total_ad_groups": len(ad_groups),
+            "issues": issues,
+            "oversized_ad_groups": oversized,
+            "mixed_match_ad_groups": mixed_match,
+            "cannibalized_keywords": cannibalized[:50],
+        }
+
+    # -----------------------------------------------------------------------
+    # Bidding Strategy Advisor — recommend optimal strategy per campaign
+    # -----------------------------------------------------------------------
+
+    def get_bidding_advisor(self, client_id: int, days: int = 30) -> dict:
+        """Analyze conversion volume per campaign and recommend bidding strategy."""
+        today = date.today()
+        date_from = today - timedelta(days=days)
+
+        campaigns = self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.campaign_type == "SEARCH",
+            Campaign.status == "ENABLED",
+        ).all()
+
+        MANUAL_STRATEGIES = {"MANUAL_CPC", "MAXIMIZE_CLICKS", "ENHANCED_CPC"}
+        SMART_LOW = {"TARGET_CPA", "MAXIMIZE_CONVERSIONS"}
+        SMART_HIGH = {"TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE"}
+
+        results = []
+        for campaign in campaigns:
+            rows = self.db.query(MetricDaily).filter(
+                MetricDaily.campaign_id == campaign.id,
+                MetricDaily.date >= date_from,
+            ).all()
+
+            total_conv = sum(r.conversions or 0 for r in rows)
+            total_cost_usd = sum(r.cost_micros or 0 for r in rows) / 1_000_000
+            current = (campaign.bidding_strategy or "UNKNOWN").upper()
+
+            if total_conv < 30:
+                recommended = "MANUAL_CPC"
+                reason = f"Tylko {total_conv:.0f} konwersji w {days}d — za mało dla Smart Bidding (min. 30)"
+                status = "OK" if current in MANUAL_STRATEGIES else "CHANGE_RECOMMENDED"
+            elif total_conv <= 50:
+                recommended = "TARGET_CPA"
+                reason = f"{total_conv:.0f} konwersji w {days}d — wystarczające dla Target CPA"
+                if current in SMART_LOW or current in SMART_HIGH:
+                    status = "OK"
+                else:
+                    status = "UPGRADE_RECOMMENDED"
+            else:
+                recommended = "TARGET_ROAS"
+                reason = f"{total_conv:.0f} konwersji w {days}d — wystarczające dla Target ROAS"
+                if current in SMART_HIGH:
+                    status = "OK"
+                elif current in SMART_LOW:
+                    status = "UPGRADE_RECOMMENDED"
+                else:
+                    status = "CHANGE_RECOMMENDED"
+
+            results.append({
+                "campaign_id": campaign.id,
+                "campaign_name": campaign.name,
+                "current_strategy": campaign.bidding_strategy,
+                "recommended_strategy": recommended,
+                "conversions_30d": round(total_conv, 1),
+                "cost_usd": round(total_cost_usd, 2),
+                "status": status,
+                "reason": reason,
+            })
+
+        changes_needed = [r for r in results if r["status"] != "OK"]
+        return {
+            "period_days": days,
+            "campaigns": results,
+            "changes_needed": len(changes_needed),
+            "summary": {
+                "ok": len([r for r in results if r["status"] == "OK"]),
+                "upgrade": len([r for r in results if r["status"] == "UPGRADE_RECOMMENDED"]),
+                "change": len([r for r in results if r["status"] == "CHANGE_RECOMMENDED"]),
+            },
+        }
+
+    # -----------------------------------------------------------------------
+    # Hourly Dayparting — performance by hour of day from MetricSegmented
+    # -----------------------------------------------------------------------
+
+    def get_hourly_dayparting(self, client_id: int, days: int = 7) -> dict:
+        """Aggregate SEARCH campaign metrics by hour of day."""
+        today = date.today()
+        date_from = today - timedelta(days=days)
+
+        campaign_ids = [
+            c.id for c in self.db.query(Campaign).filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type == "SEARCH",
+            ).all()
+        ]
+        if not campaign_ids:
+            return {"period_days": days, "hours": []}
+
+        rows = self.db.query(MetricSegmented).filter(
+            MetricSegmented.campaign_id.in_(campaign_ids),
+            MetricSegmented.date >= date_from,
+            MetricSegmented.hour_of_day.isnot(None),
+            MetricSegmented.device.is_(None),
+            MetricSegmented.geo_city.is_(None),
+        ).all()
+
+        hour_agg: dict[int, dict] = {}
+        for r in rows:
+            h = r.hour_of_day
+            if h not in hour_agg:
+                hour_agg[h] = {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                               "conversions": 0.0, "conv_value_micros": 0, "count": 0}
+            hour_agg[h]["clicks"] += r.clicks or 0
+            hour_agg[h]["impressions"] += r.impressions or 0
+            hour_agg[h]["cost_micros"] += r.cost_micros or 0
+            hour_agg[h]["conversions"] += r.conversions or 0
+            hour_agg[h]["conv_value_micros"] += r.conversion_value_micros or 0
+            hour_agg[h]["count"] += 1
+
+        hours_data = []
+        for h in range(24):
+            a = hour_agg.get(h, {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                                  "conversions": 0.0, "conv_value_micros": 0, "count": 0})
+            cost = a["cost_micros"] / 1_000_000
+            cv = a["conv_value_micros"] / 1_000_000
+            n = max(a["count"], 1)
+            hours_data.append({
+                "hour": h,
+                "hour_label": f"{h:02d}:00",
+                "clicks": a["clicks"],
+                "impressions": a["impressions"],
+                "cost_usd": round(cost, 2),
+                "conversions": round(a["conversions"], 2),
+                "avg_clicks": round(a["clicks"] / n),
+                "avg_cost_usd": round(cost / n, 2),
+                "avg_conversions": round(a["conversions"] / n, 2),
+                "ctr": round(a["clicks"] / a["impressions"] * 100, 2) if a["impressions"] else 0,
+                "cpc": round(cost / a["clicks"], 2) if a["clicks"] else 0,
+                "cpa": round(cost / a["conversions"], 2) if a["conversions"] else 0,
+                "roas": round(cv / cost, 2) if cost > 0 else 0,
+                "cvr": round(a["conversions"] / a["clicks"] * 100, 2) if a["clicks"] else 0,
+            })
+        return {"period_days": days, "hours": hours_data}
 
     def _create_alert(self, **kwargs) -> Alert | None:
         """Create alert if not already exists (deduplicate).

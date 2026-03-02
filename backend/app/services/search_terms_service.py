@@ -89,8 +89,9 @@ class SearchTermsService:
         "OTHER": "Niewystarczające dane do klasyfikacji",
     }
 
-    def _fetch_terms(self, client_id: int, date_from: Optional[date_type] = None, date_to: Optional[date_type] = None):
-        """Fetch all search terms for a client, optionally filtered by date range."""
+    def _fetch_terms(self, client_id: int, date_from: Optional[date_type] = None, date_to: Optional[date_type] = None,
+                     campaign_type: Optional[str] = None, campaign_status: Optional[str] = None):
+        """Fetch all search terms for a client, optionally filtered by date range and campaign filters."""
         q1 = (
             self.db.query(SearchTerm)
             .join(AdGroup)
@@ -106,15 +107,25 @@ class SearchTermsService:
             .join(Campaign, SearchTerm.campaign_id == Campaign.id)
             .filter(Campaign.client_id == client_id)
         )
+        # Campaign type filter
+        if campaign_type and campaign_type != "ALL":
+            q1 = q1.filter(Campaign.campaign_type == campaign_type)
+            q2 = q2.filter(Campaign.campaign_type == campaign_type)
+        # Campaign status filter
+        if campaign_status and campaign_status != "ALL":
+            q1 = q1.filter(Campaign.status == campaign_status)
+            q2 = q2.filter(Campaign.status == campaign_status)
+        # Overlap logic: show terms whose reporting period overlaps the selected range
         if date_from:
-            q1 = q1.filter(SearchTerm.date_from >= date_from)
-            q2 = q2.filter(SearchTerm.date_from >= date_from)
+            q1 = q1.filter(SearchTerm.date_to >= date_from)
+            q2 = q2.filter(SearchTerm.date_to >= date_from)
         if date_to:
-            q1 = q1.filter(SearchTerm.date_to <= date_to)
-            q2 = q2.filter(SearchTerm.date_to <= date_to)
+            q1 = q1.filter(SearchTerm.date_from <= date_to)
+            q2 = q2.filter(SearchTerm.date_from <= date_to)
         return q1.all() + q2.all()
 
-    def get_segmented_search_terms(self, client_id: int, date_from: Optional[date_type] = None, date_to: Optional[date_type] = None) -> dict:
+    def get_segmented_search_terms(self, client_id: int, date_from: Optional[date_type] = None, date_to: Optional[date_type] = None,
+                                      campaign_type: Optional[str] = None, campaign_status: Optional[str] = None) -> dict:
         """Return search terms grouped by segment with summary + segments.
 
         Returns:
@@ -123,12 +134,18 @@ class SearchTermsService:
                 "segments": { "HIGH_PERFORMER": [termItem, ...], ... }
             }
         """
-        terms = self._fetch_terms(client_id, date_from, date_to)
+        terms = self._fetch_terms(client_id, date_from, date_to, campaign_type, campaign_status)
 
         # If no segments assigned yet, run segmentation first
         if terms and all(t.segment is None for t in terms):
             self.segment_search_terms(client_id)
-            terms = self._fetch_terms(client_id, date_from, date_to)
+            terms = self._fetch_terms(client_id, date_from, date_to, campaign_type, campaign_status)
+
+        # Build campaign_id -> name lookup
+        campaign_names = {}
+        campaigns = self.db.query(Campaign).filter(Campaign.client_id == client_id).all()
+        for c in campaigns:
+            campaign_names[c.id] = c.name
 
         segment_names = ["HIGH_PERFORMER", "WASTE", "IRRELEVANT", "OTHER"]
         segments = {}
@@ -158,6 +175,9 @@ class SearchTermsService:
                     ) if (t.clicks or 0) > 0 else 0.0,
                     "segment_reason": self.SEGMENT_REASONS.get(seg, ""),
                     "source": t.source or "SEARCH",
+                    "campaign_name": campaign_names.get(
+                        t.campaign_id or (t.ad_group.campaign_id if t.ad_group else None), ""
+                    ),
                 }
                 for t in seg_terms
             ]

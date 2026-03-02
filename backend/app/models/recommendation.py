@@ -18,6 +18,7 @@ class Recommendation(Base):
     rule_id = Column(String, nullable=False)            # "rule_1_waste_spend", "rule_2_low_qs" etc.
     entity_type = Column(String, nullable=False)        # keyword, campaign, search_term
     entity_id = Column(String, nullable=False)          # Google Ads entity ID
+    entity_name = Column(String, nullable=True)         # Human-readable name (keyword text, search term, etc.)
     priority = Column(String, default="MEDIUM")         # HIGH, MEDIUM
     reason = Column(Text, nullable=False)               # "High spend ($50) with 0 conversions"
     suggested_action = Column(Text, nullable=False)     # JSON: {"type": "PAUSE_KEYWORD", "keyword_id": "123"}

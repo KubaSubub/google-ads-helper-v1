@@ -172,8 +172,11 @@ export default function Dashboard() {
         setError(null)
 
         try {
+            const kpiParams = { days }
+            if (filters.campaignType !== 'ALL') kpiParams.campaign_type = filters.campaignType
+            if (filters.status !== 'ALL') kpiParams.status = filters.status
             const [kpiData, campData] = await Promise.all([
-                getDashboardKPIs(selectedClientId, days),
+                getDashboardKPIs(selectedClientId, kpiParams),
                 getCampaigns(selectedClientId),
             ])
             setKpis(kpiData)
@@ -201,7 +204,7 @@ export default function Dashboard() {
             setGeoData(geo)
             setHealthLoading(false)
         })
-    }, [selectedClientId, days])
+    }, [selectedClientId, days, filters.campaignType, filters.status])
 
     useEffect(() => { loadData() }, [loadData])
 

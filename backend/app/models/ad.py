@@ -14,6 +14,8 @@ class Ad(Base):
     google_ad_id = Column(String(50))
     ad_type = Column(String(50))  # RESPONSIVE_SEARCH_AD, etc.
     status = Column(String(20))
+    approval_status = Column(String(30), nullable=True)  # APPROVED, APPROVED_LIMITED, DISAPPROVED, UNDER_REVIEW
+    ad_strength = Column(String(20), nullable=True)  # EXCELLENT, GOOD, AVERAGE, POOR, UNRATED
     final_url = Column(String(2000))
 
     # RSA components stored as JSON arrays

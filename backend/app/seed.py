@@ -9,8 +9,8 @@ from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
 from app.models import (
-    Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
-    ActionLog, ChangeEvent,
+    Client, Campaign, AdGroup, Keyword, KeywordDaily, SearchTerm, Ad, MetricDaily, MetricSegmented,
+    ActionLog, ChangeEvent, Alert,
 )
 
 
@@ -85,6 +85,7 @@ def seed_demo_data():
         ("Meble Biurowe", "SEARCH", 100, "ENABLED"),
         ("Shopping - Łóżka", "SHOPPING", 200, "ENABLED"),
         ("Display - Remarketing", "DISPLAY", 80, "PAUSED"),
+        ("PMax - Meble Ogólne", "PERFORMANCE_MAX", 350, "ENABLED"),
     ]
 
     campaigns = []
@@ -162,6 +163,21 @@ def seed_demo_data():
                 ("biurko regulowane", "PHRASE"),
             ]),
         ],
+        "Shopping - Łóżka": [
+            ("Shopping - Łóżka AG", [
+                ("łóżko sklep", "BROAD"),
+                ("kup łóżko online", "BROAD"),
+                ("łóżko cena", "PHRASE"),
+                ("łóżko z materacem", "BROAD"),
+            ]),
+        ],
+        "Display - Remarketing": [
+            ("Remarketing - Ogólny", [
+                ("meble retargeting", "BROAD"),
+                ("remarketing sofa", "BROAD"),
+                ("display meble", "BROAD"),
+            ]),
+        ],
     }
 
     all_ad_groups = []
@@ -180,6 +196,19 @@ def seed_demo_data():
             db.flush()
             all_ad_groups.append(ag)
 
+            # Landing page URLs per campaign theme
+            _url_map = {
+                "Sofy": ["https://demo-meble.pl/sofy", "https://demo-meble.pl/sofy/narozne", "https://demo-meble.pl/promocje/sofy"],
+                "Kanapy": ["https://demo-meble.pl/kanapy", "https://demo-meble.pl/kanapy/rozkladane"],
+                "Łóżka": ["https://demo-meble.pl/lozka", "https://demo-meble.pl/lozka/drewniane", "https://demo-meble.pl/lozka/tapicerowane"],
+                "Biurka": ["https://demo-meble.pl/biurka", "https://demo-meble.pl/biurka/gamingowe"],
+                "Shopping": ["https://demo-meble.pl/sklep"],
+                "Display": ["https://demo-meble.pl/"],
+                "PMax": ["https://demo-meble.pl/"],
+            }
+            url_key = next((k for k in _url_map if k in campaign.name), "Sofy")
+            urls = _url_map[url_key]
+
             for kw_text, match in keywords_list:
                 clicks = RNG.randint(10, 500)
                 impressions = RNG.randint(200, 10000)
@@ -189,12 +218,21 @@ def seed_demo_data():
                 cpa = round(cost / conversions, 2) if conversions > 0 else 0
                 qs = RNG.choices(range(1, 11), weights=[2, 3, 5, 8, 12, 15, 18, 20, 12, 5], k=1)[0]
 
+                # Serving status distribution: mostly ELIGIBLE, some issues
+                serving_status = RNG.choices(
+                    ["ELIGIBLE", "LOW_SEARCH_VOLUME", "BELOW_FIRST_PAGE_BID", "RARELY_SERVED"],
+                    weights=[60, 15, 15, 10],
+                    k=1,
+                )[0]
+
                 kw = Keyword(
                     ad_group_id=ag.id,
                     google_keyword_id=str(RNG.randint(30000, 99999)),
                     text=kw_text,
                     match_type=match,
                     status="ENABLED",
+                    serving_status=serving_status,
+                    final_url=RNG.choice(urls),
                     clicks=clicks,
                     impressions=impressions,
                     cost_micros=int(cost * 1_000_000),
@@ -233,6 +271,42 @@ def seed_demo_data():
     db.flush()
 
     # -----------------------------------------------------------------------
+    # Keyword Daily Metrics (90 days per keyword)
+    # Mark ~3 keywords as "waste" (0 conversions but high clicks) for demo
+    # -----------------------------------------------------------------------
+    waste_kw_ids = set(kw.id for kw in all_keywords[:3])  # first 3 keywords = waste
+
+    for kw in all_keywords:
+        is_waste = kw.id in waste_kw_ids
+        base_clicks = max(1, (kw.clicks or 10) // 90)
+        base_cost_usd = ((kw.cost_micros or 500_000_000) / 1_000_000) / 90
+
+        for day_offset in range(90):
+            d = date.today() - timedelta(days=day_offset)
+            trend_factor = 1 + (90 - day_offset) * 0.003
+            dow_factor = 0.65 if d.weekday() >= 5 else 1.0
+            noise = RNG.uniform(0.3, 1.7)
+
+            clicks = max(0, int(base_clicks * trend_factor * dow_factor * noise))
+            impressions = int(max(clicks * RNG.uniform(8, 25), 1)) if clicks > 0 else RNG.randint(3, 40)
+            cost_usd = round(clicks * RNG.uniform(0.5, 4.5) * dow_factor, 2) if clicks > 0 else 0
+            conversions = 0.0 if is_waste else round(max(0.0, clicks * RNG.uniform(0.0, 0.12)), 2)
+            conv_value = round(conversions * RNG.uniform(80, 250), 2)
+
+            kd = KeywordDaily(
+                keyword_id=kw.id,
+                date=d,
+                clicks=clicks,
+                impressions=impressions,
+                cost_micros=int(cost_usd * 1_000_000),
+                conversions=conversions,
+                conversion_value_micros=int(conv_value * 1_000_000),
+                avg_cpc_micros=int((cost_usd / clicks) * 1_000_000) if clicks > 0 else 0,
+            )
+            db.add(kd)
+    db.flush()
+
+    # -----------------------------------------------------------------------
     # Search Terms (with extended conversions)
     # -----------------------------------------------------------------------
     search_terms_pool = [
@@ -249,6 +323,16 @@ def seed_demo_data():
         "jak wybrać łóżko do sypialni",  # Informational
         "ikea łóżko malm",  # Competitor brand
         "materac do łóżka",  # Loosely related
+    ]
+
+    # Date range buckets for search terms — spread across different periods
+    # so date filtering actually produces different results
+    date_buckets = [
+        (timedelta(days=7), timedelta(days=0)),     # last 7 days
+        (timedelta(days=14), timedelta(days=7)),    # 7-14 days ago
+        (timedelta(days=30), timedelta(days=14)),   # 14-30 days ago
+        (timedelta(days=60), timedelta(days=30)),   # 30-60 days ago
+        (timedelta(days=90), timedelta(days=60)),   # 60-90 days ago
     ]
 
     for ag in all_ad_groups:
@@ -268,6 +352,11 @@ def seed_demo_data():
             else:
                 keyword_text = "generic keyword"
 
+            # Pick a random date bucket so filtering by 7d/14d/30d/90d yields different results
+            bucket_start, bucket_end = RNG.choice(date_buckets)
+            st_date_from = date.today() - bucket_start
+            st_date_to = date.today() - bucket_end
+
             st = SearchTerm(
                 ad_group_id=ag.id,
                 text=term_text,
@@ -279,8 +368,8 @@ def seed_demo_data():
                 conversion_value_micros=int(conv_value * 1_000_000),
                 ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),
                 conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),
-                date_from=date.today() - timedelta(days=30),
-                date_to=date.today(),
+                date_from=st_date_from,
+                date_to=st_date_to,
                 # Extended conversions
                 all_conversions=round(conversions * RNG.uniform(1.0, 1.2), 2) if conversions > 0 else None,
                 all_conversions_value_micros=int(conv_value * RNG.uniform(1.0, 1.2) * 1_000_000) if conv_value > 0 else None,
@@ -289,6 +378,53 @@ def seed_demo_data():
                 conversions_value_per_cost=round(conv_value / cost, 2) if cost > 0 else None,
             )
             db.add(st)
+
+    # -----------------------------------------------------------------------
+    # PMax Search Terms (no ad_group, linked directly to campaign via campaign_id)
+    # -----------------------------------------------------------------------
+    pmax_campaign = [c for c in campaigns if c.campaign_type == "PERFORMANCE_MAX"][0]
+    pmax_terms = [
+        "meble do salonu nowoczesne", "tanie meble online",
+        "sklep meblowy internetowy", "meble promocja",
+        "meble do małego mieszkania", "meble skandynawskie",
+        "komoda drewniana", "regał na książki",
+        "meble za darmo oddam",  # Irrelevant
+        "jak samemu zrobić meble",  # Informational / irrelevant
+    ]
+    for term_text in pmax_terms:
+        clicks = RNG.randint(5, 120)
+        impressions = RNG.randint(clicks * 5, clicks * 25)
+        cost = clicks * RNG.uniform(0.5, 3.5)
+        conversions = round(RNG.uniform(0, clicks * 0.08), 2)
+        conv_value = round(conversions * RNG.uniform(90, 220), 2)
+
+        bucket_start, bucket_end = RNG.choice(date_buckets)
+        st_date_from = date.today() - bucket_start
+        st_date_to = date.today() - bucket_end
+
+        st = SearchTerm(
+            ad_group_id=None,
+            campaign_id=pmax_campaign.id,
+            text=term_text,
+            keyword_text=None,
+            source="PMAX",
+            clicks=clicks,
+            impressions=impressions,
+            cost_micros=int(cost * 1_000_000),
+            conversions=conversions,
+            conversion_value_micros=int(conv_value * 1_000_000),
+            ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),
+            conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),
+            date_from=st_date_from,
+            date_to=st_date_to,
+            all_conversions=round(conversions * RNG.uniform(1.0, 1.2), 2) if conversions > 0 else None,
+            all_conversions_value_micros=int(conv_value * RNG.uniform(1.0, 1.2) * 1_000_000) if conv_value > 0 else None,
+            cross_device_conversions=round(conversions * RNG.uniform(0.03, 0.15), 2) if conversions > 0 else None,
+            value_per_conversion_micros=int((conv_value / conversions) * 1_000_000) if conversions > 0 else None,
+            conversions_value_per_cost=round(conv_value / cost, 2) if cost > 0 else None,
+        )
+        db.add(st)
+    db.flush()
 
     # -----------------------------------------------------------------------
     # Ads (RSA)
@@ -300,11 +436,24 @@ def seed_demo_data():
             cost = clicks * RNG.uniform(0.8, 3.5)
             conversions = int(RNG.uniform(0, clicks * 0.08))
 
+            approval = RNG.choices(
+                ["APPROVED", "APPROVED_LIMITED", "UNDER_REVIEW", "DISAPPROVED"],
+                weights=[70, 10, 10, 10],
+                k=1,
+            )[0]
+            strength = RNG.choices(
+                ["EXCELLENT", "GOOD", "AVERAGE", "POOR", "UNRATED"],
+                weights=[10, 30, 30, 15, 15],
+                k=1,
+            )[0]
+
             ad = Ad(
                 ad_group_id=ag.id,
                 google_ad_id=str(RNG.randint(50000, 99999)),
                 ad_type="RESPONSIVE_SEARCH_AD",
                 status="ENABLED",
+                approval_status=approval,
+                ad_strength=strength,
                 final_url="https://demo-meble.pl/produkty",
                 headlines=[
                     {"text": "Demo Meble - Darmowa Dostawa", "pinned_position": None},
@@ -345,6 +494,12 @@ def seed_demo_data():
             cost_usd = round(clicks * RNG.uniform(0.8, 3.5) * day_of_week_factor, 2)
             conversions = round(max(0.0, clicks * RNG.uniform(0.01, 0.08)), 2)
             conv_value = round(conversions * RNG.uniform(100, 250), 2)
+
+            # CPA spike for "Meble Biurowe" — last 3 days have near-zero conversions
+            # to trigger CPA_SUSTAINED anomaly alert
+            if campaign.name == "Meble Biurowe" and day_offset < 3:
+                conversions = 0.01
+                conv_value = round(conversions * 150, 2)
 
             dm = MetricDaily(
                 campaign_id=campaign.id,
@@ -447,6 +602,49 @@ def seed_demo_data():
                     cost_micros=int(geo_cost * 1_000_000),
                     avg_cpc_micros=int((geo_cost / geo_clicks) * 1_000_000) if geo_clicks else 0,
                     search_impression_share=_rand_is(RNG, 0.15, 0.75),
+                )
+                db.add(ms)
+
+    # -----------------------------------------------------------------------
+    # MetricSegmented — hourly breakdown (last 7 days, SEARCH campaigns only)
+    # -----------------------------------------------------------------------
+    HOUR_PROFILE = {
+        0: 0.05, 1: 0.03, 2: 0.02, 3: 0.02, 4: 0.03, 5: 0.05,
+        6: 0.10, 7: 0.30, 8: 0.70, 9: 0.90, 10: 1.00, 11: 0.95,
+        12: 0.80, 13: 0.75, 14: 0.85, 15: 0.90, 16: 0.95, 17: 1.00,
+        18: 0.85, 19: 0.70, 20: 0.55, 21: 0.40, 22: 0.25, 23: 0.12,
+    }
+
+    for campaign in search_campaigns:
+        for day_offset in range(7):
+            d = date.today() - timedelta(days=day_offset)
+            dow_factor = 0.7 if d.weekday() >= 5 else 1.0
+            total_daily_clicks = int(RNG.randint(80, 250) * dow_factor)
+
+            for hour, weight in HOUR_PROFILE.items():
+                hour_clicks = max(0, int(total_daily_clicks * weight * RNG.uniform(0.7, 1.3)))
+                if hour_clicks == 0:
+                    continue
+                hour_impressions = int(hour_clicks * RNG.uniform(8, 20))
+                hour_cost = round(hour_clicks * RNG.uniform(0.8, 3.5), 2)
+                conv_rate = 0.05 if 9 <= hour <= 18 else 0.01
+                hour_conv = round(max(0, hour_clicks * conv_rate * RNG.uniform(0.5, 1.5)), 2)
+                hour_cv = round(hour_conv * RNG.uniform(100, 250), 2)
+
+                ms = MetricSegmented(
+                    campaign_id=campaign.id,
+                    date=d,
+                    device=None,
+                    geo_city=None,
+                    hour_of_day=hour,
+                    clicks=hour_clicks,
+                    impressions=hour_impressions,
+                    ctr=round(hour_clicks / hour_impressions * 100 if hour_impressions else 0, 2),
+                    conversions=hour_conv,
+                    conversion_value_micros=int(hour_cv * 1_000_000),
+                    cost_micros=int(hour_cost * 1_000_000),
+                    avg_cpc_micros=int((hour_cost / hour_clicks) * 1_000_000) if hour_clicks else 0,
+                    search_impression_share=_rand_is(RNG, 0.20, 0.80),
                 )
                 db.add(ms)
 
@@ -590,9 +788,9 @@ def seed_demo_data():
                 camp_name = c.name
                 break
 
-        # Link a couple of events to action_log entries
+        # Link very few events to action_log entries (most should be unlinked for unified timeline)
         linked_action_id = None
-        if i < len(all_action_logs) and RNG.random() < 0.3:
+        if i < 2 and i < len(all_action_logs):
             linked_action_id = all_action_logs[i].id
 
         change_events_data.append(ChangeEvent(
@@ -616,20 +814,80 @@ def seed_demo_data():
     for ce in change_events_data:
         db.add(ce)
 
+    # -----------------------------------------------------------------------
+    # Alerts (anomaly detection — for monitoring feature testing)
+    # -----------------------------------------------------------------------
+    alerts_data = [
+        Alert(
+            client_id=client.id,
+            alert_type="SPEND_SPIKE",
+            severity="HIGH",
+            title="Nagły wzrost kosztów: Łóżka - Generic",
+            description="Kampania wydała 3.2x więcej niż proporcjonalny udział w budżecie konta w ciągu ostatnich 24h.",
+            metric_value="Spend: 960 zł (avg: 300 zł/dzień)",
+            campaign_id=campaigns[1].id,
+            created_at=datetime.utcnow() - timedelta(hours=6),
+        ),
+        Alert(
+            client_id=client.id,
+            alert_type="CONVERSION_DROP",
+            severity="HIGH",
+            title="Spadek konwersji: Kanapy - Generic",
+            description="Dzienna średnia konwersji spadła z 4.2 do 0.8 w ciągu ostatnich 3 dni.",
+            metric_value="Conv: 0.8/dzień (avg: 4.2/dzień)",
+            campaign_id=campaigns[2].id,
+            created_at=datetime.utcnow() - timedelta(hours=18),
+        ),
+        Alert(
+            client_id=client.id,
+            alert_type="CTR_DROP",
+            severity="MEDIUM",
+            title="Niski CTR: Meble Biurowe",
+            description="CTR kampanii spadł poniżej 0.5% przy ponad 1000 wyświetleń dziennie.",
+            metric_value="CTR: 0.38% (próg: 0.5%)",
+            campaign_id=campaigns[3].id,
+            created_at=datetime.utcnow() - timedelta(days=1, hours=4),
+        ),
+        Alert(
+            client_id=client.id,
+            alert_type="SPEND_SPIKE",
+            severity="MEDIUM",
+            title="Wzrost CPC: Branded Search",
+            description="Średni CPC wzrósł o 45% w porównaniu do średniej z ostatnich 14 dni.",
+            metric_value="CPC: 3.85 zł (avg: 2.65 zł)",
+            campaign_id=campaigns[0].id,
+            created_at=datetime.utcnow() - timedelta(days=2),
+            resolved_at=datetime.utcnow() - timedelta(days=1),  # Already resolved
+        ),
+        Alert(
+            client_id=client.id,
+            alert_type="CONVERSION_DROP",
+            severity="HIGH",
+            title="Brak konwersji: PMax - Meble Ogólne",
+            description="Kampania PMax nie wygenerowała żadnej konwersji w ciągu ostatnich 48h mimo wydania 420 zł.",
+            metric_value="Conv: 0 (spend: 420 zł / 48h)",
+            campaign_id=pmax_campaign.id,
+            created_at=datetime.utcnow() - timedelta(hours=12),
+        ),
+    ]
+    for alert in alerts_data:
+        db.add(alert)
+
     db.commit()
     db.close()
 
     print("Done! Demo data seeded successfully!")
     print("   - 1 client (Demo Meble)")
-    print(f"   - {len(campaigns)} campaigns (with IS + top impression %)")
+    print(f"   - {len(campaigns)} campaigns (with IS + top impression %, incl. PMax)")
     print(f"   - {len(all_ad_groups)} ad groups")
     print("   - Keywords (with IS, QS historical, extended conv, top impression %)")
-    print("   - Search terms (with extended conversions)")
+    print(f"   - Search terms (with extended conversions + {len(pmax_terms)} PMax terms)")
     print("   - 90 days of daily metrics (with IS, extended conv, top impression %)")
     print("   - 30 days of device breakdown (MetricSegmented)")
     print("   - 7 days of geo breakdown (MetricSegmented)")
     print(f"   - {len(all_action_logs)} action log entries")
     print(f"   - {len(change_events_data)} change events (external history)")
+    print(f"   - {len(alerts_data)} alerts (anomaly detection)")
 
 
 if __name__ == "__main__":

@@ -3,8 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { ErrorMessage } from '../components/UI'
 import { getKeywords } from '../api'
 import { useApp } from '../contexts/AppContext'
+import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Loader2, X } from 'lucide-react'
+import FilterBar from '../components/FilterBar'
+import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Loader2, X, PauseCircle, TrendingUp, TrendingDown } from 'lucide-react'
+import { MetricTooltip } from '../components/MetricTooltip'
 
 const MATCH_COLORS = {
     EXACT: { color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', border: 'rgba(74,222,128,0.2)' },
@@ -26,6 +29,24 @@ function QSBadge({ score }) {
     )
 }
 
+function ServingStatusBadge({ status }) {
+    if (!status || status === 'ELIGIBLE') return null
+    const config = {
+        LOW_SEARCH_VOLUME:     { label: 'Mało zapytań',  color: '#FBBF24' },
+        BELOW_FIRST_PAGE_BID:  { label: 'Bid za niski',  color: '#F87171' },
+        RARELY_SERVED:         { label: 'Rzadko',        color: '#FBBF24' },
+    }
+    const c = config[status] || { label: status, color: 'rgba(255,255,255,0.4)' }
+    return (
+        <span style={{
+            fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 999,
+            background: `${c.color}15`, color: c.color, border: `1px solid ${c.color}30`,
+        }}>
+            {c.label}
+        </span>
+    )
+}
+
 const TH_STYLE = {
     padding: '10px 12px',
     fontSize: 10, fontWeight: 500,
@@ -36,8 +57,41 @@ const TH_STYLE = {
     textAlign: 'left',
 }
 
+function KeywordAction({ icon: Icon, label, color, bg, border, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 500, padding: '3px 8px', borderRadius: 6,
+                background: bg, color, border: `1px solid ${border}`,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+        >
+            <Icon size={10} />{label}
+        </button>
+    )
+}
+
+function getKeywordHint(k) {
+    const cost = k.cost || 0
+    const conv = k.conversions || 0
+    const clicks = k.clicks || 0
+    if (cost > 50 && conv === 0 && clicks >= 10) return { type: 'pause', label: 'Pauzuj', icon: PauseCircle, color: '#F87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)' }
+    if (conv >= 5 && clicks > 0) {
+        const cvr = conv / clicks * 100
+        if (cvr > 5) return { type: 'bid_up', label: 'Stawka ↑', icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)' }
+    }
+    if (conv > 0 && cost > 100) {
+        const cpa = cost / conv
+        if (cpa > 50) return { type: 'bid_down', label: 'Stawka ↓', icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)' }
+    }
+    return null
+}
+
 export default function Keywords() {
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
+    const { filters } = useFilter()
     const [searchParams, setSearchParams] = useSearchParams()
     const navigate = useNavigate()
     const campaignId = searchParams.get('campaign_id')
@@ -51,9 +105,14 @@ export default function Keywords() {
     const [page, setPage] = useState(1)
     const [matchFilter, setMatchFilter] = useState('')
 
+    // Reset page to 1 when filters change (not when page itself changes)
+    useEffect(() => {
+        setPage(1)
+    }, [selectedClientId, campaignId, filters.campaignType, filters.status, filters.dateFrom, filters.dateTo, matchFilter])
+
     useEffect(() => {
         if (selectedClientId) loadData()
-    }, [page, matchFilter, sortBy, sortOrder, selectedClientId, campaignId])
+    }, [page, matchFilter, sortBy, sortOrder, selectedClientId, campaignId, filters.campaignType, filters.status, filters.dateFrom, filters.dateTo])
 
     async function loadData() {
         setLoading(true)
@@ -68,6 +127,10 @@ export default function Keywords() {
             }
             if (campaignId) params.campaign_id = campaignId
             if (matchFilter) params.match_type = matchFilter
+            if (filters.campaignType !== 'ALL') params.campaign_type = filters.campaignType
+            if (filters.status !== 'ALL') params.campaign_status = filters.status
+            if (filters.dateFrom) params.date_from = filters.dateFrom
+            if (filters.dateTo) params.date_to = filters.dateTo
             const res = await getKeywords(params)
             setData(res)
         } catch (err) {
@@ -177,6 +240,9 @@ export default function Keywords() {
                 </div>
             </div>
 
+            {/* Campaign type + status filter */}
+            <FilterBar />
+
             <div className="v2-card" style={{ overflow: 'hidden' }}>
                 {loading ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
@@ -203,14 +269,16 @@ export default function Keywords() {
                                             <span className="flex items-center gap-1">Konwersje {sortBy === 'conversions' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
                                         </th>
                                         <th style={{ ...TH_STYLE, cursor: 'pointer' }} onClick={() => handleSort('ctr')}>
-                                            <span className="flex items-center gap-1" title="Click-Through Rate — stosunek kliknięć do wyświetleń">CTR {sortBy === 'ctr' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
+                                            <span className="flex items-center gap-1"><MetricTooltip term="CTR" inline>CTR</MetricTooltip> {sortBy === 'ctr' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
                                         </th>
                                         <th style={{ ...TH_STYLE, cursor: 'pointer' }} onClick={() => handleSort('avg_cpc')}>
-                                            <span className="flex items-center gap-1" title="Cost Per Click — średni koszt jednego kliknięcia">Avg CPC {sortBy === 'avg_cpc' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
+                                            <span className="flex items-center gap-1"><MetricTooltip term="CPC" inline>Avg CPC</MetricTooltip> {sortBy === 'avg_cpc' && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}</span>
                                         </th>
-                                        <th style={TH_STYLE} title="Quality Score — ocena Google jakości słowa kluczowego (1-10)">QS</th>
-                                        <th style={TH_STYLE} title="Return On Ad Spend — przychód / koszt">ROAS</th>
-                                        <th style={TH_STYLE} title="Impression Share — udział w wyświetleniach aukcji (0-100%)">IS %</th>
+                                        <th style={TH_STYLE}><MetricTooltip term="QS" inline>QS</MetricTooltip></th>
+                                        <th style={TH_STYLE}>Status</th>
+                                        <th style={TH_STYLE}><MetricTooltip term="ROAS" inline>ROAS</MetricTooltip></th>
+                                        <th style={TH_STYLE}><MetricTooltip term="Impression Share" inline>IS %</MetricTooltip></th>
+                                        <th style={TH_STYLE}>Akcje</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -249,11 +317,27 @@ export default function Keywords() {
                                                 <td style={{ padding: '10px 12px' }}>
                                                     <QSBadge score={k.quality_score} />
                                                 </td>
+                                                <td style={{ padding: '10px 12px' }}>
+                                                    <ServingStatusBadge status={k.serving_status} />
+                                                </td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>
                                                     {k.roas != null ? k.roas.toFixed(2) : '—'}
                                                 </td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>
                                                     {k.search_impression_share != null ? `${(k.search_impression_share * 100).toFixed(1)}%` : '—'}
+                                                </td>
+                                                <td style={{ padding: '10px 12px' }}>
+                                                    {(() => {
+                                                        const hint = getKeywordHint(k)
+                                                        if (!hint) return null
+                                                        return (
+                                                            <KeywordAction
+                                                                icon={hint.icon} label={hint.label}
+                                                                color={hint.color} bg={hint.bg} border={hint.border}
+                                                                onClick={() => showToast(`"${k.text}" → przejdź do Rekomendacje`, 'info')}
+                                                            />
+                                                        )
+                                                    })()}
                                                 </td>
                                             </tr>
                                         )

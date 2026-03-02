@@ -45,12 +45,13 @@ google-ads-helper/
 │       ├── database.py                  # SQLAlchemy engine + SessionLocal + Base
 │       ├── seed.py                      # Demo data seeder
 │       │
-│       ├── models/                      # Layer 3: SQLAlchemy ORM (13 models)
+│       ├── models/                      # Layer 3: SQLAlchemy ORM (14 models)
 │       │   ├── __init__.py              # Exports all models
 │       │   ├── client.py
 │       │   ├── campaign.py
 │       │   ├── ad_group.py
 │       │   ├── keyword.py
+│       │   ├── keyword_daily.py         # Keyword daily metrics (date aggregation)
 │       │   ├── ad.py
 │       │   ├── search_term.py
 │       │   ├── recommendation.py
@@ -149,6 +150,7 @@ google-ads-helper/
 │       │   ├── Forecast.jsx            # Campaign forecasting
 │       │   ├── Semantic.jsx            # Keyword clustering
 │       │   ├── Anomalies.jsx
+│       │   ├── SearchOptimization.jsx   # SEARCH optimization (6 analyses)
 │       │   └── Login.jsx
 │       │
 │       └── hooks/
@@ -306,7 +308,7 @@ SAFETY_LIMITS = {
 - `GET /campaigns/{id}/metrics?date_from&date_to`
 
 ### Keywords + Ads
-- `GET /keywords/?campaign_id=X`
+- `GET /keywords/?client_id=X&campaign_type=&status=&match_type=&date_from=&date_to=`
 
 ### Search Terms
 - `GET /search-terms/?client_id=X&search=&sort_by=&page=`
@@ -341,6 +343,14 @@ SAFETY_LIMITS = {
 - `GET /analytics/impression-share?client_id=X`
 - `GET /analytics/device-breakdown?client_id=X`
 - `GET /analytics/geo-breakdown?client_id=X`
+
+### Analytics (SEARCH Optimization)
+- `GET /analytics/dayparting?client_id=X&days=30`
+- `GET /analytics/rsa-analysis?client_id=X`
+- `GET /analytics/ngram-analysis?client_id=X&ngram_size=1&min_occurrences=2`
+- `GET /analytics/match-type-analysis?client_id=X&days=30`
+- `GET /analytics/landing-pages?client_id=X&days=30`
+- `GET /analytics/wasted-spend?client_id=X&days=30`
 
 ### Export
 - `GET /export/search-terms?client_id=X&format=xlsx`
@@ -407,8 +417,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - DateRangePicker component lives in Sidebar.jsx (after client selector, before nav)
 - FilterContext exposes: `filters.period`, `filters.dateFrom`, `filters.dateTo`, computed `days`
 - Period preset (7/14/30/90) auto-sets dateFrom/dateTo. Custom dates clear period to null.
-- Pages using dates: Dashboard (`days`), Campaigns (`days`), TrendExplorer (`days`), SearchTerms (`date_from`/`date_to`)
-- Keywords and Campaigns list are snapshot data — NO date filtering (no dates in model)
+- Pages using dates: Dashboard (`days`), Campaigns (`days`), TrendExplorer (`days`), SearchTerms (`date_from`/`date_to`), Keywords (`date_from`/`date_to` via KeywordDaily)
+- Campaigns list: snapshot data — NO date filtering
+- Keywords: date filtering aggregates from `keywords_daily` table (SUM per keyword); without dates falls back to Keyword snapshot
 - FilterBar period pills hidden (`hidePeriod`) since dates are global in sidebar
 
 ### AppContext — Centralized Client State
@@ -420,6 +431,18 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `GET /auth/setup-status`, `POST /auth/setup` endpoints in auth.py
 - Login.jsx has step-by-step credential setup before Google OAuth
 - All tokens stored in Windows Credential Manager via keyring
+
+### KeywordDaily (Date Aggregation)
+- Model `KeywordDaily`: keyword_id + date → clicks, impressions, cost_micros, conversions, conversion_value_micros, avg_cpc_micros
+- Router `keywords_ads.py`: two paths — daily aggregation (with date_from/date_to) vs snapshot (without dates)
+- Seed: 90 days per keyword with trend + dow + noise factors
+- Summable metrics in KeywordDaily; snapshot metrics (quality_score, impression_share, bid) stay on Keyword model
+
+### SEARCH Optimization Page
+- `SearchOptimization.jsx` — 6 collapsible analysis sections
+- Endpoints: dayparting, rsa-analysis, ngram-analysis, match-type-analysis, landing-pages, wasted-spend
+- Backend: 6 methods in analytics_service.py + 6 routes in analytics.py
+- Sidebar nav: "Optymalizacja" (Zap icon) in ANALIZA group
 
 ---
 

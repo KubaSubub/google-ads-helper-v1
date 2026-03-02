@@ -8,8 +8,10 @@ import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
     TrendingUp, AlertTriangle, XCircle, LayoutGrid,
-    List, Loader2, X,
+    List, Loader2, X, PlusCircle, MinusCircle,
 } from 'lucide-react'
+import FilterBar from '../components/FilterBar'
+import { MetricTooltip } from '../components/MetricTooltip'
 
 const SEGMENT_CONFIG = {
     HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: '#4ADE80', bg: 'rgba(74,222,128,0.1)',   border: 'rgba(74,222,128,0.2)'  },
@@ -42,8 +44,24 @@ function SegmentBadge({ seg }) {
     )
 }
 
+function InlineAction({ icon: Icon, label, color, bg, border, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 500, padding: '3px 8px', borderRadius: 6,
+                background: bg, color, border: `1px solid ${border}`,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+        >
+            <Icon size={10} />{label}
+        </button>
+    )
+}
+
 export default function SearchTerms() {
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
     const { filters } = useFilter()
     const [searchParams, setSearchParams] = useSearchParams()
     const campaignId = searchParams.get('campaign_id')
@@ -63,7 +81,7 @@ export default function SearchTerms() {
         if (!selectedClientId) return
         if (viewMode === 'list') loadListData()
         else loadSegmentedData()
-    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId, filters.dateFrom, filters.dateTo])
+    }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status])
 
     async function loadListData() {
         setLoading(true); setError(null)
@@ -72,6 +90,8 @@ export default function SearchTerms() {
             if (campaignId) params.campaign_id = campaignId
             if (filters.dateFrom) params.date_from = filters.dateFrom
             if (filters.dateTo) params.date_to = filters.dateTo
+            if (filters.campaignType !== 'ALL') params.campaign_type = filters.campaignType
+            if (filters.status !== 'ALL') params.campaign_status = filters.status
             const res = await getSearchTerms(params)
             setData(res)
         } catch (err) { setError(err.message) }
@@ -91,6 +111,8 @@ export default function SearchTerms() {
             const params = {}
             if (filters.dateFrom) params.date_from = filters.dateFrom
             if (filters.dateTo) params.date_to = filters.dateTo
+            if (filters.campaignType !== 'ALL') params.campaign_type = filters.campaignType
+            if (filters.status !== 'ALL') params.campaign_status = filters.status
             const res = await getSegmentedSearchTerms(selectedClientId, params)
             setSegData(res)
         } catch (err) { setError(err.message) }
@@ -143,6 +165,7 @@ export default function SearchTerms() {
                 </div>
 
                 <div className="flex items-center gap-3 flex-wrap">
+                    <FilterBar hidePeriod />
                     {/* View mode toggle */}
                     <div className="flex items-center gap-1">
                         {[{ v: 'segments', label: 'Segmenty', icon: LayoutGrid }, { v: 'list', label: 'Lista', icon: List }].map(({ v, label, icon: Icon }) => {
@@ -256,21 +279,25 @@ export default function SearchTerms() {
                                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                                             <th style={TH_STYLE}>Segment</th>
                                             <th style={TH_STYLE}>Fraza</th>
+                                            <th style={TH_STYLE}>Kampania</th>
                                             <th style={TH_STYLE}>Kliknięcia</th>
                                             <th style={TH_STYLE}>Koszt</th>
                                             <th style={TH_STYLE}>Konwersje</th>
-                                            <th style={TH_STYLE} title="Conversion Rate — procent kliknięć zakończonych konwersją">CVR</th>
+                                            <th style={TH_STYLE}><MetricTooltip term="CVR" inline>CVR</MetricTooltip></th>
                                             <th style={TH_STYLE}>Powód</th>
+                                            <th style={TH_STYLE}>Akcje</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {segmentItems.length === 0 ? (
-                                            <tr><td colSpan={7} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
+                                            <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
                                         ) : segmentItems.map((t, i) => {
                                             let seg = 'OTHER'
                                             for (const [key, items] of Object.entries(segData?.segments || {})) {
                                                 if (items.some(item => item.id === t.id)) { seg = key; break }
                                             }
+                                            const showAddKw = seg === 'HIGH_PERFORMER'
+                                            const showAddNeg = seg === 'WASTE' || seg === 'IRRELEVANT'
                                             return (
                                                 <tr key={t.id || i}
                                                     style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s' }}
@@ -281,12 +308,33 @@ export default function SearchTerms() {
                                                     <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 280 }}>
                                                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
                                                     </td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 11, color: 'rgba(255,255,255,0.4)', maxWidth: 160 }}>
+                                                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.campaign_name || '—'}</span>
+                                                    </td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString() ?? '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost != null ? `${t.cost.toFixed(2)} zł` : '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions?.toFixed(1) ?? '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.cvr != null ? `${t.cvr.toFixed(2)}%` : '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 11, color: 'rgba(255,255,255,0.4)', maxWidth: 200 }}>
                                                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.segment_reason || '—'}</span>
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div className="flex items-center gap-1">
+                                                            {showAddKw && (
+                                                                <InlineAction
+                                                                    icon={PlusCircle} label="Dodaj słowo"
+                                                                    color="#4ADE80" bg="rgba(74,222,128,0.08)" border="rgba(74,222,128,0.2)"
+                                                                    onClick={() => showToast(`"${t.text}" → przejdź do Rekomendacje, aby zastosować`, 'info')}
+                                                                />
+                                                            )}
+                                                            {showAddNeg && (
+                                                                <InlineAction
+                                                                    icon={MinusCircle} label="Wyklucz"
+                                                                    color="#F87171" bg="rgba(248,113,113,0.08)" border="rgba(248,113,113,0.2)"
+                                                                    onClick={() => showToast(`"${t.text}" → przejdź do Rekomendacje, aby wykluczyć`, 'info')}
+                                                                />
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             )
@@ -318,16 +366,15 @@ export default function SearchTerms() {
                                                 { f: 'impressions', label: 'Wyświetlenia' },
                                                 { f: 'cost', label: 'Koszt' },
                                                 { f: 'conversions', label: 'Konwersje' },
-                                                { f: 'ctr', label: 'CTR', tooltip: 'Click-Through Rate — stosunek kliknięć do wyświetleń' },
-                                                { f: null, label: 'Koszt/konw.', tooltip: 'Cost Per Conversion — koszt jednej konwersji (CPA)' },
-                                            ].map(({ f, label, tooltip }) => (
+                                                { f: 'ctr', label: 'CTR', metric: 'CTR' },
+                                                { f: null, label: 'Koszt/konw.', metric: 'CPA' },
+                                            ].map(({ f, label, metric }) => (
                                                 <th key={label}
                                                     style={{ ...TH_STYLE, cursor: f ? 'pointer' : 'default' }}
                                                     onClick={() => f && handleSort(f)}
-                                                    title={tooltip || undefined}
                                                 >
                                                     <span className="flex items-center gap-1">
-                                                        {label}
+                                                        {metric ? <MetricTooltip term={metric} inline>{label}</MetricTooltip> : label}
                                                         {f && sortBy === f && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}
                                                     </span>
                                                 </th>

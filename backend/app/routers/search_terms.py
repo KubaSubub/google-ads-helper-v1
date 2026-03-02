@@ -32,6 +32,8 @@ def list_search_terms(
     min_clicks: int = Query(None, ge=0, description="Minimum clicks"),
     min_cost: float = Query(None, ge=0, description="Minimum cost in USD"),
     min_impressions: int = Query(None, ge=0, description="Minimum impressions"),
+    campaign_type: str = Query(None, description="Filter by campaign type: SEARCH, PERFORMANCE_MAX, etc."),
+    campaign_status: str = Query(None, description="Filter by campaign status: ENABLED, PAUSED"),
     date_from: date = Query(None),
     date_to: date = Query(None),
     search: str = Query(None, description="Full-text search in term text"),
@@ -67,6 +69,10 @@ def list_search_terms(
             )
         if client_id:
             query = query.filter(Campaign.client_id == client_id)
+        if campaign_type and campaign_type != "ALL":
+            query = query.filter(Campaign.campaign_type == campaign_type)
+        if campaign_status and campaign_status != "ALL":
+            query = query.filter(Campaign.status == campaign_status)
 
     if ad_group_id:
         query = query.filter(SearchTerm.ad_group_id == ad_group_id)
@@ -78,10 +84,11 @@ def list_search_terms(
         query = query.filter(SearchTerm.cost_micros >= currency_to_micros(min_cost))
     if min_impressions is not None:
         query = query.filter(SearchTerm.impressions >= min_impressions)
+    # Overlap logic: show terms whose reporting period overlaps the selected range
     if date_from:
-        query = query.filter(SearchTerm.date_from >= date_from)
+        query = query.filter(SearchTerm.date_to >= date_from)
     if date_to:
-        query = query.filter(SearchTerm.date_to <= date_to)
+        query = query.filter(SearchTerm.date_from <= date_to)
     if search:
         query = query.filter(SearchTerm.text.ilike(f"%{search}%"))
 
@@ -158,8 +165,13 @@ def segmented_search_terms(
     client_id: int = Query(..., description="Client ID"),
     date_from: date = Query(None),
     date_to: date = Query(None),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
     """Return search terms grouped by segment (HIGH_PERFORMER, WASTE, IRRELEVANT, OTHER)."""
     service = SearchTermsService(db)
-    return service.get_segmented_search_terms(client_id, date_from=date_from, date_to=date_to)
+    return service.get_segmented_search_terms(
+        client_id, date_from=date_from, date_to=date_to,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )

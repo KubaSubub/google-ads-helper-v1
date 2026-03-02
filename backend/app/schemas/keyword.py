@@ -12,6 +12,7 @@ class KeywordResponse(BaseModel):
     text: str
     match_type: Optional[str] = None
     status: Optional[str] = None
+    serving_status: Optional[str] = None
     final_url: Optional[str] = None
     bid_micros: int = 0
     clicks: int = 0

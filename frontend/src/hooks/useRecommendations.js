@@ -40,7 +40,7 @@ export function useRecommendations(clientId) {
     };
 
     const dismiss = async (recId) => {
-        await dismissRecommendation(recId);
+        await dismissRecommendation(recId, clientId);
         await fetchRecs();
     };
 

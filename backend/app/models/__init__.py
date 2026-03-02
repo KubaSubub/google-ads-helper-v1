@@ -7,6 +7,7 @@ from .client import Client
 from .campaign import Campaign
 from .ad_group import AdGroup
 from .keyword import Keyword
+from .keyword_daily import KeywordDaily
 from .search_term import SearchTerm
 from .ad import Ad
 from .metric_daily import MetricDaily
@@ -21,6 +22,7 @@ __all__ = [
     "Campaign",
     "AdGroup",
     "Keyword",
+    "KeywordDaily",
     "SearchTerm",
     "Ad",
     "MetricDaily",

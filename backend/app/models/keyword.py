@@ -15,6 +15,7 @@ class Keyword(Base):
     text = Column(String(500), nullable=False)
     match_type = Column(String(20))  # EXACT, PHRASE, BROAD
     status = Column(String(20))  # ENABLED, PAUSED, REMOVED
+    serving_status = Column(String(30), nullable=True)  # ELIGIBLE, LOW_SEARCH_VOLUME, BELOW_FIRST_PAGE_BID, RARELY_SERVED
     final_url = Column(String(2000))
     bid_micros = Column(BigInteger, default=0)
 
@@ -60,3 +61,4 @@ class Keyword(Base):
 
     # Relationships
     ad_group = relationship("AdGroup", back_populates="keywords")
+    metrics_daily = relationship("KeywordDaily", back_populates="keyword", cascade="all, delete-orphan")
