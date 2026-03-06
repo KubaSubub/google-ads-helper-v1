@@ -34,7 +34,7 @@ const STATUS_CONFIG = {
 }
 
 // ─── Health Score card ───────────────────────────────────────────────────────
-function HealthScoreCard({ score, issues, loading }) {
+function HealthScoreCard({ score, issues, loading, dataAvailable }) {
     const radius = 34
     const circumference = 2 * Math.PI * radius
     const safeScore = typeof score === 'number' ? score : 0
@@ -50,6 +50,17 @@ function HealthScoreCard({ score, issues, loading }) {
             {loading ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>
                     Ładowanie…
+                </div>
+            ) : dataAvailable === false ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
+                            Brak danych
+                        </div>
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.4 }}>
+                            Synchronizuj konto aby zebrać dane
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <div className="flex items-center gap-5">
@@ -188,13 +199,21 @@ export default function Dashboard() {
         }
 
         // Secondary data — non-blocking
+        const filterParams = {}
+        if (filters.campaignType !== 'ALL') filterParams.campaign_type = filters.campaignType
+        if (filters.status !== 'ALL') filterParams.status = filters.status
+        const budgetFilterParams = { ...filterParams }
+        if (budgetFilterParams.status) {
+            budgetFilterParams.campaign_status = budgetFilterParams.status
+            delete budgetFilterParams.status
+        }
         Promise.all([
-            getHealthScore(selectedClientId).catch(() => null),
-            getCampaignTrends(selectedClientId, 7).catch(() => null),
+            getHealthScore(selectedClientId, filterParams).catch(() => null),
+            getCampaignTrends(selectedClientId, days, filterParams).catch(() => null),
             getRecommendations(selectedClientId).catch(() => ({ recommendations: [] })),
-            getBudgetPacing(selectedClientId).catch(() => null),
-            getDeviceBreakdown(selectedClientId).catch(() => null),
-            getGeoBreakdown(selectedClientId).catch(() => null),
+            getBudgetPacing(selectedClientId, budgetFilterParams).catch(() => null),
+            getDeviceBreakdown(selectedClientId, { days, ...filterParams }).catch(() => null),
+            getGeoBreakdown(selectedClientId, { days, ...filterParams }).catch(() => null),
         ]).then(([hs, ct, recs, bp, dev, geo]) => {
             setHealthScore(hs)
             setCampaignTrends(ct)
@@ -256,6 +275,7 @@ export default function Dashboard() {
                     score={healthScore?.score}
                     issues={healthScore?.issues}
                     loading={healthLoading}
+                    dataAvailable={healthScore?.data_available}
                 />
 
                 {/* 4 KPI mini cards */}
@@ -431,7 +451,7 @@ export default function Dashboard() {
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', 'Trend (7d)', 'Strategia'].map(h => (
+                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', `Trend (${days}d)`, 'Strategia'].map(h => (
                                         <th key={h} style={{
                                             padding: '10px 16px',
                                             textAlign: h === 'Budżet/dzień' ? 'right' : 'left',

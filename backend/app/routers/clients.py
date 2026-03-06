@@ -12,8 +12,12 @@ router = APIRouter(prefix="/clients", tags=["Clients"])
 
 
 @router.post("/discover")
-def discover_clients(db: Session = Depends(get_db)):
-    """Auto-discover client accounts from Google Ads MCC and add them to DB."""
+def discover_clients(
+    customer_ids: str = Query(None, description="Opcjonalne: numery kont Google Ads po przecinku (np. 123-456-7890)"),
+    db: Session = Depends(get_db),
+):
+    """Auto-discover client accounts from Google Ads MCC and add them to DB.
+    Optionally filter by specific customer IDs."""
     if not google_ads_service.is_connected:
         raise HTTPException(
             status_code=503,
@@ -23,6 +27,13 @@ def discover_clients(db: Session = Depends(get_db)):
     accounts = google_ads_service.discover_accounts()
     if not accounts:
         return {"message": "Nie znaleziono kont klienckich.", "added": 0, "skipped": 0}
+
+    # Filter to specific account(s) if customer_ids provided
+    if customer_ids:
+        requested = {cid.replace("-", "").strip() for cid in customer_ids.split(",") if cid.strip()}
+        accounts = [a for a in accounts if a["customer_id"].replace("-", "") in requested]
+        if not accounts:
+            return {"message": "Nie znaleziono podanych kont w MCC.", "added": 0, "skipped": 0}
 
     added = 0
     skipped = 0

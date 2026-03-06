@@ -16,14 +16,23 @@ export function AppProvider({ children }) {
     const [authChecking, setAuthChecking] = useState(true);
 
     const checkAuth = useCallback(async () => {
-        try {
-            const data = await getAuthStatus();
-            setIsAuthenticated(data.authenticated);
-        } catch {
-            setIsAuthenticated(false);
-        } finally {
-            setAuthChecking(false);
+        const maxWaitMs = 30000;
+        const intervalMs = 1000;
+        const started = Date.now();
+
+        while (Date.now() - started < maxWaitMs) {
+            try {
+                const data = await getAuthStatus();
+                setIsAuthenticated(data.authenticated);
+                setAuthChecking(false);
+                return;
+            } catch (err) {
+                if (err.status && err.status < 500) break;
+                await new Promise(r => setTimeout(r, intervalMs));
+            }
         }
+        setIsAuthenticated(false);
+        setAuthChecking(false);
     }, []);
 
     const refreshClients = useCallback(async () => {

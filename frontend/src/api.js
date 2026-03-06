@@ -30,7 +30,10 @@ export const getClients = () => api.get('/clients/');
 export const getClient = (id) => api.get(`/clients/${id}`);
 export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
 export const syncClient = (id) => api.post('/sync/trigger', null, { params: { client_id: id } });
-export const discoverClients = () => api.post('/clients/discover');
+export const discoverClients = (customerIds) =>
+    api.post('/clients/discover', null, {
+        params: customerIds ? { customer_ids: customerIds } : {},
+    });
 
 // ═══════ Campaigns ═══════
 export const getCampaigns = (clientId) =>
@@ -133,12 +136,12 @@ export const getHealth = () => api.get('/health');
 // ═══════ V2 Analytics ═══════
 export const getTrends = (clientId, params = {}) =>
     api.get('/analytics/trends', { params: { client_id: clientId, ...params } });
-export const getHealthScore = (clientId) =>
-    api.get('/analytics/health-score', { params: { client_id: clientId } });
-export const getCampaignTrends = (clientId, days = 7) =>
-    api.get('/analytics/campaign-trends', { params: { client_id: clientId, days } });
-export const getBudgetPacing = (clientId) =>
-    api.get('/analytics/budget-pacing', { params: { client_id: clientId } });
+export const getHealthScore = (clientId, params = {}) =>
+    api.get('/analytics/health-score', { params: { client_id: clientId, ...params } });
+export const getCampaignTrends = (clientId, days = 7, params = {}) =>
+    api.get('/analytics/campaign-trends', { params: { client_id: clientId, days, ...params } });
+export const getBudgetPacing = (clientId, params = {}) =>
+    api.get('/analytics/budget-pacing', { params: { client_id: clientId, ...params } });
 export const getImpressionShare = (clientId, params = {}) =>
     api.get('/analytics/impression-share', { params: { client_id: clientId, ...params } });
 export const getDeviceBreakdown = (clientId, params = {}) =>

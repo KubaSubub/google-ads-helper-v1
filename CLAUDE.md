@@ -455,6 +455,23 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ---
 
+## TESTING RULE — Critical for Real Client Data
+
+**EVERY new endpoint or sync phase MUST be verified against a real Google Ads client account** (not only demo data).
+
+- Demo data covers only the happy path and masks bugs that appear in real-world scenarios
+- Real clients have mixed campaign types (SEARCH, PMAX, DISPLAY, etc.) that trigger API edge cases
+- Mock data fallbacks can hide sync failures — always verify that real MetricDaily rows are created
+- Search terms and metrics may differ significantly from demo distribution — test with actual data volumes
+
+**Process:**
+1. Implement feature with demo data first (rapid iteration)
+2. Test all endpoints with a real client account before marking done
+3. Verify specific row counts and data presence in actual tables
+4. Document any API limitations discovered (e.g., SEARCH-only metrics)
+
+---
+
 ## WHEN IN DOUBT
 
 - If a requirement is ambiguous → check Blueprint v2.0 + Patch v2.1 first

@@ -19,6 +19,22 @@ class MetricDailyResponse(BaseModel):
     roas: float = 0.0
     avg_cpc_micros: int = 0
 
+    # Impression Share (daily, 0.0-1.0)
+    search_impression_share: Optional[float] = None
+    search_top_impression_share: Optional[float] = None
+    search_abs_top_impression_share: Optional[float] = None
+    search_budget_lost_is: Optional[float] = None
+    search_rank_lost_is: Optional[float] = None
+    search_click_share: Optional[float] = None
+
+    # Top impression %
+    abs_top_impression_pct: Optional[float] = None
+    top_impression_pct: Optional[float] = None
+
+    # Extended conversions
+    all_conversions: Optional[float] = None
+    conversion_value_micros: int = 0
+
     @computed_field
     @property
     def cost(self) -> float:
@@ -28,6 +44,11 @@ class MetricDailyResponse(BaseModel):
     @property
     def avg_cpc(self) -> float:
         return round(self.avg_cpc_micros / 1_000_000, 2)
+
+    @computed_field
+    @property
+    def conversion_value(self) -> float:
+        return round(self.conversion_value_micros / 1_000_000, 2)
 
     model_config = {"from_attributes": True}
 

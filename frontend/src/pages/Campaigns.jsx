@@ -1,18 +1,30 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MetricsAreaChart } from '../components/Charts'
-import { LoadingSpinner, ErrorMessage } from '../components/UI'
-import { getCampaigns, getCampaignKPIs, getCampaignMetrics } from '../api'
+import {
+    ComposedChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+    ResponsiveContainer, ReferenceLine,
+} from 'recharts'
+import {
+    MousePointerClick, DollarSign, Target, TrendingUp, TrendingDown,
+    KeyRound, Search, BarChart3, Plus, X, Monitor, MapPin, Clock,
+    Eye, Percent, ArrowUpRight, Crosshair, Wallet, Activity,
+} from 'lucide-react'
+import {
+    getCampaigns, getCampaignKPIs, getCampaignMetrics,
+    getDeviceBreakdown, getGeoBreakdown, getBudgetPacing,
+    getImpressionShare, getUnifiedTimeline,
+} from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import FilterBar from '../components/FilterBar'
 import EmptyState from '../components/EmptyState'
-import { MousePointerClick, DollarSign, Target, TrendingUp, TrendingDown, KeyRound, Search } from 'lucide-react'
+import { LoadingSpinner, ErrorMessage } from '../components/UI'
 
+// ─── Constants ───────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-    ENABLED: { dot: '#4ADE80', color: '#4ADE80', label: 'Aktywna'    },
-    PAUSED:  { dot: '#FBBF24', color: '#FBBF24', label: 'Wstrzymana' },
-    REMOVED: { dot: '#F87171', color: '#F87171', label: 'Usunięta'   },
+    ENABLED: { dot: '#4ADE80', color: '#4ADE80', label: 'Aktywna' },
+    PAUSED: { dot: '#FBBF24', color: '#FBBF24', label: 'Wstrzymana' },
+    REMOVED: { dot: '#F87171', color: '#F87171', label: 'Usunięta' },
 }
 
 const TYPE_LABELS = {
@@ -20,34 +32,203 @@ const TYPE_LABELS = {
     DISPLAY: 'Display', SHOPPING: 'Shopping', VIDEO: 'Video',
 }
 
-function KpiRow({ kpis }) {
+const METRIC_COLORS = ['#4F8EF7', '#7B5CE0', '#4ADE80', '#FBBF24', '#F87171']
+
+const METRIC_OPTIONS = [
+    { key: 'cost', label: 'Koszt (zł)', unit: 'PLN' },
+    { key: 'clicks', label: 'Kliknięcia', unit: '' },
+    { key: 'impressions', label: 'Wyświetlenia', unit: '' },
+    { key: 'conversions', label: 'Konwersje', unit: '' },
+    { key: 'conversion_value', label: 'Wartość konw.', unit: 'PLN' },
+    { key: 'ctr', label: 'CTR (%)', unit: '%', tooltip: 'Click-Through Rate' },
+    { key: 'avg_cpc', label: 'CPC (avg)', unit: 'PLN', tooltip: 'Średni koszt kliknięcia' },
+    { key: 'roas', label: 'ROAS', unit: '', tooltip: 'Return On Ad Spend' },
+    { key: 'conversion_rate', label: 'CVR (%)', unit: '%', tooltip: 'Conversion Rate' },
+    { key: 'search_impression_share', label: 'Impression Share', unit: '%', searchOnly: true },
+    { key: 'search_top_impression_share', label: 'Top IS', unit: '%', searchOnly: true },
+    { key: 'search_abs_top_impression_share', label: 'Abs Top IS', unit: '%', searchOnly: true },
+    { key: 'search_budget_lost_is', label: 'Budget Lost IS', unit: '%', searchOnly: true },
+    { key: 'search_rank_lost_is', label: 'Rank Lost IS', unit: '%', searchOnly: true },
+    { key: 'search_click_share', label: 'Click Share', unit: '%', searchOnly: true },
+    { key: 'abs_top_impression_pct', label: 'Abs Top %', unit: '%' },
+    { key: 'top_impression_pct', label: 'Top Impr %', unit: '%' },
+]
+
+// Polish labels for action operations
+const OPERATION_LABELS = {
+    UPDATE_BID: 'Zmiana stawki',
+    PAUSE_KEYWORD: 'Wstrzymanie słowa kluczowego',
+    ENABLE_KEYWORD: 'Włączenie słowa kluczowego',
+    ADD_KEYWORD: 'Dodanie słowa kluczowego',
+    ADD_NEGATIVE: 'Dodanie wykluczenia',
+    PAUSE_AD: 'Wstrzymanie reklamy',
+    INCREASE_BUDGET: 'Zwiększenie budżetu',
+    DECREASE_BUDGET: 'Zmniejszenie budżetu',
+    PAUSE_CAMPAIGN: 'Wstrzymanie kampanii',
+    ENABLE_CAMPAIGN: 'Włączenie kampanii',
+    UPDATE_STATUS: 'Zmiana statusu',
+    UPDATE_BUDGET: 'Zmiana budżetu',
+    CREATE: 'Utworzenie',
+    REMOVE: 'Usunięcie',
+}
+
+function getOperationLabel(op) {
+    if (!op) return 'Zmiana'
+    return OPERATION_LABELS[op] || op.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function pearsonCorrelation(x, y) {
+    const n = x.length
+    if (n < 2) return null
+    const meanX = x.reduce((a, b) => a + b, 0) / n
+    const meanY = y.reduce((a, b) => a + b, 0) / n
+    const num = x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0)
+    const denX = Math.sqrt(x.reduce((sum, xi) => sum + (xi - meanX) ** 2, 0))
+    const denY = Math.sqrt(y.reduce((sum, yi) => sum + (yi - meanY) ** 2, 0))
+    if (denX === 0 || denY === 0) return null
+    return num / (denX * denY)
+}
+
+function getCorrelationLabel(r) {
+    if (r === null) return null
+    const abs = Math.abs(r)
+    const sign = r > 0 ? '+' : ''
+    if (abs > 0.7) return `${sign}${r.toFixed(2)} ${r > 0 ? '↑ silna' : '↓ silna ujemna'}`
+    if (abs > 0.4) return `${sign}${r.toFixed(2)} → umiarkowana`
+    return `${r.toFixed(2)} ≈ brak korelacji`
+}
+
+function formatDate(dateStr) {
+    const d = new Date(dateStr)
+    return `${d.getDate()}.${(d.getMonth() + 1).toString().padStart(2, '0')}`
+}
+
+function formatTimestamp(dateStr) {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const pad = n => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function needsDualAxis(metrics) {
+    const pct = ['ctr', 'conversion_rate', 'search_impression_share', 'search_top_impression_share', 'search_abs_top_impression_share', 'search_budget_lost_is', 'search_rank_lost_is', 'search_click_share', 'abs_top_impression_pct', 'top_impression_pct']
+    const hasPct = metrics.some(m => pct.includes(m))
+    const hasNonPct = metrics.some(m => !pct.includes(m))
+    return hasPct && hasNonPct
+}
+
+/** Parse old/new value JSON and return readable before→after string */
+function formatBeforeAfter(entry) {
+    const parts = []
+    try {
+        const oldVal = entry.old_value_json ? (typeof entry.old_value_json === 'string' ? JSON.parse(entry.old_value_json) : entry.old_value_json) : null
+        const newVal = entry.new_value_json ? (typeof entry.new_value_json === 'string' ? JSON.parse(entry.new_value_json) : entry.new_value_json) : null
+
+        if (!oldVal && !newVal) return null
+
+        // Handle common patterns
+        if (oldVal?.bid_micros !== undefined || newVal?.bid_micros !== undefined) {
+            const oldBid = oldVal?.bid_micros != null ? (oldVal.bid_micros / 1_000_000).toFixed(2) : '—'
+            const newBid = newVal?.bid_micros != null ? (newVal.bid_micros / 1_000_000).toFixed(2) : '—'
+            parts.push(`Stawka: ${oldBid} → ${newBid} zł`)
+        }
+        if (oldVal?.budget_micros !== undefined || newVal?.budget_micros !== undefined) {
+            const oldB = oldVal?.budget_micros != null ? (oldVal.budget_micros / 1_000_000).toFixed(0) : '—'
+            const newB = newVal?.budget_micros != null ? (newVal.budget_micros / 1_000_000).toFixed(0) : '—'
+            parts.push(`Budżet: ${oldB} → ${newB} zł`)
+        }
+        if (oldVal?.status !== undefined || newVal?.status !== undefined) {
+            const statusPl = { ENABLED: 'Aktywny', PAUSED: 'Wstrzymany', REMOVED: 'Usunięty' }
+            const oldS = statusPl[oldVal?.status] || oldVal?.status || '—'
+            const newS = statusPl[newVal?.status] || newVal?.status || '—'
+            parts.push(`Status: ${oldS} → ${newS}`)
+        }
+        if (oldVal?.match_type !== undefined || newVal?.match_type !== undefined) {
+            parts.push(`Typ: ${oldVal?.match_type || '—'} → ${newVal?.match_type || '—'}`)
+        }
+
+        // Fallback: show raw key changes if nothing matched
+        if (parts.length === 0) {
+            const allKeys = new Set([...Object.keys(oldVal || {}), ...Object.keys(newVal || {})])
+            for (const key of allKeys) {
+                const o = oldVal?.[key]
+                const n = newVal?.[key]
+                if (o !== n && o !== undefined && n !== undefined) {
+                    const oStr = typeof o === 'number' && key.includes('micros') ? (o / 1_000_000).toFixed(2) : String(o)
+                    const nStr = typeof n === 'number' && key.includes('micros') ? (n / 1_000_000).toFixed(2) : String(n)
+                    parts.push(`${key}: ${oStr} → ${nStr}`)
+                    if (parts.length >= 3) break
+                }
+            }
+        }
+    } catch {
+        return null
+    }
+    return parts.length > 0 ? parts : null
+}
+
+// ─── KPI Row (ALL metrics) ──────────────────────────────────────────────────
+function KpiRow({ kpis, campaignType }) {
     if (!kpis) return null
     const { current, change_pct } = kpis
-    const items = [
-        { label: 'Kliknięcia', value: current?.clicks, change: change_pct?.clicks, icon: MousePointerClick, color: '#4F8EF7' },
-        { label: 'Koszt', value: current?.cost, change: change_pct?.cost, suffix: ' zł', icon: DollarSign, color: '#7B5CE0' },
-        { label: 'Konwersje', value: current?.conversions, change: change_pct?.conversions, icon: Target, color: '#4ADE80' },
-        { label: 'CTR', value: current?.ctr, change: change_pct?.ctr, suffix: '%', icon: TrendingUp, color: '#FBBF24', tooltip: 'Click-Through Rate — stosunek kliknięć do wyświetleń' },
+
+    // Core metrics (always shown)
+    const coreItems = [
+        { label: 'Kliknięcia', key: 'clicks', icon: MousePointerClick, color: '#4F8EF7' },
+        { label: 'Wyświetlenia', key: 'impressions', icon: Eye, color: '#60A5FA' },
+        { label: 'Koszt', key: 'cost', suffix: ' zł', icon: DollarSign, color: '#7B5CE0' },
+        { label: 'Konwersje', key: 'conversions', icon: Target, color: '#4ADE80' },
+        { label: 'Wartość konw.', key: 'conversion_value', suffix: ' zł', icon: Wallet, color: '#34D399' },
+        { label: 'CTR', key: 'ctr', suffix: '%', icon: Percent, color: '#FBBF24', tooltip: 'Click-Through Rate' },
+        { label: 'Avg CPC', key: 'avg_cpc', suffix: ' zł', icon: DollarSign, color: '#A78BFA', tooltip: 'Średni koszt kliknięcia' },
+        { label: 'CPA', key: 'cpa', suffix: ' zł', icon: Crosshair, color: '#F472B6', tooltip: 'Koszt za konwersję', invertChange: true },
+        { label: 'CVR', key: 'conversion_rate', suffix: '%', icon: Activity, color: '#2DD4BF', tooltip: 'Conversion Rate' },
+        { label: 'ROAS', key: 'roas', suffix: '×', icon: BarChart3, color: '#F87171', tooltip: 'Return On Ad Spend' },
     ]
+
+    // IS metrics (SEARCH only)
+    const isItems = campaignType === 'SEARCH' ? [
+        { label: 'Impr. Share', key: 'search_impression_share', isPct: true, icon: ArrowUpRight, color: '#4F8EF7', tooltip: 'Udział w wyświetleniach' },
+        { label: 'Top IS', key: 'search_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#818CF8', tooltip: 'Wyśw. na górze strony' },
+        { label: 'Abs Top IS', key: 'search_abs_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#7B5CE0', tooltip: 'Wyśw. na samej górze' },
+        { label: 'Budget Lost IS', key: 'search_budget_lost_is', isPct: true, icon: Wallet, color: '#F87171', tooltip: 'Utracone — budżet', invertChange: true },
+        { label: 'Rank Lost IS', key: 'search_rank_lost_is', isPct: true, icon: TrendingDown, color: '#FBBF24', tooltip: 'Utracone — ranking', invertChange: true },
+        { label: 'Click Share', key: 'search_click_share', isPct: true, icon: MousePointerClick, color: '#2DD4BF', tooltip: 'Udział w kliknięciach' },
+        { label: 'Abs Top %', key: 'abs_top_impression_pct', isPct: true, icon: ArrowUpRight, color: '#60A5FA', tooltip: '% wyśw. na 1. pozycji' },
+        { label: 'Top Impr %', key: 'top_impression_pct', isPct: true, icon: ArrowUpRight, color: '#A78BFA', tooltip: '% wyśw. na górze' },
+    ] : []
+
+    const allItems = [...coreItems, ...isItems]
+
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            {items.map(({ label, value, change, suffix = '', icon: Icon, color, tooltip }) => {
-                const isUp = change > 0, isDown = change < 0
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16 }}>
+            {allItems.map(({ label, key, suffix = '', icon: Icon, color, tooltip, isPct, invertChange }) => {
+                const raw = current?.[key]
+                // IS values from backend are 0.0-1.0 scale, display as percentage
+                const value = isPct && raw != null ? +(raw * 100).toFixed(1) : raw
+                const displaySuffix = isPct ? '%' : suffix
+                const rawChange = change_pct?.[key]
+                // For CPA and lost IS, lower is better — invert the color
+                const changeForColor = invertChange ? -(rawChange || 0) : (rawChange || 0)
+                const isUp = changeForColor > 0
+                const isDown = changeForColor < 0
+
                 return (
-                    <div key={label} className="v2-card" style={{ padding: '12px 14px' }}>
-                        <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }} title={tooltip || undefined}>{label}</span>
-                            <div style={{ width: 24, height: 24, borderRadius: 6, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Icon size={12} style={{ color }} />
+                    <div key={key} className="v2-card" style={{ padding: '10px 12px' }}>
+                        <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', lineHeight: 1.2 }} title={tooltip || undefined}>{label}</span>
+                            <div style={{ width: 20, height: 20, borderRadius: 5, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Icon size={10} style={{ color }} />
                             </div>
                         </div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1 }}>
-                            {typeof value === 'number' ? value.toLocaleString('pl-PL', { maximumFractionDigits: 2 }) : '—'}{suffix}
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1 }}>
+                            {value != null ? value.toLocaleString('pl-PL', { maximumFractionDigits: 2 }) : '—'}{value != null ? displaySuffix : ''}
                         </div>
-                        {change !== undefined && (
-                            <div style={{ marginTop: 4, fontSize: 11, color: isUp ? '#4ADE80' : isDown ? '#F87171' : 'rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                {isUp ? <TrendingUp size={10} /> : isDown ? <TrendingDown size={10} /> : null}
-                                {Math.abs(change).toFixed(1)}%
+                        {rawChange !== undefined && rawChange !== null && (
+                            <div style={{ marginTop: 3, fontSize: 10, color: isUp ? '#4ADE80' : isDown ? '#F87171' : 'rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                {isUp ? <TrendingUp size={9} /> : isDown ? <TrendingDown size={9} /> : null}
+                                {rawChange > 0 ? '+' : ''}{rawChange.toFixed(1)}%
                             </div>
                         )}
                     </div>
@@ -57,16 +238,356 @@ function KpiRow({ kpis }) {
     )
 }
 
+// ─── Campaign Trend Explorer ────────────────────────────────────────────────
+function CampaignTrendExplorer({ metrics, actionEvents, campaignType }) {
+    const [activeMetrics, setActiveMetrics] = useState(['cost', 'clicks'])
+    const [showDropdown, setShowDropdown] = useState(false)
+
+    const PCT_KEYS = ['ctr', 'conversion_rate', 'search_impression_share', 'search_top_impression_share', 'search_abs_top_impression_share', 'search_budget_lost_is', 'search_rank_lost_is', 'search_click_share', 'abs_top_impression_pct', 'top_impression_pct']
+
+    // Transform MetricDaily data for chart
+    const chartData = useMemo(() => {
+        if (!metrics?.length) return []
+        return metrics.map(m => ({
+            date: m.date,
+            cost: m.cost,
+            clicks: m.clicks,
+            impressions: m.impressions,
+            conversions: m.conversions,
+            conversion_value: m.conversion_value,
+            ctr: m.ctr,
+            avg_cpc: m.avg_cpc,
+            roas: m.roas,
+            conversion_rate: m.conversion_rate,
+            search_impression_share: m.search_impression_share != null ? +(m.search_impression_share * 100).toFixed(1) : null,
+            search_top_impression_share: m.search_top_impression_share != null ? +(m.search_top_impression_share * 100).toFixed(1) : null,
+            search_abs_top_impression_share: m.search_abs_top_impression_share != null ? +(m.search_abs_top_impression_share * 100).toFixed(1) : null,
+            search_budget_lost_is: m.search_budget_lost_is != null ? +(m.search_budget_lost_is * 100).toFixed(1) : null,
+            search_rank_lost_is: m.search_rank_lost_is != null ? +(m.search_rank_lost_is * 100).toFixed(1) : null,
+            search_click_share: m.search_click_share != null ? +(m.search_click_share * 100).toFixed(1) : null,
+            abs_top_impression_pct: m.abs_top_impression_pct != null ? +(m.abs_top_impression_pct * 100).toFixed(1) : null,
+            top_impression_pct: m.top_impression_pct != null ? +(m.top_impression_pct * 100).toFixed(1) : null,
+        }))
+    }, [metrics])
+
+    // Group events by date
+    const eventsByDate = useMemo(() => {
+        const map = {}
+        ;(actionEvents || []).forEach(e => {
+            const d = (e.timestamp || e.executed_at || e.change_date_time || '').slice(0, 10)
+            if (d) {
+                if (!map[d]) map[d] = []
+                map[d].push(e)
+            }
+        })
+        return map
+    }, [actionEvents])
+
+    const eventDates = Object.keys(eventsByDate)
+
+    // Filter metric options for campaign type
+    const availableOptions = useMemo(() =>
+        METRIC_OPTIONS.filter(m => !m.searchOnly || campaignType === 'SEARCH'),
+    [campaignType])
+
+    const availableToAdd = availableOptions.filter(m => !activeMetrics.includes(m.key))
+
+    const addMetric = (key) => {
+        if (activeMetrics.length >= 5 || activeMetrics.includes(key)) return
+        setActiveMetrics(prev => [...prev, key])
+        setShowDropdown(false)
+    }
+    const removeMetric = (key) => {
+        if (activeMetrics.length <= 1) return
+        setActiveMetrics(prev => prev.filter(m => m !== key))
+    }
+
+    // Correlation
+    let correlationLabel = null
+    if (activeMetrics.length >= 2 && chartData.length >= 3) {
+        const x = chartData.map(d => d[activeMetrics[0]] ?? 0)
+        const y = chartData.map(d => d[activeMetrics[1]] ?? 0)
+        const r = pearsonCorrelation(x, y)
+        correlationLabel = getCorrelationLabel(r)
+    }
+
+    const dual = needsDualAxis(activeMetrics)
+
+    // Rich tooltip with event details
+    const CustomTooltip = ({ active, payload, label }) => {
+        if (!active || !payload?.length) return null
+        const events = eventsByDate[label] || []
+        return (
+            <div style={{
+                background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 8, padding: '10px 14px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', fontSize: 12,
+                maxWidth: 320,
+            }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{label}</div>
+                {payload.map((p, i) => (
+                    <div key={i} style={{ color: p.color, marginBottom: 2 }}>
+                        {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL', { maximumFractionDigits: 2 }) ?? '—'}</strong>
+                    </div>
+                ))}
+                {events.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 6, paddingTop: 6 }}>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Zmiany w tym dniu
+                        </div>
+                        {events.map((e, i) => {
+                            const ts = e.timestamp || e.executed_at || e.change_date_time
+                            const op = e.operation || e.action_type
+                            const beforeAfter = formatBeforeAfter(e)
+                            return (
+                                <div key={i} style={{
+                                    padding: '4px 0',
+                                    borderBottom: i < events.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                                }}>
+                                    <div className="flex items-center gap-2" style={{ marginBottom: 2 }}>
+                                        <span style={{
+                                            fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 999,
+                                            background: e.source === 'helper' ? 'rgba(79,142,247,0.2)' : 'rgba(251,191,36,0.2)',
+                                            color: e.source === 'helper' ? '#4F8EF7' : '#FBBF24',
+                                        }}>
+                                            {e.source === 'helper' ? 'HELPER' : 'ZEWN.'}
+                                        </span>
+                                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>
+                                            {ts ? formatTimestamp(ts) : ''}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#F0F0F0', fontWeight: 500 }}>
+                                        {getOperationLabel(op)}
+                                    </div>
+                                    {e.entity_name && (
+                                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>
+                                            {e.entity_name}
+                                        </div>
+                                    )}
+                                    {beforeAfter && beforeAfter.map((line, j) => (
+                                        <div key={j} style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'monospace' }}>
+                                            {line}
+                                        </div>
+                                    ))}
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
+            </div>
+        )
+    }
+
+    return (
+        <div className="v2-card" style={{ padding: '20px 24px', marginBottom: 16 }}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4" style={{ flexWrap: 'wrap', gap: 12 }}>
+                <div className="flex items-center gap-2">
+                    <TrendingUp size={16} style={{ color: '#4F8EF7' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        Trend Explorer
+                    </span>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                    {activeMetrics.map((key, idx) => {
+                        const opt = availableOptions.find(m => m.key === key)
+                        return (
+                            <div key={key} className="flex items-center gap-1.5" style={{
+                                background: `${METRIC_COLORS[idx]}20`, border: `1px solid ${METRIC_COLORS[idx]}40`,
+                                borderRadius: 999, padding: '3px 10px 3px 12px', fontSize: 12, color: METRIC_COLORS[idx],
+                            }}>
+                                <span title={opt?.tooltip || undefined}>{opt?.label ?? key}</span>
+                                {activeMetrics.length > 1 && (
+                                    <button onClick={() => removeMetric(key)} style={{ color: 'rgba(255,255,255,0.4)', lineHeight: 1 }} className="hover:text-white/70">
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        )
+                    })}
+                    {activeMetrics.length < 5 && availableToAdd.length > 0 && (
+                        <div style={{ position: 'relative' }}>
+                            <button onClick={() => setShowDropdown(v => !v)} style={{
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: 999, padding: '3px 12px', fontSize: 12, color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
+                            }} className="hover:border-white/20 hover:text-white/70">
+                                <Plus size={12} /> Dodaj
+                            </button>
+                            {showDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                                    background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)',
+                                    borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                                    zIndex: 50, minWidth: 180, overflow: 'hidden', maxHeight: 300, overflowY: 'auto',
+                                }}>
+                                    {availableToAdd.map(opt => (
+                                        <button key={opt.key} onClick={() => addMetric(opt.key)} style={{
+                                            display: 'block', width: '100%', textAlign: 'left',
+                                            padding: '8px 14px', fontSize: 12, color: 'rgba(255,255,255,0.7)',
+                                            cursor: 'pointer', background: 'transparent', border: 'none',
+                                        }} className="hover:bg-white/5 hover:text-white">
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {correlationLabel && (
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
+                            Kor. <span style={{ color: '#FBBF24' }}>{correlationLabel}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Chart */}
+            {chartData.length === 0 ? (
+                <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>
+                    Brak danych metrycznych
+                </div>
+            ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={chartData} margin={{ top: 4, right: dual ? 40 : 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                        <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} width={45} />
+                        {dual && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} width={40} />}
+                        <Tooltip content={<CustomTooltip />} />
+                        {/* Action markers — thicker, more visible */}
+                        {eventDates.map(d => {
+                            const isHelper = eventsByDate[d].some(e => e.source === 'helper')
+                            return (
+                                <ReferenceLine
+                                    key={d}
+                                    x={d}
+                                    yAxisId="left"
+                                    stroke={isHelper ? '#4F8EF7' : '#FBBF24'}
+                                    strokeDasharray="6 3"
+                                    strokeWidth={2}
+                                    label={{
+                                        value: '●',
+                                        position: 'top',
+                                        fill: isHelper ? '#4F8EF7' : '#FBBF24',
+                                        fontSize: 14,
+                                    }}
+                                />
+                            )
+                        })}
+                        {activeMetrics.map((key, idx) => {
+                            const yAxis = dual && PCT_KEYS.includes(key) ? 'right' : 'left'
+                            const opt = availableOptions.find(m => m.key === key)
+                            return (
+                                <Line
+                                    key={key} yAxisId={yAxis} type="monotone" dataKey={key}
+                                    name={opt?.label ?? key} stroke={METRIC_COLORS[idx]}
+                                    strokeWidth={1.8} dot={false} activeDot={{ r: 4, fill: METRIC_COLORS[idx] }}
+                                    connectNulls
+                                />
+                            )
+                        })}
+                    </ComposedChart>
+                </ResponsiveContainer>
+            )}
+
+            {/* Legend for markers */}
+            {eventDates.length > 0 && (
+                <div className="flex items-center gap-4 mt-2" style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                    <span className="flex items-center gap-1"><span style={{ width: 14, height: 0, borderTop: '2px dashed #4F8EF7', display: 'inline-block' }} /> <span style={{ color: '#4F8EF7' }}>●</span> Akcja Helper</span>
+                    <span className="flex items-center gap-1"><span style={{ width: 14, height: 0, borderTop: '2px dashed #FBBF24', display: 'inline-block' }} /> <span style={{ color: '#FBBF24' }}>●</span> Zmiana zewn.</span>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ─── Action History Timeline ────────────────────────────────────────────────
+function ActionHistoryTimeline({ entries }) {
+    if (!entries?.length) return null
+
+    return (
+        <div className="v2-card" style={{ padding: '16px 20px' }}>
+            <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                <Clock size={14} style={{ color: '#4F8EF7' }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                    Historia zmian ({entries.length})
+                </span>
+            </div>
+            <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+                {entries.map((entry, i) => {
+                    const isHelper = entry.source === 'helper'
+                    const borderColor = isHelper ? '#4F8EF7' : 'rgba(255,255,255,0.12)'
+                    const ts = entry.timestamp || entry.executed_at || entry.change_date_time
+                    const op = entry.operation || entry.action_type
+                    const beforeAfter = formatBeforeAfter(entry)
+
+                    return (
+                        <div key={entry.action_log_id || entry.change_event_id || i} style={{
+                            display: 'flex', gap: 10, paddingLeft: 12, paddingBottom: 10, marginBottom: 10,
+                            borderLeft: `2px solid ${borderColor}`,
+                            borderBottom: i < entries.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                        }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="flex items-center gap-2" style={{ marginBottom: 3 }}>
+                                    <span style={{
+                                        fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
+                                        background: isHelper ? 'rgba(79,142,247,0.15)' : 'rgba(251,191,36,0.15)',
+                                        color: isHelper ? '#4F8EF7' : '#FBBF24',
+                                    }}>
+                                        {isHelper ? 'HELPER' : 'ZEWN.'}
+                                    </span>
+                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>
+                                        {ts ? formatTimestamp(ts) : ''}
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: 12, color: '#F0F0F0', fontWeight: 500, marginBottom: 2 }}>
+                                    {getOperationLabel(op)}
+                                </div>
+                                {entry.entity_name && (
+                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+                                        {entry.entity_name}
+                                    </div>
+                                )}
+                                {beforeAfter && (
+                                    <div style={{
+                                        marginTop: 3, padding: '4px 8px', borderRadius: 4,
+                                        background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.12)',
+                                    }}>
+                                        {beforeAfter.map((line, j) => (
+                                            <div key={j} style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'monospace' }}>
+                                                {line}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function Campaigns() {
     const navigate = useNavigate()
     const { selectedClientId } = useApp()
     const { filters, days } = useFilter()
+
     const [campaigns, setCampaigns] = useState([])
     const [selected, setSelected] = useState(null)
     const [kpis, setKpis] = useState(null)
     const [metrics, setMetrics] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
+
+    // Secondary data
+    const [deviceData, setDeviceData] = useState(null)
+    const [geoData, setGeoData] = useState(null)
+    const [budgetPacing, setBudgetPacing] = useState(null)
+    const [actionTimeline, setActionTimeline] = useState([])
+    const [loadingSecondary, setLoadingSecondary] = useState(false)
 
     useEffect(() => {
         if (selectedClientId) loadCampaigns()
@@ -86,26 +607,48 @@ export default function Campaigns() {
         }
     }
 
-    async function selectCampaign(campaign) {
+    const selectCampaign = useCallback(async (campaign) => {
         setSelected(campaign)
         setKpis(null)
         setMetrics([])
+        setDeviceData(null)
+        setGeoData(null)
+        setBudgetPacing(null)
+        setActionTimeline([])
+
         try {
             const [kpiData, metricData] = await Promise.all([
                 getCampaignKPIs(campaign.id, days),
-                getCampaignMetrics(campaign.id),
+                getCampaignMetrics(campaign.id, filters.dateFrom, filters.dateTo),
             ])
             setKpis(kpiData)
-            setMetrics(metricData.map(m => ({
-                date: m.date.slice(5),
-                cost: m.cost,
-                clicks: m.clicks,
-                conversions: m.conversions,
-            })))
+            setMetrics(metricData)
         } catch (err) {
             console.error('Failed to load campaign details:', err)
         }
-    }
+
+        // Secondary data (non-blocking)
+        setLoadingSecondary(true)
+        Promise.all([
+            getDeviceBreakdown(selectedClientId, { days, campaign_id: campaign.id }).catch(() => null),
+            getGeoBreakdown(selectedClientId, { days, campaign_id: campaign.id }).catch(() => null),
+            getBudgetPacing(selectedClientId).catch(() => null),
+            getUnifiedTimeline(selectedClientId, { limit: 200 }).catch(() => ({ entries: [] })),
+        ]).then(([dev, geo, bp, timeline]) => {
+            setDeviceData(dev)
+            setGeoData(geo)
+            const thisCampPacing = bp?.campaigns?.find(c => c.campaign_id === campaign.id)
+            setBudgetPacing(thisCampPacing)
+            const filtered = (timeline?.entries || []).filter(e => e.campaign_name === campaign.name)
+            setActionTimeline(filtered)
+            setLoadingSecondary(false)
+        })
+    }, [selectedClientId, days, filters.dateFrom, filters.dateTo])
+
+    // Re-fetch on date change
+    useEffect(() => {
+        if (selected && selectedClientId) selectCampaign(selected)
+    }, [days, filters.dateFrom, filters.dateTo])
 
     // Filter campaign list in-memory
     const filteredCampaigns = useMemo(() => campaigns.filter(c => {
@@ -165,7 +708,7 @@ export default function Campaigns() {
                                 </div>
                                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', display: 'flex', gap: 6 }}>
                                     <span>{TYPE_LABELS[c.campaign_type] ?? c.campaign_type}</span>
-                                    <span>•</span>
+                                    <span>·</span>
                                     <span>{c.budget_usd?.toFixed(0)} zł/d</span>
                                 </div>
                             </button>
@@ -173,20 +716,22 @@ export default function Campaigns() {
                     })}
                 </div>
 
-                {/* Campaign detail */}
-                <div>
+                {/* Campaign detail - scrollable */}
+                <div style={{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingRight: 4 }}>
                     {selected ? (
                         <>
+                            {/* Header */}
                             <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0' }}>{selected.name}</span>
                                 {(() => {
                                     const sCfg = STATUS_CONFIG[selected.status] || { color: '#666', label: selected.status }
-                                    return (
-                                        <span style={{ fontSize: 11, color: sCfg.color }}>
-                                            ● {sCfg.label}
-                                        </span>
-                                    )
+                                    return <span style={{ fontSize: 11, color: sCfg.color }}>● {sCfg.label}</span>
                                 })()}
+                                {selected.bidding_strategy && (
+                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
+                                        {selected.bidding_strategy}
+                                    </span>
+                                )}
                             </div>
                             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                                 <button
@@ -212,32 +757,126 @@ export default function Campaigns() {
                                     <Search size={12} /> Wyszukiwane frazy
                                 </button>
                             </div>
-                            <KpiRow kpis={kpis} />
-                            {/* IS summary for SEARCH campaigns */}
-                            {selected.campaign_type === 'SEARCH' && selected.search_impression_share != null && (
-                                <div className="v2-card" style={{ padding: '12px 16px', marginBottom: 12 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                                        Impression Share
+
+                            {/* 1. KPI Tiles (ALL metrics) */}
+                            <KpiRow kpis={kpis} campaignType={selected.campaign_type} />
+
+                            {/* 2. Trend Explorer */}
+                            <CampaignTrendExplorer
+                                metrics={metrics}
+                                actionEvents={actionTimeline}
+                                campaignType={selected.campaign_type}
+                            />
+
+                            {/* 3. Budget Pacing */}
+                            {budgetPacing && (
+                                <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 10, fontFamily: 'Syne' }}>
+                                        Pacing budżetu
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                        {[
-                                            { label: 'IS', value: selected.search_impression_share, color: '#4F8EF7' },
-                                            { label: 'Top IS', value: selected.search_top_impression_share, color: '#7B5CE0' },
-                                            { label: 'Budget Lost', value: selected.search_budget_lost_is, color: '#F87171' },
-                                            { label: 'Rank Lost', value: selected.search_rank_lost_is, color: '#FBBF24' },
-                                        ].map(({ label, value, color }) => (
-                                            <div key={label} style={{ textAlign: 'center' }}>
-                                                <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'Syne', color }}>{value != null ? `${(value * 100).toFixed(1)}%` : '—'}</div>
-                                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{label}</div>
+                                    {(() => {
+                                        const c = budgetPacing
+                                        const color = c.status === 'overspend' ? '#F87171' : c.status === 'underspend' ? '#FBBF24' : '#4ADE80'
+                                        const bg = c.status === 'overspend' ? 'rgba(248,113,113,0.08)' : c.status === 'underspend' ? 'rgba(251,191,36,0.08)' : 'rgba(74,222,128,0.08)'
+                                        const label = c.status === 'overspend' ? 'Przekroczenie' : c.status === 'underspend' ? 'Niedostateczne' : 'Na torze'
+                                        return (
+                                            <div>
+                                                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                                                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                                                        {c.actual_spend_usd?.toFixed(0)} / {c.expected_spend_usd?.toFixed(0)} zł (proj. {c.projected_spend_usd?.toFixed(0)} zł)
+                                                    </span>
+                                                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: bg, color, border: `1px solid ${color}30` }}>
+                                                        {label}
+                                                    </span>
+                                                </div>
+                                                <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)' }}>
+                                                    <div style={{ height: '100%', borderRadius: 3, background: color, width: `${Math.min(c.pacing_pct, 100)}%`, transition: 'width 0.3s' }} />
+                                                </div>
+                                                <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                                    <span>Dzień {c.days_elapsed} / {c.days_in_month}</span>
+                                                    <span style={{ color }}>{c.pacing_pct}%</span>
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
+                                        )
+                                    })()}
                                 </div>
                             )}
-                            {metrics.length > 0 && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                    <MetricsAreaChart data={metrics} dataKey="cost" title="Koszt dzienny" color="#4F8EF7" />
-                                    <MetricsAreaChart data={metrics} dataKey="clicks" title="Kliknięcia" color="#7B5CE0" />
+
+                            {/* 4. Device + Geo Breakdown */}
+                            {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                                    {/* Device */}
+                                    {deviceData?.devices?.length > 0 && (
+                                        <div className="v2-card" style={{ padding: '16px 20px' }}>
+                                            <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                                                <Monitor size={14} style={{ color: '#4F8EF7' }} />
+                                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>Urządzenia</span>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                {deviceData.devices.map(d => {
+                                                    const color = d.device === 'MOBILE' ? '#4F8EF7' : d.device === 'DESKTOP' ? '#7B5CE0' : '#FBBF24'
+                                                    return (
+                                                        <div key={d.device}>
+                                                            <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                                                                <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
+                                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
+                                                            </div>
+                                                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                                                <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
+                                                            </div>
+                                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                                                <span>CTR {d.ctr}% · CPC {d.cpc?.toFixed(2)} zł</span>
+                                                                <span>ROAS {d.roas}×</span>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Geo */}
+                                    {geoData?.cities?.length > 0 && (
+                                        <div className="v2-card" style={{ padding: '16px 20px' }}>
+                                            <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                                                <MapPin size={14} style={{ color: '#7B5CE0' }} />
+                                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>Top miasta</span>
+                                            </div>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                    <tr>
+                                                        {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
+                                                            <th key={h} style={{
+                                                                padding: '4px 6px', fontSize: 10, fontWeight: 500,
+                                                                color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+                                                                letterSpacing: '0.08em', textAlign: h === 'Miasto' ? 'left' : 'right',
+                                                            }}>{h}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {geoData.cities.slice(0, 8).map(c => (
+                                                        <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                                            <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
+                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
+                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0)} zł</td>
+                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? '#4ADE80' : c.roas >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2)}×</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* 5. Action History Timeline */}
+                            <ActionHistoryTimeline entries={actionTimeline} />
+
+                            {/* Loading secondary */}
+                            {loadingSecondary && (
+                                <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                                    Ładowanie dodatkowych danych…
                                 </div>
                             )}
                         </>

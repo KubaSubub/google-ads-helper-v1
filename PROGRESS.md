@@ -1,5 +1,5 @@
 # PROGRESS.md — Stan implementacji
-# Aktualizacja: 2026-03-01
+# Aktualizacja: 2026-03-03
 # Claude Code: czytaj ten plik, aby wiedziec co jest gotowe, a co pozostalo.
 
 ---
@@ -201,6 +201,24 @@
 - 6 nowych funkcji API w api.js
 - Sidebar: "Optymalizacja" (Zap icon) w grupie ANALIZA
 - Seed: final_url per keyword, waste_kw_ids (3 keywords z 0 conversions)
+
+---
+
+## STRONY 100% KOMPLETNE (przetestowane, nie modyfikowac)
+
+| Strona | Plik | Data zamkniecia |
+|--------|------|-----------------|
+| Dashboard (Pulpit) | pages/Dashboard.jsx | 2026-03-03 |
+| Clients (Klienci) | pages/Clients.jsx | 2026-03-03 |
+
+---
+
+## ZMIANY Z SESJI 2026-03-03
+
+### Auth retry przy starcie — ✅ DONE
+- AppContext `checkAuth()` — retry do 5× z 1s przerwą (backend moze startowac wolniej niz frontend)
+- Login.jsx `checkSetup()` — retry do 3× z 1s przerwą
+- Naprawia problem: formularz setup pokazywal sie po restarcie mimo ze credentials sa w keyring
 
 ---
 

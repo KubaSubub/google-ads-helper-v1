@@ -4,13 +4,15 @@ import { useApp } from '../contexts/AppContext';
 import SyncButton from '../components/SyncButton';
 import EmptyState from '../components/EmptyState';
 import { discoverClients } from '../api';
-import { Users, Loader2, Download } from 'lucide-react';
+import { Users, Loader2, Download, Search } from 'lucide-react';
 
 export default function Clients() {
     const { sync } = useSync();
     const { selectedClientId, setSelectedClientId, showToast, clients, clientsLoading: loading, refreshClients } = useApp();
     const [discovering, setDiscovering] = useState(false);
     const [syncingClientId, setSyncingClientId] = useState(null);
+    const [customerId, setCustomerId] = useState('');
+    const [fetchingSingle, setFetchingSingle] = useState(false);
 
     const handleSync = async (clientId) => {
         setSyncingClientId(clientId);
@@ -22,6 +24,24 @@ export default function Clients() {
             showToast('Błąd synchronizacji', 'error');
         } finally {
             setSyncingClientId(null);
+        }
+    };
+
+    const handleFetchSingle = async () => {
+        if (!customerId.trim()) return;
+        setFetchingSingle(true);
+        try {
+            const result = await discoverClients(customerId.trim());
+            showToast(result.message, 'success');
+            setCustomerId('');
+            const updated = await refreshClients();
+            if (!selectedClientId && updated && updated.length > 0) {
+                setSelectedClientId(updated[0].id);
+            }
+        } catch (err) {
+            showToast(err.message || 'Błąd pobierania konta', 'error');
+        } finally {
+            setFetchingSingle(false);
         }
     };
 
@@ -80,6 +100,60 @@ export default function Clients() {
                         : <Download size={14} />
                     }
                     {discovering ? 'Pobieram...' : 'Pobierz klientów z Google Ads'}
+                </button>
+            </div>
+
+            {/* Single account fetch */}
+            <div
+                className="v2-card"
+                style={{
+                    padding: '12px 16px',
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                }}
+            >
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
+                    Numer konta:
+                </span>
+                <input
+                    type="text"
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleFetchSingle()}
+                    placeholder="np. 123-456-7890"
+                    style={{
+                        flex: 1,
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        color: '#F0F0F0',
+                        outline: 'none',
+                        minWidth: 0,
+                    }}
+                />
+                <button
+                    onClick={handleFetchSingle}
+                    disabled={fetchingSingle || !customerId.trim()}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                        background: 'rgba(79,142,247,0.15)',
+                        border: '1px solid rgba(79,142,247,0.3)',
+                        color: '#4F8EF7', cursor: 'pointer',
+                        opacity: (fetchingSingle || !customerId.trim()) ? 0.4 : 1,
+                        transition: 'all 0.15s',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    {fetchingSingle
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <Search size={13} />
+                    }
+                    Pobierz konto
                 </button>
             </div>
 

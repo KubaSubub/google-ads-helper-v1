@@ -237,14 +237,19 @@ def dashboard_kpis(
         total_impressions = sum(r.impressions or 0 for r in rows)
         total_cost_micros = sum(r.cost_micros or 0 for r in rows)
         total_conversions = sum(r.conversions or 0 for r in rows)
+        total_conv_value_micros = sum(r.conversion_value_micros or 0 for r in rows)
+
+        total_cost_usd = micros_to_currency(total_cost_micros)
+        total_conv_value_usd = micros_to_currency(total_conv_value_micros)
+        roas = round((total_conv_value_usd / total_cost_usd) if total_cost_usd else 0, 2)
 
         return {
             "clicks": total_clicks,
             "impressions": total_impressions,
-            "cost_usd": micros_to_currency(total_cost_micros),
+            "cost_usd": total_cost_usd,
             "conversions": total_conversions,
             "ctr": round((total_clicks / total_impressions * 100) if total_impressions else 0, 2),
-            "roas": round((total_conversions * 150 / micros_to_currency(total_cost_micros)) if total_cost_micros else 0, 2),
+            "roas": roas,
         }
 
     current = _agg(current_start, today)
@@ -467,6 +472,8 @@ def get_trends(
 @router.get("/health-score")
 def get_health_score(
     client_id: int = Query(..., description="Client ID"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
     """Account health score (0–100) with issue breakdown.
@@ -475,13 +482,15 @@ def get_health_score(
     Does NOT invoke recommendations engine.
     """
     service = AnalyticsService(db)
-    return service.get_health_score(client_id)
+    return service.get_health_score(client_id, campaign_type=campaign_type, status=status)
 
 
 @router.get("/campaign-trends")
 def get_campaign_trends(
     client_id: int = Query(..., description="Client ID"),
-    days: int = Query(7, ge=3, le=30, description="Trend window in days"),
+    days: int = Query(7, ge=3, le=90, description="Trend window in days"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
     """Per-campaign cost trend for sparkline display in campaigns table.
@@ -490,7 +499,10 @@ def get_campaign_trends(
     Falls back to mock data based on budget if no MetricDaily rows.
     """
     service = AnalyticsService(db)
-    return service.get_campaign_trends(client_id=client_id, days=days)
+    return service.get_campaign_trends(
+        client_id=client_id, days=days,
+        campaign_type=campaign_type, status=status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +513,8 @@ def get_campaign_trends(
 @router.get("/budget-pacing")
 def get_budget_pacing(
     client_id: int = Query(..., description="Client ID"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
     """Budget pacing for all campaigns: actual vs expected spend this month.
@@ -517,11 +531,14 @@ def get_budget_pacing(
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     pacing_ratio = days_elapsed / days_in_month  # expected fraction of budget spent
 
-    campaigns = (
-        db.query(Campaign)
-        .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
-        .all()
-    )
+    campaign_q = db.query(Campaign).filter(Campaign.client_id == client_id)
+    if campaign_type and campaign_type != "ALL":
+        campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
+    if campaign_status and campaign_status != "ALL":
+        campaign_q = campaign_q.filter(Campaign.status == campaign_status)
+    else:
+        campaign_q = campaign_q.filter(Campaign.status == "ENABLED")
+    campaigns = campaign_q.all()
 
     results = []
     for camp in campaigns:
@@ -606,12 +623,15 @@ def get_device_breakdown(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=1, le=90, description="Lookback period"),
     campaign_id: int = Query(None, description="Optional campaign filter"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
     """Performance breakdown by device (Mobile/Desktop/Tablet)."""
     service = AnalyticsService(db)
     return service.get_device_breakdown(
         client_id=client_id, days=days, campaign_id=campaign_id,
+        campaign_type=campaign_type, status=status,
     )
 
 
@@ -623,15 +643,18 @@ def get_device_breakdown(
 @router.get("/geo-breakdown")
 def get_geo_breakdown(
     client_id: int = Query(..., description="Client ID"),
-    days: int = Query(7, ge=1, le=30, description="Lookback period"),
+    days: int = Query(7, ge=1, le=90, description="Lookback period"),
     campaign_id: int = Query(None, description="Optional campaign filter"),
     limit: int = Query(20, ge=1, le=50, description="Max cities"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
     """Performance breakdown by city/geography."""
     service = AnalyticsService(db)
     return service.get_geo_breakdown(
         client_id=client_id, days=days, campaign_id=campaign_id, limit=limit,
+        campaign_type=campaign_type, status=status,
     )
 
 
@@ -772,7 +795,7 @@ def get_bidding_advisor(
 @router.get("/hourly-dayparting")
 def get_hourly_dayparting(
     client_id: int = Query(..., description="Client ID"),
-    days: int = Query(7, ge=1, le=30, description="Lookback period"),
+    days: int = Query(7, ge=1, le=90, description="Lookback period"),
     db: Session = Depends(get_db),
 ):
     """SEARCH campaign performance by hour of day."""

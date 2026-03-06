@@ -314,7 +314,9 @@ class AnalyticsService:
             day_map[d]["conv_value_micros"] += r.conversion_value_micros or 0
 
         # If no real data → generate mock from campaign aggregates
+        is_mock = False
         if not day_map:
+            is_mock = True
             day_map = self._mock_daily_data(campaign_ids, date_from, today)
 
         # Build output rows with derived metrics
@@ -360,6 +362,7 @@ class AnalyticsService:
 
         return {
             "period_days": days,
+            "is_mock": is_mock,
             "data": data,
             "totals": {
                 "cost": round(total_cost, 2),
@@ -413,7 +416,7 @@ class AnalyticsService:
     # NEW: Health Score
     # -----------------------------------------------------------------------
 
-    def get_health_score(self, client_id: int) -> dict:
+    def get_health_score(self, client_id: int, campaign_type: str | None = None, status: str | None = None) -> dict:
         """Calculate account health score (0-100) based on lightweight DB queries.
 
         Does NOT call recommendations_engine — uses only MetricDaily + Alert + Campaign.
@@ -448,13 +451,19 @@ class AnalyticsService:
             })
 
         # 2. Active campaigns with 0 conversions in last 30 days
-        active_campaigns = self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-            Campaign.status == "ENABLED",
-        ).all()
+        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
+        if campaign_type and campaign_type != "ALL":
+            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
+        if status and status != "ALL":
+            campaign_q = campaign_q.filter(Campaign.status == status)
+        else:
+            campaign_q = campaign_q.filter(Campaign.status == "ENABLED")
+        active_campaigns = campaign_q.all()
 
         no_conv_campaigns = []
         low_roas_campaigns = []
+        campaigns_with_data = 0
+        total_campaigns = len(active_campaigns)
 
         for campaign in active_campaigns:
             rows = self.db.query(MetricDaily).filter(
@@ -463,6 +472,7 @@ class AnalyticsService:
             ).all()
             if not rows:
                 continue
+            campaigns_with_data += 1
             total_conv = sum(r.conversions or 0 for r in rows)
             total_conv_value = sum(r.conversion_value_micros or 0 for r in rows) / 1_000_000
             total_cost = sum(r.cost_micros or 0 for r in rows) / 1_000_000
@@ -522,16 +532,29 @@ class AnalyticsService:
                 "action": "dashboard",
             })
 
+        data_available = campaigns_with_data > 0
+
+        # Add warning if no data available
+        if total_campaigns > 0 and campaigns_with_data == 0:
+            issues.insert(0, {
+                "severity": "HIGH",
+                "message": "Brak danych metryk — synchronizuj konto aby zebrać dane",
+                "action": "sync",
+            })
+
         return {
             "score": max(0, min(100, score)),
             "issues": issues,
+            "campaigns_with_data": campaigns_with_data,
+            "total_campaigns": total_campaigns,
+            "data_available": data_available,
         }
 
     # -----------------------------------------------------------------------
     # NEW: Campaign Trends — mini sparklines for campaigns table
     # -----------------------------------------------------------------------
 
-    def get_campaign_trends(self, client_id: int, days: int = 7) -> dict:
+    def get_campaign_trends(self, client_id: int, days: int = 7, campaign_type: str | None = None, status: str | None = None) -> dict:
         """Return per-campaign cost trend for sparkline display.
 
         Returns last `days` daily cost values for each campaign.
@@ -540,9 +563,12 @@ class AnalyticsService:
         today = date.today()
         date_from = today - timedelta(days=days)
 
-        campaigns = self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-        ).all()
+        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
+        if campaign_type and campaign_type != "ALL":
+            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
+        if status and status != "ALL":
+            campaign_q = campaign_q.filter(Campaign.status == status)
+        campaigns = campaign_q.all()
 
         result = {}
         rand = random.Random(99)
@@ -683,6 +709,8 @@ class AnalyticsService:
         client_id: int,
         days: int = 30,
         campaign_id: int | None = None,
+        campaign_type: str | None = None,
+        status: str | None = None,
     ) -> dict:
         """Aggregate MetricSegmented by device for SEARCH campaigns.
 
@@ -694,6 +722,10 @@ class AnalyticsService:
         campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
         if campaign_id:
             campaign_q = campaign_q.filter(Campaign.id == campaign_id)
+        if campaign_type and campaign_type != "ALL":
+            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
+        if status and status != "ALL":
+            campaign_q = campaign_q.filter(Campaign.status == status)
         campaign_ids = [c.id for c in campaign_q.all()]
 
         if not campaign_ids:
@@ -754,6 +786,8 @@ class AnalyticsService:
         days: int = 7,
         campaign_id: int | None = None,
         limit: int = 20,
+        campaign_type: str | None = None,
+        status: str | None = None,
     ) -> dict:
         """Aggregate MetricSegmented by geo_city.
 
@@ -765,6 +799,10 @@ class AnalyticsService:
         campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
         if campaign_id:
             campaign_q = campaign_q.filter(Campaign.id == campaign_id)
+        if campaign_type and campaign_type != "ALL":
+            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
+        if status and status != "ALL":
+            campaign_q = campaign_q.filter(Campaign.status == status)
         campaign_ids = [c.id for c in campaign_q.all()]
 
         if not campaign_ids:

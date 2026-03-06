@@ -87,6 +87,7 @@ export default function TrendExplorer() {
     const [showDropdown, setShowDropdown] = useState(false)
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(false)
+    const [isMock, setIsMock] = useState(false)
 
     const fetchData = useCallback(async () => {
         if (!selectedClientId) return
@@ -99,6 +100,7 @@ export default function TrendExplorer() {
                 status: filters.status,
             })
             setData(result.data || [])
+            setIsMock(result.is_mock || false)
         } catch (e) {
             console.error('TrendExplorer fetch error:', e)
         } finally {
@@ -245,6 +247,25 @@ export default function TrendExplorer() {
                     )}
                 </div>
             </div>
+
+            {/* Mock data warning banner */}
+            {isMock && !loading && (
+                <div style={{
+                    background: 'rgba(251, 191, 36, 0.1)',
+                    border: '1px solid #FBBF24',
+                    borderRadius: 6,
+                    padding: '10px 14px',
+                    marginBottom: 12,
+                    fontSize: 12,
+                    color: '#FBBF24',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                }}>
+                    <span>⚠️</span>
+                    <span>Brak rzeczywistych danych — synchronizuj konto aby zebrać dane metryk</span>
+                </div>
+            )}
 
             {/* Chart */}
             {loading ? (

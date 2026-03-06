@@ -42,12 +42,20 @@ export default function Login({ onAuthComplete }) {
     }, []);
 
     async function checkSetup() {
-        try {
-            const data = await getSetupStatus();
-            setStep(data.configured ? 'login' : 'setup');
-        } catch {
-            setStep('setup');
+        const maxWaitMs = 30000;
+        const started = Date.now();
+
+        while (Date.now() - started < maxWaitMs) {
+            try {
+                const data = await getSetupStatus();
+                setStep(data.configured ? 'login' : 'setup');
+                return;
+            } catch (err) {
+                if (err.status && err.status < 500) break;
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
+        setStep('setup');
     }
 
     function handleSetupChange(field, value) {

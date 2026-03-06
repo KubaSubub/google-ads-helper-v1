@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
-    ChangeEvent, ActionLog,
+    ChangeEvent, ActionLog, KeywordDaily,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.credentials_service import CredentialsService
@@ -508,6 +508,105 @@ class GoogleAdsService:
             return 0
 
     # -----------------------------------------------------------------------
+    # Keyword Daily Metrics Sync
+    # -----------------------------------------------------------------------
+
+    def sync_keyword_daily(
+        self, db: Session, customer_id: str,
+        date_from: date = None, date_to: date = None
+    ) -> int:
+        """Fetch daily keyword metrics and upsert into keywords_daily table."""
+        if not self.is_connected:
+            return 0
+
+        client_record = db.query(Client).filter(
+            Client.google_customer_id == customer_id
+        ).first()
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                ad_group.id,
+                ad_group_criterion.criterion_id,
+                segments.date,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.average_cpc
+            FROM keyword_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND ad_group_criterion.status != 'REMOVED'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=customer_id, query=query)
+            count = 0
+            for row in response:
+                ad_group_google_id = str(row.ad_group.id)
+                google_keyword_id = str(row.ad_group_criterion.criterion_id)
+                metric_date = date.fromisoformat(row.segments.date)
+                m = row.metrics
+
+                # Find local keyword
+                keyword = (
+                    db.query(Keyword)
+                    .join(AdGroup)
+                    .join(Campaign)
+                    .filter(
+                        Campaign.client_id == client_record.id,
+                        AdGroup.google_ad_group_id == ad_group_google_id,
+                        Keyword.google_keyword_id == google_keyword_id,
+                    )
+                    .first()
+                )
+                if not keyword:
+                    continue
+
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(KeywordDaily).filter(
+                    KeywordDaily.keyword_id == keyword.id,
+                    KeywordDaily.date == metric_date,
+                ).first()
+
+                data = {
+                    "keyword_id": keyword.id,
+                    "date": metric_date,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(KeywordDaily(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} keyword daily rows for customer {customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing keyword daily metrics: {e}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
     # Daily Metrics Sync (expanded with IS, extended conv, top %)
     # -----------------------------------------------------------------------
 
@@ -515,7 +614,15 @@ class GoogleAdsService:
         self, db: Session, customer_id: str,
         date_from: date = None, date_to: date = None
     ) -> int:
-        """Fetch daily campaign metrics and upsert into local DB."""
+        """Fetch daily campaign metrics and upsert into local DB.
+
+        Uses two separate queries:
+        1. Core metrics for ALL campaign types (clicks, cost, conversions, etc.)
+        2. Search IS metrics for SEARCH campaigns only (search_impression_share, etc.)
+
+        This avoids Google Ads API errors when requesting search-only metrics
+        on accounts with non-SEARCH campaigns (PMax, Display, Shopping, Video).
+        """
         if not self.is_connected:
             return 0
 
@@ -531,7 +638,9 @@ class GoogleAdsService:
             date_to = date.today() - timedelta(days=1)  # Yesterday (today may be incomplete)
 
         ga_service = self.client.get_service("GoogleAdsService")
-        query = f"""
+
+        # ── Query 1: Core metrics for ALL campaign types ──
+        core_query = f"""
             SELECT
                 campaign.id,
                 segments.date,
@@ -542,33 +651,20 @@ class GoogleAdsService:
                 metrics.conversions_value,
                 metrics.conversions_from_interactions_rate,
                 metrics.cost_micros,
-                metrics.cost_per_conversion,
                 metrics.average_cpc,
-                metrics.search_impression_share,
-                metrics.search_top_impression_share,
-                metrics.search_absolute_top_impression_share,
-                metrics.search_budget_lost_impression_share,
-                metrics.search_budget_lost_top_impression_share,
-                metrics.search_budget_lost_absolute_top_impression_share,
-                metrics.search_rank_lost_impression_share,
-                metrics.search_rank_lost_top_impression_share,
-                metrics.search_rank_lost_absolute_top_impression_share,
-                metrics.search_click_share,
                 metrics.all_conversions,
                 metrics.all_conversions_value,
                 metrics.cross_device_conversions,
                 metrics.value_per_conversion,
-                metrics.conversions_value_per_cost,
-                metrics.absolute_top_impression_percentage,
-                metrics.top_impression_percentage
+                metrics.conversions_value_per_cost
             FROM campaign
             WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
               AND campaign.status != 'REMOVED'
         """
 
+        count = 0
         try:
-            response = ga_service.search(customer_id=customer_id, query=query)
-            count = 0
+            response = ga_service.search(customer_id=customer_id, query=core_query)
             for row in response:
                 campaign_id_google = str(row.campaign.id)
                 metric_date = date.fromisoformat(row.segments.date)
@@ -586,7 +682,7 @@ class GoogleAdsService:
                 conv_value = float(m.conversions_value) if m.conversions_value else 0.0
                 conv_value_micros = int(conv_value * 1_000_000)
                 cost_usd = cost_micros / 1_000_000 if cost_micros else 0
-                roas = conv_value / cost_usd if cost_usd > 0 else 0  # Real ROAS = revenue / cost
+                roas = conv_value / cost_usd if cost_usd > 0 else 0
 
                 existing = db.query(MetricDaily).filter(
                     MetricDaily.campaign_id == campaign.id,
@@ -605,26 +701,12 @@ class GoogleAdsService:
                     "cost_micros": cost_micros,
                     "roas": roas,
                     "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
-                    # Impression Share (daily)
-                    "search_impression_share": _safe_is(m.search_impression_share),
-                    "search_top_impression_share": _safe_is(m.search_top_impression_share),
-                    "search_abs_top_impression_share": _safe_is(m.search_absolute_top_impression_share),
-                    "search_budget_lost_is": _safe_is(m.search_budget_lost_impression_share),
-                    "search_budget_lost_top_is": _safe_is(m.search_budget_lost_top_impression_share),
-                    "search_budget_lost_abs_top_is": _safe_is(m.search_budget_lost_absolute_top_impression_share),
-                    "search_rank_lost_is": _safe_is(m.search_rank_lost_impression_share),
-                    "search_rank_lost_top_is": _safe_is(m.search_rank_lost_top_impression_share),
-                    "search_rank_lost_abs_top_is": _safe_is(m.search_rank_lost_absolute_top_impression_share),
-                    "search_click_share": _safe_is(m.search_click_share),
                     # Extended Conversions
                     "all_conversions": _safe_float(m.all_conversions),
                     "all_conversions_value_micros": int(float(m.all_conversions_value) * 1_000_000) if m.all_conversions_value else None,
                     "cross_device_conversions": _safe_float(m.cross_device_conversions),
                     "value_per_conversion_micros": int(float(m.value_per_conversion) * 1_000_000) if m.value_per_conversion else None,
                     "conversions_value_per_cost": _safe_float(m.conversions_value_per_cost),
-                    # Top Impression %
-                    "abs_top_impression_pct": _safe_is(m.absolute_top_impression_percentage),
-                    "top_impression_pct": _safe_is(m.top_impression_percentage),
                 }
 
                 if existing:
@@ -635,13 +717,80 @@ class GoogleAdsService:
                 count += 1
 
             db.commit()
-            logger.info(f"Synced {count} daily metric rows for customer {customer_id}")
-            return count
+            logger.info(f"Synced {count} core daily metric rows for customer {customer_id}")
 
         except Exception as e:
-            logger.error(f"Error syncing daily metrics: {e}")
+            logger.error(f"Error syncing core daily metrics: {e}")
             db.rollback()
             return 0
+
+        # ── Query 2: Search IS metrics (SEARCH campaigns only) ──
+        is_query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                metrics.search_impression_share,
+                metrics.search_top_impression_share,
+                metrics.search_absolute_top_impression_share,
+                metrics.search_budget_lost_impression_share,
+                metrics.search_budget_lost_top_impression_share,
+                metrics.search_budget_lost_absolute_top_impression_share,
+                metrics.search_rank_lost_impression_share,
+                metrics.search_rank_lost_top_impression_share,
+                metrics.search_rank_lost_absolute_top_impression_share,
+                metrics.search_click_share,
+                metrics.absolute_top_impression_percentage,
+                metrics.top_impression_percentage
+            FROM campaign
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+              AND campaign.advertising_channel_type = 'SEARCH'
+        """
+
+        try:
+            response = ga_service.search(customer_id=customer_id, query=is_query)
+            is_count = 0
+            for row in response:
+                campaign_id_google = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+                m = row.metrics
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_id_google,
+                ).first()
+                if not campaign:
+                    continue
+
+                existing = db.query(MetricDaily).filter(
+                    MetricDaily.campaign_id == campaign.id,
+                    MetricDaily.date == metric_date,
+                ).first()
+                if not existing:
+                    continue  # Core row should already exist
+
+                existing.search_impression_share = _safe_is(m.search_impression_share)
+                existing.search_top_impression_share = _safe_is(m.search_top_impression_share)
+                existing.search_abs_top_impression_share = _safe_is(m.search_absolute_top_impression_share)
+                existing.search_budget_lost_is = _safe_is(m.search_budget_lost_impression_share)
+                existing.search_budget_lost_top_is = _safe_is(m.search_budget_lost_top_impression_share)
+                existing.search_budget_lost_abs_top_is = _safe_is(m.search_budget_lost_absolute_top_impression_share)
+                existing.search_rank_lost_is = _safe_is(m.search_rank_lost_impression_share)
+                existing.search_rank_lost_top_is = _safe_is(m.search_rank_lost_top_impression_share)
+                existing.search_rank_lost_abs_top_is = _safe_is(m.search_rank_lost_absolute_top_impression_share)
+                existing.search_click_share = _safe_is(m.search_click_share)
+                existing.abs_top_impression_pct = _safe_is(m.absolute_top_impression_percentage)
+                existing.top_impression_pct = _safe_is(m.top_impression_percentage)
+                is_count += 1
+
+            db.commit()
+            logger.info(f"Enriched {is_count} rows with Search IS for customer {customer_id}")
+
+        except Exception as e:
+            # Non-critical — core metrics are already saved
+            logger.warning(f"Search IS enrichment failed (non-critical): {e}")
+
+        return count
 
     # -----------------------------------------------------------------------
     # Search Terms Sync (expanded with extended conv)
@@ -669,6 +818,7 @@ class GoogleAdsService:
         ga_service = self.client.get_service("GoogleAdsService")
         query = f"""
             SELECT
+                campaign.id,
                 ad_group.id,
                 search_term_view.search_term,
                 segments.keyword.info.text,
@@ -695,6 +845,7 @@ class GoogleAdsService:
             count = 0
             for row in response:
                 ad_group_google_id = str(row.ad_group.id)
+                campaign_google_id = str(row.campaign.id)
                 m = row.metrics
 
                 # Find local ad_group
@@ -710,28 +861,50 @@ class GoogleAdsService:
                 if not ad_group:
                     continue
 
+                # Find local campaign for campaign_id FK
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+
                 conv_value = float(m.conversions_value) if m.conversions_value else 0.0
-                db.add(SearchTerm(
-                    ad_group_id=ad_group.id,
-                    text=row.search_term_view.search_term,
-                    keyword_text=row.segments.keyword.info.text if row.segments.keyword.info.text else None,
-                    match_type=row.segments.keyword.info.match_type.name if row.segments.keyword.info.match_type else None,
-                    clicks=m.clicks,
-                    impressions=m.impressions,
-                    cost_micros=m.cost_micros,
-                    conversions=float(m.conversions),
-                    conversion_value_micros=int(conv_value * 1_000_000),
-                    ctr=int(m.ctr * 1_000_000),
-                    conversion_rate=int(m.conversions_from_interactions_rate * 1_000_000),
-                    # Extended Conversions
-                    all_conversions=_safe_float(m.all_conversions),
-                    all_conversions_value_micros=int(float(m.all_conversions_value) * 1_000_000) if m.all_conversions_value else None,
-                    cross_device_conversions=_safe_float(m.cross_device_conversions),
-                    value_per_conversion_micros=int(float(m.value_per_conversion) * 1_000_000) if m.value_per_conversion else None,
-                    conversions_value_per_cost=_safe_float(m.conversions_value_per_cost),
-                    date_from=date_from,
-                    date_to=date_to,
-                ))
+
+                # Upsert: check if search term exists for this ad_group/text/date range
+                existing = db.query(SearchTerm).filter(
+                    SearchTerm.ad_group_id == ad_group.id,
+                    SearchTerm.text == row.search_term_view.search_term,
+                    SearchTerm.date_from == date_from,
+                    SearchTerm.date_to == date_to,
+                ).first()
+
+                term_data = {
+                    "ad_group_id": ad_group.id,
+                    "campaign_id": campaign.id if campaign else None,
+                    "source": "SEARCH",
+                    "text": row.search_term_view.search_term,
+                    "keyword_text": row.segments.keyword.info.text if row.segments.keyword.info.text else None,
+                    "match_type": row.segments.keyword.info.match_type.name if row.segments.keyword.info.match_type else None,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "ctr": int(m.ctr * 1_000_000),
+                    "conversion_rate": int(m.conversions_from_interactions_rate * 1_000_000),
+                    "all_conversions": _safe_float(m.all_conversions),
+                    "all_conversions_value_micros": int(float(m.all_conversions_value) * 1_000_000) if m.all_conversions_value else None,
+                    "cross_device_conversions": _safe_float(m.cross_device_conversions),
+                    "value_per_conversion_micros": int(float(m.value_per_conversion) * 1_000_000) if m.value_per_conversion else None,
+                    "conversions_value_per_cost": _safe_float(m.conversions_value_per_cost),
+                    "date_from": date_from,
+                    "date_to": date_to,
+                }
+
+                if existing:
+                    for key, val in term_data.items():
+                        setattr(existing, key, val)
+                else:
+                    db.add(SearchTerm(**term_data))
                 count += 1
 
             db.commit()
@@ -818,25 +991,40 @@ class GoogleAdsService:
                 conv = float(m.conversions) if m.conversions else 0.0
                 conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
-                db.add(SearchTerm(
-                    campaign_id=campaign.id,
-                    ad_group_id=None,
-                    text=search_term_text,
-                    keyword_text=None,
-                    match_type=None,
-                    source="PMAX",
-                    clicks=m.clicks,
-                    impressions=m.impressions,
-                    cost_micros=m.cost_micros,
-                    conversions=conv,
-                    conversion_value_micros=int(conv_value * 1_000_000),
-                    ctr=int(m.ctr * 1_000_000),
-                    conversion_rate=int(
+                # Upsert: check if search term exists for this campaign/text/date range (PMax has no ad_group)
+                existing = db.query(SearchTerm).filter(
+                    SearchTerm.campaign_id == campaign.id,
+                    SearchTerm.text == search_term_text,
+                    SearchTerm.date_from == date_from,
+                    SearchTerm.date_to == date_to,
+                    SearchTerm.source == "PMAX",
+                ).first()
+
+                term_data = {
+                    "campaign_id": campaign.id,
+                    "ad_group_id": None,
+                    "text": search_term_text,
+                    "keyword_text": None,
+                    "match_type": None,
+                    "source": "PMAX",
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": conv,
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "ctr": int(m.ctr * 1_000_000),
+                    "conversion_rate": int(
                         (conv / m.clicks * 1_000_000) if m.clicks > 0 else 0
                     ),
-                    date_from=date_from,
-                    date_to=date_to,
-                ))
+                    "date_from": date_from,
+                    "date_to": date_to,
+                }
+
+                if existing:
+                    for key, val in term_data.items():
+                        setattr(existing, key, val)
+                else:
+                    db.add(SearchTerm(**term_data))
                 count += 1
 
             db.commit()

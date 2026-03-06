@@ -107,21 +107,49 @@ def get_campaign_kpis(
             .all()
         )
         if not metrics:
-            return {"clicks": 0, "impressions": 0, "cost": 0, "conversions": 0, "ctr": 0, "roas": 0}
+            return {
+                "clicks": 0, "impressions": 0, "cost": 0, "conversions": 0,
+                "conversion_value": 0, "ctr": 0, "roas": 0, "avg_cpc": 0,
+                "cpa": 0, "conversion_rate": 0,
+                "search_impression_share": None, "search_top_impression_share": None,
+                "search_abs_top_impression_share": None,
+                "search_budget_lost_is": None, "search_rank_lost_is": None,
+                "search_click_share": None,
+                "abs_top_impression_pct": None, "top_impression_pct": None,
+            }
 
         total_clicks = sum(m.clicks or 0 for m in metrics)
         total_impressions = sum(m.impressions or 0 for m in metrics)
         total_cost_micros = sum(m.cost_micros or 0 for m in metrics)
         total_conversions = sum(m.conversions or 0 for m in metrics)
+        total_conv_value_micros = sum(m.conversion_value_micros or 0 for m in metrics)
         total_cost_usd = total_cost_micros / 1_000_000
+        total_conv_value = total_conv_value_micros / 1_000_000
+
+        # IS & position — average of non-null daily values
+        def _avg_nonnull(field):
+            vals = [getattr(m, field) for m in metrics if getattr(m, field) is not None]
+            return round(sum(vals) / len(vals), 4) if vals else None
 
         return {
             "clicks": total_clicks,
             "impressions": total_impressions,
             "cost": round(total_cost_usd, 2),
             "conversions": total_conversions,
+            "conversion_value": round(total_conv_value, 2),
             "ctr": round((total_clicks / total_impressions * 100) if total_impressions else 0, 2),
-            "roas": round((total_conversions / total_cost_usd) if total_cost_usd else 0, 2),
+            "roas": round((total_conv_value / total_cost_usd) if total_cost_usd else 0, 2),
+            "avg_cpc": round((total_cost_usd / total_clicks) if total_clicks else 0, 2),
+            "cpa": round((total_cost_usd / total_conversions) if total_conversions else 0, 2),
+            "conversion_rate": round((total_conversions / total_clicks * 100) if total_clicks else 0, 2),
+            "search_impression_share": _avg_nonnull("search_impression_share"),
+            "search_top_impression_share": _avg_nonnull("search_top_impression_share"),
+            "search_abs_top_impression_share": _avg_nonnull("search_abs_top_impression_share"),
+            "search_budget_lost_is": _avg_nonnull("search_budget_lost_is"),
+            "search_rank_lost_is": _avg_nonnull("search_rank_lost_is"),
+            "search_click_share": _avg_nonnull("search_click_share"),
+            "abs_top_impression_pct": _avg_nonnull("abs_top_impression_pct"),
+            "top_impression_pct": _avg_nonnull("top_impression_pct"),
         }
 
     current = _aggregate(current_start, today)

@@ -42,8 +42,14 @@ def trigger_sync(
     ad_groups_synced = google_ads_service.sync_ad_groups(db, cid)
     # Phase 3: Keywords (depends on ad groups)
     keywords_synced = google_ads_service.sync_keywords(db, cid)
+    # Phase 3b: Keyword daily metrics (depends on keywords)
+    keyword_daily_synced = google_ads_service.sync_keyword_daily(db, cid, date_from, date_to)
     # Phase 4: Daily metrics (depends on campaigns)
     metrics_synced = google_ads_service.sync_daily_metrics(db, cid, date_from, date_to)
+    # Phase 4b: Device metrics (segmented by device)
+    device_metrics_synced = google_ads_service.sync_device_metrics(db, cid, date_from, date_to)
+    # Phase 4c: Geo metrics (segmented by geo)
+    geo_metrics_synced = google_ads_service.sync_geo_metrics(db, cid, date_from, date_to)
     # Phase 5: Search terms (depends on ad groups)
     terms_synced = google_ads_service.sync_search_terms(db, cid, date_from, date_to)
     # Phase 5b: PMax search terms (campaign_search_term_insight — per campaign)
@@ -61,7 +67,10 @@ def trigger_sync(
         "campaigns_synced": campaigns_synced,
         "ad_groups_synced": ad_groups_synced,
         "keywords_synced": keywords_synced,
+        "keyword_daily_synced": keyword_daily_synced,
         "metrics_synced": metrics_synced,
+        "device_metrics_synced": device_metrics_synced,
+        "geo_metrics_synced": geo_metrics_synced,
         "search_terms_synced": terms_synced,
         "pmax_terms_synced": pmax_terms_synced,
         "change_events_synced": change_events_synced,

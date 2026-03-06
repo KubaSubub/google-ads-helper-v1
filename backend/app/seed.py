@@ -537,12 +537,12 @@ def seed_demo_data():
             db.add(dm)
 
     # -----------------------------------------------------------------------
-    # MetricSegmented — device breakdown (last 30 days, SEARCH campaigns only)
+    # MetricSegmented — device breakdown (last 90 days, SEARCH campaigns only)
     # -----------------------------------------------------------------------
     search_campaigns = [c for c in campaigns if c.campaign_type == "SEARCH" and c.status == "ENABLED"]
 
     for campaign in search_campaigns:
-        for day_offset in range(30):
+        for day_offset in range(90):
             d = date.today() - timedelta(days=day_offset)
             day_of_week_factor = 0.7 if d.weekday() >= 5 else 1.0
 
@@ -574,10 +574,10 @@ def seed_demo_data():
                 db.add(ms)
 
     # -----------------------------------------------------------------------
-    # MetricSegmented — geo breakdown (last 7 days, SEARCH campaigns only)
+    # MetricSegmented — geo breakdown (last 90 days, SEARCH campaigns only)
     # -----------------------------------------------------------------------
     for campaign in search_campaigns:
-        for day_offset in range(7):
+        for day_offset in range(90):
             d = date.today() - timedelta(days=day_offset)
 
             # Pick 4-6 random cities per day per campaign
@@ -606,7 +606,7 @@ def seed_demo_data():
                 db.add(ms)
 
     # -----------------------------------------------------------------------
-    # MetricSegmented — hourly breakdown (last 7 days, SEARCH campaigns only)
+    # MetricSegmented — hourly breakdown (last 30 days, SEARCH campaigns only)
     # -----------------------------------------------------------------------
     HOUR_PROFILE = {
         0: 0.05, 1: 0.03, 2: 0.02, 3: 0.02, 4: 0.03, 5: 0.05,
@@ -616,7 +616,7 @@ def seed_demo_data():
     }
 
     for campaign in search_campaigns:
-        for day_offset in range(7):
+        for day_offset in range(30):
             d = date.today() - timedelta(days=day_offset)
             dow_factor = 0.7 if d.weekday() >= 5 else 1.0
             total_daily_clicks = int(RNG.randint(80, 250) * dow_factor)
@@ -883,8 +883,8 @@ def seed_demo_data():
     print("   - Keywords (with IS, QS historical, extended conv, top impression %)")
     print(f"   - Search terms (with extended conversions + {len(pmax_terms)} PMax terms)")
     print("   - 90 days of daily metrics (with IS, extended conv, top impression %)")
-    print("   - 30 days of device breakdown (MetricSegmented)")
-    print("   - 7 days of geo breakdown (MetricSegmented)")
+    print("   - 90 days of device breakdown (MetricSegmented)")
+    print("   - 90 days of geo breakdown (MetricSegmented)")
     print(f"   - {len(all_action_logs)} action log entries")
     print(f"   - {len(change_events_data)} change events (external history)")
     print(f"   - {len(alerts_data)} alerts (anomaly detection)")
