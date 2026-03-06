@@ -156,6 +156,8 @@ def get_campaign_kpis(
     previous = _aggregate(previous_start, current_start - timedelta(days=1))
 
     def _pct_change(curr, prev):
+        if curr is None or prev is None:
+            return None
         if prev == 0:
             return 100.0 if curr > 0 else 0.0
         return round((curr - prev) / prev * 100, 1)

@@ -618,8 +618,8 @@ export default function Campaigns() {
 
         try {
             const [kpiData, metricData] = await Promise.all([
-                getCampaignKPIs(campaign.id, days),
-                getCampaignMetrics(campaign.id, filters.dateFrom, filters.dateTo),
+                getCampaignKPIs(campaign.id, days).catch(() => null),
+                getCampaignMetrics(campaign.id, filters.dateFrom, filters.dateTo).catch(() => []),
             ])
             setKpis(kpiData)
             setMetrics(metricData)
