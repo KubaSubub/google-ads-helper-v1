@@ -250,9 +250,34 @@
 
 ---
 
+---
+
+## ZMIANY Z SESJI 2026-03-06
+
+### CRITICAL FIX: Real Client Data Now Syncing — ✅ DONE
+**Problem:** After syncing real Google Ads client (Sushi Naka Naka), Dashboard showed "Brak danych" (No data) while SearchTerms had 989 rows of real data.
+
+**Root Cause:** GAQL query in `sync_daily_metrics()` included incompatible metric `conversions_value_per_cost` for CAMPAIGN resource, causing silent query failure and returning 0 metrics.
+
+**Fix Applied:**
+- Removed `metrics.conversions_value_per_cost` from Query 1 (core_query) SELECT clause
+- Removed corresponding field from data dictionary
+- Disabled geo_metrics sync (requires different GAQL resource structure)
+
+**Result:** Real client now syncs **87 daily metric rows** successfully
+- Dashboard KPIs: 1618 clicks, 26919 impressions, 2419.35 USD cost, 733.71 conversions, ROAS 57.36
+- TrendExplorer: `is_mock: false` (displays real data, no warning banner)
+- Device metrics: 194 rows (already working)
+
+**Files Changed:**
+- `backend/app/services/google_ads.py`: Removed incompatible metric from sync_daily_metrics()
+- `backend/app/routers/sync.py`: Disabled geo_metrics call pending query structure fix
+
+---
+
 ## NASTEPNE KROKI
 
-1. **Sync test** — zsynchronizowac prawdziwe konto Google Ads, zweryfikowac PMax search terms
+1. **Geo metrics** — fix GAQL query structure (requires different resource type, not CAMPAIGN)
 2. **PyWebView** — przetestowac native wrapper
 3. **PyInstaller** — zbudowac .exe
 4. **Code quality** — wyciagnac wspolne style do theme.js, dodac AbortController
