@@ -14,8 +14,8 @@ export default function Semantic() {
     const [minCost, setMinCost] = useState(0)
 
     useEffect(() => {
-        loadData()
-    }, [])
+        if (selectedClientId) loadData()
+    }, [selectedClientId])
 
     async function loadData() {
         setLoading(true)

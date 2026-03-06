@@ -355,7 +355,7 @@ export default function Dashboard() {
                                         <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(progressPct, 100)}%`, transition: 'width 0.3s' }} />
                                     </div>
                                     <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                                        <span>{c.actual_spend_usd.toFixed(0)} / {c.expected_spend_usd.toFixed(0)} zł</span>
+                                        <span>{c.actual_spend_usd?.toFixed(0) ?? '—'} / {c.expected_spend_usd?.toFixed(0) ?? '—'} zł</span>
                                         <span style={{ color }}>{c.pacing_pct}%</span>
                                     </div>
                                 </div>
@@ -420,8 +420,8 @@ export default function Dashboard() {
                                         <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                             <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd.toFixed(0)} zł</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? '#4ADE80' : c.roas >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas.toFixed(2)}×</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? '—'} zł</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? '—'}×</td>
                                         </tr>
                                     ))}
                                 </tbody>

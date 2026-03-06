@@ -55,8 +55,9 @@ export default function Forecast() {
     async function loadCampaigns() {
         try {
             const res = await getCampaigns(selectedClientId)
-            setCampaigns(res.items)
-            if (res.items.length > 0) setSelectedCampaign(res.items[0].id)
+            const items = res?.items || []
+            setCampaigns(items)
+            if (items.length > 0) setSelectedCampaign(items[0].id)
         } catch (err) {
             console.error("Failed to load campaigns", err)
         }

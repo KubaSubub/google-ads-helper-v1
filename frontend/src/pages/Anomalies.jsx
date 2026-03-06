@@ -118,11 +118,11 @@ export default function Anomalies() {
                             <span className="text-xs text-surface-200/40">Anomalie</span>
                         </div>
                         <div className="glass rounded-xl p-4 text-center">
-                            <span className="block text-2xl font-bold text-white font-mono">{data?.mean?.toFixed(1)}</span>
+                            <span className="block text-2xl font-bold text-white font-mono">{data?.mean?.toFixed(1) ?? '—'}</span>
                             <span className="text-xs text-surface-200/40">Średnia</span>
                         </div>
                         <div className="glass rounded-xl p-4 text-center">
-                            <span className="block text-2xl font-bold text-white font-mono">±{data?.std?.toFixed(1)}</span>
+                            <span className="block text-2xl font-bold text-white font-mono">±{data?.std?.toFixed(1) ?? '—'}</span>
                             <span className="text-xs text-surface-200/40">Odch. std.</span>
                         </div>
                     </div>

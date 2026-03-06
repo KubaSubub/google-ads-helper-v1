@@ -98,9 +98,9 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
     const srcColor = SOURCE_COLORS[src] || SOURCE_COLORS.GOOGLE_ADS_API;
     const srcLabel = SOURCE_LABELS[src] || src;
     const ts = entry.timestamp || entry.change_date_time || entry.executed_at;
-    const timeStr = new Date(ts).toLocaleString('pl-PL', {
+    const timeStr = ts ? new Date(ts).toLocaleString('pl-PL', {
         hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
-    });
+    }) : '—';
 
     return (
         <div>

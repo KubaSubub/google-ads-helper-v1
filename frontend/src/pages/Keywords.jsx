@@ -312,7 +312,7 @@ export default function Keywords() {
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{k.impressions?.toLocaleString() ?? '—'}</td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>{k.cost != null ? `${k.cost.toFixed(2)} zł` : '—'}</td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>{k.conversions?.toFixed(1) ?? '—'}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{k.ctr != null ? `${(k.ctr / 10000).toFixed(2)}%` : '—'}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{k.ctr != null ? `${k.ctr.toFixed(2)}%` : '—'}</td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{k.avg_cpc != null ? `${k.avg_cpc.toFixed(2)} zł` : '—'}</td>
                                                 <td style={{ padding: '10px 12px' }}>
                                                     <QSBadge score={k.quality_score} />

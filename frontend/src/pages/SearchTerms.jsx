@@ -398,11 +398,11 @@ export default function SearchTerms() {
                                                     </td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString()}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.impressions?.toLocaleString()}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost?.toFixed(2)} zł</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions?.toFixed(1)}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.ctr?.toFixed(2)}%</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost != null ? `${t.cost.toFixed(2)} zł` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions != null ? t.conversions.toFixed(1) : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.ctr != null ? `${t.ctr.toFixed(2)}%` : '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>
-                                                        {t.conversions > 0 ? `${(t.cost / t.conversions).toFixed(2)} zł` : '—'}
+                                                        {t.conversions > 0 && t.cost != null ? `${(t.cost / t.conversions).toFixed(2)} zł` : '—'}
                                                     </td>
                                                 </tr>
                                             )

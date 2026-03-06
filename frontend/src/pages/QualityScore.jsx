@@ -102,8 +102,8 @@ export default function QualityScore() {
                     <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                         Średni QS
                     </div>
-                    <span style={{ fontSize: 26, fontWeight: 700, color: getQSColor(data.average_qs), fontFamily: 'Syne' }}>
-                        {data.average_qs.toFixed(1)}
+                    <span style={{ fontSize: 26, fontWeight: 700, color: getQSColor(data.average_qs ?? 0), fontFamily: 'Syne' }}>
+                        {data.average_qs != null ? data.average_qs.toFixed(1) : '—'}
                     </span>
                     <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>/10</span>
                 </div>

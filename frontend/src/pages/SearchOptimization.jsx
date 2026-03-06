@@ -657,15 +657,15 @@ export default function SearchOptimization() {
         setError(null)
         try {
             const [w, dp, mt, ng, r, lp, hr, st, bd] = await Promise.all([
-                getWastedSpend(selectedClientId, days),
-                getDayparting(selectedClientId, days),
-                getMatchTypeAnalysis(selectedClientId, days),
-                getNgramAnalysis(selectedClientId, { ngram_size: ngramSize }),
-                getRsaAnalysis(selectedClientId),
-                getLandingPages(selectedClientId, days),
-                getHourlyDayparting(selectedClientId),
-                getAccountStructure(selectedClientId),
-                getBiddingAdvisor(selectedClientId, days),
+                getWastedSpend(selectedClientId, days).catch(() => null),
+                getDayparting(selectedClientId, days).catch(() => null),
+                getMatchTypeAnalysis(selectedClientId, days).catch(() => null),
+                getNgramAnalysis(selectedClientId, { ngram_size: ngramSize }).catch(() => null),
+                getRsaAnalysis(selectedClientId).catch(() => null),
+                getLandingPages(selectedClientId, days).catch(() => null),
+                getHourlyDayparting(selectedClientId).catch(() => null),
+                getAccountStructure(selectedClientId).catch(() => null),
+                getBiddingAdvisor(selectedClientId, days).catch(() => null),
             ])
             setWaste(w)
             setDaypart(dp)
