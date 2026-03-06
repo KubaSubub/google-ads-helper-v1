@@ -48,8 +48,8 @@ def trigger_sync(
     metrics_synced = google_ads_service.sync_daily_metrics(db, cid, date_from, date_to)
     # Phase 4b: Device metrics (segmented by device)
     device_metrics_synced = google_ads_service.sync_device_metrics(db, cid, date_from, date_to)
-    # Phase 4c: Geo metrics (segmented by geo)
-    geo_metrics_synced = google_ads_service.sync_geo_metrics(db, cid, date_from, date_to)
+    # Phase 4c: Geo metrics (segmented by geo) — currently disabled due to API resource incompatibility
+    geo_metrics_synced = 0  # google_ads_service.sync_geo_metrics(db, cid, date_from, date_to)
     # Phase 5: Search terms (depends on ad groups)
     terms_synced = google_ads_service.sync_search_terms(db, cid, date_from, date_to)
     # Phase 5b: PMax search terms (campaign_search_term_insight — per campaign)

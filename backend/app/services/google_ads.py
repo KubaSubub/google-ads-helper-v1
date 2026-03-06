@@ -655,8 +655,7 @@ class GoogleAdsService:
                 metrics.all_conversions,
                 metrics.all_conversions_value,
                 metrics.cross_device_conversions,
-                metrics.value_per_conversion,
-                metrics.conversions_value_per_cost
+                metrics.value_per_conversion
             FROM campaign
             WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
               AND campaign.status != 'REMOVED'
@@ -706,7 +705,6 @@ class GoogleAdsService:
                     "all_conversions_value_micros": int(float(m.all_conversions_value) * 1_000_000) if m.all_conversions_value else None,
                     "cross_device_conversions": _safe_float(m.cross_device_conversions),
                     "value_per_conversion_micros": int(float(m.value_per_conversion) * 1_000_000) if m.value_per_conversion else None,
-                    "conversions_value_per_cost": _safe_float(m.conversions_value_per_cost),
                 }
 
                 if existing:
