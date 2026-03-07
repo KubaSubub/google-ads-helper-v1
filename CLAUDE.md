@@ -282,90 +282,9 @@ SAFETY_LIMITS = {
 
 ---
 
-## API ENDPOINTS (Complete)
+## API ENDPOINTS
 
-### Auth
-- `GET /auth/status` → {authenticated: bool}
-- `GET /auth/login` → {auth_url: str}
-- `GET /auth/callback?code=X` → HTML success page
-- `POST /auth/logout`
-
-### Clients
-- `GET /clients/` → paginated list
-- `GET /clients/{id}` → client detail
-- `POST /clients/` → create client
-- `POST /clients/discover` → auto-discover from MCC
-- `PATCH /clients/{id}` → update client
-- `DELETE /clients/{id}` → delete client
-
-### Sync
-- `POST /sync/trigger?client_id=X&days=30` → trigger full sync
-- `GET /sync/status` → API connection status
-
-### Campaigns
-- `GET /campaigns/?client_id=X`
-- `GET /campaigns/{id}/kpis?days=30`
-- `GET /campaigns/{id}/metrics?date_from&date_to`
-
-### Keywords + Ads
-- `GET /keywords/?client_id=X&campaign_type=&status=&match_type=&date_from=&date_to=`
-
-### Search Terms
-- `GET /search-terms/?client_id=X&search=&sort_by=&page=`
-- `GET /search-terms/segmented?client_id=X` → grouped by segment + summary
-- `GET /search-terms/summary?campaign_id=X`
-
-### Recommendations
-- `GET /recommendations/?client_id=X&priority=X&status=X`
-- `GET /recommendations/summary?client_id=X` → badge counts
-- `POST /recommendations/{id}/apply?client_id=X&dry_run=false`
-- `POST /recommendations/{id}/dismiss`
-
-### Actions
-- `GET /actions/?client_id=X&limit=50&offset=0`
-- `POST /actions/revert/{action_log_id}?client_id=X`
-
-### Analytics (Core)
-- `GET /analytics/kpis?client_id=X`
-- `GET /analytics/dashboard-kpis?client_id=X&days=30`
-- `GET /analytics/campaigns?client_id=X`
-- `GET /analytics/anomalies?client_id=X&status=unresolved`
-- `POST /analytics/anomalies/{alert_id}/resolve?client_id=X`
-- `POST /analytics/detect?client_id=X`
-
-### Analytics (V2 — Trends & Insights)
-- `GET /analytics/trends?client_id=X&metrics=&days=`
-- `GET /analytics/health-score?client_id=X`
-- `GET /analytics/campaign-trends?client_id=X&days=7`
-- `GET /analytics/budget-pacing?client_id=X`
-- `GET /analytics/quality-score-audit?client_id=X`
-- `GET /analytics/forecast?campaign_id=X&metric=&forecast_days=`
-- `GET /analytics/impression-share?client_id=X`
-- `GET /analytics/device-breakdown?client_id=X`
-- `GET /analytics/geo-breakdown?client_id=X`
-
-### Analytics (SEARCH Optimization)
-- `GET /analytics/dayparting?client_id=X&days=30`
-- `GET /analytics/rsa-analysis?client_id=X`
-- `GET /analytics/ngram-analysis?client_id=X&ngram_size=1&min_occurrences=2`
-- `GET /analytics/match-type-analysis?client_id=X&days=30`
-- `GET /analytics/landing-pages?client_id=X&days=30`
-- `GET /analytics/wasted-spend?client_id=X&days=30`
-
-### Export
-- `GET /export/search-terms?client_id=X&format=xlsx`
-- `GET /export/keywords?client_id=X&format=xlsx`
-
-### Semantic
-- `GET /semantic/clusters?client_id=X`
-
-### History (Change Events)
-- `GET /history/?client_id=X&date_from=&date_to=&resource_type=`
-- `GET /history/unified?client_id=X` → merged action_log + change_events
-- `GET /history/filters?client_id=X` → dropdown values
-
-### Health
-- `GET /health` → {status: "ok", version, env}
+Full list → **[docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md)**
 
 ---
 
@@ -375,10 +294,12 @@ Read in this order when you need context:
 1. **CLAUDE.md** (this file) — quick reference, rules, architecture
 2. **PROGRESS.md** — what's done, what to build next
 3. **DECISIONS.md** — 12 ADRs (architecture decisions)
-4. **Technical_Spec.md** — frontend API contract
-5. **google_ads_optimization_playbook.md** — domain knowledge reference
-6. **JAK_ZDOBYC_CREDENTIALS.md** — Google Ads API credentials setup guide
-7. **SEARCH_CAMPAIGN_WORKFLOW.md** — SEARCH campaign optimization checklist
+4. **docs/API_ENDPOINTS.md** — complete API endpoint reference
+5. **docs/COMPLETED_FEATURES.md** — protected features with implementation details
+6. **Technical_Spec.md** — frontend API contract
+7. **google_ads_optimization_playbook.md** — domain knowledge reference
+8. **JAK_ZDOBYC_CREDENTIALS.md** — Google Ads API credentials setup guide
+9. **SEARCH_CAMPAIGN_WORKFLOW.md** — SEARCH campaign optimization checklist
 
 Archived (in `docs/archive/`, historical reference only):
 - **Implementation_Blueprint.md** — original backend code reference (v2.0)
@@ -408,44 +329,10 @@ pyinstaller --onefile --windowed main.py
 
 ## COMPLETED FEATURES — DO NOT MODIFY UNLESS ASKED
 
+Full list → **[docs/COMPLETED_FEATURES.md](docs/COMPLETED_FEATURES.md)**
+
 These features are done and tested. Do NOT refactor, "improve", or touch them without explicit user request.
-
-### PMax Search Terms
-- `sync_pmax_search_terms()` uses `campaign_search_term_view` (NOT `search_term_view`, NOT `campaign_search_term_insight`)
-- CRITICAL: Do NOT add `segments.keyword.info.*` to campaign_search_term_view queries — it filters out PMax data
-- SearchTerm model: `ad_group_id` is nullable (PMax has no ad_groups), `campaign_id` FK for PMax direct link, `source` column ("SEARCH"/"PMAX")
-- Sync Phase 5b calls `sync_pmax_search_terms()` after standard `sync_search_terms()`
-
-### Global Date Range Picker
-- DateRangePicker component lives in Sidebar.jsx (after client selector, before nav)
-- FilterContext exposes: `filters.period`, `filters.dateFrom`, `filters.dateTo`, computed `days`
-- Period preset (7/14/30/90) auto-sets dateFrom/dateTo. Custom dates clear period to null.
-- Pages using dates: Dashboard (`days`), Campaigns (`days`), TrendExplorer (`days`), SearchTerms (`date_from`/`date_to`), Keywords (`date_from`/`date_to` via KeywordDaily)
-- Campaigns list: snapshot data — NO date filtering
-- Keywords: date filtering aggregates from `keywords_daily` table (SUM per keyword); without dates falls back to Keyword snapshot
-- FilterBar period pills hidden (`hidePeriod`) since dates are global in sidebar
-
-### AppContext — Centralized Client State
-- `clients`, `clientsLoading`, `refreshClients` live in AppContext (NOT useClients hook)
-- Sidebar.jsx reads clients from useApp(), NOT from useClients()
-- After discover, clients appear immediately in sidebar dropdown
-
-### Auth Setup Wizard
-- `GET /auth/setup-status`, `POST /auth/setup` endpoints in auth.py
-- Login.jsx has step-by-step credential setup before Google OAuth
-- All tokens stored in Windows Credential Manager via keyring
-
-### KeywordDaily (Date Aggregation)
-- Model `KeywordDaily`: keyword_id + date → clicks, impressions, cost_micros, conversions, conversion_value_micros, avg_cpc_micros
-- Router `keywords_ads.py`: two paths — daily aggregation (with date_from/date_to) vs snapshot (without dates)
-- Seed: 90 days per keyword with trend + dow + noise factors
-- Summable metrics in KeywordDaily; snapshot metrics (quality_score, impression_share, bid) stay on Keyword model
-
-### SEARCH Optimization Page
-- `SearchOptimization.jsx` — 6 collapsible analysis sections
-- Endpoints: dayparting, rsa-analysis, ngram-analysis, match-type-analysis, landing-pages, wasted-spend
-- Backend: 6 methods in analytics_service.py + 6 routes in analytics.py
-- Sidebar nav: "Optymalizacja" (Zap icon) in ANALIZA group
+Check the file above before modifying any of: PMax sync, DateRangePicker, AppContext, Auth Setup, KeywordDaily, SearchOptimization.
 
 ---
 

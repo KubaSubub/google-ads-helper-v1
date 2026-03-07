@@ -28,10 +28,15 @@ def _build_suggested_action(rec_dict: dict) -> str:
         action["params"] = {"change_pct": meta.get("bid_decrease_pct", 20)}
     elif rec_dict["type"] == "ADD_KEYWORD":
         action["params"] = {"match_type": meta.get("match_type", "EXACT"), "keyword_text": rec_dict["entity_name"]}
-    elif rec_dict["type"] == "ADD_NEGATIVE":
+    elif rec_dict["type"] in ("ADD_NEGATIVE", "NGRAM_NEGATIVE"):
         action["params"] = {"keyword_text": rec_dict["entity_name"]}
     elif rec_dict["type"] == "REALLOCATE_BUDGET":
         action["params"] = {"move_amount": meta.get("move_amount", 0)}
+    elif rec_dict["type"] == "IS_BUDGET_ALERT":
+        action["params"] = {"budget_usd": meta.get("budget_usd", 0), "lost_is_pct": meta.get("lost_is_pct", 0)}
+    # Alert types (no executable action — review only)
+    # QS_ALERT, IS_RANK_ALERT, WASTED_SPEND_ALERT, PMAX_CANNIBALIZATION,
+    # DEVICE_ANOMALY, GEO_ANOMALY, BUDGET_PACING
     return json.dumps(action)
 
 
@@ -64,9 +69,10 @@ def _persist_recommendations(db: Session, client_id: int, generated: list[dict])
             if db_rec.status in ("applied", "dismissed"):
                 # Skip — already processed
                 continue
-            # Update reason/priority if changed
+            # Update reason/priority/category if changed
             db_rec.reason = rec_dict["reason"]
             db_rec.priority = rec_dict["priority"]
+            db_rec.category = rec_dict.get("category", "RECOMMENDATION")
             db_rec.suggested_action = _build_suggested_action(rec_dict)
         else:
             # Create new
@@ -77,6 +83,7 @@ def _persist_recommendations(db: Session, client_id: int, generated: list[dict])
                 entity_id=str(rec_dict["entity_id"]),
                 entity_name=rec_dict["entity_name"],
                 priority=rec_dict["priority"],
+                category=rec_dict.get("category", "RECOMMENDATION"),
                 reason=rec_dict["reason"],
                 suggested_action=_build_suggested_action(rec_dict),
                 status="pending",
@@ -98,8 +105,9 @@ def _persist_recommendations(db: Session, client_id: int, generated: list[dict])
 @router.get("/")
 def get_recommendations(
     client_id: int = Query(..., description="Client ID"),
-    priority: str = Query(None, description="Filter by priority: HIGH, MEDIUM"),
+    priority: str = Query(None, description="Filter by priority: HIGH, MEDIUM, LOW"),
     status: str = Query(None, description="Filter by status: pending, applied, dismissed"),
+    category: str = Query(None, description="Filter by category: RECOMMENDATION, ALERT"),
     days: int = Query(30, ge=1, le=365, description="Lookback period in days"),
     db: Session = Depends(get_db),
 ):
@@ -116,6 +124,8 @@ def get_recommendations(
         results = [r for r in results if r["priority"] == priority]
     if status:
         results = [r for r in results if r.get("status", "pending") == status]
+    if category:
+        results = [r for r in results if r.get("category", "RECOMMENDATION") == category]
 
     summary = {}
     for r in results:
@@ -125,10 +135,13 @@ def get_recommendations(
     high_count = sum(1 for r in results if r["priority"] == "HIGH")
     medium_count = sum(1 for r in results if r["priority"] == "MEDIUM")
     low_count = sum(1 for r in results if r["priority"] == "LOW")
+    rec_count = sum(1 for r in results if r.get("category", "RECOMMENDATION") == "RECOMMENDATION")
+    alert_count = sum(1 for r in results if r.get("category") == "ALERT")
 
     return {
         "total": len(results),
         "by_priority": {"HIGH": high_count, "MEDIUM": medium_count, "LOW": low_count},
+        "by_category": {"RECOMMENDATION": rec_count, "ALERT": alert_count},
         "by_type": summary,
         "recommendations": results,
     }
