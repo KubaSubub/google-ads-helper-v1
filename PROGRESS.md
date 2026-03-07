@@ -22,7 +22,7 @@
 | Database (SQLAlchemy + SQLite) | database.py | ✅ |
 | Seed data (demo) | seed.py | ✅ |
 
-### Modele ORM (Phase 1) — ✅ DONE (14 modeli)
+### Modele ORM (Phase 1) — ✅ DONE (15 modeli)
 | Model | Plik | Status |
 |-------|------|--------|
 | Client | models/client.py | ✅ |
@@ -38,6 +38,7 @@
 | MetricDaily | models/metric_daily.py | ✅ |
 | MetricSegmented | models/metric_segmented.py | ✅ |
 | ChangeEvent | models/change_event.py | ✅ |
+| SyncLog | models/sync_log.py | ✅ |
 
 ### Schemas Pydantic v2 (Phase 1) — ✅ DONE
 | Schema | Plik | Status |
@@ -229,7 +230,7 @@
 | Backend <-> Frontend wiring | ✅ | Vite proxy, Axios, CORS |
 | Seed data + demo mode | ✅ | seed.py z realistycznymi danymi |
 | OAuth end-to-end | ✅ | Setup wizard + Google OAuth flow |
-| Sync test (live API) | ⬜ | Wymaga credentials |
+| Sync test (live API) | ✅ | 11/11 phases pass, 3 real clients tested |
 | Recommendations test | ⬜ | 7 regul do przetestowania |
 | Apply/Revert test | ⬜ | dry_run + live |
 | PyWebView wrapper | ⬜ | main.py do przetestowania |
@@ -273,11 +274,34 @@
 - `backend/app/services/google_ads.py`: Removed incompatible metric from sync_daily_metrics()
 - `backend/app/routers/sync.py`: Disabled geo_metrics call pending query structure fix
 
+### SYNC PIPELINE OVERHAUL — ✅ DONE (2026-03-06 session 2)
+**Problem:** Sync pipeline had 5 independent bugs: geo metrics disabled, impression share never called, change_events date format, silent error swallowing, no sync history tracking.
+
+**Fixes Applied:**
+1. **sync_geo_metrics** — rewrote GAQL to use `geographic_view` instead of `campaign` resource (+ `campaign.status` in SELECT required by API). Now returns 227 rows.
+2. **sync_campaign_impression_share** — added to pipeline as Phase 1b. Returns 2-5 rows per client.
+3. **change_events** — fixed 2 bugs: date range capped at 28 days (API's "30-day" limit is strict), parse `change_date_time` string to Python datetime for SQLite.
+4. **Silent failures** — all 10 sync methods now `raise` after `db.rollback()` instead of `return 0`. Errors properly propagate to the sync router.
+5. **SyncLog** — new model + per-phase error tracking. Every sync creates a SyncLog entry with phase-by-phase results, timestamps, counts.
+6. **sync.py router rewrite** — 11 phases with dependency checking (if campaigns fail → abort; if ad_groups fail → skip keywords/search_terms). New `/sync/logs` endpoint.
+
+**Result:** All 11 phases succeed across 3 real clients:
+- Sushi Naka Naka: 1,734 rows (3 campaigns, 128 keywords, 87 daily metrics, 227 geo, 194 device, 51+938 search terms, 1 change event)
+- Klimfix: 910 rows (17 campaigns, 379 keywords, 103 keyword daily, 24 geo, 46 device, 281 search terms, 1 change event)
+- tanie-materialy.pl: 0 rows (all phases OK, empty account)
+
+**Files Changed:**
+- `backend/app/services/google_ads.py`: geo_metrics rewrite, change_events datetime fix, all sync methods raise on error
+- `backend/app/routers/sync.py`: complete rewrite with SyncLog, dependency checking, `/sync/logs` endpoint
+- `backend/app/models/sync_log.py`: new SyncLog model
+- `backend/app/models/__init__.py`: added SyncLog export
+
 ---
 
 ## NASTEPNE KROKI
 
-1. **Geo metrics** — fix GAQL query structure (requires different resource type, not CAMPAIGN)
-2. **PyWebView** — przetestowac native wrapper
-3. **PyInstaller** — zbudowac .exe
-4. **Code quality** — wyciagnac wspolne style do theme.js, dodac AbortController
+1. **PyWebView** — przetestowac native wrapper
+2. **PyInstaller** — zbudowac .exe
+3. **Code quality** — wyciagnac wspolne style do theme.js, dodac AbortController
+4. **Negative Keywords sync** — nowa faza synca (V1.1)
+5. **Scheduled sync** — auto-sync co 6h/24h (V1.1)

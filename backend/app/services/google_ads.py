@@ -210,7 +210,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing campaigns: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Campaign Impression Share Sync (aggregated last 30 days)
@@ -286,7 +286,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing campaign impression share: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Ad Groups Sync
@@ -357,7 +357,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing ad groups: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Keywords Sync (expanded with IS, QS historical, extended conv, top %)
@@ -505,7 +505,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing keywords: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Keyword Daily Metrics Sync
@@ -604,7 +604,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing keyword daily metrics: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Daily Metrics Sync (expanded with IS, extended conv, top %)
@@ -720,7 +720,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing core daily metrics: {e}")
             db.rollback()
-            return 0
+            raise
 
         # ── Query 2: Search IS metrics (SEARCH campaigns only) ──
         is_query = f"""
@@ -912,7 +912,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing search terms: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # PMax Search Terms Sync (via campaign_search_term_view)
@@ -1032,7 +1032,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing PMax search terms: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Device Segmented Metrics Sync
@@ -1130,17 +1130,47 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing device metrics: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Geo Segmented Metrics Sync
     # -----------------------------------------------------------------------
 
+    def _resolve_geo_names(self, customer_id: str, criterion_ids: set[str]) -> dict[str, str]:
+        """Resolve geoTargetConstants criterion IDs to human-readable city names.
+
+        Returns dict: {"geoTargetConstants/1011243": "Wroclaw", ...}
+        """
+        if not criterion_ids or not self.is_connected:
+            return {}
+
+        from app.config import settings
+        ga_service = self.client.get_service("GoogleAdsService")
+        mcc_id = settings.google_ads_login_customer_id or customer_id
+
+        ids_str = ",".join(criterion_ids)
+        query = f"""
+            SELECT
+                geo_target_constant.id,
+                geo_target_constant.name
+            FROM geo_target_constant
+            WHERE geo_target_constant.id IN ({ids_str})
+        """
+        name_map = {}
+        try:
+            response = ga_service.search(customer_id=mcc_id, query=query)
+            for row in response:
+                gtc = row.geo_target_constant
+                name_map[f"geoTargetConstants/{gtc.id}"] = gtc.name
+        except Exception as e:
+            logger.warning(f"Could not resolve geo names: {e}")
+        return name_map
+
     def sync_geo_metrics(
         self, db: Session, customer_id: str,
         date_from: date = None, date_to: date = None
     ) -> int:
-        """Fetch geo-segmented (city) daily campaign metrics."""
+        """Fetch geo-segmented (city) daily campaign metrics via geographic_view."""
         if not self.is_connected:
             return 0
 
@@ -1151,14 +1181,18 @@ class GoogleAdsService:
             return 0
 
         if not date_from:
-            date_from = date.today() - timedelta(days=7)  # Shorter range to limit data volume
+            date_from = date.today() - timedelta(days=7)
         if not date_to:
             date_to = date.today() - timedelta(days=1)
 
         ga_service = self.client.get_service("GoogleAdsService")
+        # geographic_view requires campaign.status in SELECT
         query = f"""
             SELECT
                 campaign.id,
+                campaign.status,
+                geographic_view.country_criterion_id,
+                geographic_view.location_type,
                 segments.date,
                 segments.geo_target_city,
                 metrics.clicks,
@@ -1167,9 +1201,8 @@ class GoogleAdsService:
                 metrics.conversions,
                 metrics.conversions_value,
                 metrics.cost_micros,
-                metrics.average_cpc,
-                metrics.search_impression_share
-            FROM campaign
+                metrics.average_cpc
+            FROM geographic_view
             WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
               AND campaign.status != 'REMOVED'
               AND metrics.impressions > 0
@@ -1177,14 +1210,29 @@ class GoogleAdsService:
 
         try:
             response = ga_service.search(customer_id=customer_id, query=query)
-            count = 0
+
+            # First pass: collect all rows and unique criterion IDs
+            raw_rows = []
+            criterion_ids = set()
             for row in response:
+                geo_city_raw = row.segments.geo_target_city
+                if geo_city_raw:
+                    # Extract criterion ID from "geoTargetConstants/1011243"
+                    parts = geo_city_raw.split("/")
+                    if len(parts) == 2:
+                        criterion_ids.add(parts[1])
+                raw_rows.append(row)
+
+            # Batch-resolve all criterion IDs to city names
+            geo_name_map = self._resolve_geo_names(customer_id, criterion_ids)
+
+            # Second pass: upsert rows with resolved city names
+            count = 0
+            for row in raw_rows:
                 campaign_google_id = str(row.campaign.id)
                 metric_date = date.fromisoformat(row.segments.date)
-                # geo_target_city returns resource name like "geoTargetConstants/1023191"
                 geo_city_raw = row.segments.geo_target_city
-                # Extract a readable name — for now store resource name, resolve later
-                geo_city = geo_city_raw if geo_city_raw else "Unknown"
+                geo_city = geo_name_map.get(geo_city_raw, geo_city_raw) if geo_city_raw else "Unknown"
                 m = row.metrics
 
                 campaign = db.query(Campaign).filter(
@@ -1196,11 +1244,12 @@ class GoogleAdsService:
 
                 conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
+                # Match by resolved name OR raw resource name (handles migration)
                 existing = db.query(MetricSegmented).filter(
                     MetricSegmented.campaign_id == campaign.id,
                     MetricSegmented.date == metric_date,
                     MetricSegmented.device.is_(None),
-                    MetricSegmented.geo_city == geo_city,
+                    MetricSegmented.geo_city.in_([geo_city, geo_city_raw]),
                 ).first()
 
                 data = {
@@ -1215,7 +1264,7 @@ class GoogleAdsService:
                     "conversion_value_micros": int(conv_value * 1_000_000),
                     "cost_micros": m.cost_micros,
                     "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
-                    "search_impression_share": _safe_is(m.search_impression_share),
+                    "search_impression_share": None,
                 }
 
                 if existing:
@@ -1226,13 +1275,13 @@ class GoogleAdsService:
                 count += 1
 
             db.commit()
-            logger.info(f"Synced {count} geo-segmented metric rows")
+            logger.info(f"Synced {count} geo-segmented metric rows (resolved {len(geo_name_map)} city names)")
             return count
 
         except Exception as e:
             logger.error(f"Error syncing geo metrics: {e}")
             db.rollback()
-            return 0
+            raise
 
     # -----------------------------------------------------------------------
     # Apply Action (mutations)
@@ -1481,7 +1530,7 @@ class GoogleAdsService:
         import json
         from datetime import datetime, timezone
 
-        days = min(days, 30)  # API hard limit
+        days = min(days, 28)  # API hard limit is 30 days; use 28 to stay safely within
         date_from = (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
         date_to = date.today().strftime("%Y-%m-%d")
 
@@ -1556,10 +1605,18 @@ class GoogleAdsService:
                         else str(ce.resource_change_operation)
                     )
 
+                    # Parse change_date_time string to datetime object for SQLite
+                    change_dt = ce.change_date_time
+                    if isinstance(change_dt, str):
+                        try:
+                            change_dt = datetime.strptime(change_dt, "%Y-%m-%d %H:%M:%S.%f")
+                        except ValueError:
+                            change_dt = datetime.strptime(change_dt, "%Y-%m-%d %H:%M:%S")
+
                     event = ChangeEvent(
                         client_id=client_id,
                         resource_name=res_name,
-                        change_date_time=ce.change_date_time,
+                        change_date_time=change_dt,
                         user_email=ce.user_email or None,
                         client_type=client_type_str,
                         change_resource_type=resource_type_str,
@@ -1574,7 +1631,7 @@ class GoogleAdsService:
                     )
                     db.add(event)
                     page_count += 1
-                    last_timestamp = ce.change_date_time
+                    last_timestamp = change_dt
 
                 db.commit()
                 total_count += page_count
@@ -1606,7 +1663,7 @@ class GoogleAdsService:
         except Exception as e:
             logger.error(f"Error syncing change events for client {client_id}: {e}")
             db.rollback()
-            return 0
+            raise
 
 
 # ------------------------------------------------------------------

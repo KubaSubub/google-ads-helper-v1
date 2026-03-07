@@ -29,7 +29,7 @@ export const logout = () => api.post('/auth/logout');
 export const getClients = () => api.get('/clients/');
 export const getClient = (id) => api.get(`/clients/${id}`);
 export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
-export const syncClient = (id) => api.post('/sync/trigger', null, { params: { client_id: id } });
+export const syncClient = (id, days = 90) => api.post('/sync/trigger', null, { params: { client_id: id, days } });
 export const discoverClients = (customerIds) =>
     api.post('/clients/discover', null, {
         params: customerIds ? { customer_ids: customerIds } : {},

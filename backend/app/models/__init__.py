@@ -16,6 +16,7 @@ from .recommendation import Recommendation
 from .action_log import ActionLog
 from .alert import Alert
 from .change_event import ChangeEvent
+from .sync_log import SyncLog
 
 __all__ = [
     "Client",
@@ -31,4 +32,5 @@ __all__ = [
     "ActionLog",
     "Alert",
     "ChangeEvent",
+    "SyncLog",
 ]
