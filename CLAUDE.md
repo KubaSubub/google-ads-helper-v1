@@ -375,12 +375,15 @@ Read in this order when you need context:
 1. **CLAUDE.md** (this file) — quick reference, rules, architecture
 2. **PROGRESS.md** — what's done, what to build next
 3. **DECISIONS.md** — 12 ADRs (architecture decisions)
-4. **Implementation_Blueprint.md** — original backend code reference
-5. **Blueprint_Patch_v2_1.md** — 3 critical additions (revert, analytics, segmentation)
-6. **PRD_Core.md** — product requirements, features, acceptance criteria
-7. **Technical_Spec.md** — frontend API contract
-8. **google_ads_optimization_playbook.md** — domain knowledge reference
-9. **JAK_ZDOBYC_CREDENTIALS.md** — Google Ads API credentials setup guide
+4. **Technical_Spec.md** — frontend API contract
+5. **google_ads_optimization_playbook.md** — domain knowledge reference
+6. **JAK_ZDOBYC_CREDENTIALS.md** — Google Ads API credentials setup guide
+7. **SEARCH_CAMPAIGN_WORKFLOW.md** — SEARCH campaign optimization checklist
+
+Archived (in `docs/archive/`, historical reference only):
+- **Implementation_Blueprint.md** — original backend code reference (v2.0)
+- **Blueprint_Patch_v2_1.md** — 3 critical additions (revert, analytics, segmentation)
+- **PRD_Core.md** — product requirements, features, acceptance criteria
 
 ---
 
@@ -472,9 +475,45 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ---
 
+## WORKFLOW RULES (Tryb pracy z użytkownikiem)
+
+### Język
+- **UI labels:** po polsku (etykiety, nagłówki stron, komunikaty)
+- **Kod:** po angielsku (zmienne, funkcje, komentarze, commit messages)
+- **Komunikacja z użytkownikiem:** po polsku
+
+### Sesje
+- Jedna sesja = jedna feature lub fix (nie mieszać wielu tematów)
+- Na koniec sesji: NIE commituj automatycznie — czekaj na polecenie użytkownika
+- NIE pushuj do remote bez jawnej zgody
+- Przed commitem pokaż `git diff --stat` i zaproponuj commit message
+
+### Testowanie
+- Klient testowy: **Sushi Naka Naka** (client_id=3) — najwięcej danych, Wrocław
+- Backup: **Klimfix** (client_id=2) — Rzeszów, 17 kampanii
+- Po każdej zmianie w sync/analytics: przetestuj na real client, nie tylko na demo
+
+### Czego NIE robić bez pytania
+- `git push` / `git push --force`
+- Usuwanie/reseed bazy danych
+- Modyfikacja `.env` lub credentials
+- Usuwanie plików które nie powstały w bieżącej sesji
+- Modyfikacja plików z sekcji "COMPLETED FEATURES"
+- `npm install` / `pip install` nowych pakietów
+
+### Planowanie
+- Duże zmiany (>3 plików): pokaż plan PRZED implementacją
+- Małe fixy (1-2 plików): implementuj od razu, pokaż wynik
+- Jeśli feature wymaga zmiany schematu DB: powiedz wprost "to wymaga reseed"
+
+### Dokumentacja
+- Po zakończeniu feature: zaktualizuj PROGRESS.md
+- Po ważnej decyzji architektonicznej: zaktualizuj DECISIONS.md
+- CLAUDE.md aktualizuj tylko gdy zmienia się reguła lub dodaje się nowy "completed feature"
+
+---
+
 ## WHEN IN DOUBT
 
-- If a requirement is ambiguous → check Blueprint v2.0 + Patch v2.1 first
-- If Blueprint and PRD conflict → Blueprint wins (it's newer and corrected)
-- If Patch v2.1 and Blueprint v2.0 conflict → Patch wins
+- If a requirement is ambiguous → check archived docs in `docs/archive/` first
 - If nothing covers it → ASK. Do NOT improvise.
