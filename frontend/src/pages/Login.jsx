@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { getLoginUrl, getAuthStatus, getSetupStatus, saveSetup } from '../api';
+import { getLoginUrl, getAuthStatus, getSetupStatus, saveSetup, setSessionToken } from '../api';
 import { Zap, LogIn, Loader2, Key, ChevronRight, CheckCircle, ExternalLink } from 'lucide-react';
 
 const inputStyle = {
@@ -98,6 +98,9 @@ export default function Login({ onAuthComplete }) {
             try {
                 const data = await getAuthStatus();
                 if (data.authenticated) {
+                    if (data.session?.token) {
+                        setSessionToken(data.session);
+                    }
                     clearInterval(intervalRef.current);
                     intervalRef.current = null;
                     setLoading(false);
@@ -113,7 +116,7 @@ export default function Login({ onAuthComplete }) {
                 clearInterval(intervalRef.current);
                 intervalRef.current = null;
                 setLoading(false);
-                setError('Timeout — nie zalogowano w ciagu 5 minut. Sprobuj ponownie.');
+                setError('Timeout â€” nie zalogowano w ciagu 5 minut. Sprobuj ponownie.');
             }
         }, 300_000);
     }
