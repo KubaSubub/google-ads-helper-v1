@@ -5,40 +5,33 @@ Run with: uvicorn app.main:app --reload --port 8000
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.config import settings
 from app.database import init_db
-from app.security import require_session
 from app.routers import (
-    auth,
-    clients,
-    campaigns,
-    search_terms,
-    analytics,
-    keywords_ads,
-    sync,
-    export,
-    semantic,
-    recommendations,
     actions,
+    analytics,
+    auth,
+    campaigns,
+    clients,
+    export,
     history,
+    keywords_ads,
+    recommendations,
+    search_terms,
+    semantic,
+    sync,
 )
-
-
-DEFAULT_SECRET = "change-this-to-a-random-string"
+from app.security import require_session
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB tables on startup, cleanup on shutdown."""
     logger.info("Starting Google Ads Helper API...")
-
-    if settings.is_production_like and settings.app_secret_key == DEFAULT_SECRET:
-        raise RuntimeError("APP_SECRET_KEY must be changed for production-like environments")
-
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     init_db()
     logger.info(f"Database ready: {settings.database_url}")
@@ -53,6 +46,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS - allow frontend dev server (Vite default port)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -69,10 +63,7 @@ app.add_middleware(
 API_PREFIX = "/api/v1"
 protected = [Depends(require_session)]
 
-# Public auth endpoints
 app.include_router(auth.router, prefix=API_PREFIX, tags=["auth"])
-
-# Protected API surface
 app.include_router(clients.router, prefix=API_PREFIX, tags=["clients"], dependencies=protected)
 app.include_router(campaigns.router, prefix=API_PREFIX, tags=["campaigns"], dependencies=protected)
 app.include_router(search_terms.router, prefix=API_PREFIX, tags=["search-terms"], dependencies=protected)

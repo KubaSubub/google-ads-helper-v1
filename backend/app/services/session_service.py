@@ -1,116 +1,92 @@
-"""Session token management for API authorization."""
+"""In-memory session token management for API authorization."""
 
-import secrets
 from datetime import datetime, timedelta, timezone
+import hashlib
+import secrets
 from typing import Optional
 
-from app.config import settings
-from app.services.credentials_service import CredentialsService
+SESSION_TTL_MINUTES = 60
+SESSION_COOKIE_NAME = "gah_session"
+MAX_OAUTH_STATES = 100
+OAUTH_STATE_TTL_MINUTES = 15
 
 
 class SessionService:
-    """Stores API session token in keyring with expiry metadata."""
+    """Short-lived in-memory session store keyed by token hash."""
 
-    SESSION_TOKEN = "session_token"
-    SESSION_EXPIRES_AT = "session_expires_at"
-    OAUTH_STATE = "oauth_state"
-    OAUTH_STATE_EXPIRES_AT = "oauth_state_expires_at"
+    _sessions: dict[str, datetime] = {}
+    _oauth_states: dict[str, datetime] = {}
 
     @classmethod
-    def issue_session(cls) -> dict:
-        token = secrets.token_urlsafe(48)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
-
-        CredentialsService.set(cls.SESSION_TOKEN, token)
-        CredentialsService.set(cls.SESSION_EXPIRES_AT, expires_at.isoformat())
-
-        return {
-            "token": token,
-            "expires_at": expires_at.isoformat(),
-        }
+    def _now(cls) -> datetime:
+        return datetime.now(timezone.utc)
 
     @classmethod
-    def get_session(cls) -> Optional[dict]:
-        token = CredentialsService.get(cls.SESSION_TOKEN)
-        expires_raw = CredentialsService.get(cls.SESSION_EXPIRES_AT)
-        if not token or not expires_raw:
-            return None
-
-        try:
-            expires_at = datetime.fromisoformat(expires_raw)
-        except ValueError:
-            cls.clear_session()
-            return None
-
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-        if expires_at <= datetime.now(timezone.utc):
-            cls.clear_session()
-            return None
-
-        return {
-            "token": token,
-            "expires_at": expires_at.isoformat(),
-        }
+    def _hash(cls, token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     @classmethod
-    def ensure_session(cls) -> dict:
-        existing = cls.get_session()
-        if existing:
-            return existing
-        return cls.issue_session()
+    def issue(cls, ttl_minutes: int = SESSION_TTL_MINUTES) -> str:
+        token = secrets.token_urlsafe(32)
+        token_hash = cls._hash(token)
+        cls._sessions[token_hash] = cls._now() + timedelta(minutes=ttl_minutes)
+        cls._purge_expired()
+        return token
 
     @classmethod
-    def is_valid(cls, token: str) -> bool:
+    def is_valid(cls, token: Optional[str]) -> bool:
         if not token:
             return False
-
-        session = cls.get_session()
-        if not session:
+        token_hash = cls._hash(token)
+        expires_at = cls._sessions.get(token_hash)
+        if not expires_at:
             return False
-
-        return secrets.compare_digest(token, session["token"])
+        if expires_at <= cls._now():
+            cls._sessions.pop(token_hash, None)
+            return False
+        return True
 
     @classmethod
-    def clear_session(cls):
-        CredentialsService.delete(cls.SESSION_TOKEN)
-        CredentialsService.delete(cls.SESSION_EXPIRES_AT)
+    def revoke(cls, token: Optional[str]) -> None:
+        if not token:
+            return
+        cls._sessions.pop(cls._hash(token), None)
+
+    @classmethod
+    def clear_all(cls) -> None:
+        cls._sessions.clear()
+        cls._oauth_states.clear()
 
     @classmethod
     def issue_oauth_state(cls) -> str:
-        state = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
-        CredentialsService.set(cls.OAUTH_STATE, state)
-        CredentialsService.set(cls.OAUTH_STATE_EXPIRES_AT, expires_at.isoformat())
+        state = secrets.token_urlsafe(24)
+        cls._oauth_states[state] = cls._now() + timedelta(minutes=OAUTH_STATE_TTL_MINUTES)
+        cls._purge_expired()
+        if len(cls._oauth_states) > MAX_OAUTH_STATES:
+            # Drop oldest states to cap memory
+            for key in sorted(cls._oauth_states, key=lambda k: cls._oauth_states[k])[: len(cls._oauth_states) - MAX_OAUTH_STATES]:
+                cls._oauth_states.pop(key, None)
         return state
 
     @classmethod
     def verify_oauth_state(cls, state: Optional[str]) -> bool:
-        saved_state = CredentialsService.get(cls.OAUTH_STATE)
-        expires_raw = CredentialsService.get(cls.OAUTH_STATE_EXPIRES_AT)
-
-        if not state or not saved_state or not expires_raw:
+        if not state:
             return False
-
-        try:
-            expires_at = datetime.fromisoformat(expires_raw)
-        except ValueError:
-            cls.clear_oauth_state()
+        expires_at = cls._oauth_states.pop(state, None)
+        if not expires_at:
             return False
-
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-        if expires_at <= datetime.now(timezone.utc):
-            cls.clear_oauth_state()
-            return False
-
-        is_valid = secrets.compare_digest(state, saved_state)
-        cls.clear_oauth_state()
-        return is_valid
+        return expires_at > cls._now()
 
     @classmethod
-    def clear_oauth_state(cls):
-        CredentialsService.delete(cls.OAUTH_STATE)
-        CredentialsService.delete(cls.OAUTH_STATE_EXPIRES_AT)
+    def clear_oauth_state(cls) -> None:
+        cls._oauth_states.clear()
+
+    @classmethod
+    def _purge_expired(cls) -> None:
+        now = cls._now()
+        for key, expires_at in list(cls._sessions.items()):
+            if expires_at <= now:
+                cls._sessions.pop(key, None)
+        for key, expires_at in list(cls._oauth_states.items()):
+            if expires_at <= now:
+                cls._oauth_states.pop(key, None)

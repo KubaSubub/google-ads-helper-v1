@@ -1,5 +1,5 @@
 """
-Google Ads API Service â€” handles authentication and data fetching.
+Google Ads API Service — handles authentication and data fetching.
 
 This service wraps the official google-ads Python client and provides
 methods to fetch campaigns, ad groups, keywords, search terms, and ads
@@ -13,17 +13,12 @@ from datetime import date, timedelta
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
     ChangeEvent, ActionLog, KeywordDaily,
 )
-from sqlalchemy import func
 from app.services.cache import get_cached, set_cached
 from app.services.credentials_service import CredentialsService
-from app.services.action_executor import SafetyViolationError, get_effective_limits, validate_action
-from app.services.action_types import ActionType, map_action_type
-from app.utils.formatters import micros_to_currency
 
 # Optional: Import google-ads client (only if credentials are configured)
 try:
@@ -79,8 +74,8 @@ class GoogleAdsService:
         """Attempt to initialize GoogleAdsClient.
 
         Credential priority:
-          1. Windows Credential Manager (keyring) â€” set after OAuth callback
-          2. .env / environment variables â€” dev fallback
+          1. Windows Credential Manager (keyring) — set after OAuth callback
+          2. .env / environment variables — dev fallback
         This allows the .exe to work without .env once the user completes OAuth.
         """
         if not GOOGLE_ADS_AVAILABLE:
@@ -88,27 +83,18 @@ class GoogleAdsService:
 
         refresh_token = CredentialsService.get(CredentialsService.REFRESH_TOKEN)
         if not refresh_token:
-            logger.info("No refresh_token in keyring â€” user must complete OAuth first")
+            logger.info("No refresh_token in keyring — user must complete OAuth first")
             return
 
-        # Resolve each credential: keyring first, .env fallback
         developer_token = CredentialsService.get(CredentialsService.DEVELOPER_TOKEN)
-        if not developer_token and settings.is_development:
-            developer_token = settings.google_ads_developer_token
         client_id = CredentialsService.get(CredentialsService.CLIENT_ID)
-        if not client_id and settings.is_development:
-            client_id = settings.google_ads_client_id
         client_secret = CredentialsService.get(CredentialsService.CLIENT_SECRET)
-        if not client_secret and settings.is_development:
-            client_secret = settings.google_ads_client_secret
 
         if not developer_token:
-            logger.warning("No developer_token found in keyring or .env")
+            logger.warning("No developer_token found in secure storage")
             return
 
         login_customer_id = CredentialsService.get("login_customer_id")
-        if not login_customer_id and settings.is_development:
-            login_customer_id = settings.google_ads_login_customer_id
 
         try:
             config = {
@@ -139,7 +125,7 @@ class GoogleAdsService:
         return self.client is not None
 
     # -----------------------------------------------------------------------
-    # Campaign Sync (structural data only â€” no metrics)
+    # Campaign Sync (structural data only — no metrics)
     # -----------------------------------------------------------------------
 
     def sync_campaigns(self, db: Session, customer_id: str) -> int:
@@ -148,7 +134,7 @@ class GoogleAdsService:
         Returns the number of campaigns synced.
         """
         if not self.is_connected:
-            logger.warning("Google Ads API not connected â€” skipping campaign sync")
+            logger.warning("Google Ads API not connected — skipping campaign sync")
             return 0
 
         client_record = db.query(Client).filter(
@@ -639,7 +625,7 @@ class GoogleAdsService:
 
         ga_service = self.client.get_service("GoogleAdsService")
 
-        # â”€â”€ Query 1: Core metrics for ALL campaign types â”€â”€
+        # ── Query 1: Core metrics for ALL campaign types ──
         core_query = f"""
             SELECT
                 campaign.id,
@@ -722,7 +708,7 @@ class GoogleAdsService:
             db.rollback()
             raise
 
-        # â”€â”€ Query 2: Search IS metrics (SEARCH campaigns only) â”€â”€
+        # ── Query 2: Search IS metrics (SEARCH campaigns only) ──
         is_query = f"""
             SELECT
                 campaign.id,
@@ -785,7 +771,7 @@ class GoogleAdsService:
             logger.info(f"Enriched {is_count} rows with Search IS for customer {customer_id}")
 
         except Exception as e:
-            # Non-critical â€” core metrics are already saved
+            # Non-critical — core metrics are already saved
             logger.warning(f"Search IS enrichment failed (non-critical): {e}")
 
         return count
@@ -927,7 +913,7 @@ class GoogleAdsService:
         campaign_search_term_view aggregates at campaign level and INCLUDES
         Performance Max data (unlike search_term_view which is ad_group level).
 
-        IMPORTANT: Do NOT use segments.keyword.info.* fields â€” they filter
+        IMPORTANT: Do NOT use segments.keyword.info.* fields — they filter
         out all PMax data from results.
         """
         if not self.is_connected:
@@ -946,7 +932,7 @@ class GoogleAdsService:
 
         ga_service = self.client.get_service("GoogleAdsService")
 
-        # Single query for all PMax campaigns â€” no keyword segments!
+        # Single query for all PMax campaigns — no keyword segments!
         query = f"""
             SELECT
                 campaign.id,
@@ -1144,9 +1130,8 @@ class GoogleAdsService:
         if not criterion_ids or not self.is_connected:
             return {}
 
-        from app.config import settings
         ga_service = self.client.get_service("GoogleAdsService")
-        mcc_id = CredentialsService.get("login_customer_id") or settings.google_ads_login_customer_id or customer_id
+        mcc_id = CredentialsService.get("login_customer_id") or customer_id
 
         ids_str = ",".join(criterion_ids)
         query = f"""
@@ -1287,33 +1272,21 @@ class GoogleAdsService:
     # Apply Action (mutations)
     # -----------------------------------------------------------------------
 
-    def apply_action(self, db: Session, action_type: str, entity_id: int, params: dict = None, client_id: int = None):
+    def apply_action(self, db: Session, action_type: str, entity_id: int, params: dict = None, client_id: int | None = None):
         """
         Execute an action on a Google Ads entity.
 
-        Enforces safety validation before any mutating write.
+        Updates local DB immediately. If Google Ads API is connected,
+        also sends the mutation to the API. Otherwise operates in local-only mode.
         """
         from app.models import Keyword, Ad, Campaign
+        from app.services.action_executor import SafetyViolationError, validate_action
 
-        params = params or {}
         log_details = f"Action: {action_type}, Entity: {entity_id}, Params: {params}"
         logger.info(f"EXECUTING: {log_details}")
 
         try:
-            canonical_action = map_action_type(action_type)
-        except ValueError as e:
-            return {"status": "error", "message": str(e)}
-
-        try:
-            context = self._build_safety_context(db, canonical_action.value, entity_id, client_id)
-            current_val, new_val = self._extract_safety_values(db, canonical_action.value, entity_id, params)
-            limits = self._get_client_limits(db, client_id)
-            validate_action(canonical_action.value, current_val, new_val, context, limits)
-        except SafetyViolationError as e:
-            return {"status": "error", "message": f"Safety violation: {str(e)}"}
-
-        try:
-            if canonical_action == ActionType.PAUSE_KEYWORD:
+            if action_type == "PAUSE_KEYWORD":
                 kw = db.query(Keyword).get(entity_id)
                 if not kw:
                     return {"status": "error", "message": f"Keyword {entity_id} not found"}
@@ -1321,7 +1294,7 @@ class GoogleAdsService:
                 if self.is_connected:
                     self._mutate_keyword_status(kw.google_keyword_id, "PAUSED", db, kw)
 
-            elif canonical_action == ActionType.ENABLE_KEYWORD:
+            elif action_type == "ENABLE_KEYWORD":
                 kw = db.query(Keyword).get(entity_id)
                 if not kw:
                     return {"status": "error", "message": f"Keyword {entity_id} not found"}
@@ -1329,29 +1302,42 @@ class GoogleAdsService:
                 if self.is_connected:
                     self._mutate_keyword_status(kw.google_keyword_id, "ENABLED", db, kw)
 
-            elif canonical_action == ActionType.PAUSE_AD:
+            elif action_type == "PAUSE_AD":
                 ad = db.query(Ad).get(entity_id)
                 if not ad:
                     return {"status": "error", "message": f"Ad {entity_id} not found"}
                 ad.status = "PAUSED"
 
-            elif canonical_action in (ActionType.UPDATE_BID, ActionType.SET_KEYWORD_BID):
+            elif action_type in ("UPDATE_BID", "SET_KEYWORD_BID"):
                 kw = db.query(Keyword).get(entity_id)
                 if not kw:
                     return {"status": "error", "message": f"Keyword {entity_id} not found"}
-                if "amount" not in params:
-                    return {"status": "error", "message": "Missing params.amount"}
-                kw.bid_micros = int(float(params["amount"]) * 1_000_000)
-                if self.is_connected:
-                    self._mutate_keyword_bid(kw, db)
+                if params and "amount" in params:
+                    new_bid_usd = float(params["amount"])
+                    current_bid_usd = (kw.bid_micros or 0) / 1_000_000
+                    client_limits = None
+                    if client_id is not None:
+                        from app.models import Client
+                        client = db.query(Client).filter(Client.id == client_id).first()
+                        if client and client.business_rules:
+                            client_limits = (client.business_rules or {}).get("safety_limits")
+                    try:
+                        validate_action(action_type, current_bid_usd, new_bid_usd, {}, client_limits)
+                    except SafetyViolationError as e:
+                        return {"status": "error", "message": f"Safety violation: {str(e)}"}
+                    kw.bid_micros = int(new_bid_usd * 1_000_000)
+                    if self.is_connected:
+                        self._mutate_keyword_bid(kw, db)
 
-            elif canonical_action == ActionType.ADD_NEGATIVE:
+            elif action_type == "ADD_NEGATIVE":
+                # Negative keywords need a dedicated model in the future.
+                # For now, log intent and mark as executed.
                 logger.info(f"ADD_NEGATIVE logged: text={params.get('text')}, campaign={params.get('campaign_id')}")
 
-            elif canonical_action == ActionType.ADD_KEYWORD:
-                ad_group_id = params.get("ad_group_id")
-                text = params.get("text")
-                match_type = params.get("match_type", "EXACT")
+            elif action_type == "ADD_KEYWORD":
+                ad_group_id = params.get("ad_group_id") if params else None
+                text = params.get("text") if params else None
+                match_type = params.get("match_type", "EXACT") if params else "EXACT"
 
                 if not ad_group_id or not text:
                     return {"status": "error", "message": "Missing ad_group_id or text"}
@@ -1369,88 +1355,27 @@ class GoogleAdsService:
                         match_type=match_type,
                         status="ENABLED",
                         google_keyword_id=f"local-{int(datetime.utcnow().timestamp())}",
-                        clicks=0,
-                        impressions=0,
-                        cost_micros=0,
-                        conversions=0.0,
+                        clicks=0, impressions=0, cost_micros=0, conversions=0.0,
                     )
                     db.add(new_kw)
 
-            elif canonical_action == ActionType.INCREASE_BUDGET:
+            elif action_type == "INCREASE_BUDGET":
                 campaign = db.query(Campaign).get(entity_id)
                 if not campaign:
                     return {"status": "error", "message": f"Campaign {entity_id} not found"}
-                if "amount" not in params:
-                    return {"status": "error", "message": "Missing params.amount"}
-                campaign.budget_micros = int(float(params["amount"]) * 1_000_000)
+                if params and "amount" in params:
+                    campaign.budget_micros = int(float(params["amount"]) * 1_000_000)
 
             else:
                 return {"status": "error", "message": f"Unknown action_type: {action_type}"}
 
             db.commit()
-            return {"status": "success", "message": f"Executed {canonical_action.value}"}
+            return {"status": "success", "message": f"Executed {action_type}"}
 
         except Exception as e:
             db.rollback()
             logger.error(f"ACTION FAILED: {str(e)}")
             return {"status": "error", "message": str(e)}
-
-    def _build_safety_context(self, db: Session, action_type: str, entity_id: int, client_id: int | None) -> dict:
-        from datetime import datetime
-
-        context = {}
-        today = datetime.utcnow().date()
-
-        if action_type == ActionType.PAUSE_KEYWORD.value:
-            kw = db.query(Keyword).get(entity_id)
-            if kw:
-                ag = db.query(AdGroup).get(kw.ad_group_id)
-                if ag:
-                    campaign_id = ag.campaign_id
-                    context["total_keywords_in_campaign"] = db.query(Keyword).join(AdGroup).filter(
-                        AdGroup.campaign_id == campaign_id
-                    ).count()
-                    if client_id:
-                        context["keywords_paused_today_in_campaign"] = db.query(ActionLog).filter(
-                            ActionLog.client_id == client_id,
-                            ActionLog.action_type == ActionType.PAUSE_KEYWORD.value,
-                            func.date(ActionLog.executed_at) == today,
-                        ).count()
-
-        if action_type == ActionType.ADD_NEGATIVE.value and client_id:
-            context["negatives_added_today"] = db.query(ActionLog).filter(
-                ActionLog.client_id == client_id,
-                ActionLog.action_type == ActionType.ADD_NEGATIVE.value,
-                func.date(ActionLog.executed_at) == today,
-            ).count()
-
-        return context
-
-    def _extract_safety_values(self, db: Session, action_type: str, entity_id: int, params: dict) -> tuple[float, float]:
-        if action_type in (ActionType.UPDATE_BID.value, ActionType.SET_KEYWORD_BID.value):
-            kw = db.query(Keyword).get(entity_id)
-            current = micros_to_currency(kw.bid_micros) if kw else 0.0
-            new = float(params.get("amount", 0.0))
-            return float(current), float(new)
-
-        if action_type == ActionType.INCREASE_BUDGET.value:
-            campaign = db.query(Campaign).get(entity_id)
-            current = micros_to_currency(campaign.budget_micros) if campaign else 0.0
-            new = float(params.get("amount", 0.0))
-            return float(current), float(new)
-
-        return 0.0, 0.0
-
-    def _get_client_limits(self, db: Session, client_id: int | None) -> dict | None:
-        if not client_id:
-            return None
-
-        client = db.query(Client).filter(Client.id == client_id).first()
-        if not client or not client.business_rules:
-            return None
-
-        safety_limits = (client.business_rules or {}).get("safety_limits")
-        return get_effective_limits(safety_limits) if safety_limits else None
 
     def _mutate_keyword_status(self, google_keyword_id: str, new_status: str, db: Session, kw):
         """Send keyword status mutation to Google Ads API."""
@@ -1531,7 +1456,7 @@ class GoogleAdsService:
 
 
     # -----------------------------------------------------------------------
-    # Discover Accounts (MCC â†’ list of client accounts)
+    # Discover Accounts (MCC → list of client accounts)
     # -----------------------------------------------------------------------
 
     def discover_accounts(self) -> list[dict]:
@@ -1541,10 +1466,10 @@ class GoogleAdsService:
         Returns list of dicts: [{customer_id, name}, ...]
         """
         if not self.is_connected:
-            logger.warning("Google Ads API not connected â€” cannot discover accounts")
+            logger.warning("Google Ads API not connected — cannot discover accounts")
             return []
 
-        mcc_id = CredentialsService.get("login_customer_id") or settings.google_ads_login_customer_id
+        mcc_id = CredentialsService.get("login_customer_id")
         if not mcc_id:
             logger.warning("No login_customer_id (MCC) configured")
             return []
@@ -1584,7 +1509,7 @@ class GoogleAdsService:
             return []
 
     # ------------------------------------------------------------------
-    # Change Events â€” fetch full account change history
+    # Change Events — fetch full account change history
     # ------------------------------------------------------------------
 
     def sync_change_events(self, db: Session, customer_id: str, client_id: int, days: int = 30) -> int:
@@ -1597,7 +1522,7 @@ class GoogleAdsService:
         Returns number of change events synced.
         """
         if not self.is_connected:
-            logger.warning("Google Ads API not connected â€” skipping change events sync")
+            logger.warning("Google Ads API not connected — skipping change events sync")
             return 0
 
         import json
@@ -1640,7 +1565,7 @@ class GoogleAdsService:
                     ce = row.change_event
                     res_name = ce.resource_name
 
-                    # Dedup â€” skip if already in DB
+                    # Dedup — skip if already in DB
                     existing = db.query(ChangeEvent.id).filter(
                         ChangeEvent.resource_name == res_name
                     ).first()
