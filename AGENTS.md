@@ -1,4 +1,4 @@
-# AGENTS.md - Google Ads Helper (Canonical Agent Guide)
+﻿# AGENTS.md - Google Ads Helper (Canonical Agent Guide)
 
 This file is the canonical instruction set for coding agents in this repository.
 Keep it concise, specific, and executable.
@@ -96,6 +96,26 @@ python main.py
 - Documentation updated when behavior or architecture changed:
   - `PROGRESS.md` for progress/status updates
   - `DECISIONS.md` for architecture decisions
+
+## 9a) Post-Feature Update Loop (Required)
+
+After implementing any new functionality, run this loop before marking task done:
+
+1. Implement feature + tests (or state test gap explicitly).
+2. Update runtime/API docs that changed:
+   - `docs/API_ENDPOINTS.md` (if endpoint/params/response changed)
+   - `docs/FEATURE_SET.md` (if capability/UI flow changed)
+   - `Technical_Spec.md` (if frontend-backend contract changed)
+3. Update project tracking docs:
+   - `PROGRESS.md` (what was delivered, current status)
+   - `DECISIONS.md` (only if architectural decision/tradeoff was made)
+   - `docs/COMPLETED_FEATURES.md` (if feature moved to completed state)
+4. Re-run relevant checks and report exactly what was tested.
+5. In delivery note always include:
+   - what changed,
+   - why,
+   - what was tested,
+   - known risks/follow-ups.
 
 ## 10) Project Context Map
 
