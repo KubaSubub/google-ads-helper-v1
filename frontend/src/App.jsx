@@ -1,27 +1,35 @@
-import { Routes, Route } from 'react-router-dom'
-import { AppProvider, useApp } from './contexts/AppContext'
-import { FilterProvider } from './contexts/FilterContext'
-import Toast from './components/Toast'
-import Sidebar from './components/Sidebar'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Campaigns from './pages/Campaigns'
-import SearchTerms from './pages/SearchTerms'
-import Keywords from './pages/Keywords'
-import { Navigate } from 'react-router-dom'
-import Settings from './pages/Settings'
-import Semantic from './pages/Semantic'
-import Recommendations from './pages/Recommendations'
-import QualityScore from './pages/QualityScore'
-import Forecast from './pages/Forecast'
-import Clients from './pages/Clients'
-import ActionHistory from './pages/ActionHistory'
-import Alerts from './pages/Alerts'
-import SearchOptimization from './pages/SearchOptimization'
-import { Loader2 } from 'lucide-react'
+import { Routes, Route } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
+import { AppProvider, useApp } from './contexts/AppContext';
+import { FilterProvider } from './contexts/FilterContext';
+import Toast from './components/Toast';
+import Sidebar from './components/Sidebar';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Campaigns from './pages/Campaigns';
+import SearchTerms from './pages/SearchTerms';
+import Keywords from './pages/Keywords';
+import Settings from './pages/Settings';
+import Semantic from './pages/Semantic';
+import Recommendations from './pages/Recommendations';
+import QualityScore from './pages/QualityScore';
+import Forecast from './pages/Forecast';
+import Clients from './pages/Clients';
+import ActionHistory from './pages/ActionHistory';
+import Alerts from './pages/Alerts';
+import SearchOptimization from './pages/SearchOptimization';
+import { Loader2 } from 'lucide-react';
 
 function AppContent() {
-    const { toast, hideToast, isAuthenticated, authChecking, checkAuth } = useApp();
+    const {
+        toast,
+        hideToast,
+        isAuthenticated,
+        isConfigured,
+        authMissing,
+        authChecking,
+        checkAuth,
+    } = useApp();
 
     if (authChecking) {
         return (
@@ -31,8 +39,8 @@ function AppContent() {
         );
     }
 
-    if (!isAuthenticated) {
-        return <Login onAuthComplete={checkAuth} />;
+    if (!isAuthenticated || !isConfigured) {
+        return <Login onAuthComplete={checkAuth} authMissing={authMissing} />;
     }
 
     return (
@@ -68,5 +76,5 @@ export default function App() {
                 <AppContent />
             </FilterProvider>
         </AppProvider>
-    )
+    );
 }

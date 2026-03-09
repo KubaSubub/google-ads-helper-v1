@@ -3,23 +3,32 @@ import axios from 'axios';
 const api = axios.create({
     baseURL: '/api/v1',
     timeout: 30000,
+    withCredentials: true,
     headers: { 'Content-Type': 'application/json' },
 });
+
+function notifyUnauthorized() {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+}
 
 // Response interceptor: unwrap data, handle errors
 api.interceptors.response.use(
     (response) => response.data,
     (error) => {
+        if (error.response?.status === 401) {
+            notifyUnauthorized();
+        }
         const message = error.response?.data?.detail || error.message || 'Nieznany blad';
         console.error('API Error:', message);
         return Promise.reject({ message, status: error.response?.status });
     }
 );
-
 export default api;
 
 // ═══════ Auth ═══════
-export const getAuthStatus = () => api.get('/auth/status');
+export const getAuthStatus = (bootstrap = false) => api.get('/auth/status', { params: bootstrap ? { bootstrap: 1 } : {} });
 export const getSetupStatus = () => api.get('/auth/setup-status');
 export const saveSetup = (data) => api.post('/auth/setup', data);
 export const getLoginUrl = () => api.get('/auth/login');
@@ -176,3 +185,7 @@ export const getUnifiedTimeline = (clientId, params = {}) =>
     api.get('/history/unified', { params: { client_id: clientId, ...params } });
 export const getHistoryFilters = (clientId) =>
     api.get('/history/filters', { params: { client_id: clientId } });
+
+
+
+

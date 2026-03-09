@@ -12,7 +12,9 @@ export function AppProvider({ children }) {
     const [clientsLoading, setClientsLoading] = useState(true);
     const [alertCount, setAlertCount] = useState(0);
     const [toast, setToast] = useState(null);
-    const [isAuthenticated, setIsAuthenticated] = useState(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isConfigured, setIsConfigured] = useState(false);
+    const [authMissing, setAuthMissing] = useState([]);
     const [authChecking, setAuthChecking] = useState(true);
 
     const checkAuth = useCallback(async () => {
@@ -22,17 +24,26 @@ export function AppProvider({ children }) {
 
         while (Date.now() - started < maxWaitMs) {
             try {
-                const data = await getAuthStatus();
-                setIsAuthenticated(data.authenticated);
+                const data = await getAuthStatus(true);
+                setIsAuthenticated(Boolean(data.authenticated));
+                setIsConfigured(Boolean(data.configured));
+                setAuthMissing(Array.isArray(data.missing) ? data.missing : []);
                 setAuthChecking(false);
                 return;
             } catch (err) {
                 if (err.status && err.status < 500) break;
-                await new Promise(r => setTimeout(r, intervalMs));
+                await new Promise((r) => setTimeout(r, intervalMs));
             }
         }
+
         setIsAuthenticated(false);
+        setIsConfigured(false);
+        setAuthMissing([]);
         setAuthChecking(false);
+    }, []);
+
+    const markUnauthorized = useCallback(() => {
+        setIsAuthenticated(false);
     }, []);
 
     const refreshClients = useCallback(async () => {
@@ -53,10 +64,15 @@ export function AppProvider({ children }) {
         checkAuth();
     }, [checkAuth]);
 
-    // Load clients once auth is confirmed
     useEffect(() => {
-        if (isAuthenticated) refreshClients();
-    }, [isAuthenticated, refreshClients]);
+        const onUnauthorized = () => markUnauthorized();
+        window.addEventListener('auth:unauthorized', onUnauthorized);
+        return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+    }, [markUnauthorized]);
+
+    useEffect(() => {
+        if (isAuthenticated && isConfigured) refreshClients();
+    }, [isAuthenticated, isConfigured, refreshClients]);
 
     useEffect(() => {
         if (selectedClientId) {
@@ -85,6 +101,8 @@ export function AppProvider({ children }) {
                 showToast,
                 hideToast,
                 isAuthenticated,
+                isConfigured,
+                authMissing,
                 authChecking,
                 checkAuth,
             }}
@@ -99,3 +117,4 @@ export function useApp() {
     if (!ctx) throw new Error('useApp must be inside AppProvider');
     return ctx;
 }
+

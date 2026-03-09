@@ -13,7 +13,6 @@ from datetime import date, timedelta
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
     ChangeEvent, ActionLog, KeywordDaily,
@@ -87,28 +86,15 @@ class GoogleAdsService:
             logger.info("No refresh_token in keyring — user must complete OAuth first")
             return
 
-        # Resolve each credential: keyring first, .env fallback
-        developer_token = (
-            CredentialsService.get(CredentialsService.DEVELOPER_TOKEN)
-            or settings.google_ads_developer_token
-        )
-        client_id = (
-            CredentialsService.get(CredentialsService.CLIENT_ID)
-            or settings.google_ads_client_id
-        )
-        client_secret = (
-            CredentialsService.get(CredentialsService.CLIENT_SECRET)
-            or settings.google_ads_client_secret
-        )
+        developer_token = CredentialsService.get(CredentialsService.DEVELOPER_TOKEN)
+        client_id = CredentialsService.get(CredentialsService.CLIENT_ID)
+        client_secret = CredentialsService.get(CredentialsService.CLIENT_SECRET)
 
         if not developer_token:
-            logger.warning("No developer_token found in keyring or .env")
+            logger.warning("No developer_token found in secure storage")
             return
 
-        login_customer_id = (
-            CredentialsService.get("login_customer_id")
-            or settings.google_ads_login_customer_id
-        )
+        login_customer_id = CredentialsService.get("login_customer_id")
 
         try:
             config = {
@@ -1144,9 +1130,8 @@ class GoogleAdsService:
         if not criterion_ids or not self.is_connected:
             return {}
 
-        from app.config import settings
         ga_service = self.client.get_service("GoogleAdsService")
-        mcc_id = settings.google_ads_login_customer_id or customer_id
+        mcc_id = CredentialsService.get("login_customer_id") or customer_id
 
         ids_str = ",".join(criterion_ids)
         query = f"""
@@ -1471,7 +1456,7 @@ class GoogleAdsService:
             logger.warning("Google Ads API not connected — cannot discover accounts")
             return []
 
-        mcc_id = settings.google_ads_login_customer_id
+        mcc_id = CredentialsService.get("login_customer_id")
         if not mcc_id:
             logger.warning("No login_customer_id (MCC) configured")
             return []

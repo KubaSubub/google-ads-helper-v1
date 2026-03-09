@@ -1,35 +1,32 @@
 """
-Google Ads Helper — FastAPI Application Entry Point.
+Google Ads Helper - FastAPI Application Entry Point.
 
 Run with: uvicorn app.main:app --reload --port 8000
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.config import settings
 from app.database import init_db
 from app.routers import (
-    auth,
-    clients,
-    campaigns,
-    search_terms,
-    analytics,
-    keywords_ads,
-    sync,
-    export,
-    semantic,
-    recommendations,
     actions,
+    analytics,
+    auth,
+    campaigns,
+    clients,
+    export,
     history,
+    keywords_ads,
+    recommendations,
+    search_terms,
+    semantic,
+    sync,
 )
+from app.security import require_session
 
-
-# ---------------------------------------------------------------------------
-# Lifespan: startup / shutdown logic
-# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,10 +39,6 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
 
 
-# ---------------------------------------------------------------------------
-# App instance
-# ---------------------------------------------------------------------------
-
 app = FastAPI(
     title="Google Ads Helper API",
     description="Local-first API for managing and optimizing Google Ads campaigns.",
@@ -53,12 +46,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server (Vite default port)
+# CORS - allow frontend dev server (Vite default port)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Alternative
+        "http://localhost:5173",
+        "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ],
@@ -67,30 +60,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ---------------------------------------------------------------------------
-# Register routers
-# ---------------------------------------------------------------------------
-
 API_PREFIX = "/api/v1"
+protected = [Depends(require_session)]
 
 app.include_router(auth.router, prefix=API_PREFIX, tags=["auth"])
-app.include_router(clients.router, prefix=API_PREFIX, tags=["clients"])
-app.include_router(campaigns.router, prefix=API_PREFIX, tags=["campaigns"])
-app.include_router(search_terms.router, prefix=API_PREFIX, tags=["search-terms"])
-app.include_router(keywords_ads.router, prefix=API_PREFIX, tags=["keywords", "ads"])
-app.include_router(analytics.router, prefix=API_PREFIX, tags=["analytics"])
-app.include_router(sync.router, prefix=API_PREFIX, tags=["sync"])
-app.include_router(export.router, prefix=API_PREFIX, tags=["export"])
-app.include_router(semantic.router, prefix=API_PREFIX, tags=["semantic"])
-app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendations"])
-app.include_router(actions.router, prefix=API_PREFIX, tags=["actions"])
-app.include_router(history.router, prefix=API_PREFIX, tags=["history"])
+app.include_router(clients.router, prefix=API_PREFIX, tags=["clients"], dependencies=protected)
+app.include_router(campaigns.router, prefix=API_PREFIX, tags=["campaigns"], dependencies=protected)
+app.include_router(search_terms.router, prefix=API_PREFIX, tags=["search-terms"], dependencies=protected)
+app.include_router(keywords_ads.router, prefix=API_PREFIX, tags=["keywords", "ads"], dependencies=protected)
+app.include_router(analytics.router, prefix=API_PREFIX, tags=["analytics"], dependencies=protected)
+app.include_router(sync.router, prefix=API_PREFIX, tags=["sync"], dependencies=protected)
+app.include_router(export.router, prefix=API_PREFIX, tags=["export"], dependencies=protected)
+app.include_router(semantic.router, prefix=API_PREFIX, tags=["semantic"], dependencies=protected)
+app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendations"], dependencies=protected)
+app.include_router(actions.router, prefix=API_PREFIX, tags=["actions"], dependencies=protected)
+app.include_router(history.router, prefix=API_PREFIX, tags=["history"], dependencies=protected)
 
-
-# ---------------------------------------------------------------------------
-# Health check
-# ---------------------------------------------------------------------------
 
 @app.get("/health", tags=["System"])
 def health_check():
