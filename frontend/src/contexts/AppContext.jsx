@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getAuthStatus, getClients } from '../api';
+import { getAuthStatus, getClients, setSessionToken, clearSessionToken } from '../api';
 
 const AppContext = createContext(null);
 
@@ -24,6 +24,11 @@ export function AppProvider({ children }) {
             try {
                 const data = await getAuthStatus();
                 setIsAuthenticated(data.authenticated);
+                if (data.authenticated && data.session?.token) {
+                    setSessionToken(data.session);
+                } else if (!data.authenticated) {
+                    clearSessionToken();
+                }
                 setAuthChecking(false);
                 return;
             } catch (err) {

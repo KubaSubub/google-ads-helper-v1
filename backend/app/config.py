@@ -5,11 +5,13 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    """Central configuration — reads from .env file or environment variables."""
+    """Central configuration - reads from .env file or environment variables."""
 
     # App
     app_env: str = "development"
     app_secret_key: str = "change-this-to-a-random-string"
+    session_ttl_hours: int = 12
+    oauth_allow_insecure_transport: bool = False
 
     # Database
     database_url: str = "sqlite:///./data/google_ads_app.db"
@@ -34,6 +36,10 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.app_env == "development"
+
+    @property
+    def is_production_like(self) -> bool:
+        return not self.is_development
 
     @property
     def data_dir(self) -> Path:
