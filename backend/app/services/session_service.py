@@ -7,12 +7,15 @@ from typing import Optional
 
 SESSION_TTL_MINUTES = 60
 SESSION_COOKIE_NAME = "gah_session"
+MAX_OAUTH_STATES = 100
+OAUTH_STATE_TTL_MINUTES = 15
 
 
 class SessionService:
     """Short-lived in-memory session store keyed by token hash."""
 
     _sessions: dict[str, datetime] = {}
+    _oauth_states: dict[str, datetime] = {}
 
     @classmethod
     def _now(cls) -> datetime:
@@ -52,6 +55,31 @@ class SessionService:
     @classmethod
     def clear_all(cls) -> None:
         cls._sessions.clear()
+        cls._oauth_states.clear()
+
+    @classmethod
+    def issue_oauth_state(cls) -> str:
+        state = secrets.token_urlsafe(24)
+        cls._oauth_states[state] = cls._now() + timedelta(minutes=OAUTH_STATE_TTL_MINUTES)
+        cls._purge_expired()
+        if len(cls._oauth_states) > MAX_OAUTH_STATES:
+            # Drop oldest states to cap memory
+            for key in sorted(cls._oauth_states, key=lambda k: cls._oauth_states[k])[: len(cls._oauth_states) - MAX_OAUTH_STATES]:
+                cls._oauth_states.pop(key, None)
+        return state
+
+    @classmethod
+    def verify_oauth_state(cls, state: Optional[str]) -> bool:
+        if not state:
+            return False
+        expires_at = cls._oauth_states.pop(state, None)
+        if not expires_at:
+            return False
+        return expires_at > cls._now()
+
+    @classmethod
+    def clear_oauth_state(cls) -> None:
+        cls._oauth_states.clear()
 
     @classmethod
     def _purge_expired(cls) -> None:
@@ -59,3 +87,6 @@ class SessionService:
         for key, expires_at in list(cls._sessions.items()):
             if expires_at <= now:
                 cls._sessions.pop(key, None)
+        for key, expires_at in list(cls._oauth_states.items()):
+            if expires_at <= now:
+                cls._oauth_states.pop(key, None)
