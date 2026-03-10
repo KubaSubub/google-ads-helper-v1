@@ -1,4 +1,4 @@
-"""Recommendations endpoints — generate, apply, dismiss."""
+"""Recommendations endpoints â€” generate, apply, dismiss."""
 
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,19 +22,21 @@ def _build_suggested_action(rec_dict: dict) -> str:
         "entity_name": rec_dict["entity_name"],
     }
     meta = rec_dict.get("metadata") or {}
+    if meta.get("campaign_id") is not None:
+        action["campaign_id"] = meta.get("campaign_id")
     if rec_dict["type"] == "INCREASE_BID":
         action["params"] = {"change_pct": meta.get("bid_increase_pct", 20)}
     elif rec_dict["type"] == "DECREASE_BID":
         action["params"] = {"change_pct": meta.get("bid_decrease_pct", 20)}
     elif rec_dict["type"] == "ADD_KEYWORD":
-        action["params"] = {"match_type": meta.get("match_type", "EXACT"), "keyword_text": rec_dict["entity_name"]}
+        action["params"] = {"match_type": meta.get("match_type", "EXACT"), "text": rec_dict["entity_name"], "ad_group_id": meta.get("ad_group_id")}
     elif rec_dict["type"] in ("ADD_NEGATIVE", "NGRAM_NEGATIVE"):
-        action["params"] = {"keyword_text": rec_dict["entity_name"]}
+        action["params"] = {"text": rec_dict["entity_name"], "campaign_id": meta.get("campaign_id")}
     elif rec_dict["type"] == "REALLOCATE_BUDGET":
         action["params"] = {"move_amount": meta.get("move_amount", 0)}
     elif rec_dict["type"] == "IS_BUDGET_ALERT":
         action["params"] = {"budget_usd": meta.get("budget_usd", 0), "lost_is_pct": meta.get("lost_is_pct", 0)}
-    # Alert types (no executable action — review only)
+    # Alert types (no executable action â€” review only)
     # QS_ALERT, IS_RANK_ALERT, WASTED_SPEND_ALERT, PMAX_CANNIBALIZATION,
     # DEVICE_ANOMALY, GEO_ANOMALY, BUDGET_PACING
     return json.dumps(action)
@@ -67,7 +69,7 @@ def _persist_recommendations(db: Session, client_id: int, generated: list[dict])
 
         if db_rec:
             if db_rec.status in ("applied", "dismissed"):
-                # Skip — already processed
+                # Skip â€” already processed
                 continue
             # Update reason/priority/category if changed
             db_rec.reason = rec_dict["reason"]
