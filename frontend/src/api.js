@@ -119,6 +119,8 @@ export const detectAnomalies = (clientId) =>
     api.post('/analytics/detect', null, {
         params: { client_id: clientId },
     });
+export const getCorrelationMatrix = (data) =>
+    api.post('/analytics/correlation', data);
 
 // ═══════ Export ═══════
 export const exportSearchTerms = (clientId, format = 'xlsx') =>
@@ -185,7 +187,4 @@ export const getUnifiedTimeline = (clientId, params = {}) =>
     api.get('/history/unified', { params: { client_id: clientId, ...params } });
 export const getHistoryFilters = (clientId) =>
     api.get('/history/filters', { params: { client_id: clientId } });
-
-
-
 
