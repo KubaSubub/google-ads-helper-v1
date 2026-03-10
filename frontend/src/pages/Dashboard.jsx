@@ -235,6 +235,10 @@ export default function Dashboard() {
             return true
         })
     }, [campaigns, filters.campaignType, filters.status])
+    const filteredCampaignIds = useMemo(
+        () => filteredCampaigns.map(c => c.id),
+        [filteredCampaigns]
+    )
 
     if (!selectedClientId) {
         return (
@@ -325,7 +329,7 @@ export default function Dashboard() {
 
             {/* ── Trend Explorer ──────────────────────────────────────────── */}
             <div style={{ marginBottom: 16 }}>
-                <TrendExplorer />
+                <TrendExplorer campaignIds={filteredCampaignIds} />
             </div>
 
             {/* ── Budget Pacing ─────────────────────────────────────────── */}
@@ -519,3 +523,4 @@ export default function Dashboard() {
         </div>
     )
 }
+
