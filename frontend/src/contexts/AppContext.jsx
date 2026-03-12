@@ -3,6 +3,15 @@ import { getAuthStatus, getClients } from '../api';
 
 const AppContext = createContext(null);
 
+const DEFAULT_AUTH_STATUS = {
+    authenticated: false,
+    configured: false,
+    ready: false,
+    reason: '',
+    missing: [],
+    missing_credentials: [],
+};
+
 export function AppProvider({ children }) {
     const [selectedClientId, setSelectedClientId] = useState(() => {
         const saved = localStorage.getItem('selectedClientId');
@@ -12,9 +21,7 @@ export function AppProvider({ children }) {
     const [clientsLoading, setClientsLoading] = useState(true);
     const [alertCount, setAlertCount] = useState(0);
     const [toast, setToast] = useState(null);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isConfigured, setIsConfigured] = useState(false);
-    const [authMissing, setAuthMissing] = useState([]);
+    const [authStatus, setAuthStatus] = useState(DEFAULT_AUTH_STATUS);
     const [authChecking, setAuthChecking] = useState(true);
 
     const checkAuth = useCallback(async () => {
@@ -25,25 +32,19 @@ export function AppProvider({ children }) {
         while (Date.now() - started < maxWaitMs) {
             try {
                 const data = await getAuthStatus(true);
-                setIsAuthenticated(Boolean(data.authenticated));
-                setIsConfigured(Boolean(data.configured));
-                setAuthMissing(Array.isArray(data.missing) ? data.missing : []);
+                const nextStatus = { ...DEFAULT_AUTH_STATUS, ...data };
+                setAuthStatus(nextStatus);
                 setAuthChecking(false);
-                return;
+                return nextStatus;
             } catch (err) {
                 if (err.status && err.status < 500) break;
-                await new Promise((r) => setTimeout(r, intervalMs));
+                await new Promise((resolve) => setTimeout(resolve, intervalMs));
             }
         }
 
-        setIsAuthenticated(false);
-        setIsConfigured(false);
-        setAuthMissing([]);
+        setAuthStatus(DEFAULT_AUTH_STATUS);
         setAuthChecking(false);
-    }, []);
-
-    const markUnauthorized = useCallback(() => {
-        setIsAuthenticated(false);
+        return DEFAULT_AUTH_STATUS;
     }, []);
 
     const refreshClients = useCallback(async () => {
@@ -60,6 +61,12 @@ export function AppProvider({ children }) {
         }
     }, []);
 
+    const markUnauthorized = useCallback(() => {
+        setAuthStatus(DEFAULT_AUTH_STATUS);
+        setClients([]);
+        setClientsLoading(false);
+    }, []);
+
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
@@ -71,8 +78,13 @@ export function AppProvider({ children }) {
     }, [markUnauthorized]);
 
     useEffect(() => {
-        if (isAuthenticated && isConfigured) refreshClients();
-    }, [isAuthenticated, isConfigured, refreshClients]);
+        if (authStatus.ready) {
+            refreshClients();
+            return;
+        }
+        setClients([]);
+        setClientsLoading(false);
+    }, [authStatus.ready, refreshClients]);
 
     useEffect(() => {
         if (selectedClientId) {
@@ -100,9 +112,8 @@ export function AppProvider({ children }) {
                 toast,
                 showToast,
                 hideToast,
-                isAuthenticated,
-                isConfigured,
-                authMissing,
+                isAuthenticated: authStatus.authenticated,
+                authStatus,
                 authChecking,
                 checkAuth,
             }}
@@ -117,4 +128,3 @@ export function useApp() {
     if (!ctx) throw new Error('useApp must be inside AppProvider');
     return ctx;
 }
-

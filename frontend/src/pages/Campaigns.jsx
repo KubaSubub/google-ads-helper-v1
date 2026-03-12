@@ -10,7 +10,7 @@ import {
     Eye, Percent, ArrowUpRight, Crosshair, Wallet, Activity,
 } from 'lucide-react'
 import {
-    getCampaigns, getCampaignKPIs, getCampaignMetrics,
+    getCampaigns, getCampaignKPIs, getCampaignMetrics, updateCampaign,
     getDeviceBreakdown, getGeoBreakdown, getBudgetPacing,
     getImpressionShare, getUnifiedTimeline,
 } from '../api'
@@ -32,6 +32,28 @@ const TYPE_LABELS = {
     DISPLAY: 'Display', SHOPPING: 'Shopping', VIDEO: 'Video',
 }
 
+const ROLE_LABELS = {
+    BRAND: 'Brand',
+    GENERIC: 'Generic',
+    PROSPECTING: 'Prospecting',
+    REMARKETING: 'Remarketing',
+    PMAX: 'PMax',
+    LOCAL: 'Local',
+    UNKNOWN: 'Unknown',
+}
+
+const ROLE_OPTIONS = ['BRAND', 'GENERIC', 'PROSPECTING', 'REMARKETING', 'PMAX', 'LOCAL', 'UNKNOWN']
+
+const PROTECTION_CONFIG = {
+    HIGH: { color: '#F87171', bg: 'rgba(248,113,113,0.12)' },
+    MEDIUM: { color: '#FBBF24', bg: 'rgba(251,191,36,0.12)' },
+    LOW: { color: '#4ADE80', bg: 'rgba(74,222,128,0.12)' },
+}
+
+const ROLE_SOURCE_LABELS = {
+    AUTO: 'Auto',
+    MANUAL: 'Manual',
+}
 const METRIC_COLORS = ['#4F8EF7', '#7B5CE0', '#4ADE80', '#FBBF24', '#F87171']
 
 const METRIC_OPTIONS = [
@@ -572,7 +594,7 @@ function ActionHistoryTimeline({ entries }) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function Campaigns() {
     const navigate = useNavigate()
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
     const { filters, days } = useFilter()
 
     const [campaigns, setCampaigns] = useState([])
@@ -588,6 +610,8 @@ export default function Campaigns() {
     const [budgetPacing, setBudgetPacing] = useState(null)
     const [actionTimeline, setActionTimeline] = useState([])
     const [loadingSecondary, setLoadingSecondary] = useState(false)
+    const [roleDraft, setRoleDraft] = useState('')
+    const [savingRole, setSavingRole] = useState(false)
 
     useEffect(() => {
         if (selectedClientId) loadCampaigns()
@@ -649,6 +673,48 @@ export default function Campaigns() {
     useEffect(() => {
         if (selected && selectedClientId) selectCampaign(selected)
     }, [days, filters.dateFrom, filters.dateTo])
+
+    useEffect(() => {
+        if (!selected) {
+            setRoleDraft('')
+            return
+        }
+        setRoleDraft(selected.role_source === 'MANUAL' ? (selected.campaign_role_final || selected.campaign_role_auto || '') : '')
+    }, [selected])
+
+    function mergeCampaignState(updatedCampaign) {
+        setCampaigns(prev => prev.map(c => (c.id === updatedCampaign.id ? { ...c, ...updatedCampaign } : c)))
+        setSelected(prev => (prev && prev.id === updatedCampaign.id ? { ...prev, ...updatedCampaign } : prev))
+    }
+
+    async function handleRoleSave() {
+        if (!selected || !roleDraft) return
+        setSavingRole(true)
+        try {
+            const updated = await updateCampaign(selected.id, { campaign_role_final: roleDraft })
+            mergeCampaignState(updated)
+            showToast('Rola kampanii zapisana', 'success')
+        } catch (err) {
+            showToast('Blad zapisu roli: ' + err.message, 'error')
+        } finally {
+            setSavingRole(false)
+        }
+    }
+
+    async function handleRoleReset() {
+        if (!selected) return
+        setSavingRole(true)
+        try {
+            const updated = await updateCampaign(selected.id, { campaign_role_final: null })
+            mergeCampaignState(updated)
+            setRoleDraft('')
+            showToast('Przywrocono klasyfikacje auto', 'info')
+        } catch (err) {
+            showToast('Blad resetu roli: ' + err.message, 'error')
+        } finally {
+            setSavingRole(false)
+        }
+    }
 
     // Filter campaign list in-memory
     const filteredCampaigns = useMemo(() => campaigns.filter(c => {
@@ -756,6 +822,95 @@ export default function Campaigns() {
                                 >
                                     <Search size={12} /> Wyszukiwane frazy
                                 </button>
+                            </div>
+
+                            <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16 }}>
+                                <div className="flex items-center justify-between flex-wrap" style={{ gap: 10, marginBottom: 12 }}>
+                                    <div>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                                            Rola kampanii
+                                        </div>
+                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                                            Auto-klasyfikacja jest deterministyczna. Manual override blokuje nadpisanie przez sync.
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(79,142,247,0.12)', color: '#4F8EF7' }}>
+                                            {ROLE_SOURCE_LABELS[selected.role_source] || selected.role_source || 'Auto'}
+                                        </span>
+                                        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).bg, color: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).color }}>
+                                            Protection {selected.protection_level || 'HIGH'}
+                                        </span>
+                                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
+                                            Confidence {selected.role_confidence != null ? `${Math.round(selected.role_confidence * 100)}%` : '�'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 220px auto auto', gap: 10, alignItems: 'end' }}>
+                                    <div>
+                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 4 }}>
+                                            Auto: <span style={{ color: '#F0F0F0' }}>{ROLE_LABELS[selected.campaign_role_auto] || selected.campaign_role_auto || 'Unknown'}</span>
+                                        </div>
+                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                                            Final: <span style={{ color: '#F0F0F0' }}>{ROLE_LABELS[selected.campaign_role_final] || selected.campaign_role_final || 'Unknown'}</span>
+                                        </div>
+                                    </div>
+                                    <select
+                                        value={roleDraft}
+                                        onChange={e => setRoleDraft(e.target.value)}
+                                        disabled={savingRole}
+                                        style={{
+                                            height: 36,
+                                            borderRadius: 8,
+                                            background: 'rgba(255,255,255,0.04)',
+                                            color: '#F0F0F0',
+                                            border: '1px solid rgba(255,255,255,0.12)',
+                                            padding: '0 10px',
+                                            fontSize: 12,
+                                        }}
+                                    >
+                                        <option value="">Use auto classification</option>
+                                        {ROLE_OPTIONS.map(role => (
+                                            <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={handleRoleSave}
+                                        disabled={savingRole || !roleDraft}
+                                        style={{
+                                            height: 36,
+                                            padding: '0 14px',
+                                            borderRadius: 8,
+                                            border: 'none',
+                                            background: '#4F8EF7',
+                                            color: 'white',
+                                            cursor: savingRole || !roleDraft ? 'not-allowed' : 'pointer',
+                                            opacity: savingRole || !roleDraft ? 0.5 : 1,
+                                            fontSize: 12,
+                                            fontWeight: 600,
+                                        }}
+                                    >
+                                        Save override
+                                    </button>
+                                    <button
+                                        onClick={handleRoleReset}
+                                        disabled={savingRole || selected.role_source !== 'MANUAL'}
+                                        style={{
+                                            height: 36,
+                                            padding: '0 14px',
+                                            borderRadius: 8,
+                                            border: '1px solid rgba(255,255,255,0.12)',
+                                            background: 'transparent',
+                                            color: 'rgba(255,255,255,0.6)',
+                                            cursor: savingRole || selected.role_source !== 'MANUAL' ? 'not-allowed' : 'pointer',
+                                            opacity: savingRole || selected.role_source !== 'MANUAL' ? 0.5 : 1,
+                                            fontSize: 12,
+                                            fontWeight: 500,
+                                        }}
+                                    >
+                                        Reset to auto
+                                    </button>
+                                </div>
                             </div>
 
                             {/* 1. KPI Tiles (ALL metrics) */}
@@ -890,3 +1045,8 @@ export default function Campaigns() {
         </div>
     )
 }
+
+
+
+
+

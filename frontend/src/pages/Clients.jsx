@@ -6,6 +6,27 @@ import EmptyState from '../components/EmptyState';
 import { discoverClients } from '../api';
 import { Users, Loader2, Download, Search } from 'lucide-react';
 
+function getSyncToast(result) {
+    if (result?.success) {
+        return {
+            type: 'success',
+            message: result.message || 'Synchronizacja zakonczona pomyslnie.',
+        };
+    }
+
+    if (result?.status === 'partial') {
+        return {
+            type: 'info',
+            message: result.message || 'Synchronizacja zakonczona czesciowo.',
+        };
+    }
+
+    return {
+        type: 'error',
+        message: result?.message || 'Synchronizacja nie powiodla sie.',
+    };
+}
+
 export default function Clients() {
     const { sync } = useSync();
     const { selectedClientId, setSelectedClientId, showToast, clients, clientsLoading: loading, refreshClients } = useApp();
@@ -17,11 +38,14 @@ export default function Clients() {
     const handleSync = async (clientId) => {
         setSyncingClientId(clientId);
         try {
-            await sync(clientId);
-            showToast('Synchronizacja zakończona', 'success');
-            refreshClients();
-        } catch {
-            showToast('Błąd synchronizacji', 'error');
+            const result = await sync(clientId);
+            const toast = getSyncToast(result);
+            showToast(toast.message, toast.type);
+            if (result?.status !== 'failed') {
+                await refreshClients();
+            }
+        } catch (err) {
+            showToast(err.message || 'Blad synchronizacji', 'error');
         } finally {
             setSyncingClientId(null);
         }
@@ -39,7 +63,7 @@ export default function Clients() {
                 setSelectedClientId(updated[0].id);
             }
         } catch (err) {
-            showToast(err.message || 'Błąd pobierania konta', 'error');
+            showToast(err.message || 'Blad pobierania konta', 'error');
         } finally {
             setFetchingSingle(false);
         }
@@ -51,12 +75,11 @@ export default function Clients() {
             const result = await discoverClients();
             showToast(result.message, 'success');
             const updated = await refreshClients();
-            // Auto-select first client if none selected
             if (!selectedClientId && updated && updated.length > 0) {
                 setSelectedClientId(updated[0].id);
             }
         } catch (err) {
-            showToast(err.message || 'Błąd pobierania klientów', 'error');
+            showToast(err.message || 'Blad pobierania klientow', 'error');
         } finally {
             setDiscovering(false);
         }
@@ -72,14 +95,13 @@ export default function Clients() {
 
     return (
         <div style={{ maxWidth: 900 }}>
-            {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Klienci
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Zarządzanie kontami Google Ads
+                        Zarzadzanie kontami Google Ads
                     </p>
                 </div>
                 <button
@@ -99,11 +121,10 @@ export default function Clients() {
                         ? <Loader2 size={14} className="animate-spin" />
                         : <Download size={14} />
                     }
-                    {discovering ? 'Pobieram...' : 'Pobierz klientów z Google Ads'}
+                    {discovering ? 'Pobieram...' : 'Pobierz klientow z Google Ads'}
                 </button>
             </div>
 
-            {/* Single account fetch */}
             <div
                 className="v2-card"
                 style={{
@@ -159,7 +180,7 @@ export default function Clients() {
 
             {!clients.length ? (
                 <EmptyState
-                    message="Brak klientów. Kliknij 'Pobierz klientów z Google Ads' aby zaimportować konta."
+                    message="Brak klientow. Kliknij 'Pobierz klientow z Google Ads', aby zaimportowac konta."
                     icon={Users}
                 />
             ) : (

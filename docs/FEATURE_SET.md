@@ -1,164 +1,111 @@
 ﻿# Feature Set - Google Ads Helper v1
 
-Aktualna lista funkcjonalnosci aplikacji (stan implementacji).
+Current product scope.
 
----
+## 1. Core Value Path
+`sync -> recommendations/insights -> dry-run/apply -> history/revert`
 
-## 1. Sync (Google Ads -> lokalna baza)
+Official positioning:
+- execution-ready only for supported canonical actions
+- non-executable alerts are first-class output, not hidden failures
+- context correctness is separate from executability
 
-### Fazy sync
-1. `campaigns` - kampanie (nazwa, typ, status, budzet)
-2. `impression_share` - impression share per kampania (SEARCH)
-3. `ad_groups` - grupy reklam
-4. `keywords` - slowa kluczowe + QS + stawki + metryki snapshot
-5. `keyword_daily` - dzienne metryki keywordow
-6. `daily_metrics` - dzienne metryki kampanii
-7. `device_metrics` - segmentacja urzadzen (MOBILE/DESKTOP/TABLET)
-8. `geo_metrics` - segmentacja geograficzna
-9. `search_terms` - frazy wyszukiwane z SEARCH
-10. `pmax_terms` - frazy z Performance Max
-11. `change_events` - historia zmian (change_event)
+## 2. Human-Centered Recommendation Engine
+Active rule families:
+- R1-R13, R15-R18
+- analytics-generated insights (`source=ANALYTICS`)
+- optional native Google Ads recommendation ingest (`source=GOOGLE_ADS_API`)
 
-### Zasady wykonania
-- Sync logowany jest per-faza (status, count, error).
-- Krytyczna zaleznosc: blad `campaigns` zatrzymuje caly sync.
-- `keywords`, `keyword_daily`, `search_terms` sa pomijane, jesli wymagane fazy zalezne nie przejda.
-- Dostepny jest pelny sync oraz uruchamianie pojedynczej fazy diagnostycznej.
+The engine now adds:
+- deterministic campaign role classification
+- manual role override
+- context-aware budget guardrails
+- structured explanation blocks for allowed / blocked / insight-only states
 
----
+## 3. Campaign Roles and Protection
+Supported roles:
+- `BRAND`
+- `GENERIC`
+- `PROSPECTING`
+- `REMARKETING`
+- `PMAX`
+- `LOCAL`
+- `UNKNOWN`
 
-## 2. Dashboard (Pulpit)
+Role fields exposed in Campaign API:
+- `campaign_role_auto`
+- `campaign_role_final`
+- `role_confidence`
+- `protection_level`
+- `role_source`
 
-- KPI cards: clicks, impressions, cost, conversions, CTR, ROAS.
-- Porownanie okres do okresu (`dashboard-kpis`).
-- Health score konta.
-- Trendy metryk.
-- Campaign trends.
-- Budget pacing.
-- Device breakdown.
-- Geo breakdown.
-- Preview rekomendacji.
+Protection defaults:
+- `BRAND`, `REMARKETING` -> `HIGH`
+- `PMAX`, `LOCAL` -> `MEDIUM`
+- `GENERIC`, `PROSPECTING` -> `LOW`
+- `UNKNOWN` -> `HIGH`
 
----
+## 4. Business Type vs Executable Action
+- Business type: stored in `Recommendation.type`
+- Canonical action: stored in `action_payload.action_type`
+- Context outcome: stored in `context_outcome`
+- This separation is used by generator, persistence, executor, API, and UI
 
-## 3. Strony i moduly UI
+## 5. Executable Matrix
+| Business Type | Context Outcome | Category | Canonical Action | Executable |
+|---|---|---|---|---|
+| `PAUSE_KEYWORD` | `ACTION` | `RECOMMENDATION` | `PAUSE_KEYWORD` | yes |
+| `INCREASE_BID` | `ACTION` | `RECOMMENDATION` | `UPDATE_BID` | yes |
+| `DECREASE_BID` | `ACTION` | `RECOMMENDATION` | `UPDATE_BID` | yes |
+| `ADD_KEYWORD` (SEARCH) | `ACTION` | `RECOMMENDATION` | `ADD_KEYWORD` | yes |
+| `ADD_KEYWORD` (PMAX) | `INSIGHT_ONLY` | `ALERT` | none | no |
+| `ADD_NEGATIVE` (campaign-level) | `ACTION` | `RECOMMENDATION` | `ADD_NEGATIVE` | yes |
+| `ADD_NEGATIVE` (account-level / irrelevant-word) | `INSIGHT_ONLY` | `ALERT` | none | no |
+| `PAUSE_AD` | `ACTION` | `RECOMMENDATION` | `PAUSE_AD` | yes |
+| `IS_BUDGET_ALERT` healthy branch | `ACTION` | `RECOMMENDATION` | `INCREASE_BUDGET` | yes |
+| `IS_BUDGET_ALERT` weak-context branch | `INSIGHT_ONLY` | `ALERT` | none | no |
+| `REALLOCATE_BUDGET` same-role healthy branch | `ACTION` | `RECOMMENDATION` | `REALLOCATE_BUDGET` | no |
+| `REALLOCATE_BUDGET` role/protection/data conflict | `INSIGHT_ONLY` or `BLOCKED_BY_CONTEXT` | `ALERT` | `REALLOCATE_BUDGET` | no |
+| `NGRAM_NEGATIVE` | `INSIGHT_ONLY` | `ALERT` | none | no |
+| Google Ads native recommendations | `INSIGHT_ONLY` | `ALERT` | none in phase 1 | no |
+| Analytics insights | `INSIGHT_ONLY` | `ALERT` | none | no |
 
-### Nawigacja glowna
-- Pulpit
-- Klienci
-- Kampanie
-- Slowa kluczowe
-- Wyszukiwane frazy
-- Rekomendacje
-- Historia akcji
-- Monitoring (alerty)
-- Optymalizacja (search optimization)
-- Inteligencja (semantic)
-- Quality Score
-- Forecast
-- Ustawienia
+## 6. Fixed Reason Codes
+Current stable reason codes:
+- `ROLE_MISMATCH`
+- `DONOR_PROTECTED_HIGH`
+- `DONOR_PROTECTED_MEDIUM`
+- `DESTINATION_NO_HEADROOM`
+- `ROAS_ONLY_SIGNAL`
+- `UNKNOWN_ROLE`
+- `INSUFFICIENT_DATA`
 
-### Dodatkowe zachowanie
-- Trasa `/anomalies` przekierowuje do `/alerts`.
-- Globalny date picker (7/14/30/90 dni + custom).
-- Globalny wybor klienta.
+## 7. UI Behavior
+- Recommendations page supports filters by priority, source, executable state.
+- Cards display source, confidence, risk, expiry, and `context_outcome` badge.
+- Cards render structured explanation sections from backend reason codes.
+- Apply button is disabled for `INSIGHT_ONLY` and `BLOCKED_BY_CONTEXT` cards.
+- Campaign details page exposes manual role override and reset-to-auto controls.
+- Dashboard insights come from backend analytics recommendations instead of frontend-only heuristics.
 
----
+## 8. Safety and Audit
+- Every write path goes through preconditions and `validate_action()`.
+- `action_log` stores:
+  - `execution_mode`
+  - `precondition_status`
+  - `context_json`
+  - `action_payload`
+- `DRY_RUN` and `BLOCKED` events are logged.
+- Revert is allowed only where `revertability.strategy` exists.
 
-## 4. Analytics i insighty
+## 9. Google Ads Native Recommendation Phase
+Phase 1 scope:
+- fetch and cache native recommendations
+- map them into unified recommendation model
+- expose in list and summary
+- local dismiss only
 
-### Core
-- KPIs
-- Alerty anomalii (lista unresolved/resolved)
-- Resolve alertu
-- Trigger detekcji anomalii
-
-### Advanced
-- Correlation matrix (`/analytics/correlation`)
-- Compare periods (`/analytics/compare-periods`)
-- Forecast
-- Quality score audit
-- Impression share
-- Device breakdown
-- Geo breakdown
-- Account structure
-- Bidding advisor
-- Hourly dayparting
-
-### Search optimization
-- Dayparting
-- RSA analysis
-- N-gram analysis
-- Match type analysis
-- Landing pages
-- Wasted spend
-
----
-
-## 5. Recommendations i Actions
-
-### Recommendations
-- Silnik rekomendacji oparty o zestaw regul decyzyjnych.
-- Obecnie aktywne: reguly R1-R13 oraz R15-R18 (lacznie 17 regul).
-- Kategorie: rekomendacje wykonawcze + alerty analityczne.
-- Priorytety: HIGH / MEDIUM / LOW.
-
-### Actions
-- Apply rekomendacji (z `dry_run=true` lub execute).
-- Dismiss rekomendacji.
-- Historia akcji (helper/external/unified).
-- Revert akcji z walidacja warunkow bezpieczenstwa.
-
----
-
-## 6. Search Terms i Keywords
-
-### Search Terms
-- Lista z filtrowaniem i sortowaniem.
-- Widok segmentowany.
-- Summary per kampania (`campaign_id` wymagany).
-- Eksport XLSX.
-
-### Keywords
-- Lista keywordow z filtrami.
-- Metryki dzienne i agregacje po okresie.
-- Eksport XLSX.
-
----
-
-## 7. Export
-
-- Search terms -> XLSX
-- Keywords -> XLSX
-- Metrics -> XLSX
-- Recommendations -> XLSX
-
----
-
-## 8. Auth i bezpieczenstwo
-
-- OAuth 2.0 Google Ads.
-- Setup endpointy do zapisania credentiali.
-- Sesja API (Bearer token).
-- Sekrety przechowywane przez Windows Credential Manager (keyring).
-- Circuit breaker i walidacja akcji write (`validate_action`).
-- Safety limits (m.in. limity zmian bid/budget i limit pause/day).
-
----
-
-## 9. Stack
-
-- Backend: FastAPI + SQLAlchemy
-- Frontend: React + Vite
-- DB: SQLite
-- Desktop: PyWebView
-- Integracja: Google Ads API (google-ads client)
-
----
-
-## 10. Metryki projektu
-
-- Modele ORM: 14
-- Routery API: 12
-- Endpointy API (get/post/patch/delete): 65
-- Strony frontend: 15
+Out of scope in phase 1:
+- native auto-apply
+- RecommendationSubscriptionService
+- live executable allowlist for Google-native types

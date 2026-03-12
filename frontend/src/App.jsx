@@ -1,5 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
-import { Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { FilterProvider } from './contexts/FilterContext';
 import Toast from './components/Toast';
@@ -21,15 +20,7 @@ import SearchOptimization from './pages/SearchOptimization';
 import { Loader2 } from 'lucide-react';
 
 function AppContent() {
-    const {
-        toast,
-        hideToast,
-        isAuthenticated,
-        isConfigured,
-        authMissing,
-        authChecking,
-        checkAuth,
-    } = useApp();
+    const { toast, hideToast, authStatus, authChecking, checkAuth } = useApp();
 
     if (authChecking) {
         return (
@@ -39,8 +30,8 @@ function AppContent() {
         );
     }
 
-    if (!isAuthenticated || !isConfigured) {
-        return <Login onAuthComplete={checkAuth} authMissing={authMissing} />;
+    if (!authStatus.ready) {
+        return <Login onAuthComplete={checkAuth} initialAuthStatus={authStatus} />;
     }
 
     return (

@@ -162,3 +162,4 @@ def test_contract_smoke_across_auth_clients_sync_recommendations_actions_analyti
             f"expected {expected_status}, got {response.status_code}, body={response.text}"
         )
 
+

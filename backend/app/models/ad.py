@@ -1,6 +1,6 @@
-"""Ad model."""
+﻿"""Ad model."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, BigInteger, Float, String, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -29,8 +29,8 @@ class Ad(Base):
     conversions = Column(Float, default=0.0)
     ctr = Column(Integer, default=0)  # Stored as micros
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     ad_group = relationship("AdGroup", back_populates="ads")
@@ -50,3 +50,4 @@ class Ad(Base):
             h = self.headlines[1]
             return h.get("text", h) if isinstance(h, dict) else str(h)
         return None
+

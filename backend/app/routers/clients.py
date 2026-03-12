@@ -1,14 +1,31 @@
 """Client CRUD endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from loguru import logger
+from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models import Client
-from app.schemas import ClientCreate, ClientUpdate, ClientResponse, PaginatedResponse
+from app.schemas import ClientCreate, ClientResponse, ClientUpdate, PaginatedResponse
+from app.services.credentials_service import CredentialsService
 from app.services.google_ads import google_ads_service
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
+
+
+def _ensure_discover_ready() -> None:
+    diagnostics = google_ads_service.get_connection_diagnostics()
+    if not diagnostics["configured"]:
+        raise HTTPException(status_code=503, detail=diagnostics["reason"])
+    if not diagnostics["authenticated"]:
+        raise HTTPException(status_code=503, detail=diagnostics["reason"])
+    if not diagnostics["ready"]:
+        raise HTTPException(status_code=503, detail=diagnostics["reason"])
+    if not CredentialsService.get(CredentialsService.LOGIN_CUSTOMER_ID):
+        raise HTTPException(
+            status_code=503,
+            detail="Brak login_customer_id (MCC). Uzupelnij Login Customer ID w konfiguracji API.",
+        )
 
 
 @router.post("/discover")
@@ -16,42 +33,54 @@ def discover_clients(
     customer_ids: str = Query(None, description="Opcjonalne: numery kont Google Ads po przecinku (np. 123-456-7890)"),
     db: Session = Depends(get_db),
 ):
-    """Auto-discover client accounts from Google Ads MCC and add them to DB.
-    Optionally filter by specific customer IDs."""
-    if not google_ads_service.is_connected:
-        raise HTTPException(
-            status_code=503,
-            detail="Google Ads API nie jest połączone. Zaloguj się najpierw.",
-        )
+    """Auto-discover client accounts from Google Ads MCC and add them to DB."""
+    _ensure_discover_ready()
 
-    accounts = google_ads_service.discover_accounts()
+    try:
+        accounts = google_ads_service.discover_accounts()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     if not accounts:
-        return {"message": "Nie znaleziono kont klienckich.", "added": 0, "skipped": 0}
+        return {
+            "message": "Nie znaleziono kont klienckich w MCC.",
+            "added": 0,
+            "skipped": 0,
+        }
 
-    # Filter to specific account(s) if customer_ids provided
     if customer_ids:
-        requested = {cid.replace("-", "").strip() for cid in customer_ids.split(",") if cid.strip()}
-        accounts = [a for a in accounts if a["customer_id"].replace("-", "") in requested]
+        requested = {
+            cid.replace("-", "").strip() for cid in customer_ids.split(",") if cid.strip()
+        }
+        accounts = [
+            account
+            for account in accounts
+            if account["customer_id"].replace("-", "") in requested
+        ]
         if not accounts:
-            return {"message": "Nie znaleziono podanych kont w MCC.", "added": 0, "skipped": 0}
+            return {
+                "message": "Nie znaleziono podanych kont w MCC.",
+                "added": 0,
+                "skipped": 0,
+            }
 
     added = 0
     skipped = 0
-    for acc in accounts:
+    for account in accounts:
         existing = db.query(Client).filter(
-            Client.google_customer_id == acc["customer_id"]
+            Client.google_customer_id == account["customer_id"]
         ).first()
         if existing:
             skipped += 1
             continue
 
-        db.add(Client(name=acc["name"], google_customer_id=acc["customer_id"]))
+        db.add(Client(name=account["name"], google_customer_id=account["customer_id"]))
         added += 1
 
     db.commit()
     logger.info(f"Discover: added={added}, skipped={skipped}")
     return {
-        "message": f"Dodano {added} klientów ({skipped} już istniało).",
+        "message": f"Dodano {added} klientow ({skipped} juz istnialo).",
         "added": added,
         "skipped": skipped,
     }
@@ -73,7 +102,7 @@ def list_clients(
     items = query.offset((page - 1) * page_size).limit(page_size).all()
 
     return PaginatedResponse(
-        items=[ClientResponse.model_validate(c) for c in items],
+        items=[ClientResponse.model_validate(item) for item in items],
         total=total,
         page=page,
         page_size=page_size,

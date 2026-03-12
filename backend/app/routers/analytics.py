@@ -1,8 +1,8 @@
-"""Analytics endpoints — KPIs, anomaly detection, correlation, forecasting."""
+﻿"""Analytics endpoints â€” KPIs, anomaly detection, correlation, forecasting."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 import numpy as np
 import pandas as pd
 from scipy.stats import ttest_ind
@@ -19,7 +19,7 @@ VALID_METRICS = {"clicks", "impressions", "ctr", "conversions", "conversion_rate
 
 
 # ---------------------------------------------------------------------------
-# KPIs & Anomaly Detection — delegated to AnalyticsService
+# KPIs & Anomaly Detection â€” delegated to AnalyticsService
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ def resolve_anomaly(
     if alert.resolved_at:
         raise HTTPException(status_code=400, detail="Alert already resolved")
 
-    alert.resolved_at = datetime.utcnow()
+    alert.resolved_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
 
     return {"status": "success", "message": f"Alert {alert_id} resolved"}
@@ -437,7 +437,7 @@ def forecast_metric(
 
 
 # ---------------------------------------------------------------------------
-# NEW V2 Endpoints — TrendExplorer, Health Score, Campaign Trends
+# NEW V2 Endpoints â€” TrendExplorer, Health Score, Campaign Trends
 # ---------------------------------------------------------------------------
 
 
@@ -476,9 +476,9 @@ def get_health_score(
     status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
-    """Account health score (0–100) with issue breakdown.
+    """Account health score (0â€“100) with issue breakdown.
 
-    Lightweight — uses only MetricDaily + Alert + Campaign queries.
+    Lightweight â€” uses only MetricDaily + Alert + Campaign queries.
     Does NOT invoke recommendations engine.
     """
     service = AnalyticsService(db)
@@ -506,7 +506,7 @@ def get_campaign_trends(
 
 
 # ---------------------------------------------------------------------------
-# Budget Pacing — underspend / overspend tracking
+# Budget Pacing â€” underspend / overspend tracking
 # ---------------------------------------------------------------------------
 
 
@@ -542,7 +542,7 @@ def get_budget_pacing(
 
     results = []
     for camp in campaigns:
-        budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month  # daily budget × days
+        budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month  # daily budget Ă— days
 
         # Actual spend this month from MetricDaily
         actual_spend_micros = (
@@ -659,7 +659,7 @@ def get_geo_breakdown(
 
 
 # ---------------------------------------------------------------------------
-# Dayparting — day-of-week performance
+# Dayparting â€” day-of-week performance
 # ---------------------------------------------------------------------------
 
 
@@ -675,7 +675,7 @@ def get_dayparting(
 
 
 # ---------------------------------------------------------------------------
-# RSA Analysis — ad copy performance
+# RSA Analysis â€” ad copy performance
 # ---------------------------------------------------------------------------
 
 
@@ -690,7 +690,7 @@ def get_rsa_analysis(
 
 
 # ---------------------------------------------------------------------------
-# N-gram Analysis — word-level search term breakdown
+# N-gram Analysis â€” word-level search term breakdown
 # ---------------------------------------------------------------------------
 
 
@@ -709,7 +709,7 @@ def get_ngram_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Match Type Analysis — EXACT vs PHRASE vs BROAD
+# Match Type Analysis â€” EXACT vs PHRASE vs BROAD
 # ---------------------------------------------------------------------------
 
 
@@ -725,7 +725,7 @@ def get_match_type_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Landing Page Analysis — performance by URL
+# Landing Page Analysis â€” performance by URL
 # ---------------------------------------------------------------------------
 
 
@@ -741,7 +741,7 @@ def get_landing_pages(
 
 
 # ---------------------------------------------------------------------------
-# Wasted Spend — zero-conversion waste summary
+# Wasted Spend â€” zero-conversion waste summary
 # ---------------------------------------------------------------------------
 
 
@@ -757,7 +757,7 @@ def get_wasted_spend(
 
 
 # ---------------------------------------------------------------------------
-# Account Structure Audit — cannibalization, oversized groups, match mixing
+# Account Structure Audit â€” cannibalization, oversized groups, match mixing
 # ---------------------------------------------------------------------------
 
 
@@ -772,7 +772,7 @@ def get_account_structure(
 
 
 # ---------------------------------------------------------------------------
-# Bidding Strategy Advisor — recommend optimal strategy per campaign
+# Bidding Strategy Advisor â€” recommend optimal strategy per campaign
 # ---------------------------------------------------------------------------
 
 
@@ -788,7 +788,7 @@ def get_bidding_advisor(
 
 
 # ---------------------------------------------------------------------------
-# Hourly Dayparting — performance by hour of day
+# Hourly Dayparting â€” performance by hour of day
 # ---------------------------------------------------------------------------
 
 
@@ -801,3 +801,4 @@ def get_hourly_dayparting(
     """SEARCH campaign performance by hour of day."""
     service = AnalyticsService(db)
     return service.get_hourly_dayparting(client_id=client_id, days=days)
+

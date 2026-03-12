@@ -1,12 +1,16 @@
-"""Campaign & MetricDaily schemas with micros→currency conversion."""
+"""Campaign and MetricDaily schemas with micros to currency conversion."""
 
 from datetime import date, datetime
-from pydantic import BaseModel, computed_field
 from typing import Optional
+
+from pydantic import BaseModel, computed_field
+
+from .common import CampaignRole, ProtectionLevel, RoleSource
 
 
 class MetricDailyResponse(BaseModel):
     """Daily metrics for a campaign."""
+
     id: int
     campaign_id: int
     date: date
@@ -19,7 +23,6 @@ class MetricDailyResponse(BaseModel):
     roas: float = 0.0
     avg_cpc_micros: int = 0
 
-    # Impression Share (daily, 0.0-1.0)
     search_impression_share: Optional[float] = None
     search_top_impression_share: Optional[float] = None
     search_abs_top_impression_share: Optional[float] = None
@@ -27,11 +30,9 @@ class MetricDailyResponse(BaseModel):
     search_rank_lost_is: Optional[float] = None
     search_click_share: Optional[float] = None
 
-    # Top impression %
     abs_top_impression_pct: Optional[float] = None
     top_impression_pct: Optional[float] = None
 
-    # Extended conversions
     all_conversions: Optional[float] = None
     conversion_value_micros: int = 0
 
@@ -53,8 +54,13 @@ class MetricDailyResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CampaignUpdate(BaseModel):
+    campaign_role_final: Optional[CampaignRole] = None
+
+
 class CampaignResponse(BaseModel):
-    """Campaign response with micros→USD conversion via @computed_field."""
+    """Campaign response with micros to currency conversion via computed fields."""
+
     id: int
     client_id: int
     google_campaign_id: str
@@ -67,7 +73,12 @@ class CampaignResponse(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
-    # Impression share (campaign-level)
+    campaign_role_auto: Optional[CampaignRole] = None
+    campaign_role_final: Optional[CampaignRole] = None
+    role_confidence: Optional[float] = None
+    protection_level: Optional[ProtectionLevel] = None
+    role_source: Optional[RoleSource] = None
+
     search_impression_share: Optional[float] = None
     search_top_impression_share: Optional[float] = None
     search_abs_top_impression_share: Optional[float] = None
@@ -80,7 +91,6 @@ class CampaignResponse(BaseModel):
     search_click_share: Optional[float] = None
     search_exact_match_is: Optional[float] = None
 
-    # Top impression %
     abs_top_impression_pct: Optional[float] = None
     top_impression_pct: Optional[float] = None
 
@@ -90,7 +100,6 @@ class CampaignResponse(BaseModel):
     @computed_field
     @property
     def budget_usd(self) -> float:
-        """Convert budget from micros to USD for display."""
         return round(self.budget_micros / 1_000_000, 2)
 
     model_config = {"from_attributes": True}

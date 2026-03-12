@@ -17,7 +17,7 @@ Rules implemented:
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Optional
 
@@ -25,23 +25,45 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models import (
-    Keyword, SearchTerm, Ad, AdGroup, Campaign, MetricDaily
+    Keyword, SearchTerm, Ad, AdGroup, Campaign, Client, MetricDaily
 )
 from app.models.metric_segmented import MetricSegmented
+from app.services.recommendation_contract import (
+    ACTION,
+    ANALYTICS,
+    BLOCKED_BY_CONTEXT,
+    DESTINATION_NO_HEADROOM,
+    DONOR_PROTECTED_HIGH,
+    DONOR_PROTECTED_MEDIUM,
+    GOOGLE_ADS_API,
+    INSUFFICIENT_DATA,
+    INSIGHT_ONLY,
+    PLAYBOOK_RULES,
+    ROLE_MISMATCH,
+    ROAS_ONLY_SIGNAL,
+    UNKNOWN_ROLE,
+    build_action_payload,
+    build_stable_key,
+    compute_confidence_score,
+    compute_priority,
+    compute_risk_score,
+    default_expires_at,
+    estimate_impact_micros,
+    normalize_reason_codes,
+)
+
+from app.services.campaign_roles import ensure_campaign_roles
 
 
-def _micros_to_usd(micros) -> float:
-    """Convert micros (BigInteger) to USD float."""
-    return (micros or 0) / 1_000_000
+def _micros_to_usd(micros: int | None) -> float:
+    return round((micros or 0) / 1_000_000, 2)
 
 
-def _ctr_micros_to_pct(ctr_micros) -> float:
-    """Convert CTR stored as micros (50000 = 5%) to percentage float."""
-    return (ctr_micros or 0) / 10_000
-
+def _ctr_micros_to_pct(ctr_micros: int | None) -> float:
+    return round((ctr_micros or 0) / 10_000, 2)
 
 class RecommendationType(str, Enum):
-    # MVP (R1–R7)
+    # MVP (R1-R7)
     PAUSE_KEYWORD = "PAUSE_KEYWORD"
     INCREASE_BID = "INCREASE_BID"
     DECREASE_BID = "DECREASE_BID"
@@ -49,17 +71,18 @@ class RecommendationType(str, Enum):
     ADD_NEGATIVE = "ADD_NEGATIVE"
     PAUSE_AD = "PAUSE_AD"
     REALLOCATE_BUDGET = "REALLOCATE_BUDGET"
-    # v1.1 (R8–R13)
+    # v1.1 (R8-R13)
     QS_ALERT = "QS_ALERT"
     IS_BUDGET_ALERT = "IS_BUDGET_ALERT"
     IS_RANK_ALERT = "IS_RANK_ALERT"
     WASTED_SPEND_ALERT = "WASTED_SPEND_ALERT"
     PMAX_CANNIBALIZATION = "PMAX_CANNIBALIZATION"
-    # v1.2 (R15–R18)
+    # v1.2 (R15-R18)
     DEVICE_ANOMALY = "DEVICE_ANOMALY"
     GEO_ANOMALY = "GEO_ANOMALY"
     BUDGET_PACING = "BUDGET_PACING"
     NGRAM_NEGATIVE = "NGRAM_NEGATIVE"
+    ANALYTICS_ALERT = "ANALYTICS_ALERT"
 
 
 class Priority(str, Enum):
@@ -71,18 +94,36 @@ class Priority(str, Enum):
 @dataclass
 class Recommendation:
     """A single optimization recommendation."""
+
     type: str
     priority: str
-    entity_type: str          # keyword, search_term, ad, campaign
+    entity_type: str
     entity_id: int
     entity_name: str
     campaign_name: str
     reason: str
-    category: str = "RECOMMENDATION"  # RECOMMENDATION (actionable) or ALERT (diagnostic)
+    category: str = "RECOMMENDATION"
     current_value: Optional[str] = None
     recommended_action: Optional[str] = None
     estimated_impact: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+    source: str = PLAYBOOK_RULES
+    campaign_id: Optional[int] = None
+    ad_group_id: Optional[int] = None
+    stable_key: Optional[str] = None
+    action_payload: Optional[dict] = None
+    evidence_json: Optional[dict] = None
+    impact_micros: Optional[int] = None
+    impact_score: Optional[float] = None
+    confidence_score: Optional[float] = None
+    risk_score: Optional[float] = None
+    score: Optional[float] = None
+    executable: bool = False
+    expires_at: Optional[datetime] = None
+    google_resource_name: Optional[str] = None
+    context_outcome: Optional[str] = None
+    blocked_reasons: list[str] = field(default_factory=list)
+    downgrade_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -170,10 +211,19 @@ class RecommendationsEngine:
         client_id: int,
         days: int = 30,
     ) -> list[dict]:
-        """Run all 17 rules and return a combined list of recommendations."""
+        """Run all rules and return enriched recommendations."""
+        client = db.get(Client, client_id)
+        enabled_campaigns = (
+            db.query(Campaign)
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .all()
+        )
+        if client and enabled_campaigns and ensure_campaign_roles(enabled_campaigns, client):
+            db.flush()
+
         recommendations: list[Recommendation] = []
 
-        # MVP rules (R1–R7)
+        # MVP rules (R1-R7)
         recommendations.extend(self._rule_1_pause_keywords(db, client_id, days))
         recommendations.extend(self._rule_2_increase_bid(db, client_id, days))
         recommendations.extend(self._rule_3_decrease_bid(db, client_id, days))
@@ -182,7 +232,7 @@ class RecommendationsEngine:
         recommendations.extend(self._rule_6_pause_ad(db, client_id, days))
         recommendations.extend(self._rule_7_reallocate_budget(db, client_id, days))
 
-        # v1.1 rules (R8–R13)
+        # v1.1 rules (R8-R13)
         recommendations.extend(self._rule_8_quality_score_alert(db, client_id, days))
         recommendations.extend(self._rule_9_is_lost_budget(db, client_id, days))
         recommendations.extend(self._rule_10_is_lost_rank(db, client_id, days))
@@ -190,23 +240,20 @@ class RecommendationsEngine:
         recommendations.extend(self._rule_12_wasted_spend_alert(db, client_id, days))
         recommendations.extend(self._rule_13_pmax_search_overlap(db, client_id, days))
 
-        # v1.2 rules (R15–R18, excluding R14)
+        # v1.2 rules (R15-R18, excluding R14)
         recommendations.extend(self._rule_15_device_anomaly(db, client_id, days))
         recommendations.extend(self._rule_16_geo_anomaly(db, client_id, days))
         recommendations.extend(self._rule_17_budget_pacing(db, client_id, days))
         recommendations.extend(self._rule_18_ngram_negative(db, client_id, days))
+        recommendations.extend(self._analytics_alerts(db, client_id, days, recommendations))
 
-        # Sort by priority: HIGH first, then MEDIUM, then LOW
+        enriched = [self._finalize_recommendation(db, client_id, days, rec) for rec in recommendations]
+
         priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-        recommendations.sort(key=lambda r: priority_order.get(r.priority, 99))
+        enriched.sort(key=lambda r: (priority_order.get(r.priority, 99), -(r.impact_micros or 0)))
 
-        return [r.to_dict() for r in recommendations]
+        return [r.to_dict() for r in enriched]
 
-    # -----------------------------------------------------------------------
-    # RULE 1: Pause Keyword (high spend, zero conversions)
-    # Uses Keyword model data (refreshed during sync from Google Ads API
-    # with date_from/date_to range, typically last 30 days)
-    # -----------------------------------------------------------------------
     def _rule_1_pause_keywords(
         self, db: Session, client_id: int, days: int
     ) -> list[Recommendation]:
@@ -431,19 +478,25 @@ class RecommendationsEngine:
                 func.sum(SearchTerm.impressions).label("total_impr"),
                 Campaign.name.label("campaign_name"),
                 Campaign.id.label("campaign_id"),
+                SearchTerm.ad_group_id.label("ad_group_id"),
+                SearchTerm.source.label("source"),
             )
-            .join(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
-            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .join(Campaign, SearchTerm.campaign_id == Campaign.id)
             .filter(Campaign.client_id == client_id)
-            .group_by(SearchTerm.text, Campaign.name, Campaign.id)
+            .group_by(
+                SearchTerm.text,
+                Campaign.name,
+                Campaign.id,
+                SearchTerm.ad_group_id,
+                SearchTerm.source,
+            )
             .all()
         )
 
-        # Get existing keywords for dedup
         existing_keywords = set(
-            kw.text.lower()
+            (kw.text.lower(), kw.ad_group_id)
             for kw in (
-                db.query(Keyword.text)
+                db.query(Keyword.text, Keyword.ad_group_id)
                 .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
                 .join(Campaign, AdGroup.campaign_id == Campaign.id)
                 .filter(Campaign.client_id == client_id)
@@ -451,62 +504,77 @@ class RecommendationsEngine:
             )
         )
 
-        # Get existing negative keywords to avoid recommending terms already negated
-        existing_negatives = set()
-        neg_keywords = (
-            db.query(Keyword.text)
-            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
-            .join(Campaign, AdGroup.campaign_id == Campaign.id)
-            .filter(
-                Campaign.client_id == client_id,
-                Keyword.status == "PAUSED",
-            )
-            .all()
-        )
-        for nk in neg_keywords:
-            existing_negatives.add(nk.text.lower())
-
         for term in terms:
             text_lower = term.text.lower()
-            if text_lower in existing_keywords:
-                continue
-            if text_lower in existing_negatives:
+            source = term.source or "SEARCH"
+            if term.ad_group_id and (text_lower, term.ad_group_id) in existing_keywords:
                 continue
 
             total_clicks = term.total_clicks or 0
             total_conv = term.total_conv or 0
             total_cost = (term.total_cost_micros or 0) / 1_000_000
+            total_impr = term.total_impr or 0
             cvr = (total_conv / total_clicks * 100) if total_clicks > 0 else 0
-
-            # Choose match type based on word count: EXACT for 1-2 words, PHRASE for 3+
             word_count = len(term.text.strip().split())
             match_type = "EXACT" if word_count <= 2 else "PHRASE"
+            base_metadata = {
+                "conversions": float(total_conv),
+                "clicks": int(total_clicks),
+                "impressions": int(total_impr),
+                "cost": round(total_cost, 2),
+                "cvr": round(cvr, 2),
+                "match_type": match_type,
+                "search_term_source": source,
+                "campaign_id": term.campaign_id,
+                "ad_group_id": term.ad_group_id,
+            }
 
             if total_conv >= t["r4_min_conversions"]:
-                recs.append(Recommendation(
-                    type=RecommendationType.ADD_KEYWORD,
-                    priority=Priority.HIGH,
-                    entity_type="search_term",
-                    entity_id=0,
-                    entity_name=term.text,
-                    campaign_name=term.campaign_name,
-                    reason=(
-                        f"Search term has {total_conv:.0f} conversions "
-                        f"with {cvr:.1f}% CVR. Not yet a keyword."
-                    ),
-                    current_value=f"Conv: {total_conv:.0f}, CVR: {cvr:.1f}%, Cost: ${total_cost:.2f}",
-                    recommended_action=f"Add as {match_type} match keyword",
-                    estimated_impact="Capture more of this high-converting traffic",
-                    metadata={
-                        "conversions": float(total_conv),
-                        "cvr": round(cvr, 2),
-                        "match_type": match_type,
-                    },
-                ))
+                if source == "SEARCH" and term.ad_group_id:
+                    recs.append(Recommendation(
+                        type=RecommendationType.ADD_KEYWORD,
+                        priority=Priority.HIGH,
+                        entity_type="search_term",
+                        entity_id=0,
+                        entity_name=term.text,
+                        campaign_name=term.campaign_name,
+                        campaign_id=term.campaign_id,
+                        ad_group_id=term.ad_group_id,
+                        reason=(
+                            f"Search term has {total_conv:.0f} conversions "
+                            f"with {cvr:.1f}% CVR. Not yet a keyword."
+                        ),
+                        current_value=f"Conv: {total_conv:.0f}, CVR: {cvr:.1f}%, Cost: ${total_cost:.2f}",
+                        recommended_action=f"Add as {match_type} match keyword",
+                        estimated_impact="Capture more of this high-converting traffic",
+                        metadata=base_metadata,
+                    ))
+                else:
+                    recs.append(Recommendation(
+                        type=RecommendationType.ADD_KEYWORD,
+                        priority=Priority.MEDIUM,
+                        entity_type="search_term",
+                        entity_id=0,
+                        entity_name=term.text,
+                        campaign_name=term.campaign_name,
+                        campaign_id=term.campaign_id,
+                        ad_group_id=term.ad_group_id,
+                        category="ALERT",
+                        reason=(
+                            f"PMax term has {total_conv:.0f} conversions with {cvr:.1f}% CVR. "
+                            "Review manually before adding as a Search keyword."
+                        ),
+                        current_value=f"Conv: {total_conv:.0f}, CVR: {cvr:.1f}%, Cost: ${total_cost:.2f}",
+                        recommended_action="Review manually in Google Ads",
+                        estimated_impact="Potential high-intent keyword candidate",
+                        metadata=base_metadata,
+                    ))
 
             elif total_clicks >= t["r4_min_clicks_phrase"] and cvr == 0:
-                ctr = (total_clicks / (term.total_impr or 1)) * 100
+                ctr = (total_clicks / max(total_impr, 1)) * 100
                 if ctr >= t["r4_min_ctr_phrase"]:
+                    metadata = dict(base_metadata)
+                    metadata["ctr"] = round(ctr, 2)
                     recs.append(Recommendation(
                         type=RecommendationType.ADD_KEYWORD,
                         priority=Priority.LOW,
@@ -514,24 +582,24 @@ class RecommendationsEngine:
                         entity_id=0,
                         entity_name=term.text,
                         campaign_name=term.campaign_name,
+                        campaign_id=term.campaign_id,
+                        ad_group_id=term.ad_group_id,
+                        category="RECOMMENDATION" if source == "SEARCH" and term.ad_group_id else "ALERT",
                         reason=(
                             f"High engagement: {total_clicks} clicks, {ctr:.1f}% CTR. "
                             f"Worth testing as a keyword."
                         ),
                         current_value=f"Clicks: {total_clicks}, CTR: {ctr:.1f}%",
-                        recommended_action=f"Add as PHRASE match keyword",
-                        metadata={
-                            "clicks": int(total_clicks),
-                            "ctr": round(ctr, 2),
-                            "match_type": "PHRASE",
-                        },
+                        recommended_action=(
+                            "Add as PHRASE match keyword"
+                            if source == "SEARCH" and term.ad_group_id
+                            else "Review manually in Google Ads"
+                        ),
+                        metadata=metadata,
                     ))
 
         return recs
 
-    # -----------------------------------------------------------------------
-    # RULE 5: Add Negative Keyword (wasted spend)
-    # -----------------------------------------------------------------------
     def _rule_5_add_negative(
         self, db: Session, client_id: int, days: int
     ) -> list[Recommendation]:
@@ -546,11 +614,12 @@ class RecommendationsEngine:
                 func.sum(SearchTerm.cost_micros).label("total_cost_micros"),
                 func.sum(SearchTerm.impressions).label("total_impr"),
                 Campaign.name.label("campaign_name"),
+                Campaign.id.label("campaign_id"),
+                SearchTerm.source.label("source"),
             )
-            .join(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
-            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .join(Campaign, SearchTerm.campaign_id == Campaign.id)
             .filter(Campaign.client_id == client_id)
-            .group_by(SearchTerm.text, Campaign.name)
+            .group_by(SearchTerm.text, Campaign.name, Campaign.id, SearchTerm.source)
             .all()
         )
 
@@ -560,14 +629,27 @@ class RecommendationsEngine:
             total_cost = (term.total_cost_micros or 0) / 1_000_000
             total_impr = term.total_impr or 1
             ctr = (total_clicks / total_impr) * 100
+            source = term.source or "SEARCH"
+            base_metadata = {
+                "clicks": int(total_clicks),
+                "impressions": int(total_impr),
+                "conversions": float(total_conv),
+                "cost": round(total_cost, 2),
+                "ctr": round(ctr, 2),
+                "campaign_id": term.campaign_id,
+                "search_term_source": source,
+                "negative_match_type": "PHRASE",
+            }
 
-            # Check 1: Irrelevant words (word boundary match)
             text_lower = term.text.lower()
             matched_words = [
                 p.pattern.replace(r'\b', '').replace('\\', '')
                 for p in self._IRRELEVANT_PATTERNS if p.search(text_lower)
             ]
             if matched_words:
+                metadata = dict(base_metadata)
+                metadata["matched_words"] = matched_words
+                metadata["negative_level"] = "ACCOUNT"
                 recs.append(Recommendation(
                     type=RecommendationType.ADD_NEGATIVE,
                     priority=Priority.HIGH,
@@ -575,23 +657,26 @@ class RecommendationsEngine:
                     entity_id=0,
                     entity_name=term.text,
                     campaign_name=term.campaign_name,
+                    campaign_id=term.campaign_id,
+                    category="ALERT",
                     reason=(
                         f"Contains irrelevant word(s): {', '.join(matched_words)}. "
                         f"Cost: ${total_cost:.2f}."
                     ),
                     current_value=f"Cost: ${total_cost:.2f}, Clicks: {total_clicks}",
-                    recommended_action="Add as NEGATIVE keyword (account level)",
+                    recommended_action="Review account-level negative manually",
                     estimated_impact=f"Save ~${total_cost:.2f}/month",
-                    metadata={"matched_words": matched_words},
+                    metadata=metadata,
                 ))
                 continue
 
-            # Check 2: Clicks but no conversions + low CTR
             if (
                 total_clicks >= t["r5_min_clicks"]
                 and total_conv == 0
                 and ctr < t["r5_max_ctr"]
             ):
+                metadata = dict(base_metadata)
+                metadata["negative_level"] = "CAMPAIGN"
                 recs.append(Recommendation(
                     type=RecommendationType.ADD_NEGATIVE,
                     priority=Priority.MEDIUM,
@@ -599,18 +684,25 @@ class RecommendationsEngine:
                     entity_id=0,
                     entity_name=term.text,
                     campaign_name=term.campaign_name,
+                    campaign_id=term.campaign_id,
+                    category="RECOMMENDATION" if source == "SEARCH" else "ALERT",
                     reason=(
                         f"{total_clicks} clicks, 0 conversions, CTR {ctr:.2f}%. "
                         f"Wasted ${total_cost:.2f}."
                     ),
                     current_value=f"Cost: ${total_cost:.2f}, CTR: {ctr:.2f}%",
-                    recommended_action="Add as NEGATIVE keyword (campaign level)",
+                    recommended_action=(
+                        "Add as campaign negative"
+                        if source == "SEARCH"
+                        else "Review manually in Google Ads"
+                    ),
                     estimated_impact=f"Save ~${total_cost:.2f}/month",
-                    metadata={"clicks": int(total_clicks), "cost": float(total_cost)},
+                    metadata=metadata,
                 ))
 
-            # Check 3: High cost with zero conversions
             elif total_cost >= t["r5_min_cost_immediate"] and total_conv == 0:
+                metadata = dict(base_metadata)
+                metadata["negative_level"] = "CAMPAIGN"
                 recs.append(Recommendation(
                     type=RecommendationType.ADD_NEGATIVE,
                     priority=Priority.HIGH,
@@ -618,20 +710,22 @@ class RecommendationsEngine:
                     entity_id=0,
                     entity_name=term.text,
                     campaign_name=term.campaign_name,
+                    campaign_id=term.campaign_id,
+                    category="RECOMMENDATION" if source == "SEARCH" else "ALERT",
                     reason=(
                         f"Spent ${total_cost:.2f} with 0 conversions. Immediate waste."
                     ),
                     current_value=f"Cost: ${total_cost:.2f}, Conv: 0",
-                    recommended_action="Add as NEGATIVE keyword immediately",
+                    recommended_action=(
+                        "Add as campaign negative"
+                        if source == "SEARCH"
+                        else "Review manually in Google Ads"
+                    ),
                     estimated_impact=f"Save ~${total_cost:.2f}/month",
-                    metadata={"cost": float(total_cost)},
+                    metadata=metadata,
                 ))
 
         return recs
-
-    # -----------------------------------------------------------------------
-    # RULE 6: Pause Ad (underperforming vs best in group)
-    # -----------------------------------------------------------------------
     def _rule_6_pause_ad(
         self, db: Session, client_id: int, days: int
     ) -> list[Recommendation]:
@@ -719,97 +813,56 @@ class RecommendationsEngine:
     ) -> list[Recommendation]:
         recs = []
         t = self.thresholds
+        client = db.get(Client, client_id)
+        if not client:
+            return recs
 
-        today = date.today()
-        cutoff = today - timedelta(days=days)
-
+        cutoff = date.today() - timedelta(days=days)
         campaigns = (
             db.query(Campaign)
             .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
             .all()
         )
+        if campaigns and ensure_campaign_roles(campaigns, client):
+            db.flush()
 
-        campaign_roas = []
+        snapshots = []
         for campaign in campaigns:
-            metrics = (
-                db.query(MetricDaily)
-                .filter(
-                    MetricDaily.campaign_id == campaign.id,
-                    MetricDaily.date >= cutoff,
-                )
-                .all()
-            )
+            snapshot = self._campaign_metrics_snapshot(db, campaign, cutoff)
+            if snapshot and snapshot["roas"] > 0:
+                snapshots.append(snapshot)
 
-            if not metrics:
-                continue
-
-            total_cost = sum(_micros_to_usd(m.cost_micros) for m in metrics)
-            total_conv = sum(m.conversions or 0 for m in metrics)
-            total_revenue = sum(_micros_to_usd(m.conversion_value_micros) for m in metrics)
-            roas = (total_revenue / total_cost) if total_cost > 0 else 0
-
-            campaign_roas.append({
-                "campaign": campaign,
-                "roas": roas,
-                "cost": total_cost,
-                "conversions": total_conv,
-                "revenue": total_revenue,
-            })
-
-        if len(campaign_roas) < 2:
+        if len(snapshots) < 2:
             return recs
 
-        campaign_roas.sort(key=lambda x: x["roas"], reverse=True)
+        seen_pairs: set[tuple[int, int]] = set()
 
-        best = campaign_roas[0]
-        worst = campaign_roas[-1]
+        global_best = max(snapshots, key=lambda item: item["roas"])
+        global_worst = min(snapshots, key=lambda item: item["roas"])
+        global_rec = self._build_reallocation_candidate(db, client, global_best, global_worst, t, cutoff)
+        if global_rec:
+            recs.append(global_rec)
+            seen_pairs.add((global_worst["campaign"].id, global_best["campaign"].id))
 
-        best_budget = _micros_to_usd(best["campaign"].budget_micros)
-        worst_budget = _micros_to_usd(worst["campaign"].budget_micros)
+        role_buckets: dict[str, list[dict]] = defaultdict(list)
+        for snapshot in snapshots:
+            role_buckets[snapshot["campaign"].campaign_role_final or "UNKNOWN"].append(snapshot)
 
-        if (
-            worst["roas"] > 0
-            and best["roas"] > worst["roas"] * t["r7_roas_ratio"]
-            and worst_budget > best_budget
-        ):
-            move_amount = worst_budget * t["r7_budget_move_pct"] / 100
-            recs.append(Recommendation(
-                type=RecommendationType.REALLOCATE_BUDGET,
-                priority=Priority.HIGH,
-                entity_type="campaign",
-                entity_id=best["campaign"].id,
-                entity_name=f"{worst['campaign'].name} → {best['campaign'].name}",
-                campaign_name=f"{worst['campaign'].name} → {best['campaign'].name}",
-                reason=(
-                    f"'{best['campaign'].name}' has ROAS {best['roas']:.2f}x vs "
-                    f"'{worst['campaign'].name}' ROAS {worst['roas']:.2f}x. "
-                    f"Move budget from low to high performer."
-                ),
-                current_value=(
-                    f"Best: ${best_budget:.2f}/day, "
-                    f"Worst: ${worst_budget:.2f}/day"
-                ),
-                recommended_action=(
-                    f"Move ${move_amount:.0f}/day from '{worst['campaign'].name}' "
-                    f"to '{best['campaign'].name}'"
-                ),
-                estimated_impact="Higher overall ROAS for the account",
-                metadata={
-                    "best_roas": round(best["roas"], 2),
-                    "worst_roas": round(worst["roas"], 2),
-                    "move_amount": round(move_amount, 2),
-                },
-            ))
+        for role, bucket in role_buckets.items():
+            if role == "UNKNOWN" or len(bucket) < 2:
+                continue
+            ranked = sorted(bucket, key=lambda item: item["roas"], reverse=True)
+            best = ranked[0]
+            worst = ranked[-1]
+            pair_key = (worst["campaign"].id, best["campaign"].id)
+            if pair_key in seen_pairs:
+                continue
+            candidate = self._build_reallocation_candidate(db, client, best, worst, t, cutoff)
+            if candidate and candidate.context_outcome == ACTION:
+                recs.append(candidate)
+                seen_pairs.add(pair_key)
 
         return recs
-
-    # ===================================================================
-    # v1.1 RULES (R8–R13) — Quick Wins, no new sync required
-    # ===================================================================
-
-    # -----------------------------------------------------------------------
-    # RULE 8: Quality Score Alert — Keywords with QS < 5
-    # -----------------------------------------------------------------------
     def _rule_8_quality_score_alert(
         self, db: Session, client_id: int, days: int
     ) -> list[Recommendation]:
@@ -888,9 +941,11 @@ class RecommendationsEngine:
     ) -> list[Recommendation]:
         recs = []
         t = self.thresholds
-        today = date.today()
-        cutoff = today - timedelta(days=days)
+        client = db.get(Client, client_id)
+        if not client:
+            return recs
 
+        cutoff = date.today() - timedelta(days=days)
         campaigns = (
             db.query(Campaign)
             .filter(
@@ -900,106 +955,72 @@ class RecommendationsEngine:
             )
             .all()
         )
+        if campaigns and ensure_campaign_roles(campaigns, client):
+            db.flush()
+
+        account_avg_cpa = self._account_avg_cpa(db, client_id, cutoff)
 
         for campaign in campaigns:
             lost_is = (campaign.search_budget_lost_is or 0) * 100
             if lost_is < t["r9_min_lost_is_pct"]:
                 continue
 
-            metrics = (
-                db.query(MetricDaily)
-                .filter(
-                    MetricDaily.campaign_id == campaign.id,
-                    MetricDaily.date >= cutoff,
-                )
-                .all()
-            )
-            if not metrics:
+            snapshot = self._campaign_metrics_snapshot(db, campaign, cutoff)
+            if not snapshot:
                 continue
 
-            total_cost = sum(_micros_to_usd(m.cost_micros) for m in metrics)
-            total_conv = sum(m.conversions or 0 for m in metrics)
-            total_revenue = sum(_micros_to_usd(m.conversion_value_micros) for m in metrics)
-            roas = (total_revenue / total_cost) if total_cost > 0 else 0
-            cpa = (total_cost / total_conv) if total_conv > 0 else 0
-            budget_usd = _micros_to_usd(campaign.budget_micros)
+            scale_eval = self._evaluate_can_scale(campaign, snapshot, client, account_avg_cpa)
+            outcome = ACTION if scale_eval["can_scale"] else INSIGHT_ONLY
+            downgrade_reasons = [] if outcome == ACTION else scale_eval["reason_codes"]
+            priority = Priority.HIGH if outcome == ACTION and lost_is > t["r9_high_lost_is_pct"] else Priority.MEDIUM
+            budget_usd = snapshot["budget_usd"]
 
-            # Sub-check 1: Healthy performance → increase budget
-            if total_conv > 0 and roas >= 1.0:
-                priority = Priority.HIGH if lost_is > t["r9_high_lost_is_pct"] else Priority.MEDIUM
-                recs.append(Recommendation(
-                    type=RecommendationType.IS_BUDGET_ALERT,
-                    priority=priority,
-                    entity_type="campaign",
-                    entity_id=campaign.id,
-                    entity_name=campaign.name,
-                    campaign_name=campaign.name,
-                    category="RECOMMENDATION",
-                    reason=(
-                        f"Tracisz {lost_is:.0f}% wyświetleń z powodu budżetu "
-                        f"przy ROAS {roas:.2f}x"
-                    ),
-                    current_value=(
-                        f"Lost IS: {lost_is:.0f}%, ROAS: {roas:.2f}x, "
-                        f"Budget: ${budget_usd:.2f}/day"
-                    ),
-                    recommended_action=(
-                        f"Zwiększ budżet o {t['r9_budget_increase_pct']}%"
-                    ),
-                    estimated_impact=f"Potencjalnie {lost_is:.0f}% więcej wyświetleń",
-                    metadata={
-                        "lost_is_pct": round(lost_is, 1),
-                        "roas": round(roas, 2),
-                        "budget_usd": round(budget_usd, 2),
-                    },
-                ))
-
-            # Sub-check 2: Lost IS > 50% + high CPA → decrease bids
-            elif lost_is > 50 and total_conv > 0:
-                all_metrics = (
-                    db.query(MetricDaily)
-                    .join(Campaign, MetricDaily.campaign_id == Campaign.id)
-                    .filter(
-                        Campaign.client_id == client_id,
-                        MetricDaily.date >= cutoff,
-                    )
-                    .all()
-                )
-                acct_cost = sum(_micros_to_usd(m.cost_micros) for m in all_metrics)
-                acct_conv = sum(m.conversions or 0 for m in all_metrics)
-                avg_cpa = (acct_cost / acct_conv) if acct_conv > 0 else 0
-
-                if avg_cpa > 0 and cpa > avg_cpa * 1.2:
-                    recs.append(Recommendation(
-                        type=RecommendationType.IS_BUDGET_ALERT,
-                        priority=Priority.HIGH,
-                        entity_type="campaign",
-                        entity_id=campaign.id,
-                        entity_name=campaign.name,
-                        campaign_name=campaign.name,
-                        category="RECOMMENDATION",
-                        reason=(
-                            f"Kampania wyczerpuje budżet za wcześnie — "
-                            f"Lost IS: {lost_is:.0f}%, CPA: ${cpa:.2f} "
-                            f"(avg konta: ${avg_cpa:.2f})"
-                        ),
-                        current_value=f"Lost IS: {lost_is:.0f}%, CPA: ${cpa:.2f}",
-                        recommended_action=(
-                            "Obniż stawki — zbyt wysoki CPA przy szybkim "
-                            "wyczerpywaniu budżetu"
-                        ),
-                        metadata={
-                            "lost_is_pct": round(lost_is, 1),
-                            "cpa": round(cpa, 2),
-                            "avg_cpa": round(avg_cpa, 2),
-                        },
-                    ))
+            recs.append(Recommendation(
+                type=RecommendationType.IS_BUDGET_ALERT,
+                priority=priority,
+                entity_type="campaign",
+                entity_id=campaign.id,
+                entity_name=campaign.name,
+                campaign_name=campaign.name,
+                campaign_id=campaign.id,
+                category="RECOMMENDATION" if outcome == ACTION else "ALERT",
+                reason=(
+                    f"{campaign.name}: Lost IS {lost_is:.0f}%, role {campaign.campaign_role_final or 'UNKNOWN'}, "
+                    f"ROAS {snapshot['roas']:.2f}x, avg spend ${snapshot['avg_daily_spend']:.2f}/day."
+                ),
+                current_value=(
+                    f"Lost IS: {lost_is:.0f}%, Budget: ${budget_usd:.2f}/day, "
+                    f"Avg spend: ${snapshot['avg_daily_spend']:.2f}/day"
+                ),
+                recommended_action=(
+                    f"Increase budget by {t['r9_budget_increase_pct']}%" if outcome == ACTION
+                    else "Review bids, tracking, and scale headroom before increasing budget"
+                ),
+                estimated_impact=(
+                    f"Potentially recover {lost_is:.0f}% more impressions" if outcome == ACTION
+                    else "Insight only until context confirms safe scale"
+                ),
+                metadata={
+                    "lost_is_pct": round(lost_is, 1),
+                    "roas": round(snapshot["roas"], 2),
+                    "cpa": round(snapshot["cpa"], 2) if snapshot["cpa"] else 0,
+                    "budget_usd": round(budget_usd, 2),
+                    "avg_daily_spend": round(snapshot["avg_daily_spend"], 2),
+                    "current_budget_micros": int(campaign.budget_micros or 0),
+                    "budget_change_pct": t["r9_budget_increase_pct"],
+                    "budget_action": "INCREASE_BUDGET" if outcome == ACTION else "REVIEW_ONLY",
+                    "primary_campaign_role": campaign.campaign_role_final or "UNKNOWN",
+                    "protection_level": campaign.protection_level or "HIGH",
+                    "can_scale": scale_eval["can_scale"],
+                    "destination_headroom": scale_eval["headroom"],
+                    "search_budget_lost_is": round(lost_is, 1),
+                    "days_observed": snapshot["days_observed"],
+                },
+                context_outcome=outcome,
+                downgrade_reasons=downgrade_reasons,
+            ))
 
         return recs
-
-    # -----------------------------------------------------------------------
-    # RULE 10: Impression Share Lost to Rank — Quality/Bid Problem
-    # -----------------------------------------------------------------------
     def _rule_10_is_lost_rank(
         self, db: Session, client_id: int, days: int
     ) -> list[Recommendation]:
@@ -1565,7 +1586,6 @@ class RecommendationsEngine:
         recs = []
         t = self.thresholds
 
-        # Get all search terms for this client
         terms = (
             db.query(
                 SearchTerm.text,
@@ -1582,7 +1602,6 @@ class RecommendationsEngine:
         if not terms:
             return recs
 
-        # Extract n-grams (1, 2, 3 words) and aggregate metrics
         ngram_data: dict[str, dict] = defaultdict(
             lambda: {"cost": 0.0, "conv": 0.0, "clicks": 0, "terms": set()}
         )
@@ -1592,17 +1611,16 @@ class RecommendationsEngine:
             cost_usd = _micros_to_usd(term.cost_micros)
             conv = term.conversions or 0
 
-            for n in range(1, 4):  # 1-gram, 2-gram, 3-gram
+            for n in range(1, 4):
                 for i in range(len(words) - n + 1):
                     ngram = " ".join(words[i:i + n])
-                    if len(ngram) < 3:  # Skip very short n-grams
+                    if len(ngram) < 3:
                         continue
                     ngram_data[ngram]["cost"] += cost_usd
                     ngram_data[ngram]["conv"] += conv
                     ngram_data[ngram]["clicks"] += (term.clicks or 0)
                     ngram_data[ngram]["terms"].add(term.text.lower())
 
-        # Find wasteful n-grams
         for ngram, data in ngram_data.items():
             term_count = len(data["terms"])
             if (
@@ -1617,19 +1635,16 @@ class RecommendationsEngine:
                     entity_id=0,
                     entity_name=ngram,
                     campaign_name="Account-wide",
-                    category="RECOMMENDATION",
+                    category="ALERT",
                     reason=(
-                        f"N-gram '{ngram}' pojawia się w {term_count} "
-                        f"search terms, łączny koszt ${data['cost']:.2f}, "
-                        f"0 konwersji"
+                        f"N-gram '{ngram}' appears in {term_count} search terms, "
+                        f"total cost ${data['cost']:.2f}, 0 conversions."
                     ),
                     current_value=(
                         f"Cost: ${data['cost']:.2f}, Terms: {term_count}, "
                         f"Clicks: {data['clicks']}"
                     ),
-                    recommended_action=(
-                        "Dodaj jako broad match negative"
-                    ),
+                    recommended_action="Review manually before adding any n-gram negative",
                     estimated_impact=f"Save ~${data['cost']:.2f}",
                     metadata={
                         "ngram": ngram,
@@ -1637,11 +1652,582 @@ class RecommendationsEngine:
                         "term_count": term_count,
                         "clicks": data["clicks"],
                         "sample_terms": list(data["terms"])[:5],
+                        "negative_level": "ACCOUNT",
                     },
                 ))
 
         return recs
 
+    def _campaign_metrics_snapshot(self, db: Session, campaign: Campaign, cutoff: date) -> dict | None:
+        metrics = (
+            db.query(MetricDaily)
+            .filter(
+                MetricDaily.campaign_id == campaign.id,
+                MetricDaily.date >= cutoff,
+            )
+            .all()
+        )
+        if not metrics:
+            return None
 
+        total_cost = sum(_micros_to_usd(m.cost_micros) for m in metrics)
+        total_conv = sum(m.conversions or 0 for m in metrics)
+        total_revenue = sum(_micros_to_usd(m.conversion_value_micros) for m in metrics)
+        total_clicks = sum(m.clicks or 0 for m in metrics)
+        total_impressions = sum(m.impressions or 0 for m in metrics)
+        days_observed = max(len({m.date for m in metrics}), 1)
+        budget_usd = _micros_to_usd(campaign.budget_micros)
+
+        return {
+            "campaign": campaign,
+            "cost": total_cost,
+            "conversions": total_conv,
+            "revenue": total_revenue,
+            "roas": (total_revenue / total_cost) if total_cost > 0 else 0,
+            "cpa": (total_cost / total_conv) if total_conv > 0 else 0,
+            "clicks": total_clicks,
+            "impressions": total_impressions,
+            "days_observed": days_observed,
+            "avg_daily_spend": (total_cost / days_observed) if days_observed > 0 else total_cost,
+            "budget_usd": budget_usd,
+            "lost_is_pct": round((campaign.search_budget_lost_is or 0) * 100, 1),
+        }
+
+    def _account_avg_cpa(self, db: Session, client_id: int, cutoff: date) -> float:
+        metrics = (
+            db.query(MetricDaily)
+            .join(Campaign, MetricDaily.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                MetricDaily.date >= cutoff,
+            )
+            .all()
+        )
+        total_cost = sum(_micros_to_usd(m.cost_micros) for m in metrics)
+        total_conv = sum(m.conversions or 0 for m in metrics)
+        return (total_cost / total_conv) if total_conv > 0 else 0
+
+    def _campaign_ends_within(self, campaign: Campaign, days: int) -> bool:
+        if not campaign.end_date:
+            return False
+        return campaign.end_date <= (date.today() + timedelta(days=days))
+
+    def _evaluate_can_scale(
+        self,
+        campaign: Campaign,
+        snapshot: dict | None,
+        client: Client | None,
+        account_avg_cpa: float,
+    ) -> dict:
+        reasons: list[str] = []
+        if not snapshot:
+            return {
+                "can_scale": False,
+                "headroom": False,
+                "healthy_efficiency": False,
+                "roas_only": False,
+                "reason_codes": [INSUFFICIENT_DATA],
+            }
+
+        headroom = (
+            snapshot["lost_is_pct"] >= 15
+            or (snapshot["budget_usd"] > 0 and snapshot["avg_daily_spend"] >= snapshot["budget_usd"] * 0.8)
+        )
+        if not headroom:
+            reasons.append(DESTINATION_NO_HEADROOM)
+
+        business_rules = (client.business_rules or {}) if client and isinstance(client.business_rules, dict) else {}
+        try:
+            min_roas = max(float(business_rules.get("min_roas") or 0), 1.0)
+        except (TypeError, ValueError):
+            min_roas = 1.0
+
+        roas_only = snapshot["revenue"] > 0 and snapshot["conversions"] < 3
+        healthy_efficiency = False
+        if snapshot["revenue"] > 0:
+            healthy_efficiency = snapshot["roas"] >= min_roas
+            if roas_only or not healthy_efficiency:
+                reasons.append(ROAS_ONLY_SIGNAL)
+        elif account_avg_cpa > 0 and snapshot["conversions"] >= 3:
+            healthy_efficiency = snapshot["cpa"] <= account_avg_cpa * 1.1
+            if not healthy_efficiency:
+                reasons.append(INSUFFICIENT_DATA)
+        else:
+            reasons.append(INSUFFICIENT_DATA)
+
+        if snapshot["conversions"] < 3 or snapshot["days_observed"] < 3:
+            reasons.append(INSUFFICIENT_DATA)
+
+        if self._campaign_ends_within(campaign, 7):
+            reasons.append(DESTINATION_NO_HEADROOM)
+
+        normalized = normalize_reason_codes(reasons)
+        can_scale = (
+            campaign.status == "ENABLED"
+            and snapshot["conversions"] >= 3
+            and headroom
+            and healthy_efficiency
+            and not roas_only
+            and not self._campaign_ends_within(campaign, 7)
+        )
+        return {
+            "can_scale": can_scale,
+            "headroom": headroom,
+            "healthy_efficiency": healthy_efficiency,
+            "roas_only": roas_only,
+            "reason_codes": normalized,
+        }
+
+    def _build_reallocation_candidate(
+        self,
+        db: Session,
+        client: Client,
+        best: dict,
+        worst: dict,
+        thresholds: dict,
+        cutoff: date,
+    ) -> Recommendation | None:
+        best_campaign = best["campaign"]
+        worst_campaign = worst["campaign"]
+        if best_campaign.id == worst_campaign.id:
+            return None
+
+        best_budget = best["budget_usd"]
+        worst_budget = worst["budget_usd"]
+        if not (
+            worst["roas"] > 0
+            and best["roas"] > worst["roas"] * thresholds["r7_roas_ratio"]
+            and worst_budget > best_budget
+        ):
+            return None
+
+        move_amount = worst_budget * thresholds["r7_budget_move_pct"] / 100
+        best_role = best_campaign.campaign_role_final or "UNKNOWN"
+        worst_role = worst_campaign.campaign_role_final or "UNKNOWN"
+        comparable = best_role == worst_role and best_role != "UNKNOWN"
+        donor_protection = worst_campaign.protection_level or "HIGH"
+        destination_protection = best_campaign.protection_level or "HIGH"
+        scale_eval = self._evaluate_can_scale(
+            best_campaign,
+            best,
+            client,
+            self._account_avg_cpa(db, client.id, cutoff),
+        )
+
+        blocked_reasons: list[str] = []
+        downgrade_reasons: list[str] = []
+        context_outcome = ACTION
+
+        if "UNKNOWN" in {best_role, worst_role}:
+            context_outcome = BLOCKED_BY_CONTEXT
+            blocked_reasons = [UNKNOWN_ROLE]
+        elif not comparable:
+            context_outcome = BLOCKED_BY_CONTEXT
+            blocked_reasons = [ROLE_MISMATCH]
+        elif donor_protection == "HIGH":
+            context_outcome = BLOCKED_BY_CONTEXT
+            blocked_reasons = [DONOR_PROTECTED_HIGH]
+        elif donor_protection == "MEDIUM":
+            context_outcome = INSIGHT_ONLY
+            downgrade_reasons = [DONOR_PROTECTED_MEDIUM]
+        elif not scale_eval["can_scale"]:
+            context_outcome = INSIGHT_ONLY
+            downgrade_reasons = scale_eval["reason_codes"] or [DESTINATION_NO_HEADROOM]
+
+        roas_ratio = round(best["roas"] / worst["roas"], 2) if worst["roas"] > 0 else None
+        return Recommendation(
+            type=RecommendationType.REALLOCATE_BUDGET,
+            priority=Priority.HIGH,
+            entity_type="campaign",
+            entity_id=best_campaign.id,
+            entity_name=f"{worst_campaign.name} -> {best_campaign.name}",
+            campaign_name=f"{worst_campaign.name} -> {best_campaign.name}",
+            campaign_id=best_campaign.id,
+            category="RECOMMENDATION" if context_outcome == ACTION else "ALERT",
+            reason=(
+                f"Candidate budget move: '{worst_campaign.name}' ({worst_role}) -> '{best_campaign.name}' ({best_role}). "
+                f"ROAS {best['roas']:.2f}x vs {worst['roas']:.2f}x, move ~${move_amount:.2f}/day."
+            ),
+            current_value=(
+                f"Best: ${best_budget:.2f}/day, Worst: ${worst_budget:.2f}/day, Ratio: {roas_ratio:.2f}x"
+                if roas_ratio is not None else
+                f"Best: ${best_budget:.2f}/day, Worst: ${worst_budget:.2f}/day"
+            ),
+            recommended_action=(
+                "Review reallocation manually" if context_outcome == ACTION
+                else "Insight only - check campaign role, protection and headroom first"
+            ),
+            estimated_impact="Higher overall ROAS if roles and scale context align",
+            metadata={
+                "best_roas": round(best["roas"], 2),
+                "worst_roas": round(worst["roas"], 2),
+                "move_amount": round(move_amount, 2),
+                "from_campaign_id": worst_campaign.id,
+                "to_campaign_id": best_campaign.id,
+                "comparison_roas_ratio": roas_ratio,
+                "primary_campaign_role": best_role,
+                "counterparty_campaign_role": worst_role,
+                "comparison_comparable": comparable,
+                "donor_protection_level": donor_protection,
+                "protection_level": destination_protection,
+                "destination_can_scale": scale_eval["can_scale"],
+                "destination_headroom": scale_eval["headroom"],
+                "days_observed": best["days_observed"],
+            },
+            context_outcome=context_outcome,
+            blocked_reasons=blocked_reasons,
+            downgrade_reasons=downgrade_reasons,
+        )
+
+    def _build_explanation(self, rec: Recommendation, context: dict, metadata: dict) -> dict:
+        def _entries(codes: list[str]) -> list[dict]:
+            return [{"code": code} for code in normalize_reason_codes(codes)]
+
+        if rec.type == RecommendationType.REALLOCATE_BUDGET:
+            allowed = []
+            if context.get("comparable"):
+                allowed.append({"code": "SAME_ROLE_COMPARISON"})
+            if context.get("can_scale"):
+                allowed.append({"code": "DESTINATION_HAS_HEADROOM"})
+            if context.get("donor_protection_level") == "LOW":
+                allowed.append({"code": "DONOR_LOW_PROTECTION"})
+            combined = normalize_reason_codes(rec.blocked_reasons + rec.downgrade_reasons)
+            next_code = "MANUAL_BUDGET_REVIEW"
+            if UNKNOWN_ROLE in combined:
+                next_code = "SET_ROLE_OVERRIDE"
+            elif DESTINATION_NO_HEADROOM in combined or ROAS_ONLY_SIGNAL in combined:
+                next_code = "REVIEW_BIDS_FIRST"
+            return {
+                "why_allowed": allowed,
+                "why_blocked": _entries(combined),
+                "tradeoffs": [{"code": "BUDGET_SHIFT_REDUCES_DONOR_COVERAGE"}],
+                "risk_note": {"code": "MANUAL_REVIEW_REQUIRED" if rec.context_outcome != ACTION else "MONITOR_AFTER_REALLOCATION"},
+                "next_best_action": {"code": next_code},
+            }
+
+        if rec.type == RecommendationType.IS_BUDGET_ALERT:
+            combined = normalize_reason_codes(rec.blocked_reasons + rec.downgrade_reasons)
+            return {
+                "why_allowed": ([{"code": "HEALTHY_BUDGET_HEADROOM"}] if rec.context_outcome == ACTION else []),
+                "why_blocked": _entries(combined),
+                "tradeoffs": [{"code": "MORE_SPEND_WITHOUT_GUARANTEED_INCREMENTALITY"}],
+                "risk_note": {"code": "MONITOR_BUDGET_AFTER_CHANGE" if rec.context_outcome == ACTION else "REVIEW_CONTEXT_BEFORE_SCALING"},
+                "next_best_action": {"code": "REVIEW_BIDS_FIRST" if combined else "MONITOR_BUDGET_AFTER_CHANGE"},
+            }
+
+        return {
+            "why_allowed": [],
+            "why_blocked": [],
+            "tradeoffs": [],
+            "risk_note": None,
+            "next_best_action": None,
+        }
+
+    def _finalize_recommendation(
+        self,
+        db: Session,
+        client_id: int,
+        days: int,
+        rec: Recommendation,
+    ) -> Recommendation:
+        metadata = dict(rec.metadata or {})
+        rec.metadata = metadata
+        rec.source = rec.source or PLAYBOOK_RULES
+        metadata.setdefault("campaign_name", rec.campaign_name)
+        metadata.setdefault("entity_name", rec.entity_name)
+
+        self._infer_scope(db, rec, metadata)
+        self._enrich_metadata_from_entity(db, rec, metadata)
+
+        if not rec.context_outcome:
+            rec.context_outcome = ACTION if rec.category == "RECOMMENDATION" else INSIGHT_ONLY
+        rec.blocked_reasons = normalize_reason_codes(rec.blocked_reasons)
+        rec.downgrade_reasons = normalize_reason_codes(rec.downgrade_reasons)
+
+        if rec.type == RecommendationType.INCREASE_BID:
+            metadata.setdefault("bid_change_pct", self.thresholds["r2_bid_increase_pct"])
+        elif rec.type == RecommendationType.DECREASE_BID:
+            metadata.setdefault("bid_change_pct", -self.thresholds["r3_bid_decrease_pct"])
+        elif rec.type == RecommendationType.IS_BUDGET_ALERT and metadata.get("budget_action") == "INCREASE_BUDGET":
+            metadata.setdefault("budget_change_pct", self.thresholds["r9_budget_increase_pct"])
+
+        context = {
+            "context_outcome": rec.context_outcome,
+            "blocked_reasons": rec.blocked_reasons,
+            "downgrade_reasons": rec.downgrade_reasons,
+        }
+        if metadata.get("primary_campaign_role"):
+            context["primary_campaign_role"] = metadata.get("primary_campaign_role")
+        if metadata.get("counterparty_campaign_role"):
+            context["counterparty_campaign_role"] = metadata.get("counterparty_campaign_role")
+        if metadata.get("comparison_comparable") is not None:
+            context["comparable"] = bool(metadata.get("comparison_comparable"))
+        if metadata.get("destination_can_scale") is not None:
+            context["can_scale"] = bool(metadata.get("destination_can_scale"))
+        elif metadata.get("can_scale") is not None:
+            context["can_scale"] = bool(metadata.get("can_scale"))
+        if metadata.get("destination_headroom") is not None:
+            context["destination_headroom"] = bool(metadata.get("destination_headroom"))
+        if metadata.get("protection_level"):
+            context["protection_level"] = metadata.get("protection_level")
+        if metadata.get("donor_protection_level"):
+            context["donor_protection_level"] = metadata.get("donor_protection_level")
+
+        explanation = self._build_explanation(rec, context, metadata)
+        rec.evidence_json = {
+            "metadata": metadata,
+            "context": context,
+            "explanation": explanation,
+            "lookback_days": days,
+            "date_from": str(date.today() - timedelta(days=days)),
+            "date_to": str(date.today()),
+        }
+
+        rec_dict = rec.to_dict()
+        rec.action_payload = build_action_payload({**rec_dict, "metadata": metadata, "context": context})
+        rec.executable = bool((rec.action_payload or {}).get("executable"))
+        rec.expires_at = rec.expires_at or default_expires_at({**rec_dict, "action_payload": rec.action_payload})
+        rec.impact_micros = estimate_impact_micros({**rec_dict, "metadata": metadata})
+        rec.impact_score = round(min((rec.impact_micros or 0) / 150_000_000, 1), 2)
+        rec.confidence_score = compute_confidence_score({**rec_dict, "metadata": metadata}, days)
+        rec.risk_score = compute_risk_score(
+            {
+                **rec_dict,
+                "metadata": {**metadata, "context": context},
+                "context": context,
+                "action_payload": rec.action_payload,
+                "context_outcome": rec.context_outcome,
+                "blocked_reasons": rec.blocked_reasons,
+                "downgrade_reasons": rec.downgrade_reasons,
+            }
+        )
+        rec.priority, rec.score = compute_priority(
+            {
+                **rec_dict,
+                "impact_micros": rec.impact_micros,
+                "confidence_score": rec.confidence_score,
+                "risk_score": rec.risk_score,
+            }
+        )
+        rec.stable_key = build_stable_key(rec.to_dict(), client_id)
+        return rec
+
+    def _infer_scope(self, db: Session, rec: Recommendation, metadata: dict) -> None:
+        rec.campaign_id = rec.campaign_id or metadata.get("campaign_id")
+        rec.ad_group_id = rec.ad_group_id or metadata.get("ad_group_id")
+
+        if rec.entity_type == "campaign" and rec.entity_id and not rec.campaign_id:
+            rec.campaign_id = rec.entity_id
+            return
+
+        if rec.entity_type == "keyword" and rec.entity_id:
+            kw = db.get(Keyword, rec.entity_id)
+            if kw:
+                rec.ad_group_id = rec.ad_group_id or kw.ad_group_id
+                if kw.ad_group_id:
+                    ad_group = db.get(AdGroup, kw.ad_group_id)
+                    if ad_group:
+                        rec.campaign_id = rec.campaign_id or ad_group.campaign_id
+        elif rec.entity_type == "ad" and rec.entity_id:
+            ad = db.get(Ad, rec.entity_id)
+            if ad:
+                rec.ad_group_id = rec.ad_group_id or ad.ad_group_id
+                if ad.ad_group_id:
+                    ad_group = db.get(AdGroup, ad.ad_group_id)
+                    if ad_group:
+                        rec.campaign_id = rec.campaign_id or ad_group.campaign_id
+
+    def _enrich_metadata_from_entity(self, db: Session, rec: Recommendation, metadata: dict) -> None:
+        if rec.entity_type == "keyword" and rec.entity_id:
+            kw = db.get(Keyword, rec.entity_id)
+            if not kw:
+                return
+            metadata.setdefault("current_bid_micros", int(kw.bid_micros or 0))
+            metadata.setdefault("spend", round(_micros_to_usd(kw.cost_micros), 2))
+            metadata.setdefault("clicks", int(kw.clicks or 0))
+            metadata.setdefault("impressions", int(kw.impressions or 0))
+            metadata.setdefault("conversions", float(kw.conversions or 0))
+            metadata.setdefault("current_status", kw.status)
+        elif rec.entity_type == "ad" and rec.entity_id:
+            ad = db.get(Ad, rec.entity_id)
+            if not ad:
+                return
+            metadata.setdefault("spend", round(_micros_to_usd(ad.cost_micros), 2))
+            metadata.setdefault("clicks", int(ad.clicks or 0))
+            metadata.setdefault("impressions", int(ad.impressions or 0))
+            metadata.setdefault("conversions", float(ad.conversions or 0))
+            metadata.setdefault("current_status", ad.status)
+        elif rec.entity_type == "campaign" and rec.entity_id:
+            campaign = db.get(Campaign, rec.entity_id)
+            if not campaign:
+                return
+            metadata.setdefault("current_budget_micros", int(campaign.budget_micros or 0))
+            metadata.setdefault("current_status", campaign.status)
+
+        campaign = db.get(Campaign, rec.campaign_id) if rec.campaign_id else None
+        if campaign:
+            metadata.setdefault("primary_campaign_role", campaign.campaign_role_final or "UNKNOWN")
+            metadata.setdefault("campaign_role_auto", campaign.campaign_role_auto)
+            metadata.setdefault("campaign_role_final", campaign.campaign_role_final)
+            metadata.setdefault("protection_level", campaign.protection_level)
+            metadata.setdefault("role_source", campaign.role_source)
+            metadata.setdefault("role_confidence", campaign.role_confidence)
+    def _analytics_alerts(
+        self,
+        db: Session,
+        client_id: int,
+        days: int,
+        recommendations: list[Recommendation],
+    ) -> list[Recommendation]:
+        alerts: list[Recommendation] = []
+        enabled_campaigns = (
+            db.query(Campaign)
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .all()
+        )
+        if not enabled_campaigns:
+            return alerts
+
+        today = date.today()
+        cutoff = today - timedelta(days=days)
+        prev_cutoff = cutoff - timedelta(days=days)
+        campaign_ids = [c.id for c in enabled_campaigns]
+        metrics = (
+            db.query(MetricDaily)
+            .filter(MetricDaily.campaign_id.in_(campaign_ids), MetricDaily.date >= prev_cutoff)
+            .all()
+        )
+        current_by_campaign = {cid: {"cost": 0.0, "clicks": 0, "impr": 0, "conv": 0.0, "value": 0.0} for cid in campaign_ids}
+        prev_by_campaign = {cid: {"cost": 0.0, "clicks": 0, "impr": 0, "conv": 0.0, "value": 0.0} for cid in campaign_ids}
+
+        for metric in metrics:
+            target = current_by_campaign if metric.date >= cutoff else prev_by_campaign
+            row = target.setdefault(metric.campaign_id, {"cost": 0.0, "clicks": 0, "impr": 0, "conv": 0.0, "value": 0.0})
+            row["cost"] += _micros_to_usd(metric.cost_micros)
+            row["clicks"] += metric.clicks or 0
+            row["impr"] += metric.impressions or 0
+            row["conv"] += metric.conversions or 0
+            row["value"] += _micros_to_usd(metric.conversion_value_micros)
+
+        avg_cost = sum(current_by_campaign[c.id]["cost"] for c in enabled_campaigns) / max(len(enabled_campaigns), 1)
+        above_avg_no_conv = [
+            c.name for c in enabled_campaigns
+            if current_by_campaign[c.id]["cost"] > avg_cost and current_by_campaign[c.id]["conv"] == 0
+        ]
+        if above_avg_no_conv:
+            alerts.append(Recommendation(
+                type=RecommendationType.ANALYTICS_ALERT,
+                priority=Priority.HIGH,
+                entity_type="campaign",
+                entity_id=0,
+                entity_name=above_avg_no_conv[0],
+                campaign_name="; ".join(above_avg_no_conv[:3]),
+                category="ALERT",
+                source=ANALYTICS,
+                reason=f"{len(above_avg_no_conv)} campaigns are above average spend with zero conversions.",
+                recommended_action="Review spend distribution and targeting.",
+                metadata={
+                    "insight_type": "ABOVE_AVG_NO_CONV",
+                    "campaigns": above_avg_no_conv,
+                    "cost": round(avg_cost, 2),
+                },
+            ))
+
+        divergent = []
+        for campaign in enabled_campaigns:
+            current = current_by_campaign[campaign.id]
+            previous = prev_by_campaign[campaign.id]
+            prev_ctr = (previous["clicks"] / previous["impr"] * 100) if previous["impr"] else 0
+            curr_ctr = (current["clicks"] / current["impr"] * 100) if current["impr"] else 0
+            prev_conv = previous["conv"]
+            curr_conv = current["conv"]
+            ctr_delta = ((curr_ctr - prev_ctr) / prev_ctr * 100) if prev_ctr > 0 else 0
+            conv_delta = ((curr_conv - prev_conv) / prev_conv * 100) if prev_conv > 0 else 0
+            if ctr_delta > 10 and conv_delta < -5:
+                divergent.append(campaign.name)
+        if divergent:
+            alerts.append(Recommendation(
+                type=RecommendationType.ANALYTICS_ALERT,
+                priority=Priority.MEDIUM,
+                entity_type="campaign",
+                entity_id=0,
+                entity_name=divergent[0],
+                campaign_name="; ".join(divergent[:3]),
+                category="ALERT",
+                source=ANALYTICS,
+                reason=f"CTR is rising while conversions are falling in {len(divergent)} campaigns.",
+                recommended_action="Check landing pages and message match.",
+                metadata={"insight_type": "CTR_CONV_DIVERGENCE", "campaigns": divergent},
+            ))
+
+        high_recs = [r for r in recommendations if r.category == "RECOMMENDATION" and r.priority == Priority.HIGH]
+        if high_recs:
+            alerts.append(Recommendation(
+                type=RecommendationType.ANALYTICS_ALERT,
+                priority=Priority.LOW,
+                entity_type="campaign",
+                entity_id=0,
+                entity_name="High priority queue",
+                campaign_name="Recommendations",
+                category="ALERT",
+                source=ANALYTICS,
+                reason=f"{len(high_recs)} high-priority recommendations are pending review.",
+                recommended_action="Review the highest-impact recommendations first.",
+                metadata={"insight_type": "HIGH_RECOMMENDATION_QUEUE", "count": len(high_recs)},
+            ))
+
+        roas_values = []
+        stars = []
+        for campaign in enabled_campaigns:
+            current = current_by_campaign[campaign.id]
+            roas = (current["value"] / current["cost"]) if current["cost"] > 0 else 0
+            roas_values.append(roas)
+            if roas > 0:
+                stars.append((campaign.name, roas))
+        avg_roas = sum(roas_values) / max(len(roas_values), 1)
+        standout = [name for name, roas in stars if avg_roas > 0 and roas > avg_roas * 2]
+        if standout:
+            alerts.append(Recommendation(
+                type=RecommendationType.ANALYTICS_ALERT,
+                priority=Priority.MEDIUM,
+                entity_type="campaign",
+                entity_id=0,
+                entity_name=standout[0],
+                campaign_name="; ".join(standout[:3]),
+                category="ALERT",
+                source=ANALYTICS,
+                reason=f"{len(standout)} campaigns have ROAS above 2x the account average.",
+                recommended_action="Consider scaling budget after manual review.",
+                metadata={"insight_type": "ROAS_OUTLIER", "campaigns": standout},
+            ))
+
+        return alerts
 # Singleton instance
 recommendations_engine = RecommendationsEngine()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+﻿import { useState, useEffect, useMemo, useCallback } from 'react'
 import { LineChart, Line } from 'recharts'
 import {
     MousePointerClick, DollarSign, Target, BarChart3,
@@ -16,7 +16,7 @@ import InsightsFeed from '../components/InsightsFeed'
 import TrendExplorer from '../components/TrendExplorer'
 import EmptyState from '../components/EmptyState'
 
-// ─── Campaign type labels ────────────────────────────────────────────────────
+// â”€â”€â”€ Campaign type labels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const TYPE_LABELS = {
     SEARCH: 'Search',
     PERFORMANCE_MAX: 'PMax',
@@ -26,14 +26,14 @@ const TYPE_LABELS = {
     SMART: 'Smart',
 }
 
-// ─── Status helpers ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Status helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STATUS_CONFIG = {
     ENABLED:  { dot: '#4ADE80', label: 'Aktywna'     },
     PAUSED:   { dot: '#FBBF24', label: 'Wstrzymana'  },
-    REMOVED:  { dot: '#F87171', label: 'Usunięta'    },
+    REMOVED:  { dot: '#F87171', label: 'UsuniÄ™ta'    },
 }
 
-// ─── Health Score card ───────────────────────────────────────────────────────
+// â”€â”€â”€ Health Score card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function HealthScoreCard({ score, issues, loading, dataAvailable }) {
     const radius = 34
     const circumference = 2 * Math.PI * radius
@@ -49,7 +49,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
 
             {loading ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>
-                    Ładowanie…
+                    Ĺadowanieâ€¦
                 </div>
             ) : dataAvailable === false ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -58,7 +58,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
                             Brak danych
                         </div>
                         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.4 }}>
-                            Synchronizuj konto aby zebrać dane
+                            Synchronizuj konto aby zebraÄ‡ dane
                         </div>
                     </div>
                 </div>
@@ -89,7 +89,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                         {(issues || []).length === 0 ? (
                             <div style={{ fontSize: 12, color: '#4ADE80', lineHeight: 1.5 }}>
-                                Wszystko działa poprawnie
+                                Wszystko dziaĹ‚a poprawnie
                             </div>
                         ) : (
                             (issues || []).slice(0, 3).map((issue, i) => (
@@ -97,7 +97,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
                                     <span style={{
                                         fontSize: 6, marginTop: 4, flexShrink: 0,
                                         color: issue.severity === 'high' ? '#F87171' : '#FBBF24',
-                                    }}>●</span>
+                                    }}>â—Ź</span>
                                     <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.45 }}>
                                         {issue.message}
                                     </span>
@@ -111,13 +111,13 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
     )
 }
 
-// ─── Mini KPI card ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Mini KPI card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon: Icon, iconColor = '#4F8EF7' }) {
     const isUp = change > 0
     const isDown = change < 0
     const display = typeof value === 'number'
         ? value.toLocaleString('pl-PL', { maximumFractionDigits: 2 })
-        : (value ?? '—')
+        : (value ?? 'â€”')
 
     return (
         <div className="v2-card" style={{ padding: '14px 18px' }}>
@@ -145,10 +145,10 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
     )
 }
 
-// ─── Sparkline ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Sparkline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Sparkline({ data, direction }) {
     if (!data || data.length < 2) {
-        return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>—</span>
+        return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>â€”</span>
     }
     const color = direction === 'up' ? '#4ADE80' : direction === 'down' ? '#F87171' : '#4F8EF7'
     return (
@@ -158,7 +158,7 @@ function Sparkline({ data, direction }) {
     )
 }
 
-// ─── Main Dashboard ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Dashboard() {
     const { selectedClientId } = useApp()
     const { filters, days } = useFilter()
@@ -198,7 +198,7 @@ export default function Dashboard() {
             setLoading(false)
         }
 
-        // Secondary data — non-blocking
+        // Secondary data â€” non-blocking
         const filterParams = {}
         if (filters.campaignType !== 'ALL') filterParams.campaign_type = filters.campaignType
         if (filters.status !== 'ALL') filterParams.status = filters.status
@@ -210,7 +210,7 @@ export default function Dashboard() {
         Promise.all([
             getHealthScore(selectedClientId, filterParams).catch(() => null),
             getCampaignTrends(selectedClientId, days, filterParams).catch(() => null),
-            getRecommendations(selectedClientId).catch(() => ({ recommendations: [] })),
+            getRecommendations(selectedClientId, { status: 'pending' }).catch(() => ({ recommendations: [] })),
             getBudgetPacing(selectedClientId, budgetFilterParams).catch(() => null),
             getDeviceBreakdown(selectedClientId, { days, ...filterParams }).catch(() => null),
             getGeoBreakdown(selectedClientId, { days, ...filterParams }).catch(() => null),
@@ -243,7 +243,7 @@ export default function Dashboard() {
     if (!selectedClientId) {
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <EmptyState message="Wybierz klienta w sidebarze, aby zobaczyć dane" />
+                <EmptyState message="Wybierz klienta w sidebarze, aby zobaczyÄ‡ dane" />
             </div>
         )
     }
@@ -253,7 +253,7 @@ export default function Dashboard() {
     return (
         <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 4px' }}>
 
-            {/* ── Header ─────────────────────────────────────────────────── */}
+            {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
@@ -268,11 +268,11 @@ export default function Dashboard() {
 
             {error && (
                 <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#F87171' }}>
-                    Błąd ładowania danych: {error}
+                    BĹ‚Ä…d Ĺ‚adowania danych: {error}
                 </div>
             )}
 
-            {/* ── Health Score + KPI row ──────────────────────────────────── */}
+            {/* â”€â”€ Health Score + KPI row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 16 }}>
                 {/* Health score */}
                 <HealthScoreCard
@@ -285,7 +285,7 @@ export default function Dashboard() {
                 {/* 4 KPI mini cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                     <MiniKPI
-                        title="Kliknięcia"
+                        title="KlikniÄ™cia"
                         value={current?.clicks}
                         change={change_pct?.clicks}
                         icon={MousePointerClick}
@@ -295,7 +295,7 @@ export default function Dashboard() {
                         title="Koszt"
                         value={current?.cost_usd}
                         change={change_pct?.cost_usd}
-                        suffix=" zł"
+                        suffix=" zĹ‚"
                         icon={DollarSign}
                         iconColor="#7B5CE0"
                     />
@@ -308,17 +308,17 @@ export default function Dashboard() {
                     />
                     <MiniKPI
                         title="ROAS"
-                        tooltip="Return On Ad Spend — przychód na każdą wydaną złotówkę"
+                        tooltip="Return On Ad Spend â€” przychĂłd na kaĹĽdÄ… wydanÄ… zĹ‚otĂłwkÄ™"
                         value={current?.roas}
                         change={change_pct?.roas}
-                        suffix="×"
+                        suffix="Ă—"
                         icon={BarChart3}
                         iconColor="#FBBF24"
                     />
                 </div>
             </div>
 
-            {/* ── Insights Feed ───────────────────────────────────────────── */}
+            {/* â”€â”€ Insights Feed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div style={{ marginBottom: 16 }}>
                 <InsightsFeed
                     kpis={kpis}
@@ -327,16 +327,16 @@ export default function Dashboard() {
                 />
             </div>
 
-            {/* ── Trend Explorer ──────────────────────────────────────────── */}
+            {/* â”€â”€ Trend Explorer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div style={{ marginBottom: 16 }}>
                 <TrendExplorer campaignIds={filteredCampaignIds} />
             </div>
 
-            {/* ── Budget Pacing ─────────────────────────────────────────── */}
+            {/* â”€â”€ Budget Pacing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {budgetPacing?.campaigns?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 8, fontFamily: 'Syne' }}>
-                        Pacing budżetu ({budgetPacing.month})
+                        Pacing budĹĽetu ({budgetPacing.month})
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
                         {budgetPacing.campaigns.map(c => {
@@ -359,7 +359,7 @@ export default function Dashboard() {
                                         <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(progressPct, 100)}%`, transition: 'width 0.3s' }} />
                                     </div>
                                     <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                                        <span>{c.actual_spend_usd?.toFixed(0) ?? '—'} / {c.expected_spend_usd?.toFixed(0) ?? '—'} zł</span>
+                                        <span>{c.actual_spend_usd?.toFixed(0) ?? 'â€”'} / {c.expected_spend_usd?.toFixed(0) ?? 'â€”'} zĹ‚</span>
                                         <span style={{ color }}>{c.pacing_pct}%</span>
                                     </div>
                                 </div>
@@ -369,14 +369,14 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* ── Device + Geo Breakdown ────────────────────────────────── */}
+            {/* â”€â”€ Device + Geo Breakdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                     {/* Device breakdown */}
                     {deviceData?.devices?.length > 0 && (
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 12, fontFamily: 'Syne' }}>
-                                Urządzenia
+                                UrzÄ…dzenia
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {deviceData.devices.map(d => {
@@ -385,14 +385,14 @@ export default function Dashboard() {
                                         <div key={d.device}>
                                             <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
                                                 <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
-                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
+                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% klikniÄ™Ä‡</span>
                                             </div>
                                             <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
                                                 <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
                                             </div>
                                             <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-                                                <span>CTR {d.ctr}% · CPC {d.cpc.toFixed(2)} zł</span>
-                                                <span>ROAS {d.roas}×</span>
+                                                <span>CTR {d.ctr}% Â· CPC {d.cpc.toFixed(2)} zĹ‚</span>
+                                                <span>ROAS {d.roas}Ă—</span>
                                             </div>
                                         </div>
                                     )
@@ -410,7 +410,7 @@ export default function Dashboard() {
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
-                                        {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
+                                        {['Miasto', 'KlikniÄ™cia', 'Koszt', 'ROAS'].map(h => (
                                             <th key={h} style={{
                                                 padding: '4px 6px', fontSize: 10, fontWeight: 500,
                                                 color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
@@ -424,8 +424,8 @@ export default function Dashboard() {
                                         <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                             <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? '—'} zł</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? '—'}×</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? 'â€”'} zĹ‚</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? 'â€”'}Ă—</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -435,7 +435,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* ── Campaign Table ──────────────────────────────────────────── */}
+            {/* â”€â”€ Campaign Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="v2-card" style={{ overflow: 'hidden' }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
@@ -448,17 +448,17 @@ export default function Dashboard() {
 
                 {loading ? (
                     <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
-                        Ładowanie kampanii…
+                        Ĺadowanie kampaniiâ€¦
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', `Trend (${days}d)`, 'Strategia'].map(h => (
+                                    {['Nazwa', 'Status', 'Typ', 'BudĹĽet/dzieĹ„', `Trend (${days}d)`, 'Strategia'].map(h => (
                                         <th key={h} style={{
                                             padding: '10px 16px',
-                                            textAlign: h === 'Budżet/dzień' ? 'right' : 'left',
+                                            textAlign: h === 'BudĹĽet/dzieĹ„' ? 'right' : 'left',
                                             fontSize: 10, fontWeight: 500,
                                             color: 'rgba(255,255,255,0.35)',
                                             textTransform: 'uppercase',
@@ -472,7 +472,7 @@ export default function Dashboard() {
                                 {filteredCampaigns.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
-                                            Brak kampanii dla wybranych filtrów
+                                            Brak kampanii dla wybranych filtrĂłw
                                         </td>
                                     </tr>
                                 ) : filteredCampaigns.map(c => {
@@ -500,7 +500,7 @@ export default function Dashboard() {
                                                 {TYPE_LABELS[c.campaign_type] ?? c.campaign_type}
                                             </td>
                                             <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
-                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zł` : '—'}
+                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zĹ‚` : 'â€”'}
                                             </td>
                                             <td style={{ padding: '11px 16px' }}>
                                                 <div className="flex items-center gap-2">
@@ -509,7 +509,7 @@ export default function Dashboard() {
                                             </td>
                                             <td style={{ padding: '11px 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', maxWidth: 180 }}>
                                                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {c.bidding_strategy ?? '—'}
+                                                    {c.bidding_strategy ?? 'â€”'}
                                                 </span>
                                             </td>
                                         </tr>
