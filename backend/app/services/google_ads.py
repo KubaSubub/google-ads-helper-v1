@@ -13,7 +13,6 @@ from datetime import date, timedelta
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
     ChangeEvent, ActionLog, KeywordDaily,
@@ -87,28 +86,15 @@ class GoogleAdsService:
             logger.info("No refresh_token in keyring — user must complete OAuth first")
             return
 
-        # Resolve each credential: keyring first, .env fallback
-        developer_token = (
-            CredentialsService.get(CredentialsService.DEVELOPER_TOKEN)
-            or settings.google_ads_developer_token
-        )
-        client_id = (
-            CredentialsService.get(CredentialsService.CLIENT_ID)
-            or settings.google_ads_client_id
-        )
-        client_secret = (
-            CredentialsService.get(CredentialsService.CLIENT_SECRET)
-            or settings.google_ads_client_secret
-        )
+        developer_token = CredentialsService.get(CredentialsService.DEVELOPER_TOKEN)
+        client_id = CredentialsService.get(CredentialsService.CLIENT_ID)
+        client_secret = CredentialsService.get(CredentialsService.CLIENT_SECRET)
 
         if not developer_token:
-            logger.warning("No developer_token found in keyring or .env")
+            logger.warning("No developer_token found in secure storage")
             return
 
-        login_customer_id = (
-            CredentialsService.get("login_customer_id")
-            or settings.google_ads_login_customer_id
-        )
+        login_customer_id = CredentialsService.get("login_customer_id")
 
         try:
             config = {
@@ -1144,9 +1130,8 @@ class GoogleAdsService:
         if not criterion_ids or not self.is_connected:
             return {}
 
-        from app.config import settings
         ga_service = self.client.get_service("GoogleAdsService")
-        mcc_id = settings.google_ads_login_customer_id or customer_id
+        mcc_id = CredentialsService.get("login_customer_id") or customer_id
 
         ids_str = ",".join(criterion_ids)
         query = f"""
@@ -1287,7 +1272,7 @@ class GoogleAdsService:
     # Apply Action (mutations)
     # -----------------------------------------------------------------------
 
-    def apply_action(self, db: Session, action_type: str, entity_id: int, params: dict = None):
+    def apply_action(self, db: Session, action_type: str, entity_id: int, params: dict = None, client_id: int | None = None):
         """
         Execute an action on a Google Ads entity.
 
@@ -1295,6 +1280,7 @@ class GoogleAdsService:
         also sends the mutation to the API. Otherwise operates in local-only mode.
         """
         from app.models import Keyword, Ad, Campaign
+        from app.services.action_executor import SafetyViolationError, validate_action
 
         log_details = f"Action: {action_type}, Entity: {entity_id}, Params: {params}"
         logger.info(f"EXECUTING: {log_details}")
@@ -1327,7 +1313,19 @@ class GoogleAdsService:
                 if not kw:
                     return {"status": "error", "message": f"Keyword {entity_id} not found"}
                 if params and "amount" in params:
-                    kw.bid_micros = int(float(params["amount"]) * 1_000_000)
+                    new_bid_usd = float(params["amount"])
+                    current_bid_usd = (kw.bid_micros or 0) / 1_000_000
+                    client_limits = None
+                    if client_id is not None:
+                        from app.models import Client
+                        client = db.query(Client).filter(Client.id == client_id).first()
+                        if client and client.business_rules:
+                            client_limits = (client.business_rules or {}).get("safety_limits")
+                    try:
+                        validate_action(action_type, current_bid_usd, new_bid_usd, {}, client_limits)
+                    except SafetyViolationError as e:
+                        return {"status": "error", "message": f"Safety violation: {str(e)}"}
+                    kw.bid_micros = int(new_bid_usd * 1_000_000)
                     if self.is_connected:
                         self._mutate_keyword_bid(kw, db)
 
@@ -1471,7 +1469,7 @@ class GoogleAdsService:
             logger.warning("Google Ads API not connected — cannot discover accounts")
             return []
 
-        mcc_id = settings.google_ads_login_customer_id
+        mcc_id = CredentialsService.get("login_customer_id")
         if not mcc_id:
             logger.warning("No login_customer_id (MCC) configured")
             return []

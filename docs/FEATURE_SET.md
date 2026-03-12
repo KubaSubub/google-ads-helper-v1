@@ -1,106 +1,164 @@
 ﻿# Feature Set - Google Ads Helper v1
 
-Kompletna lista aktualnych funkcjonalnosci aplikacji.
-Ten dokument opisuje stan biezacy produktu (nie snapshot historyczny).
+Aktualna lista funkcjonalnosci aplikacji (stan implementacji).
 
 ---
 
-## 1. Core MVP Lane
+## 1. Sync (Google Ads -> lokalna baza)
 
-Core value path:
-`sync -> insight -> apply/revert -> history`
+### Fazy sync
+1. `campaigns` - kampanie (nazwa, typ, status, budzet)
+2. `impression_share` - impression share per kampania (SEARCH)
+3. `ad_groups` - grupy reklam
+4. `keywords` - slowa kluczowe + QS + stawki + metryki snapshot
+5. `keyword_daily` - dzienne metryki keywordow
+6. `daily_metrics` - dzienne metryki kampanii
+7. `device_metrics` - segmentacja urzadzen (MOBILE/DESKTOP/TABLET)
+8. `geo_metrics` - segmentacja geograficzna
+9. `search_terms` - frazy wyszukiwane z SEARCH
+10. `pmax_terms` - frazy z Performance Max
+11. `change_events` - historia zmian (change_event)
 
-Oficjalne pozycjonowanie (stan biezacy):
-- execution-ready (po green testach write-flow i API contract)
-
-Moduly advanced (semantic, forecast, optimization, monitoring) sa expansion layer, a nie rdzen MVP.
-
----
-
-## 2. Sync (Google Ads API)
-
-| Faza | Co syncuje | Zrodlo GAQL | Uwagi |
-|------|-----------|-------------|-------|
-| Campaigns | Kampanie (nazwa, typ, status, budzet) | `campaign` | Wszystkie typy |
-| Impression Share | Udzial w wyswietleniach per kampania | `campaign` | Faza 1b |
-| Ad Groups | Grupy reklam | `ad_group` | Pomijane jesli campaigns fail |
-| Keywords | Slowa kluczowe + QS + bid | `keyword_view` | Pomijane jesli ad_groups fail |
-| Keyword Daily | Metryki dzienne per keyword | `keyword_view` | Agregacja po dacie |
-| Daily Metrics | Metryki dzienne per kampania | `campaign` | cost, clicks, impressions, conversions, ROAS |
-| Device Metrics | Segmentacja po urzadzeniu | `campaign` | MOBILE/DESKTOP/TABLET |
-| Geo Metrics | Segmentacja po miastach | `geographic_view` | Auto-resolve geo names |
-| Search Terms (SEARCH) | Frazy z kampanii SEARCH | `search_term_view` | Upsert po (text, ad_group_id, date range) |
-| Search Terms (PMAX) | Frazy z PMax | `campaign_search_term_view` | `ad_group_id` nullable, `source="PMAX"` |
-| Change Events | Historia zmian konta | `change_event` | Max 28 dni (limit API) |
+### Zasady wykonania
+- Sync logowany jest per-faza (status, count, error).
+- Krytyczna zaleznosc: blad `campaigns` zatrzymuje caly sync.
+- `keywords`, `keyword_daily`, `search_terms` sa pomijane, jesli wymagane fazy zalezne nie przejda.
+- Dostepny jest pelny sync oraz uruchamianie pojedynczej fazy diagnostycznej.
 
 ---
 
-## 3. Recommendation Engine (17 aktywnych regul)
+## 2. Dashboard (Pulpit)
 
-Aktywne reguly: **R1-R13, R15-R18**.
-R14: celowo nieaktywna (poza zakresem implementacji).
-
-### Mapa regul
-
-| Rule ID | Type | Category | Executable |
-|---------|------|----------|------------|
-| R1 | `PAUSE_KEYWORD` | `RECOMMENDATION` | yes |
-| R2 | `INCREASE_BID` | `RECOMMENDATION` | yes |
-| R3 | `DECREASE_BID` | `RECOMMENDATION` | yes |
-| R4 | `ADD_KEYWORD` | `RECOMMENDATION` | yes |
-| R5 | `ADD_NEGATIVE` | `RECOMMENDATION` | yes |
-| R6 | `PAUSE_AD` | `RECOMMENDATION` | yes |
-| R7 | `REALLOCATE_BUDGET` | `RECOMMENDATION` | yes |
-| R8 | `QS_ALERT` | `ALERT` | no |
-| R9 | `IS_BUDGET_ALERT` | `RECOMMENDATION` | yes |
-| R10 | `IS_RANK_ALERT` | `ALERT` | no |
-| R11 | `PAUSE_KEYWORD` | `RECOMMENDATION` | yes |
-| R12 | `WASTED_SPEND_ALERT` | `ALERT` | no |
-| R13 | `PMAX_CANNIBALIZATION` | `ALERT` | no |
-| R15 | `DEVICE_ANOMALY` | `ALERT` | no |
-| R16 | `GEO_ANOMALY` | `ALERT` | no |
-| R17 | `BUDGET_PACING` | `ALERT` | no |
-| R18 | `NGRAM_NEGATIVE` | `RECOMMENDATION` | yes |
+- KPI cards: clicks, impressions, cost, conversions, CTR, ROAS.
+- Porownanie okres do okresu (`dashboard-kpis`).
+- Health score konta.
+- Trendy metryk.
+- Campaign trends.
+- Budget pacing.
+- Device breakdown.
+- Geo breakdown.
+- Preview rekomendacji.
 
 ---
 
-## 4. Write Actions i Safety
+## 3. Strony i moduly UI
 
-- Apply: `POST /recommendations/{id}/apply?client_id=X&dry_run=false`
-- Revert: `POST /actions/revert/{action_log_id}?client_id=X`
-- Circuit breaker: `validate_action()` przed kazdym write
-- Safety limits: max bid/budget change, pause limits, negatives/day
-- Action history: statusy `SUCCESS`, `FAILED`, `REVERTED`
+### Nawigacja glowna
+- Pulpit
+- Klienci
+- Kampanie
+- Slowa kluczowe
+- Wyszukiwane frazy
+- Rekomendacje
+- Historia akcji
+- Monitoring (alerty)
+- Optymalizacja (search optimization)
+- Inteligencja (semantic)
+- Quality Score
+- Forecast
+- Ustawienia
 
----
-
-## 5. Strony Frontendu (15)
-
-1. Dashboard
-2. Clients
-3. Campaigns
-4. Keywords
-5. Search Terms
-6. Recommendations
-7. Action History
-8. Alerts
-9. Settings
-10. Quality Score
-11. Forecast
-12. Semantic
-13. Anomalies
-14. Search Optimization
-15. Login
+### Dodatkowe zachowanie
+- Trasa `/anomalies` przekierowuje do `/alerts`.
+- Globalny date picker (7/14/30/90 dni + custom).
+- Globalny wybor klienta.
 
 ---
 
-## 6. Metryki Projektu
+## 4. Analytics i insighty
 
-- 15 modeli ORM (+ SyncLog)
-- 12 routerow API
-- 15 stron frontend
-- 14+ komponentow UI
-- 17 aktywnych regul recommendation engine
-- 11 faz sync
+### Core
+- KPIs
+- Alerty anomalii (lista unresolved/resolved)
+- Resolve alertu
+- Trigger detekcji anomalii
 
+### Advanced
+- Correlation matrix (`/analytics/correlation`)
+- Compare periods (`/analytics/compare-periods`)
+- Forecast
+- Quality score audit
+- Impression share
+- Device breakdown
+- Geo breakdown
+- Account structure
+- Bidding advisor
+- Hourly dayparting
 
+### Search optimization
+- Dayparting
+- RSA analysis
+- N-gram analysis
+- Match type analysis
+- Landing pages
+- Wasted spend
+
+---
+
+## 5. Recommendations i Actions
+
+### Recommendations
+- Silnik rekomendacji oparty o zestaw regul decyzyjnych.
+- Obecnie aktywne: reguly R1-R13 oraz R15-R18 (lacznie 17 regul).
+- Kategorie: rekomendacje wykonawcze + alerty analityczne.
+- Priorytety: HIGH / MEDIUM / LOW.
+
+### Actions
+- Apply rekomendacji (z `dry_run=true` lub execute).
+- Dismiss rekomendacji.
+- Historia akcji (helper/external/unified).
+- Revert akcji z walidacja warunkow bezpieczenstwa.
+
+---
+
+## 6. Search Terms i Keywords
+
+### Search Terms
+- Lista z filtrowaniem i sortowaniem.
+- Widok segmentowany.
+- Summary per kampania (`campaign_id` wymagany).
+- Eksport XLSX.
+
+### Keywords
+- Lista keywordow z filtrami.
+- Metryki dzienne i agregacje po okresie.
+- Eksport XLSX.
+
+---
+
+## 7. Export
+
+- Search terms -> XLSX
+- Keywords -> XLSX
+- Metrics -> XLSX
+- Recommendations -> XLSX
+
+---
+
+## 8. Auth i bezpieczenstwo
+
+- OAuth 2.0 Google Ads.
+- Setup endpointy do zapisania credentiali.
+- Sesja API (Bearer token).
+- Sekrety przechowywane przez Windows Credential Manager (keyring).
+- Circuit breaker i walidacja akcji write (`validate_action`).
+- Safety limits (m.in. limity zmian bid/budget i limit pause/day).
+
+---
+
+## 9. Stack
+
+- Backend: FastAPI + SQLAlchemy
+- Frontend: React + Vite
+- DB: SQLite
+- Desktop: PyWebView
+- Integracja: Google Ads API (google-ads client)
+
+---
+
+## 10. Metryki projektu
+
+- Modele ORM: 14
+- Routery API: 12
+- Endpointy API (get/post/patch/delete): 65
+- Strony frontend: 15

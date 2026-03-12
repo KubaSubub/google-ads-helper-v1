@@ -1,39 +1,26 @@
-"""Action Executor - Executes actions on Google Ads API with safety validation.
-
-CLAUDE.md Reguła 4: EVERY write to Google Ads API MUST pass through validate_action().
-CLAUDE.md Reguła 6: NEVER let exceptions crash silently.
-
-This module handles:
-- Circuit breaker (validate_action) - prevents unsafe actions
-- Action execution with logging
-- Revert/undo functionality (Feature 4)
-"""
+"""Action Executor - executes validated actions and handles revert flow."""
 
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 
-from app.models.recommendation import Recommendation
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app.models.action_log import ActionLog
-from app.models.keyword import Keyword
 from app.models.client import Client
+from app.models.keyword import Keyword
+from app.models.recommendation import Recommendation
+from app.services.action_types import ActionType, map_action_type
 from app.utils.constants import SAFETY_LIMITS
-from app.utils.formatters import micros_to_currency, currency_to_micros
+from app.utils.formatters import micros_to_currency
 
 
 class SafetyViolationError(Exception):
     """Raised when action violates SAFETY_LIMITS."""
-    pass
 
 
 def get_effective_limits(client_limits: Optional[dict] = None) -> dict:
-    """Merge per-client safety overrides with global defaults.
-
-    Client limits are stored in Client.business_rules["safety_limits"].
-    Only keys that exist in SAFETY_LIMITS can be overridden.
-    """
     limits = dict(SAFETY_LIMITS)
     if client_limits:
         for key in SAFETY_LIMITS:
@@ -49,23 +36,9 @@ def validate_action(
     context: dict,
     client_limits: Optional[dict] = None,
 ) -> None:
-    """Circuit breaker - validates action safety before execution.
-
-    CRITICAL: This function MUST be called before EVERY write to Google Ads API.
-
-    Args:
-        action_type: Type of action (UPDATE_BID, PAUSE_KEYWORD, etc.)
-        current_val: Current value in USD (not micros)
-        new_val: New value in USD (not micros)
-        context: Additional context (campaign stats, daily counts, etc.)
-        client_limits: Optional per-client safety limit overrides
-
-    Raises:
-        SafetyViolationError: If action violates safety limits
-    """
     limits = get_effective_limits(client_limits)
 
-    if action_type in ("UPDATE_BID", "SET_BID"):
+    if action_type in ("UPDATE_BID", "SET_BID", "SET_KEYWORD_BID"):
         if not current_val or current_val == 0:
             raise SafetyViolationError("Cannot change bid: current bid is 0 or None")
 
@@ -73,7 +46,7 @@ def validate_action(
         if pct_change > limits["MAX_BID_CHANGE_PCT"]:
             raise SafetyViolationError(
                 f"Bid change {pct_change:.0%} exceeds {limits['MAX_BID_CHANGE_PCT']:.0%} limit. "
-                f"${current_val:.2f} → ${new_val:.2f}"
+                f"${current_val:.2f} -> ${new_val:.2f}"
             )
 
         if new_val < limits["MIN_BID_USD"]:
@@ -93,8 +66,7 @@ def validate_action(
         pct_change = abs(new_val - current_val) / current_val
         if pct_change > limits["MAX_BUDGET_CHANGE_PCT"]:
             raise SafetyViolationError(
-                f"Budget change {pct_change:.0%} exceeds "
-                f"{limits['MAX_BUDGET_CHANGE_PCT']:.0%} limit"
+                f"Budget change {pct_change:.0%} exceeds {limits['MAX_BUDGET_CHANGE_PCT']:.0%} limit"
             )
 
     if action_type == "PAUSE_KEYWORD":
@@ -110,8 +82,7 @@ def validate_action(
         negatives_today = context.get("negatives_added_today", 0)
         if negatives_today >= limits["MAX_NEGATIVES_PER_DAY"]:
             raise SafetyViolationError(
-                f"Daily negative limit reached: "
-                f"{negatives_today}/{limits['MAX_NEGATIVES_PER_DAY']}"
+                f"Daily negative limit reached: {negatives_today}/{limits['MAX_NEGATIVES_PER_DAY']}"
             )
 
 
@@ -121,155 +92,102 @@ class ActionExecutor:
     def __init__(self, db: Session):
         self.db = db
 
-    def apply_recommendation(
-        self,
-        recommendation_id: int,
-        client_id: int,
-        dry_run: bool = False
-    ) -> dict:
-        """Apply recommendation via Google Ads API.
-
-        Flow:
-        1. Fetch recommendation from DB
-        2. Build context for validation
-        3. validate_action() — circuit breaker
-        4. If dry_run → return preview
-        5. Execute via Google Ads API (TODO: implement API call)
-        6. Log to action_log
-        7. Update recommendation status
-
-        Args:
-            recommendation_id: Recommendation ID
-            client_id: Client ID (for security check)
-            dry_run: If True, validate but don't execute
-
-        Returns:
-            Dict with status, action details, and any errors
-        """
-        # 1. Fetch recommendation
+    def apply_recommendation(self, recommendation_id: int, client_id: int, dry_run: bool = False) -> dict:
         rec = self.db.query(Recommendation).filter(
             Recommendation.id == recommendation_id,
             Recommendation.client_id == client_id,
-            Recommendation.status == "pending"
+            Recommendation.status == "pending",
         ).first()
 
         if not rec:
-            return {
-                "status": "error",
-                "message": "Recommendation not found or already applied"
-            }
+            return {"status": "error", "message": "Recommendation not found or already applied"}
 
-        # Parse suggested action JSON
         action = json.loads(rec.suggested_action)
-        action_type = action["type"]
 
-        # 2. Build context for validation
+        try:
+            canonical_action_type, action = self._normalize_action(action)
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
+
         context = self._build_context(action, client_id)
         current_val, new_val = self._extract_values(action)
+        client_limits = self._get_client_limits(client_id)
 
-        # 3. CIRCUIT BREAKER
         try:
-            validate_action(action_type, current_val, new_val, context)
+            validate_action(canonical_action_type.value, current_val, new_val, context, client_limits)
         except SafetyViolationError as e:
             return {"status": "blocked", "reason": str(e)}
 
-        # 4. DRY RUN → preview
         if dry_run:
             return {
                 "status": "dry_run",
                 "action": action,
+                "canonical_action_type": canonical_action_type.value,
                 "current_val": current_val,
                 "new_val": new_val,
-                "message": "Dry run — action NOT applied."
+                "message": "Dry run - action NOT applied.",
             }
 
-        # 5. EXECUTE via Google Ads API + update local DB
         try:
             from app.services.google_ads import google_ads_service
+
             old_value_json = json.dumps({"current_val": current_val})
             new_value_json = json.dumps({"new_val": new_val})
 
-            # Execute via Google Ads API (also updates local DB)
             api_result = google_ads_service.apply_action(
-                self.db, action_type,
+                self.db,
+                canonical_action_type.value,
                 entity_id=action.get("entity_id"),
                 params=action.get("params", {}),
+                client_id=client_id,
             )
             if api_result.get("status") == "error":
                 raise Exception(api_result.get("message", "API call failed"))
 
-            # 6. LOG SUCCESS
             log_entry = ActionLog(
                 client_id=client_id,
                 recommendation_id=recommendation_id,
-                action_type=action_type,
+                action_type=canonical_action_type.value,
                 entity_type=action.get("entity_type", "keyword"),
                 entity_id=str(action.get("entity_id", "")),
                 old_value_json=old_value_json,
                 new_value_json=new_value_json,
-                status="SUCCESS"
+                status="SUCCESS",
             )
             self.db.add(log_entry)
 
-            # 7. UPDATE RECOMMENDATION
             rec.status = "applied"
             rec.applied_at = datetime.utcnow()
             self.db.commit()
 
             return {
                 "status": "success",
-                "action_type": action_type,
-                "message": "Action applied successfully"
+                "action_type": canonical_action_type.value,
+                "message": "Action applied successfully",
             }
 
         except Exception as e:
             self.db.rollback()
-
-            # LOG FAILURE
             log_entry = ActionLog(
                 client_id=client_id,
                 recommendation_id=recommendation_id,
-                action_type=action_type,
+                action_type=canonical_action_type.value,
                 entity_type=action.get("entity_type", "keyword"),
                 entity_id=str(action.get("entity_id", "")),
                 status="FAILED",
-                error_message=str(e)
+                error_message=str(e),
             )
             self.db.add(log_entry)
             self.db.commit()
-
             return {"status": "error", "message": str(e)}
 
     def revert_action(self, action_log_id: int) -> dict:
-        """Revert/undo a previously executed action.
-
-        Revert rules (ADR-007 + Patch v2.1):
-        - Action must be < 24 hours old
-        - Status must be SUCCESS (not FAILED, not REVERTED)
-        - ADD_NEGATIVE is IRREVERSIBLE
-
-        Revert mappings:
-        - PAUSE_KEYWORD → ENABLE_KEYWORD
-        - UPDATE_BID → restore old_bid_micros
-        - ADD_KEYWORD → PAUSE the added keyword
-
-        Args:
-            action_log_id: ID of action to revert
-
-        Returns:
-            Dict with status and message
-        """
-        original = self.db.query(ActionLog).filter(
-            ActionLog.id == action_log_id
-        ).first()
+        original = self.db.query(ActionLog).filter(ActionLog.id == action_log_id).first()
 
         if not original:
             return {"status": "error", "message": "Action not found"}
-
-        # Validate revertability
         if original.status == "REVERTED":
             return {"status": "error", "message": "Already reverted"}
-
         if original.status != "SUCCESS":
             return {"status": "error", "message": f"Cannot revert {original.status} action"}
 
@@ -277,43 +195,37 @@ class ActionExecutor:
         if time_elapsed > timedelta(hours=24):
             return {"status": "error", "message": "Revert window (24h) expired"}
 
-        IRREVERSIBLE = ["ADD_NEGATIVE"]
-        if original.action_type in IRREVERSIBLE:
+        if original.action_type in ["ADD_NEGATIVE"]:
             return {"status": "error", "message": f"{original.action_type} cannot be reverted"}
 
         if not original.old_value_json:
-            return {"status": "error", "message": "Missing previous state — cannot revert"}
+            return {"status": "error", "message": "Missing previous state - cannot revert"}
 
-        # Execute reverse via Google Ads API + local DB
         try:
             from app.services.google_ads import google_ads_service
+
             old_state = json.loads(original.old_value_json)
 
-            # Revert mappings: execute reverse action
-            if original.action_type == "PAUSE_KEYWORD":
+            if original.action_type == ActionType.PAUSE_KEYWORD.value:
                 google_ads_service.apply_action(
-                    self.db, "ENABLE_KEYWORD",
-                    entity_id=int(original.entity_id),
-                    params={},
+                    self.db, ActionType.ENABLE_KEYWORD.value, entity_id=int(original.entity_id), params={}, client_id=original.client_id
                 )
-            elif original.action_type == "UPDATE_BID":
+            elif original.action_type == ActionType.UPDATE_BID.value:
                 google_ads_service.apply_action(
-                    self.db, "SET_KEYWORD_BID",
+                    self.db,
+                    ActionType.SET_KEYWORD_BID.value,
                     entity_id=int(original.entity_id),
                     params={"amount": old_state.get("current_val", 0)},
+                    client_id=original.client_id,
                 )
-            elif original.action_type == "ADD_KEYWORD":
+            elif original.action_type == ActionType.ADD_KEYWORD.value:
                 google_ads_service.apply_action(
-                    self.db, "PAUSE_KEYWORD",
-                    entity_id=int(original.entity_id),
-                    params={},
+                    self.db, ActionType.PAUSE_KEYWORD.value, entity_id=int(original.entity_id), params={}, client_id=original.client_id
                 )
 
-            # Mark original as reverted
             original.status = "REVERTED"
             original.reverted_at = datetime.utcnow()
 
-            # Log revert action
             revert_log = ActionLog(
                 client_id=original.client_id,
                 action_type=f"REVERT_{original.action_type}",
@@ -321,70 +233,83 @@ class ActionExecutor:
                 entity_id=original.entity_id,
                 old_value_json=original.new_value_json,
                 new_value_json=original.old_value_json,
-                status="SUCCESS"
+                status="SUCCESS",
             )
             self.db.add(revert_log)
             self.db.commit()
-
-            return {
-                "status": "success",
-                "message": f"Reverted: {original.action_type}"
-            }
+            return {"status": "success", "message": f"Reverted: {original.action_type}"}
 
         except Exception as e:
             self.db.rollback()
             return {"status": "error", "message": f"Revert failed: {str(e)}"}
 
+    def _get_client_limits(self, client_id: int) -> Optional[dict]:
+        client = self.db.query(Client).filter(Client.id == client_id).first()
+        if not client or not client.business_rules:
+            return None
+        return (client.business_rules or {}).get("safety_limits")
+
+    def _normalize_action(self, action: Dict) -> Tuple[ActionType, Dict]:
+        action_type_raw = action.get("type")
+        canonical = map_action_type(action_type_raw)
+
+        params = action.get("params", {}) or {}
+        entity_id = action.get("entity_id")
+
+        if canonical == ActionType.UPDATE_BID and action_type_raw in ("INCREASE_BID", "DECREASE_BID"):
+            keyword = self.db.query(Keyword).filter(Keyword.id == entity_id).first()
+            if not keyword:
+                raise ValueError(f"Keyword {entity_id} not found")
+
+            current_bid = micros_to_currency(keyword.bid_micros)
+            if current_bid <= 0:
+                raise ValueError("Cannot apply bid change: current bid is 0")
+
+            change_pct = float(params.get("change_pct", 20)) / 100.0
+            if action_type_raw == "DECREASE_BID":
+                new_bid = current_bid * (1 - change_pct)
+            else:
+                new_bid = current_bid * (1 + change_pct)
+
+            action["params"] = {"amount": round(new_bid, 2)}
+
+        action["type"] = canonical.value
+        return canonical, action
+
     def _build_context(self, action: dict, client_id: int) -> dict:
-        """Build context dict for validate_action().
-
-        Counts:
-        - keywords_paused_today_in_campaign
-        - total_keywords_in_campaign
-        - negatives_added_today
-
-        Args:
-            action: Action dict with campaign_id, etc.
-            client_id: Client ID
-
-        Returns:
-            Context dict for validation
-        """
         context = {}
         today = datetime.utcnow().date()
 
-        # Count keywords paused today in same campaign
         if action.get("campaign_id"):
-            context["total_keywords_in_campaign"] = self.db.query(Keyword).join(
-                Keyword.ad_group
-            ).filter(
+            context["total_keywords_in_campaign"] = self.db.query(Keyword).join(Keyword.ad_group).filter(
                 Keyword.ad_group.has(campaign_id=action["campaign_id"])
             ).count()
 
             context["keywords_paused_today_in_campaign"] = self.db.query(ActionLog).filter(
                 ActionLog.client_id == client_id,
                 ActionLog.action_type == "PAUSE_KEYWORD",
-                func.date(ActionLog.executed_at) == today
+                func.date(ActionLog.executed_at) == today,
             ).count()
 
-        # Count negatives added today
         context["negatives_added_today"] = self.db.query(ActionLog).filter(
             ActionLog.client_id == client_id,
             ActionLog.action_type == "ADD_NEGATIVE",
-            func.date(ActionLog.executed_at) == today
+            func.date(ActionLog.executed_at) == today,
         ).count()
 
         return context
 
     def _extract_values(self, action: dict) -> Tuple[float, float]:
-        """Extract current and new values from action payload.
+        action_type = action.get("type")
+        params = action.get("params", {}) or {}
+        entity_id = action.get("entity_id")
 
-        Args:
-            action: Action dict with current_value, new_value (in USD)
+        if action_type in (ActionType.UPDATE_BID.value, ActionType.SET_KEYWORD_BID.value):
+            keyword = self.db.query(Keyword).filter(Keyword.id == entity_id).first()
+            current = micros_to_currency(keyword.bid_micros) if keyword else 0.0
+            new = float(params.get("amount", 0.0))
+            return (float(current), float(new))
 
-        Returns:
-            Tuple of (current_val, new_val) in USD
-        """
         current = action.get("current_value", 0.0)
         new = action.get("new_value", 0.0)
         return (float(current), float(new))
