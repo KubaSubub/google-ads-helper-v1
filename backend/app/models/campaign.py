@@ -1,9 +1,11 @@
 """Campaign model."""
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, BigInteger, Float, String, Date, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.sql import func
+
+from sqlalchemy import BigInteger, Column, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
 from app.database import Base
 
 
@@ -22,7 +24,13 @@ class Campaign(Base):
     start_date = Column(Date)
     end_date = Column(Date)
 
-    # ── Impression Share (campaign-level, 0.0-1.0 from API) ──
+    campaign_role_auto = Column(String(20), nullable=True)
+    campaign_role_final = Column(String(20), nullable=True)
+    role_confidence = Column(Float, nullable=True)
+    protection_level = Column(String(10), nullable=True)
+    role_source = Column(String(10), nullable=True)
+
+    # Impression Share (campaign-level, 0.0-1.0 from API)
     search_impression_share = Column(Float, nullable=True)
     search_top_impression_share = Column(Float, nullable=True)
     search_abs_top_impression_share = Column(Float, nullable=True)
@@ -38,7 +46,7 @@ class Campaign(Base):
     search_click_share = Column(Float, nullable=True)
     search_exact_match_is = Column(Float, nullable=True)
 
-    # ── Top Impression % ──
+    # Top Impression %
     abs_top_impression_pct = Column(Float, nullable=True)
     top_impression_pct = Column(Float, nullable=True)
 
@@ -49,7 +57,6 @@ class Campaign(Base):
         UniqueConstraint("client_id", "google_campaign_id", name="uq_campaign_google_id"),
     )
 
-    # Relationships
     client = relationship("Client", back_populates="campaigns")
     ad_groups = relationship("AdGroup", back_populates="campaign", cascade="all, delete-orphan")
     metrics_daily = relationship("MetricDaily", back_populates="campaign", cascade="all, delete-orphan")

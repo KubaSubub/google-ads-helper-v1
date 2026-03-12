@@ -1,4 +1,4 @@
-"""Sync endpoint — trigger Google Ads data sync manually or check status."""
+"""Sync endpoint Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ trigger Google Ads data sync manually or check status."""
 
 from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
@@ -16,11 +16,7 @@ router = APIRouter(prefix="/sync", tags=["Data Sync"])
 
 
 def _run_phase(name: str, fn, phases: dict, critical: bool = True):
-    """Execute a sync phase and record the result.
-
-    Returns the count on success, 0 on error.
-    If critical=False, errors are logged but don't mark the phase as failed.
-    """
+    """Execute a sync phase and record the result."""
     try:
         count = fn()
         phases[name] = {"count": count, "status": "ok"}
@@ -32,6 +28,30 @@ def _run_phase(name: str, fn, phases: dict, critical: bool = True):
         return 0
 
 
+def _sync_message_for_status(status: str, total_errors: int = 0) -> str:
+    if status == "success":
+        return "Synchronizacja zakonczona pomyslnie."
+    if status == "partial":
+        return f"Synchronizacja zakonczona czesciowo ({total_errors} bledow)."
+    return "Synchronizacja nie powiodla sie."
+
+
+def _phase_failure_message(phase_label: str, error: str | None = None) -> str:
+    base = f"Synchronizacja przerwana: faza {phase_label} nie powiodla sie."
+    if not error:
+        return base
+
+    compact_error = " ".join(str(error).split())
+    if len(compact_error) > 220:
+        compact_error = compact_error[:217].rstrip() + "..."
+    return f"{base} {compact_error}"
+
+def _build_sync_response(success: bool, status: str, message: str, **extra):
+    payload = {"success": success, "status": status, "message": message}
+    payload.update(extra)
+    return payload
+
+
 @router.post("/trigger")
 def trigger_sync(
     client_id: int = Query(...),
@@ -41,20 +61,22 @@ def trigger_sync(
     """Trigger a full data sync from Google Ads API with per-phase error tracking."""
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
-        return {"success": False, "message": "Client not found"}
+        return _build_sync_response(False, "failed", "Client not found")
 
-    if not google_ads_service.is_connected:
-        return {
-            "success": False,
-            "message": "Google Ads API not configured. Set credentials in .env file.",
-            "hint": "Copy .env.example to .env and fill in your Google Ads API credentials."
-        }
+    diagnostics = google_ads_service.get_connection_diagnostics()
+    if not diagnostics["ready"]:
+        return _build_sync_response(
+            False,
+            "failed",
+            diagnostics["reason"],
+            reason=diagnostics["reason"],
+            missing_credentials=diagnostics["missing_credentials"],
+        )
 
     date_from = date.today() - timedelta(days=days)
     date_to = date.today() - timedelta(days=1)
-    cid = client.google_customer_id
+    cid = google_ads_service.normalize_customer_id(client.google_customer_id)
 
-    # Create SyncLog entry
     sync_log = SyncLog(client_id=client.id, days=days, status="running")
     db.add(sync_log)
     db.commit()
@@ -64,7 +86,6 @@ def trigger_sync(
     total_synced = 0
     total_errors = 0
 
-    # ── Phase 1: Campaigns (CRITICAL — everything depends on this) ──
     campaigns_synced = _run_phase(
         "campaigns",
         lambda: google_ads_service.sync_campaigns(db, cid),
@@ -73,23 +94,25 @@ def trigger_sync(
     total_synced += campaigns_synced
 
     if phases["campaigns"]["status"] == "error":
-        # Can't continue without campaigns
         total_errors += 1
         sync_log.status = "failed"
         sync_log.phases = phases
         sync_log.total_synced = total_synced
         sync_log.total_errors = total_errors
-        sync_log.error_message = "Phase 1 (campaigns) failed — aborting sync"
+        sync_log.error_message = "Phase 1 (campaigns) failed - aborting sync"
         sync_log.finished_at = datetime.now(timezone.utc)
         db.commit()
-        return {
-            "success": False,
-            "message": "Campaign sync failed — cannot continue",
-            "phases": phases,
-            "sync_log_id": sync_log.id,
-        }
+        return _build_sync_response(
+            False,
+            "failed",
+            _phase_failure_message("kampanii", phases["campaigns"].get("error")),
+            sync_log_id=sync_log.id,
+            phases=phases,
+            total_synced=total_synced,
+            total_errors=total_errors,
+            campaigns_synced=campaigns_synced,
+        )
 
-    # ── Phase 1b: Campaign impression share (depends on campaigns, SEARCH only) ──
     impression_share_synced = _run_phase(
         "impression_share",
         lambda: google_ads_service.sync_campaign_impression_share(db, cid),
@@ -99,7 +122,6 @@ def trigger_sync(
     if phases["impression_share"]["status"] == "error":
         total_errors += 1
 
-    # ── Phase 2: Ad Groups (depends on campaigns) ──
     ad_groups_synced = _run_phase(
         "ad_groups",
         lambda: google_ads_service.sync_ad_groups(db, cid),
@@ -109,7 +131,6 @@ def trigger_sync(
     if phases["ad_groups"]["status"] == "error":
         total_errors += 1
 
-    # ── Phase 3: Keywords (depends on ad groups) ──
     keywords_synced = 0
     if phases["ad_groups"]["status"] == "ok":
         keywords_synced = _run_phase(
@@ -123,7 +144,6 @@ def trigger_sync(
     else:
         phases["keywords"] = {"count": 0, "status": "skipped", "error": "ad_groups failed"}
 
-    # ── Phase 3b: Keyword daily metrics (depends on keywords) ──
     keyword_daily_synced = 0
     if phases.get("keywords", {}).get("status") == "ok":
         keyword_daily_synced = _run_phase(
@@ -135,9 +155,12 @@ def trigger_sync(
         if phases["keyword_daily"]["status"] == "error":
             total_errors += 1
     else:
-        phases["keyword_daily"] = {"count": 0, "status": "skipped", "error": "keywords failed/skipped"}
+        phases["keyword_daily"] = {
+            "count": 0,
+            "status": "skipped",
+            "error": "keywords failed/skipped",
+        }
 
-    # ── Phase 4: Campaign daily metrics (depends on campaigns) ──
     metrics_synced = _run_phase(
         "daily_metrics",
         lambda: google_ads_service.sync_daily_metrics(db, cid, date_from, date_to),
@@ -147,7 +170,6 @@ def trigger_sync(
     if phases["daily_metrics"]["status"] == "error":
         total_errors += 1
 
-    # ── Phase 4b: Device metrics (depends on campaigns) ──
     device_metrics_synced = _run_phase(
         "device_metrics",
         lambda: google_ads_service.sync_device_metrics(db, cid, date_from, date_to),
@@ -157,7 +179,6 @@ def trigger_sync(
     if phases["device_metrics"]["status"] == "error":
         total_errors += 1
 
-    # ── Phase 4c: Geo metrics (depends on campaigns) ──
     geo_metrics_synced = _run_phase(
         "geo_metrics",
         lambda: google_ads_service.sync_geo_metrics(db, cid, date_from, date_to),
@@ -167,7 +188,6 @@ def trigger_sync(
     if phases["geo_metrics"]["status"] == "error":
         total_errors += 1
 
-    # ── Phase 5: Search terms (depends on ad groups) ──
     terms_synced = 0
     if phases["ad_groups"]["status"] == "ok":
         terms_synced = _run_phase(
@@ -181,7 +201,6 @@ def trigger_sync(
     else:
         phases["search_terms"] = {"count": 0, "status": "skipped", "error": "ad_groups failed"}
 
-    # ── Phase 5b: PMax search terms (depends on campaigns) ──
     pmax_terms_synced = _run_phase(
         "pmax_terms",
         lambda: google_ads_service.sync_pmax_search_terms(db, cid, date_from, date_to),
@@ -191,7 +210,6 @@ def trigger_sync(
     if phases["pmax_terms"]["status"] == "error":
         total_errors += 1
 
-    # ── Phase 6: Change events (non-critical) ──
     change_events_synced = _run_phase(
         "change_events",
         lambda: google_ads_service.sync_change_events(db, cid, client.id, days=30),
@@ -202,7 +220,6 @@ def trigger_sync(
     if phases["change_events"]["status"] == "error":
         total_errors += 1
 
-    # ── Finalize SyncLog ──
     if total_errors == 0:
         sync_log.status = "success"
     elif total_errors < len(phases):
@@ -210,39 +227,51 @@ def trigger_sync(
     else:
         sync_log.status = "failed"
 
+    failed_phases = [
+        name for name, meta in phases.items() if meta.get("status") == "error"
+    ]
     sync_log.phases = phases
     sync_log.total_synced = total_synced
     sync_log.total_errors = total_errors
+    sync_log.error_message = (
+        None if not failed_phases else "Nieudane fazy: " + ", ".join(failed_phases)
+    )
     sync_log.finished_at = datetime.now(timezone.utc)
     db.commit()
 
-    return {
-        "success": total_errors == 0,
-        "status": sync_log.status,
-        "sync_log_id": sync_log.id,
-        "total_synced": total_synced,
-        "total_errors": total_errors,
-        "phases": phases,
-        "campaigns_synced": campaigns_synced,
-        "ad_groups_synced": ad_groups_synced,
-        "keywords_synced": keywords_synced,
-        "keyword_daily_synced": keyword_daily_synced,
-        "metrics_synced": metrics_synced,
-        "device_metrics_synced": device_metrics_synced,
-        "geo_metrics_synced": geo_metrics_synced,
-        "search_terms_synced": terms_synced,
-        "pmax_terms_synced": pmax_terms_synced,
-        "change_events_synced": change_events_synced,
-    }
+    message = _sync_message_for_status(sync_log.status, total_errors)
+    return _build_sync_response(
+        total_errors == 0,
+        sync_log.status,
+        message,
+        sync_log_id=sync_log.id,
+        total_synced=total_synced,
+        total_errors=total_errors,
+        phases=phases,
+        campaigns_synced=campaigns_synced,
+        ad_groups_synced=ad_groups_synced,
+        keywords_synced=keywords_synced,
+        keyword_daily_synced=keyword_daily_synced,
+        metrics_synced=metrics_synced,
+        device_metrics_synced=device_metrics_synced,
+        geo_metrics_synced=geo_metrics_synced,
+        search_terms_synced=terms_synced,
+        pmax_terms_synced=pmax_terms_synced,
+        change_events_synced=change_events_synced,
+    )
 
 
 @router.get("/status")
 def sync_status():
     """Check if Google Ads API is connected and ready."""
+    diagnostics = google_ads_service.get_connection_diagnostics()
     return {
-        "google_ads_connected": google_ads_service.is_connected,
-        "message": "Ready to sync" if google_ads_service.is_connected
-                   else "Google Ads API not configured — using demo data",
+        "google_ads_connected": diagnostics["ready"],
+        "configured": diagnostics["configured"],
+        "authenticated": diagnostics["authenticated"],
+        "ready": diagnostics["ready"],
+        "missing_credentials": diagnostics["missing_credentials"],
+        "message": diagnostics["reason"],
     }
 
 
@@ -374,7 +403,7 @@ def sync_single_phase(
 
     date_from = date.today() - timedelta(days=days)
     date_to = date.today() - timedelta(days=1)
-    cid = client.google_customer_id
+    cid = google_ads_service.normalize_customer_id(client.google_customer_id)
 
     phase_map = {
         "campaigns": lambda: google_ads_service.sync_campaigns(db, cid),
@@ -398,3 +427,4 @@ def sync_single_phase(
         return {"success": True, "phase": phase_name, "count": count}
     except Exception as e:
         return {"success": False, "phase": phase_name, "error": str(e)[:500]}
+

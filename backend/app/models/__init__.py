@@ -1,4 +1,4 @@
-"""ORM models for Google Ads Helper.
+﻿"""ORM models for Google Ads Helper.
 
 Import all models here for easy access.
 """
@@ -10,6 +10,7 @@ from .keyword import Keyword
 from .keyword_daily import KeywordDaily
 from .search_term import SearchTerm
 from .ad import Ad
+from .negative_keyword import NegativeKeyword
 from .metric_daily import MetricDaily
 from .metric_segmented import MetricSegmented
 from .recommendation import Recommendation
@@ -26,6 +27,7 @@ __all__ = [
     "KeywordDaily",
     "SearchTerm",
     "Ad",
+    "NegativeKeyword",
     "MetricDaily",
     "MetricSegmented",
     "Recommendation",
@@ -34,3 +36,4 @@ __all__ = [
     "ChangeEvent",
     "SyncLog",
 ]
+

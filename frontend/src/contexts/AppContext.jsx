@@ -3,6 +3,14 @@ import { getAuthStatus, getClients } from '../api';
 
 const AppContext = createContext(null);
 
+const DEFAULT_AUTH_STATUS = {
+    authenticated: false,
+    configured: false,
+    ready: false,
+    reason: '',
+    missing_credentials: [],
+};
+
 export function AppProvider({ children }) {
     const [selectedClientId, setSelectedClientId] = useState(() => {
         const saved = localStorage.getItem('selectedClientId');
@@ -12,7 +20,7 @@ export function AppProvider({ children }) {
     const [clientsLoading, setClientsLoading] = useState(true);
     const [alertCount, setAlertCount] = useState(0);
     const [toast, setToast] = useState(null);
-    const [isAuthenticated, setIsAuthenticated] = useState(null);
+    const [authStatus, setAuthStatus] = useState(DEFAULT_AUTH_STATUS);
     const [authChecking, setAuthChecking] = useState(true);
 
     const checkAuth = useCallback(async () => {
@@ -23,16 +31,19 @@ export function AppProvider({ children }) {
         while (Date.now() - started < maxWaitMs) {
             try {
                 const data = await getAuthStatus();
-                setIsAuthenticated(data.authenticated);
+                const nextStatus = { ...DEFAULT_AUTH_STATUS, ...data };
+                setAuthStatus(nextStatus);
                 setAuthChecking(false);
-                return;
+                return nextStatus;
             } catch (err) {
                 if (err.status && err.status < 500) break;
-                await new Promise(r => setTimeout(r, intervalMs));
+                await new Promise((resolve) => setTimeout(resolve, intervalMs));
             }
         }
-        setIsAuthenticated(false);
+
+        setAuthStatus(DEFAULT_AUTH_STATUS);
         setAuthChecking(false);
+        return DEFAULT_AUTH_STATUS;
     }, []);
 
     const refreshClients = useCallback(async () => {
@@ -53,10 +64,14 @@ export function AppProvider({ children }) {
         checkAuth();
     }, [checkAuth]);
 
-    // Load clients once auth is confirmed
     useEffect(() => {
-        if (isAuthenticated) refreshClients();
-    }, [isAuthenticated, refreshClients]);
+        if (authStatus.ready) {
+            refreshClients();
+            return;
+        }
+        setClients([]);
+        setClientsLoading(false);
+    }, [authStatus.ready, refreshClients]);
 
     useEffect(() => {
         if (selectedClientId) {
@@ -84,7 +99,8 @@ export function AppProvider({ children }) {
                 toast,
                 showToast,
                 hideToast,
-                isAuthenticated,
+                isAuthenticated: authStatus.ready,
+                authStatus,
                 authChecking,
                 checkAuth,
             }}

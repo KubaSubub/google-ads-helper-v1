@@ -18,14 +18,15 @@ api.interceptors.response.use(
 
 export default api;
 
-// ═══════ Auth ═══════
+// â•â•â•â•â•â•â• Auth â•â•â•â•â•â•â•
 export const getAuthStatus = () => api.get('/auth/status');
 export const getSetupStatus = () => api.get('/auth/setup-status');
+export const getStoredSetupValues = () => api.get('/auth/setup-values');
 export const saveSetup = (data) => api.post('/auth/setup', data);
 export const getLoginUrl = () => api.get('/auth/login');
 export const logout = () => api.post('/auth/logout');
 
-// ═══════ Clients ═══════
+// â•â•â•â•â•â•â• Clients â•â•â•â•â•â•â•
 export const getClients = () => api.get('/clients/');
 export const getClient = (id) => api.get(`/clients/${id}`);
 export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
@@ -35,9 +36,11 @@ export const discoverClients = (customerIds) =>
         params: customerIds ? { customer_ids: customerIds } : {},
     });
 
-// ═══════ Campaigns ═══════
+// â•â•â•â•â•â•â• Campaigns â•â•â•â•â•â•â•
 export const getCampaigns = (clientId) =>
     api.get('/campaigns/', { params: { client_id: clientId } });
+export const updateCampaign = (campaignId, data) =>
+    api.patch(`/campaigns/${campaignId}`, data);
 export const getCampaignKPIs = (campaignId, days = 30) =>
     api.get(`/campaigns/${campaignId}/kpis`, { params: { days } });
 export const getCampaignMetrics = (campaignId, dateFrom, dateTo) => {
@@ -47,11 +50,11 @@ export const getCampaignMetrics = (campaignId, dateFrom, dateTo) => {
     return api.get(`/campaigns/${campaignId}/metrics`, { params });
 };
 
-// ═══════ Keywords ═══════
+// â•â•â•â•â•â•â• Keywords â•â•â•â•â•â•â•
 export const getKeywords = (params = {}) =>
     api.get('/keywords/', { params: typeof params === 'object' ? params : { campaign_id: params } });
 
-// ═══════ Search Terms ═══════
+// â•â•â•â•â•â•â• Search Terms â•â•â•â•â•â•â•
 export const getSegmentedSearchTerms = (clientId, params = {}) =>
     api.get('/search-terms/segmented', { params: { client_id: clientId, ...params } });
 export const getSearchTerms = (clientIdOrParams, params = {}) => {
@@ -61,15 +64,15 @@ export const getSearchTerms = (clientIdOrParams, params = {}) => {
     return api.get('/search-terms/', { params: { client_id: clientIdOrParams, ...params } });
 };
 
-// ═══════ Recommendations ═══════
+// â•â•â•â•â•â•â• Recommendations â•â•â•â•â•â•â•
 export const getRecommendations = (clientId, params = {}) => {
     const queryParams = typeof params === 'number'
         ? { client_id: clientId, days: params }
         : { client_id: clientId, ...params };
     return api.get('/recommendations/', { params: queryParams });
 };
-export const getRecommendationsSummary = (clientId) =>
-    api.get('/recommendations/summary', { params: { client_id: clientId } });
+export const getRecommendationsSummary = (clientId, params = {}) =>
+    api.get('/recommendations/summary', { params: { client_id: clientId, ...params } });
 export const applyRecommendation = (id, clientId, dryRun = false) =>
     api.post(`/recommendations/${id}/apply`, null, {
         params: { client_id: clientId, dry_run: dryRun },
@@ -79,7 +82,7 @@ export const dismissRecommendation = (id, clientId) =>
         params: { client_id: clientId },
     });
 
-// ═══════ Actions ═══════
+// â•â•â•â•â•â•â• Actions â•â•â•â•â•â•â•
 export const getActionHistory = (clientId, params = {}) =>
     api.get('/actions/', { params: { client_id: clientId, ...params } });
 export const revertAction = (actionLogId, clientId) =>
@@ -87,7 +90,7 @@ export const revertAction = (actionLogId, clientId) =>
         params: { client_id: clientId },
     });
 
-// ═══════ Analytics ═══════
+// â•â•â•â•â•â•â• Analytics â•â•â•â•â•â•â•
 export const getDashboardKPIs = (clientId, params = {}) =>
     api.get('/analytics/dashboard-kpis', { params: { client_id: clientId, ...params } });
 export const getKPIs = (clientId) =>
@@ -111,7 +114,7 @@ export const detectAnomalies = (clientId) =>
         params: { client_id: clientId },
     });
 
-// ═══════ Export ═══════
+// â•â•â•â•â•â•â• Export â•â•â•â•â•â•â•
 export const exportSearchTerms = (clientId, format = 'xlsx') =>
     api.get('/export/search-terms', {
         params: { client_id: clientId, format },
@@ -123,17 +126,17 @@ export const exportKeywords = (clientId, format = 'xlsx') =>
         responseType: 'blob',
     });
 
-// ═══════ Sync ═══════
+// â•â•â•â•â•â•â• Sync â•â•â•â•â•â•â•
 export const getSyncStatus = () => api.get('/sync/status');
 
-// ═══════ Semantic ═══════
+// â•â•â•â•â•â•â• Semantic â•â•â•â•â•â•â•
 export const getSemanticClusters = (params) =>
     api.get('/semantic/clusters', { params });
 
-// ═══════ Health ═══════
+// â•â•â•â•â•â•â• Health â•â•â•â•â•â•â•
 export const getHealth = () => api.get('/health');
 
-// ═══════ V2 Analytics ═══════
+// â•â•â•â•â•â•â• V2 Analytics â•â•â•â•â•â•â•
 export const getTrends = (clientId, params = {}) =>
     api.get('/analytics/trends', { params: { client_id: clientId, ...params } });
 export const getHealthScore = (clientId, params = {}) =>
@@ -149,7 +152,7 @@ export const getDeviceBreakdown = (clientId, params = {}) =>
 export const getGeoBreakdown = (clientId, params = {}) =>
     api.get('/analytics/geo-breakdown', { params: { client_id: clientId, ...params } });
 
-// ═══════ SEARCH Optimization ═══════
+// â•â•â•â•â•â•â• SEARCH Optimization â•â•â•â•â•â•â•
 export const getDayparting = (clientId, days = 30) =>
     api.get('/analytics/dayparting', { params: { client_id: clientId, days } });
 export const getRsaAnalysis = (clientId) =>
@@ -176,3 +179,7 @@ export const getUnifiedTimeline = (clientId, params = {}) =>
     api.get('/history/unified', { params: { client_id: clientId, ...params } });
 export const getHistoryFilters = (clientId) =>
     api.get('/history/filters', { params: { client_id: clientId } });
+
+
+
+

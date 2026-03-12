@@ -57,12 +57,12 @@ def test_recommendation_type_enum_matches_active_ruleset():
         "GEO_ANOMALY",
         "BUDGET_PACING",
         "NGRAM_NEGATIVE",
+        "ANALYTICS_ALERT",
     }
     actual = {member.value for member in RecommendationType}
 
-    # Enum contains all currently active recommendation types for rules R1-R13 and R15-R18.
     assert expected == actual
-    assert len(actual) == 16
+    assert len(actual) == 17
 
 
 def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):
@@ -80,6 +80,9 @@ def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):
             "campaign_name": "C1",
             "reason": "high",
             "category": "RECOMMENDATION",
+            "source": "PLAYBOOK_RULES",
+            "executable": True,
+            "action_payload": {"action_type": "PAUSE_KEYWORD", "executable": True},
             "metadata": {"k": 1},
         },
         {
@@ -91,6 +94,9 @@ def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):
             "campaign_name": "C1",
             "reason": "medium",
             "category": "ALERT",
+            "source": "ANALYTICS",
+            "executable": False,
+            "action_payload": {"action_type": None, "executable": False},
             "metadata": {"k": 2},
         },
     ]
@@ -106,6 +112,7 @@ def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):
     all_resp = api_client.get("/api/v1/recommendations/", params={"client_id": client.id})
     assert all_resp.status_code == 200
     assert all_resp.json()["total"] == 2
+    assert all_resp.json()["by_source"]["PLAYBOOK_RULES"] == 1
 
     high_resp = api_client.get(
         "/api/v1/recommendations/",
@@ -122,3 +129,11 @@ def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):
     assert alert_resp.status_code == 200
     assert alert_resp.json()["total"] == 1
     assert alert_resp.json()["recommendations"][0]["type"] == "QS_ALERT"
+
+    analytics_resp = api_client.get(
+        "/api/v1/recommendations/",
+        params={"client_id": client.id, "source": "ANALYTICS", "executable": False},
+    )
+    assert analytics_resp.status_code == 200
+    assert analytics_resp.json()["total"] == 1
+    assert analytics_resp.json()["recommendations"][0]["source"] == "ANALYTICS"

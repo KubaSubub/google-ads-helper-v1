@@ -1,11 +1,14 @@
-"""Campaign endpoints — list, detail, metrics."""
+"""Campaign endpoints: list, detail, update, and metrics."""
+
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from datetime import date, timedelta
+
 from app.database import get_db
-from app.models import Campaign, MetricDaily, AdGroup
-from app.schemas import CampaignResponse, MetricDailyResponse, PaginatedResponse
+from app.models import AdGroup, Campaign, Client, MetricDaily
+from app.schemas import CampaignResponse, CampaignUpdate, MetricDailyResponse, PaginatedResponse
+from app.services.campaign_roles import apply_manual_role_override, ensure_campaign_roles
 
 router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 
@@ -30,6 +33,12 @@ def list_campaigns(
     total = query.count()
     items = query.order_by(Campaign.name).offset((page - 1) * page_size).limit(page_size).all()
 
+    client = db.get(Client, client_id)
+    if items and client and ensure_campaign_roles(items, client):
+        db.commit()
+        for item in items:
+            db.refresh(item)
+
     return PaginatedResponse(
         items=[CampaignResponse.model_validate(c) for c in items],
         total=total,
@@ -45,6 +54,32 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+
+    client = db.get(Client, campaign.client_id)
+    if client and ensure_campaign_roles([campaign], client):
+        db.commit()
+        db.refresh(campaign)
+
+    return campaign
+
+
+@router.patch("/{campaign_id}", response_model=CampaignResponse)
+def update_campaign(campaign_id: int, data: CampaignUpdate, db: Session = Depends(get_db)):
+    """Patch campaign role override metadata."""
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    client = db.get(Client, campaign.client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    if "campaign_role_final" in data.model_fields_set:
+        final_role = data.campaign_role_final.value if data.campaign_role_final is not None else None
+        apply_manual_role_override(campaign, final_role, client)
+
+    db.commit()
+    db.refresh(campaign)
     return campaign
 
 
@@ -84,10 +119,7 @@ def get_campaign_kpis(
     days: int = Query(30, ge=1, le=365, description="Lookback period in days"),
     db: Session = Depends(get_db),
 ):
-    """
-    Get aggregated KPIs for a campaign for the current period vs the previous period.
-    Returns: current values, previous values, and percentage change.
-    """
+    """Get aggregated KPIs for a campaign for the current period vs the previous period."""
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -108,14 +140,24 @@ def get_campaign_kpis(
         )
         if not metrics:
             return {
-                "clicks": 0, "impressions": 0, "cost": 0, "conversions": 0,
-                "conversion_value": 0, "ctr": 0, "roas": 0, "avg_cpc": 0,
-                "cpa": 0, "conversion_rate": 0,
-                "search_impression_share": None, "search_top_impression_share": None,
+                "clicks": 0,
+                "impressions": 0,
+                "cost": 0,
+                "conversions": 0,
+                "conversion_value": 0,
+                "ctr": 0,
+                "roas": 0,
+                "avg_cpc": 0,
+                "cpa": 0,
+                "conversion_rate": 0,
+                "search_impression_share": None,
+                "search_top_impression_share": None,
                 "search_abs_top_impression_share": None,
-                "search_budget_lost_is": None, "search_rank_lost_is": None,
+                "search_budget_lost_is": None,
+                "search_rank_lost_is": None,
                 "search_click_share": None,
-                "abs_top_impression_pct": None, "top_impression_pct": None,
+                "abs_top_impression_pct": None,
+                "top_impression_pct": None,
             }
 
         total_clicks = sum(m.clicks or 0 for m in metrics)
@@ -126,7 +168,6 @@ def get_campaign_kpis(
         total_cost_usd = total_cost_micros / 1_000_000
         total_conv_value = total_conv_value_micros / 1_000_000
 
-        # IS & position — average of non-null daily values
         def _avg_nonnull(field):
             vals = [getattr(m, field) for m in metrics if getattr(m, field) is not None]
             return round(sum(vals) / len(vals), 4) if vals else None

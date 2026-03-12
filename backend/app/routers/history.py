@@ -1,6 +1,6 @@
-"""History endpoints — Google Ads change history from all sources."""
+﻿"""History endpoints â€” Google Ads change history from all sources."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -153,11 +153,14 @@ def unified_timeline(
 
     # --- Build unified list ---
     entries = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for a in actions:
         enriched = _enrich_action(a, db)
-        age_seconds = (now - a.executed_at).total_seconds() if a.executed_at else 999999
+        executed_at = a.executed_at
+        if executed_at and executed_at.tzinfo is None:
+            executed_at = executed_at.replace(tzinfo=timezone.utc)
+        age_seconds = (now - executed_at).total_seconds() if executed_at else 999999
         entries.append({
             "source": "helper",
             "timestamp": str(a.executed_at),
@@ -245,3 +248,5 @@ def get_available_filters(
         "user_emails": sorted(user_emails),
         "client_types": sorted(client_types),
     }
+
+
