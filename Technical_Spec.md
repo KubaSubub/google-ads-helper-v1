@@ -1,5 +1,9 @@
-# Technical Specification v1.0
-## Google Ads Helper — Frontend + API Contract
+﻿> [!WARNING]
+> LEGACY DOCUMENT NOTICE
+> This file is a historical snapshot from 2025-02-17 and is not the active Source of Truth.
+> Active SoT: `docs/SOURCE_OF_TRUTH.md` and `docs/API_ENDPOINTS.md`.
+># Technical Specification v1.0
+## Google Ads Helper â€” Frontend + API Contract
 
 **Version:** 1.0
 **Date:** 2025-02-17
@@ -26,42 +30,42 @@ lucide-react (icons)
 
 ```
 frontend/src/
-├── main.jsx              # ReactDOM.createRoot, BrowserRouter
-├── App.jsx               # Layout (Sidebar + main content area) + Routes
-├── api.js                # Axios instance, interceptors, error handling
-├── index.css             # Tailwind imports + custom dark theme
-│
-├── components/           # Reusable UI components
-│   ├── Sidebar.jsx       # Navigation sidebar with route links + alert badge
-│   ├── KPICard.jsx       # Metric card: value, label, trend arrow, % change
-│   ├── Charts.jsx        # Recharts wrappers: SpendChart, ConversionsChart, CTRChart
-│   ├── DataTable.jsx     # TanStack Table wrapper with sorting, filtering, pagination
-│   ├── ConfirmationModal.jsx  # Before/After preview modal for actions
-│   ├── Toast.jsx         # Success/Error notifications (auto-dismiss)
-│   ├── SegmentBadge.jsx  # Color-coded badge (GREEN/RED/ORANGE/GRAY)
-│   ├── PriorityBadge.jsx # HIGH (red) / MEDIUM (amber) badge
-│   ├── StatusBadge.jsx   # ENABLED/PAUSED/REMOVED badges
-│   ├── SyncButton.jsx    # Refresh button with loading spinner
-│   ├── EmptyState.jsx    # "No data" placeholder with icon
-│   └── LoadingSpinner.jsx
-│
-├── pages/
-│   ├── Dashboard.jsx     # Multi-client overview + client drilldown
-│   ├── Clients.jsx       # Client list, add client, sync all
-│   ├── Campaigns.jsx     # Campaign table per selected client
-│   ├── Keywords.jsx      # Keyword table with QS badges, performance
-│   ├── SearchTerms.jsx   # Segment cards (4) + filterable term list
-│   ├── Recommendations.jsx # Priority-sorted list, Apply/Dismiss buttons
-│   ├── ActionHistory.jsx # Chronological action log + Undo button
-│   ├── Alerts.jsx        # Unresolved/Resolved tabs
-│   └── Settings.jsx      # OAuth status, connected accounts
-│
-└── hooks/
-    ├── useClients.js     # Fetch/cache client list, selected client state
-    ├── useRecommendations.js  # Fetch recs, apply, dismiss
-    ├── useSync.js        # Trigger sync, track progress
-    ├── useAlerts.js      # Fetch alert count for sidebar badge
-    └── useToast.js       # Toast notification state
+â”śâ”€â”€ main.jsx              # ReactDOM.createRoot, BrowserRouter
+â”śâ”€â”€ App.jsx               # Layout (Sidebar + main content area) + Routes
+â”śâ”€â”€ api.js                # Axios instance, interceptors, error handling
+â”śâ”€â”€ index.css             # Tailwind imports + custom dark theme
+â”‚
+â”śâ”€â”€ components/           # Reusable UI components
+â”‚   â”śâ”€â”€ Sidebar.jsx       # Navigation sidebar with route links + alert badge
+â”‚   â”śâ”€â”€ KPICard.jsx       # Metric card: value, label, trend arrow, % change
+â”‚   â”śâ”€â”€ Charts.jsx        # Recharts wrappers: SpendChart, ConversionsChart, CTRChart
+â”‚   â”śâ”€â”€ DataTable.jsx     # TanStack Table wrapper with sorting, filtering, pagination
+â”‚   â”śâ”€â”€ ConfirmationModal.jsx  # Before/After preview modal for actions
+â”‚   â”śâ”€â”€ Toast.jsx         # Success/Error notifications (auto-dismiss)
+â”‚   â”śâ”€â”€ SegmentBadge.jsx  # Color-coded badge (GREEN/RED/ORANGE/GRAY)
+â”‚   â”śâ”€â”€ PriorityBadge.jsx # HIGH (red) / MEDIUM (amber) badge
+â”‚   â”śâ”€â”€ StatusBadge.jsx   # ENABLED/PAUSED/REMOVED badges
+â”‚   â”śâ”€â”€ SyncButton.jsx    # Refresh button with loading spinner
+â”‚   â”śâ”€â”€ EmptyState.jsx    # "No data" placeholder with icon
+â”‚   â””â”€â”€ LoadingSpinner.jsx
+â”‚
+â”śâ”€â”€ pages/
+â”‚   â”śâ”€â”€ Dashboard.jsx     # Multi-client overview + client drilldown
+â”‚   â”śâ”€â”€ Clients.jsx       # Client list, add client, sync all
+â”‚   â”śâ”€â”€ Campaigns.jsx     # Campaign table per selected client
+â”‚   â”śâ”€â”€ Keywords.jsx      # Keyword table with QS badges, performance
+â”‚   â”śâ”€â”€ SearchTerms.jsx   # Segment cards (4) + filterable term list
+â”‚   â”śâ”€â”€ Recommendations.jsx # Priority-sorted list, Apply/Dismiss buttons
+â”‚   â”śâ”€â”€ ActionHistory.jsx # Chronological action log + Undo button
+â”‚   â”śâ”€â”€ Alerts.jsx        # Unresolved/Resolved tabs
+â”‚   â””â”€â”€ Settings.jsx      # OAuth status, connected accounts
+â”‚
+â””â”€â”€ hooks/
+    â”śâ”€â”€ useClients.js     # Fetch/cache client list, selected client state
+    â”śâ”€â”€ useRecommendations.js  # Fetch recs, apply, dismiss
+    â”śâ”€â”€ useSync.js        # Trigger sync, track progress
+    â”śâ”€â”€ useAlerts.js      # Fetch alert count for sidebar badge
+    â””â”€â”€ useToast.js       # Toast notification state
 ```
 
 ## 1.3 Routing
@@ -84,9 +88,9 @@ frontend/src/
 ## 1.4 State Management
 
 **Global state** (via React Context):
-- `selectedClientId` — currently selected client (persisted in localStorage)
-- `isAuthenticated` — OAuth status
-- `alertCount` — for sidebar badge
+- `selectedClientId` â€” currently selected client (persisted in localStorage)
+- `isAuthenticated` â€” OAuth status
+- `alertCount` â€” for sidebar badge
 
 **Local state** (via useState in each page):
 - Table filters, sorting, pagination
@@ -102,30 +106,30 @@ frontend/src/
 ## 2.1 Layout (App.jsx)
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  SIDEBAR (240px)  │        MAIN CONTENT              │
-│                   │                                   │
-│  🏠 Dashboard     │   [Page Header + Breadcrumb]      │
-│  👥 Clients       │                                   │
-│  📊 Campaigns     │   [Page Content]                  │
-│  🔤 Keywords      │                                   │
-│  🔍 Search Terms  │                                   │
-│  💡 Recommendations│                                  │
-│  📜 History       │                                   │
-│  🔔 Alerts (3)    │                                   │
-│  ⚙️ Settings      │                                   │
-│                   │                                   │
-│  ── Client ──     │                                   │
-│  [Dropdown]       │                                   │
-│  Last sync: 2h ago│                                   │
-│  [🔄 Sync]        │                                   │
-└─────────────────────────────────────────────────────┘
+â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  SIDEBAR (240px)  â”‚        MAIN CONTENT              â”‚
+â”‚                   â”‚                                   â”‚
+â”‚  đźŹ  Dashboard     â”‚   [Page Header + Breadcrumb]      â”‚
+â”‚  đź‘Ą Clients       â”‚                                   â”‚
+â”‚  đź“Š Campaigns     â”‚   [Page Content]                  â”‚
+â”‚  đź”¤ Keywords      â”‚                                   â”‚
+â”‚  đź”Ť Search Terms  â”‚                                   â”‚
+â”‚  đź’ˇ Recommendationsâ”‚                                  â”‚
+â”‚  đź“ś History       â”‚                                   â”‚
+â”‚  đź”” Alerts (3)    â”‚                                   â”‚
+â”‚  âš™ď¸Ź Settings      â”‚                                   â”‚
+â”‚                   â”‚                                   â”‚
+â”‚  â”€â”€ Client â”€â”€     â”‚                                   â”‚
+â”‚  [Dropdown]       â”‚                                   â”‚
+â”‚  Last sync: 2h agoâ”‚                                   â”‚
+â”‚  [đź”„ Sync]        â”‚                                   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 ```
 
 - Sidebar always visible (no collapse for MVP)
 - Client selector dropdown at bottom of sidebar
 - Sync button + last synced timestamp in sidebar
-- Alert count badge next to 🔔 Alerts link
+- Alert count badge next to đź”” Alerts link
 
 ## 2.2 Sidebar.jsx
 
@@ -135,7 +139,7 @@ frontend/src/
 - Logo/title: "Google Ads Helper"
 - Navigation links (NavLink from react-router-dom, active state highlighted)
 - Client dropdown: shows all clients, selecting one updates context
-- Sync button: triggers POST /clients/{id}/sync, shows spinner while syncing
+- Sync button: triggers POST /sync/trigger?client_id={id}&days=30, shows spinner while syncing
 - Last synced: relative time ("2 hours ago", "Never")
 - Alert badge: red circle with count if > 0
 
@@ -200,22 +204,22 @@ frontend/src/
 
 **Layout:**
 ```
-┌──────────────────────────────────┐
-│  ⚠️  Pause Keyword?              │
-│                                  │
-│  Entity: 'nike shoes'            │
-│  Campaign: Brand Campaign        │
-│                                  │
-│  ┌────────────┬───────────────┐  │
-│  │   BEFORE   │    AFTER      │  │
-│  │ ENABLED    │  PAUSED       │  │
-│  │ Bid: $1.50 │  Bid: $1.50   │  │
-│  └────────────┴───────────────┘  │
-│                                  │
-│  Reason: High spend ($50)...     │
-│                                  │
-│        [Cancel]  [✓ Apply]       │
-└──────────────────────────────────┘
+â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  âš ď¸Ź  Pause Keyword?              â”‚
+â”‚                                  â”‚
+â”‚  Entity: 'nike shoes'            â”‚
+â”‚  Campaign: Brand Campaign        â”‚
+â”‚                                  â”‚
+â”‚  â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+â”‚  â”‚   BEFORE   â”‚    AFTER      â”‚  â”‚
+â”‚  â”‚ ENABLED    â”‚  PAUSED       â”‚  â”‚
+â”‚  â”‚ Bid: $1.50 â”‚  Bid: $1.50   â”‚  â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+â”‚                                  â”‚
+â”‚  Reason: High spend ($50)...     â”‚
+â”‚                                  â”‚
+â”‚        [Cancel]  [âś“ Apply]       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 ```
 
 ## 2.6 SegmentBadge.jsx
@@ -223,10 +227,10 @@ frontend/src/
 **Props:** `{ segment: "HIGH_PERFORMER" | "WASTE" | "IRRELEVANT" | "OTHER" }`
 
 **Colors:**
-- HIGH_PERFORMER → green-500 bg, green-900 text, label "High Performer"
-- WASTE → red-500 bg, red-900 text, label "Waste"
-- IRRELEVANT → amber-500 bg, amber-900 text, label "Irrelevant"
-- OTHER → slate-500 bg, slate-300 text, label "Other"
+- HIGH_PERFORMER â†’ green-500 bg, green-900 text, label "High Performer"
+- WASTE â†’ red-500 bg, red-900 text, label "Waste"
+- IRRELEVANT â†’ amber-500 bg, amber-900 text, label "Irrelevant"
+- OTHER â†’ slate-500 bg, slate-300 text, label "Other"
 
 ## 2.7 Toast.jsx
 
@@ -241,44 +245,44 @@ frontend/src/
 ## 3.1 Dashboard.jsx
 
 **API calls:**
-- `GET /analytics/kpis?client_id=X` → KPI cards
-- `GET /analytics/campaigns?client_id=X` → campaign breakdown table
-- `GET /recommendations/summary?client_id=X` → badge counts
-- `GET /analytics/anomalies?client_id=X&status=unresolved` → alert count
+- `GET /analytics/kpis?client_id=X` â†’ KPI cards
+- `GET /analytics/campaigns?client_id=X` â†’ campaign breakdown table
+- `GET /recommendations/summary?client_id=X` â†’ badge counts
+- `GET /analytics/anomalies?client_id=X&status=unresolved` â†’ alert count
 
 **Layout:**
 1. **Top row:** 4 KPI cards (Spend, Conversions, CPA, CTR)
 2. **Middle:** Campaign breakdown table (name, status, budget, spend, conversions, CTR, CPA)
 3. **Bottom row:** Quick links
-   - Recommendations badge: "25 HIGH, 10 MEDIUM pending" → link to /recommendations
-   - Alerts badge: "3 unresolved alerts" → link to /alerts
+   - Recommendations badge: "25 HIGH, 10 MEDIUM pending" â†’ link to /recommendations
+   - Alerts badge: "3 unresolved alerts" â†’ link to /alerts
 
 ## 3.2 Clients.jsx
 
 **API calls:**
-- `GET /clients` → client list
-- `POST /clients/{id}/sync` → trigger sync
+- `GET /clients` â†’ client list
+- `POST /sync/trigger?client_id={id}&days=30` â†’ trigger sync
 
 **Layout:**
 - Table: Client name, Customer ID, Last synced, Status, Actions
 - Actions column: [Sync] button per client
 - Add client form (simple: name + Google Ads Customer ID + optional MCC ID)
 
-## 3.3 SearchTerms.jsx — KEY PAGE
+## 3.3 SearchTerms.jsx â€” KEY PAGE
 
 **API calls:**
-- `GET /search-terms/segmented?client_id=X` → segments + stats
+- `GET /search-terms/segmented?client_id=X` â†’ segments + stats
 
 **Layout:**
 
 **Top: 4 Segment Cards**
 ```
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ 🟢 HIGH PERF │ │ 🔴 WASTE     │ │ 🟠 IRRELEVANT│ │ ⚪ OTHER     │
-│    45 terms  │ │   120 terms  │ │    30 terms  │ │   800 terms  │
-│ $1,234 spend │ │ $5,678 waste │ │ $890 spend   │ │ $12,345      │
-│ 89 conv      │ │ 0 conv       │ │ 2 conv       │ │ 45 conv      │
-└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
+â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ đźź˘ HIGH PERF â”‚ â”‚ đź”´ WASTE     â”‚ â”‚ đźź  IRRELEVANTâ”‚ â”‚ âšŞ OTHER     â”‚
+â”‚    45 terms  â”‚ â”‚   120 terms  â”‚ â”‚    30 terms  â”‚ â”‚   800 terms  â”‚
+â”‚ $1,234 spend â”‚ â”‚ $5,678 waste â”‚ â”‚ $890 spend   â”‚ â”‚ $12,345      â”‚
+â”‚ 89 conv      â”‚ â”‚ 0 conv       â”‚ â”‚ 2 conv       â”‚ â”‚ 45 conv      â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 ```
 
 **Clicking a card filters the table below to that segment.**
@@ -286,50 +290,50 @@ frontend/src/
 **Bottom: Filterable Table**
 - Columns: Query Text, Clicks, Cost ($), Conversions, CTR%, CVR%, Segment Badge, Action
 - Action buttons:
-  - HIGH_PERFORMER → "Add as Keyword" (green button)
-  - WASTE → "Add as Negative" (red button)
-  - IRRELEVANT → "Add as Negative" (red button)
-  - OTHER → no action
-- Clicking action → ConfirmationModal → POST /recommendations/{id}/apply
+  - HIGH_PERFORMER â†’ "Add as Keyword" (green button)
+  - WASTE â†’ "Add as Negative" (red button)
+  - IRRELEVANT â†’ "Add as Negative" (red button)
+  - OTHER â†’ no action
+- Clicking action â†’ ConfirmationModal â†’ POST /recommendations/{id}/apply
 
 ## 3.4 Recommendations.jsx
 
 **API calls:**
-- `GET /recommendations?client_id=X&status=pending` → recommendation list
-- `POST /recommendations/{id}/apply?client_id=X` → apply
-- `POST /recommendations/{id}/dismiss` → dismiss
+- `GET /recommendations?client_id=X&status=pending` â†’ recommendation list
+- `POST /recommendations/{id}/apply?client_id=X` â†’ apply
+- `POST /recommendations/{id}/dismiss` â†’ dismiss
 
 **Layout:**
 - Filter tabs: [All] [HIGH] [MEDIUM]
 - List of RecommendationCards:
   ```
-  ┌─────────────────────────────────────────────────────┐
-  │ [HIGH] PAUSE_KEYWORD                                │
-  │                                                     │
-  │ Keyword: "nike shoes free"                          │
-  │ Campaign: Brand Campaign                            │
-  │                                                     │
-  │ Reason: Spent $50 with 0 conversions (30 clicks)    │
-  │                                                     │
-  │                    [Dismiss]  [✓ Apply]              │
-  └─────────────────────────────────────────────────────┘
+  â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚ [HIGH] PAUSE_KEYWORD                                â”‚
+  â”‚                                                     â”‚
+  â”‚ Keyword: "nike shoes free"                          â”‚
+  â”‚ Campaign: Brand Campaign                            â”‚
+  â”‚                                                     â”‚
+  â”‚ Reason: Spent $50 with 0 conversions (30 clicks)    â”‚
+  â”‚                                                     â”‚
+  â”‚                    [Dismiss]  [âś“ Apply]              â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
   ```
-- Apply → ConfirmationModal → executes → Toast success/error
-- Dismiss → marks as dismissed, removes from list
+- Apply â†’ ConfirmationModal â†’ executes â†’ Toast success/error
+- Dismiss â†’ marks as dismissed, removes from list
 - Summary at top: "25 HIGH, 10 MEDIUM recommendations pending"
 
 ## 3.5 ActionHistory.jsx
 
 **API calls:**
 - `GET /actions/?client_id=X&limit=50&offset=0`
-- `POST /actions/revert/{action_log_id}?client_id=X` → undo
+- `POST /actions/revert/{action_log_id}?client_id=X` â†’ undo
 
 **Layout:**
 - Chronological table (newest first)
-- Columns: Timestamp, Action Type, Entity, Before→After, Status, Actions
+- Columns: Timestamp, Action Type, Entity, Beforeâ†’After, Status, Actions
 - Status badges: SUCCESS (green), FAILED (red), REVERTED (gray)
-- Undo button: visible only if status=SUCCESS AND age < 24h AND type ≠ ADD_NEGATIVE
-- Clicking Undo → ConfirmationModal → POST revert → Toast
+- Undo button: visible only if status=SUCCESS AND age < 24h AND type â‰  ADD_NEGATIVE
+- Clicking Undo â†’ ConfirmationModal â†’ POST revert â†’ Toast
 
 ## 3.6 Alerts.jsx
 
@@ -341,15 +345,15 @@ frontend/src/
 - Tabs: [Unresolved (3)] [Resolved]
 - Alert cards:
   ```
-  ┌─────────────────────────────────────────────────────┐
-  │ [HIGH] SPEND_SPIKE                    2 hours ago   │
-  │                                                     │
-  │ Campaign 'Brand' has disproportionate spend:        │
-  │ $5,678 total (30d) vs expected $2,000.              │
-  │ Review budget settings.                             │
-  │                                                     │
-  │                              [Mark as Reviewed ✓]   │
-  └─────────────────────────────────────────────────────┘
+  â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚ [HIGH] SPEND_SPIKE                    2 hours ago   â”‚
+  â”‚                                                     â”‚
+  â”‚ Campaign 'Brand' has disproportionate spend:        â”‚
+  â”‚ $5,678 total (30d) vs expected $2,000.              â”‚
+  â”‚ Review budget settings.                             â”‚
+  â”‚                                                     â”‚
+  â”‚                              [Mark as Reviewed âś“]   â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
   ```
 
 ---
@@ -520,14 +524,14 @@ body {
 
 ---
 
-# SECTION 6: BACKEND ↔ FRONTEND INTEGRATION
+# SECTION 6: BACKEND â†” FRONTEND INTEGRATION
 
 ## 6.1 Production Mode (PyWebView)
 
 FastAPI serves the React build as static files:
 
 ```python
-# backend/app/main.py — add after router registration
+# backend/app/main.py â€” add after router registration
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
@@ -553,7 +557,7 @@ cd backend && uvicorn app.main:app --reload --port 8000
 
 # Terminal 2: Frontend (Vite dev server with proxy)
 cd frontend && npm run dev
-# → opens http://localhost:5173, proxies API calls to :8000
+# â†’ opens http://localhost:5173, proxies API calls to :8000
 ```
 
 ## 6.3 CORS Configuration
@@ -898,3 +902,4 @@ class Alert(Base):
 **END OF TECHNICAL SPECIFICATION**
 
 This document + Implementation_Blueprint.md + Blueprint_Patch_v2_1.md = complete source of truth for implementation.
+

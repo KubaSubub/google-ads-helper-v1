@@ -60,3 +60,6 @@ backend_backup/
 **/client_secret*.json
 **/credentials.json
 **/token.json
+
+# Local automation artifacts
+output/

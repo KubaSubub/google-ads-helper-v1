@@ -48,8 +48,8 @@ Base API URL: `/api/v1`
 - `POST /recommendations/{id}/dismiss?client_id=X`
 
 ## Actions
-- `GET /actions/?client_id=X&limit=50&offset=0`
-- `POST /actions/revert/{action_log_id}?client_id=X`
+- `[PROD]` `GET /actions/?client_id=X&limit=50&offset=0`
+- `[PROD]` `POST /actions/revert/{action_log_id}?client_id=X`
 
 ## Analytics - Core
 - `GET /analytics/kpis?client_id=X`
