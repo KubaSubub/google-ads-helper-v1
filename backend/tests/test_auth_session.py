@@ -1,34 +1,23 @@
-"""Auth and sync regression tests for Google Ads readiness handling."""
+"""Auth, session and sync regression tests."""
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
+from app.database import get_db
 from app.main import app
 from app.models.campaign import Campaign
 from app.models.client import Client
 from app.models.sync_log import SyncLog
 from app.services.credentials_service import CredentialPersistenceError, CredentialsService
 from app.services.google_ads import google_ads_service
+from app.services.session_service import SESSION_COOKIE_NAME, SessionService
 
 
-@pytest.fixture
-def db():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    try:
-        yield session
-    finally:
-        session.close()
+@pytest.fixture(autouse=True)
+def clear_sessions():
+    SessionService.clear_all()
+    yield
+    SessionService.clear_all()
 
 
 @pytest.fixture
@@ -48,6 +37,68 @@ def _seed_client(db, name="Sync Client", customer_id="1234567890"):
     db.commit()
     db.refresh(client)
     return client
+
+
+def _auth_cookies():
+    return {SESSION_COOKIE_NAME: SessionService.issue()}
+
+
+def test_protected_endpoint_requires_session_cookie(api_client):
+    response = api_client.get('/api/v1/clients/')
+    assert response.status_code == 401
+    assert response.json()['detail'] == 'Missing authorization token'
+
+
+def test_auth_status_reports_missing_configuration(api_client, monkeypatch):
+    def fake_get(_key):
+        return None
+
+    monkeypatch.setattr(CredentialsService, 'get', staticmethod(fake_get))
+    response = api_client.get('/api/v1/auth/status')
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data['authenticated'] is False
+    assert data['configured'] is False
+    assert set(data['missing']) >= {'developer_token', 'client_id', 'client_secret', 'refresh_token'}
+
+
+def test_protected_endpoint_allows_valid_cookie(api_client, monkeypatch):
+    values = {
+        CredentialsService.DEVELOPER_TOKEN: 'dev',
+        CredentialsService.CLIENT_ID: 'cid',
+        CredentialsService.CLIENT_SECRET: 'secret',
+        CredentialsService.REFRESH_TOKEN: 'refresh',
+    }
+
+    def fake_get(key):
+        return values.get(key)
+
+    monkeypatch.setattr(CredentialsService, 'get', staticmethod(fake_get))
+
+    response = api_client.get('/api/v1/clients/', cookies=_auth_cookies())
+
+    assert response.status_code == 200
+    assert 'items' in response.json()
+
+
+def test_auth_status_bootstrap_issues_session_cookie(api_client, monkeypatch):
+    values = {
+        CredentialsService.DEVELOPER_TOKEN: 'dev',
+        CredentialsService.CLIENT_ID: 'cid',
+        CredentialsService.CLIENT_SECRET: 'secret',
+        CredentialsService.REFRESH_TOKEN: 'refresh',
+    }
+
+    def fake_get(key):
+        return values.get(key)
+
+    monkeypatch.setattr(CredentialsService, 'get', staticmethod(fake_get))
+
+    response = api_client.get('/api/v1/auth/status?bootstrap=1')
+    assert response.status_code == 200
+    assert response.json()['authenticated'] is True
+    assert SESSION_COOKIE_NAME in response.cookies
 
 
 def test_auth_setup_returns_error_when_secure_store_write_fails(api_client, monkeypatch):
@@ -105,12 +156,17 @@ def test_auth_status_reports_not_ready_when_only_refresh_token_exists(api_client
             "login_customer_id": None,
         },
     )
+    monkeypatch.setattr(
+        "app.routers.auth.CredentialsService.get",
+        lambda key: "refresh-token" if key == CredentialsService.REFRESH_TOKEN else None,
+    )
 
     response = api_client.get("/api/v1/auth/status")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["authenticated"] is True
+    assert payload["authenticated"] is False
+    assert payload["oauth_authenticated"] is True
     assert payload["configured"] is False
     assert payload["ready"] is False
     assert set(payload["missing_credentials"]) == {
@@ -240,7 +296,7 @@ def test_clients_discover_returns_explicit_error_when_mcc_missing(api_client, mo
         lambda key: None,
     )
 
-    response = api_client.post("/api/v1/clients/discover")
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
 
     assert response.status_code == 503
     assert "login_customer_id" in response.json()["detail"]
@@ -305,6 +361,7 @@ def test_sync_trigger_reports_failed_and_partial_states(
     response = api_client.post(
         "/api/v1/sync/trigger",
         params={"client_id": client.id, "days": 30},
+        cookies=_auth_cookies(),
     )
 
     assert response.status_code == 200

@@ -1,21 +1,24 @@
-"""OAuth2 flow for Google Ads API."""
+"""OAuth2 flow and session lifecycle for Google Ads API."""
 
 import os
 
 # Allow HTTP redirect for localhost (desktop app)
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from google_auth_oauthlib.flow import Flow
 from loguru import logger
 from pydantic import BaseModel
 
-from app.services.credentials_service import (
-    CredentialPersistenceError,
-    CredentialsService,
-)
+from app.config import settings
+from app.services.credentials_service import CredentialPersistenceError, CredentialsService
 from app.services.google_ads import google_ads_service
+from app.services.session_service import (
+    SESSION_COOKIE_NAME,
+    SESSION_TTL_MINUTES,
+    SessionService,
+)
 
 
 class SetupRequest(BaseModel):
@@ -31,6 +34,18 @@ SCOPES = ["https://www.googleapis.com/auth/adwords"]
 REDIRECT_URI = "http://localhost:8000/api/v1/auth/callback"
 
 
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=not settings.is_development,
+        samesite="lax",
+        max_age=SESSION_TTL_MINUTES * 60,
+        path="/",
+    )
+
+
 def _build_flow() -> Flow:
     """Create OAuth2 Flow using credentials from Windows Credential Manager."""
     client_id = CredentialsService.get(CredentialsService.CLIENT_ID)
@@ -38,7 +53,7 @@ def _build_flow() -> Flow:
 
     if not client_id or not client_secret:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Brak zapisanych OAuth credentials. Uzupelnij konfiguracje API przed logowaniem.",
         )
 
@@ -64,6 +79,7 @@ def _setup_status_payload() -> dict:
         "has_client_id": bool(credentials["client_id"]),
         "has_client_secret": bool(credentials["client_secret"]),
         "has_login_customer_id": bool(credentials["login_customer_id"]),
+        "missing": missing_setup,
         "missing_credentials": missing_setup,
     }
 
@@ -79,9 +95,36 @@ def _setup_values_payload() -> dict:
 
 
 @router.get("/status")
-async def auth_status():
-    """Return the effective auth and readiness state for Google Ads."""
-    return google_ads_service.get_connection_diagnostics()
+async def auth_status(request: Request, response: Response, bootstrap: int = 0):
+    """Return OAuth readiness and local session state for frontend gating."""
+    diagnostics = google_ads_service.get_connection_diagnostics()
+    oauth_authenticated = bool(CredentialsService.get(CredentialsService.REFRESH_TOKEN))
+
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    session_authenticated = SessionService.is_valid(session_token)
+
+    if bootstrap == 1 and not session_authenticated and diagnostics.get("configured") and oauth_authenticated:
+        session_token = SessionService.issue()
+        _set_session_cookie(response, session_token)
+        session_authenticated = True
+
+    reason = diagnostics.get("reason", "")
+    if diagnostics.get("configured") and oauth_authenticated and not session_authenticated:
+        reason = "Sesja wygasla. Zaloguj sie ponownie przez Google."
+
+    missing = diagnostics.get("missing_credentials", [])
+    return {
+        "authenticated": session_authenticated,
+        "session_authenticated": session_authenticated,
+        "oauth_authenticated": oauth_authenticated,
+        "configured": diagnostics.get("configured", False),
+        "ready": bool(session_authenticated and diagnostics.get("ready", False)),
+        "connected": diagnostics.get("connected", False),
+        "reason": reason,
+        "missing": missing,
+        "missing_credentials": missing,
+        "has_login_customer_id": diagnostics.get("has_login_customer_id", False),
+    }
 
 
 @router.get("/setup-status")
@@ -117,9 +160,13 @@ async def setup(data: SetupRequest):
         logger.error(f"Credential setup failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    setup_payload = _setup_status_payload()
     logger.info("API credentials saved to Windows Credential Manager via /auth/setup")
     return {
-        "success": True,
+        "success": setup_payload["configured"],
+        "configured": setup_payload["configured"],
+        "missing": setup_payload["missing"],
+        "missing_credentials": setup_payload["missing_credentials"],
         "message": "Credentials zapisane. Mozesz teraz przejsc do logowania Google.",
     }
 
@@ -131,22 +178,24 @@ async def login():
     if not setup_status_data["configured"]:
         missing = ", ".join(setup_status_data["missing_credentials"])
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Brak zapisanych credentials Google Ads: {missing}.",
         )
 
     flow = _build_flow()
+    oauth_state = SessionService.issue_oauth_state()
     auth_url, _state = flow.authorization_url(
         access_type="offline",
         prompt="consent",
         include_granted_scopes="true",
+        state=oauth_state,
     )
     logger.info("OAuth login URL generated")
     return {"auth_url": auth_url}
 
 
 @router.get("/callback")
-async def callback(code: str = None, error: str = None):
+async def callback(code: str = None, error: str = None, state: str = None):
     """Google redirects here after user grants or denies consent."""
     if error:
         logger.warning(f"OAuth denied: {error}")
@@ -154,6 +203,16 @@ async def callback(code: str = None, error: str = None):
             _html_page(
                 "Logowanie anulowane",
                 "Odmowiono dostepu. Mozesz zamknac to okno i sprobowac ponownie.",
+                success=False,
+            )
+        )
+
+    if not state or not SessionService.verify_oauth_state(state):
+        logger.warning("OAuth callback rejected because of invalid state")
+        return HTMLResponse(
+            _html_page(
+                "Nieprawidlowy stan logowania",
+                "Sesja logowania wygasla lub jest nieprawidlowa. Sprobuj ponownie z aplikacji.",
                 success=False,
             )
         )
@@ -201,24 +260,26 @@ async def callback(code: str = None, error: str = None):
 
         google_ads_service.reinitialize()
         diagnostics = google_ads_service.get_connection_diagnostics()
-        if not diagnostics["ready"]:
-            logger.error(f"OAuth callback completed but API is not ready: {diagnostics['reason']}")
-            return HTMLResponse(
-                _html_page(
-                    "Logowanie zakonczone, ale API nie jest gotowe",
-                    diagnostics["reason"],
-                    success=False,
-                )
-            )
+        session_token = SessionService.issue()
 
-        logger.info("OAuth success - tokens saved and Google Ads API is ready")
-        return HTMLResponse(
-            _html_page(
+        if diagnostics["ready"]:
+            logger.info("OAuth success - tokens saved and Google Ads API is ready")
+            html = _html_page(
                 "Logowanie udane!",
                 "Wroc do aplikacji Google Ads Helper. Mozesz zamknac to okno.",
                 success=True,
             )
-        )
+        else:
+            logger.error(f"OAuth callback completed but API is not ready: {diagnostics['reason']}")
+            html = _html_page(
+                "Logowanie zakonczone, ale API nie jest gotowe",
+                diagnostics["reason"],
+                success=False,
+            )
+
+        response = HTMLResponse(html)
+        _set_session_cookie(response, session_token)
+        return response
 
     except CredentialPersistenceError as exc:
         logger.error(f"OAuth credential persistence failed: {exc}")
@@ -237,12 +298,18 @@ async def callback(code: str = None, error: str = None):
 
 
 @router.post("/logout")
-async def logout():
-    """Clear all credentials from Windows Credential Manager."""
+async def logout(request: Request):
+    """Clear session cookie and all stored credentials."""
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    SessionService.revoke(session_token)
+    SessionService.clear_oauth_state()
     CredentialsService.clear_all()
     google_ads_service.reinitialize()
-    logger.info("User logged out - credentials cleared")
-    return {"status": "logged_out"}
+    logger.info("User logged out - credentials and session cleared")
+
+    response = Response(content='{"status":"logged_out"}', media_type="application/json")
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return response
 
 
 def _html_page(title: str, message: str, success: bool = True) -> str:

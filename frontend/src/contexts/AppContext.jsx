@@ -8,6 +8,7 @@ const DEFAULT_AUTH_STATUS = {
     configured: false,
     ready: false,
     reason: '',
+    missing: [],
     missing_credentials: [],
 };
 
@@ -30,7 +31,7 @@ export function AppProvider({ children }) {
 
         while (Date.now() - started < maxWaitMs) {
             try {
-                const data = await getAuthStatus();
+                const data = await getAuthStatus(true);
                 const nextStatus = { ...DEFAULT_AUTH_STATUS, ...data };
                 setAuthStatus(nextStatus);
                 setAuthChecking(false);
@@ -60,9 +61,21 @@ export function AppProvider({ children }) {
         }
     }, []);
 
+    const markUnauthorized = useCallback(() => {
+        setAuthStatus(DEFAULT_AUTH_STATUS);
+        setClients([]);
+        setClientsLoading(false);
+    }, []);
+
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
+
+    useEffect(() => {
+        const onUnauthorized = () => markUnauthorized();
+        window.addEventListener('auth:unauthorized', onUnauthorized);
+        return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+    }, [markUnauthorized]);
 
     useEffect(() => {
         if (authStatus.ready) {
@@ -99,7 +112,7 @@ export function AppProvider({ children }) {
                 toast,
                 showToast,
                 hideToast,
-                isAuthenticated: authStatus.ready,
+                isAuthenticated: authStatus.authenticated,
                 authStatus,
                 authChecking,
                 checkAuth,

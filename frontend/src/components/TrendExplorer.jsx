@@ -4,7 +4,7 @@ import {
     ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { Plus, X, TrendingUp } from 'lucide-react'
-import { getTrends } from '../api'
+import { getCorrelationMatrix, getTrends } from '../api'
 import { useFilter } from '../contexts/FilterContext'
 import { useApp } from '../contexts/AppContext'
 
@@ -21,6 +21,17 @@ const METRIC_OPTIONS = [
     { key: 'cpa', label: 'CPA', unit: 'PLN', tooltip: 'Cost Per Acquisition — koszt pozyskania konwersji' },
     { key: 'cvr', label: 'CVR (%)', unit: '%', tooltip: 'Conversion Rate — procent kliknięć zakończonych konwersją' },
 ]
+
+const CORRELATION_METRIC_MAP = {
+    cost: 'cost_micros',
+    clicks: 'clicks',
+    impressions: 'impressions',
+    conversions: 'conversions',
+    ctr: 'ctr',
+    cpc: 'avg_cpc_micros',
+    roas: 'roas',
+    cvr: 'conversion_rate',
+}
 
 // Pearson correlation coefficient
 function pearsonCorrelation(x, y) {
@@ -80,7 +91,7 @@ const CustomTooltip = ({ active, payload, label }) => {
     )
 }
 
-export default function TrendExplorer() {
+export default function TrendExplorer({ campaignIds = [] }) {
     const { selectedClientId } = useApp()
     const { filters, days } = useFilter()
     const [activeMetrics, setActiveMetrics] = useState(['cost', 'clicks'])
@@ -88,6 +99,7 @@ export default function TrendExplorer() {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(false)
     const [isMock, setIsMock] = useState(false)
+    const [correlationLabel, setCorrelationLabel] = useState(null)
 
     const fetchData = useCallback(async () => {
         if (!selectedClientId) return
@@ -121,15 +133,51 @@ export default function TrendExplorer() {
         setActiveMetrics(prev => prev.filter(m => m !== key))
     }
 
-    // Compute Pearson correlation for first 2 metrics if data available
-    let correlationLabel = null
-    if (activeMetrics.length >= 2 && data.length >= 3) {
+    const localCorrelationLabel = useCallback(() => {
+        if (activeMetrics.length < 2 || data.length < 3) return null
         const x = data.map(d => d[activeMetrics[0]] ?? 0)
         const y = data.map(d => d[activeMetrics[1]] ?? 0)
         const r = pearsonCorrelation(x, y)
-        correlationLabel = getCorrelationLabel(r)
-    }
+        return getCorrelationLabel(r)
+    }, [activeMetrics, data])
 
+    useEffect(() => {
+        let cancelled = false
+
+        const fetchCorrelation = async () => {
+            if (activeMetrics.length < 2 || data.length < 3) {
+                if (!cancelled) setCorrelationLabel(null)
+                return
+            }
+
+            const mappedA = CORRELATION_METRIC_MAP[activeMetrics[0]]
+            const mappedB = CORRELATION_METRIC_MAP[activeMetrics[1]]
+            const fallback = localCorrelationLabel()
+
+            if (!mappedA || !mappedB || campaignIds.length === 0) {
+                if (!cancelled) setCorrelationLabel(fallback)
+                return
+            }
+
+            try {
+                const response = await getCorrelationMatrix({
+                    campaign_ids: campaignIds,
+                    metrics: [mappedA, mappedB],
+                    date_from: filters.dateFrom || undefined,
+                    date_to: filters.dateTo || undefined,
+                })
+                const r = response?.matrix?.[mappedA]?.[mappedB]
+                if (!cancelled) {
+                    setCorrelationLabel(typeof r === 'number' ? getCorrelationLabel(r) : fallback)
+                }
+            } catch (e) {
+                if (!cancelled) setCorrelationLabel(fallback)
+            }
+        }
+
+        fetchCorrelation()
+        return () => { cancelled = true }
+    }, [activeMetrics, campaignIds, data, filters.dateFrom, filters.dateTo, localCorrelationLabel])
     const dual = needsDualAxis(activeMetrics)
     const pctMetrics = ['ctr', 'cvr']
 

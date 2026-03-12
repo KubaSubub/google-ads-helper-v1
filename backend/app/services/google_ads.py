@@ -1457,6 +1457,7 @@ class GoogleAdsService:
         entity_id: int | None,
         params: dict | None = None,
         target: dict | None = None,
+        client_id: int | None = None,
     ):
         """Execute a canonical action on a Google Ads entity.
 
@@ -1466,12 +1467,20 @@ class GoogleAdsService:
         """
         from app.models import Ad, Campaign, Keyword
         from app.models.negative_keyword import NegativeKeyword
+        from app.services.action_executor import SafetyViolationError, validate_action
+        from app.utils.formatters import micros_to_currency
 
         params = params or {}
         target = target or {}
         mode = "LIVE" if self.is_connected else "LOCAL_ONLY"
 
         logger.info(f"EXECUTING: {action_type} entity={entity_id} params={params} target={target}")
+
+        client_limits = None
+        if client_id is not None:
+            client_record = db.get(Client, client_id)
+            if client_record and client_record.business_rules:
+                client_limits = (client_record.business_rules or {}).get("safety_limits")
 
         if action_type == "PAUSE_KEYWORD":
             kw = db.get(Keyword, entity_id)
@@ -1530,6 +1539,14 @@ class GoogleAdsService:
                 amount_micros = int(round(float(params["amount"]) * 1_000_000))
             if amount_micros is None:
                 return {"status": "error", "message": "Missing amount for bid update"}
+
+            current_bid = micros_to_currency(kw.bid_micros or 0)
+            new_bid = amount_micros / 1_000_000
+            try:
+                validate_action(action_type, current_bid, new_bid, {}, client_limits)
+            except SafetyViolationError as exc:
+                return {"status": "error", "message": f"Safety violation: {exc}"}
+
             kw.bid_micros = int(amount_micros)
             if self.is_connected:
                 self._mutate_keyword_bid(kw, db)
@@ -1640,6 +1657,14 @@ class GoogleAdsService:
                 amount_micros = int(round(float(params["amount"]) * 1_000_000))
             if amount_micros is None:
                 return {"status": "error", "message": "Missing amount for budget update"}
+
+            current_budget = micros_to_currency(campaign.budget_micros or 0)
+            new_budget = amount_micros / 1_000_000
+            try:
+                validate_action(action_type, current_budget, new_budget, {}, client_limits)
+            except SafetyViolationError as exc:
+                return {"status": "error", "message": f"Safety violation: {exc}"}
+
             campaign.budget_micros = int(amount_micros)
             if self.is_connected:
                 self._mutate_campaign_budget(campaign, db)
@@ -1653,7 +1678,6 @@ class GoogleAdsService:
             }
 
         return {"status": "error", "message": f"Unknown action_type: {action_type}"}
-
     def fetch_native_recommendations(self, db: Session, client_id: int) -> list[dict]:
         """Fetch native Google Ads recommendations and map them to the local contract."""
         if not self.is_connected:
