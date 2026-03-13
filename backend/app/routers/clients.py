@@ -1,11 +1,20 @@
-"""Client CRUD endpoints."""
+﻿"""Client CRUD endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Client
+from app.models import (
+    ActionLog,
+    Alert,
+    Campaign,
+    ChangeEvent,
+    Client,
+    NegativeKeyword,
+    Recommendation,
+    SyncLog,
+)
 from app.schemas import ClientCreate, ClientResponse, ClientUpdate, PaginatedResponse
 from app.services.credentials_service import CredentialsService
 from app.services.google_ads import google_ads_service
@@ -26,6 +35,31 @@ def _ensure_discover_ready() -> None:
             status_code=503,
             detail="Brak login_customer_id (MCC). Uzupelnij Login Customer ID w konfiguracji API.",
         )
+
+
+def _hard_reset_client_runtime_data(db: Session, client: Client) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    direct_tables = [
+        (ChangeEvent, "deleted_change_events"),
+        (Alert, "deleted_alerts"),
+        (ActionLog, "deleted_action_logs"),
+        (SyncLog, "deleted_sync_logs"),
+        (Recommendation, "deleted_recommendations"),
+        (NegativeKeyword, "deleted_negative_keywords"),
+    ]
+
+    for model, key in direct_tables:
+        query = db.query(model).filter(model.client_id == client.id)
+        counts[key] = query.count()
+        query.delete(synchronize_session=False)
+
+    campaigns = db.query(Campaign).filter(Campaign.client_id == client.id).all()
+    counts["deleted_campaigns"] = len(campaigns)
+    for campaign in campaigns:
+        db.delete(campaign)
+
+    client.last_change_sync_at = None
+    return counts
 
 
 @router.post("/discover")
@@ -146,6 +180,29 @@ def update_client(client_id: int, data: ClientUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(client)
     return client
+
+
+@router.post("/{client_id}/hard-reset")
+def hard_reset_client_data(client_id: int, db: Session = Depends(get_db)):
+    """Delete local runtime data for a client while keeping the client profile."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    try:
+        counts = _hard_reset_client_runtime_data(db, client)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Hard reset failed for client_id={}", client_id)
+        raise HTTPException(status_code=500, detail="Nie udalo sie zresetowac danych klienta.") from exc
+
+    logger.warning("Hard reset completed for client_id={} ({})", client.id, client.name)
+    return {
+        "success": True,
+        "message": f"Dane lokalne klienta '{client.name}' zostaly wyczyszczone.",
+        **counts,
+    }
 
 
 @router.delete("/{client_id}")

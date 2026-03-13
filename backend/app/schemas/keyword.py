@@ -1,14 +1,19 @@
-"""Keyword schema."""
+﻿"""Keyword schema."""
 
 from datetime import datetime
-from pydantic import BaseModel, computed_field, Field
 from typing import Optional
+
+from pydantic import BaseModel, Field, computed_field
 
 
 class KeywordResponse(BaseModel):
     id: int
     ad_group_id: int
+    campaign_id: Optional[int] = None
+    campaign_name: Optional[str] = None
+    ad_group_name: Optional[str] = None
     google_keyword_id: Optional[str] = None
+    criterion_kind: str = "POSITIVE"
     text: str
     match_type: Optional[str] = None
     status: Optional[str] = None

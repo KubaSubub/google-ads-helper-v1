@@ -109,3 +109,40 @@ Out of scope in phase 1:
 - native auto-apply
 - RecommendationSubscriptionService
 - live executable allowlist for Google-native types
+## 10. Keyword Lifecycle and Cache Behavior
+- Full sync now marks campaigns, ad groups, and keywords as `REMOVED` when they disappear from a successful Google Ads fetch.
+- `REMOVED` rows stay in SQLite for history/debugging, but keyword lists hide them by default.
+- Keywords page consumes the positive-only `/keywords/` cache and every row is explicitly tagged as `criterion_kind=POSITIVE`.
+- Keyword status badge uses the real lifecycle status (`ENABLED`, `PAUSED`, `REMOVED`).
+- Delivery issues such as low search volume are shown separately from lifecycle status.
+- Keyword action hints use readable labels (`Pauzuj`, `Podnies`, `Obniz`) with tooltip copy that explains the trigger.
+
+## 11. Negative Keyword Cache
+- Negative keyword criteria are cached separately from positive keywords in `negative_keywords`.
+- The cache supports `CAMPAIGN` and `AD_GROUP` scopes.
+- Rows are explicitly tagged as `criterion_kind=NEGATIVE` and carry `source=GOOGLE_ADS_SYNC` or `LOCAL_ACTION`.
+- Backend exposes `GET /api/v1/negative-keywords/` for diagnostics and backend consumers.
+- There is no dedicated negatives UI page in the current scope.
+
+## 12. Runtime Data Path
+- Runtime SQLite path is canonicalized to `<repo>/data/google_ads_app.db` in source mode.
+- Frozen desktop builds use `<exe_dir>/data/google_ads_app.db`.
+- If only the legacy `backend/data/google_ads_app.db` exists, the app migrates it once to the canonical path before engine startup.
+- If both files exist, runtime uses the canonical DB and logs that `backend/data/google_ads_app.db` is ignored legacy data.
+## 13. Client Hard Reset
+- Settings page exposes a per-client Twardy reset danych klienta action.
+- Hard reset deletes only local runtime data for the selected client: campaigns, ad groups, keywords, search terms, recommendations, alerts, history, negatives, and sync logs.
+- Client profile, business context, safety limits, and Google Customer ID stay intact.
+- Reset requires typing the exact client name before the button becomes active.
+
+## 14. Keyword Source Diagnostics
+- Sync debug now exposes a read-only keyword source comparison endpoint for one client.
+- The helper endpoint compares `keyword_view` API rows with both local positive and local negative SQLite rows.
+- It supports repeated search filters, optional inclusion of `REMOVED`, and returns the exact GAQL used for inspection.
+
+## 15. Keyword Source Of Truth
+- The canonical per-keyword diagnostic path is `GET /api/v1/sync/debug/keyword-source-of-truth`.
+- It compares the same criterion across `keyword_view`, `ad_group_criterion`, local positive cache, and local negative cache in one response.
+- The payload explicitly includes `criterion_kind`, `negative`, `presence_state`, lifecycle statuses, campaign/ad group context, Google Ads `request_id`, `ListAccessibleCustomers`, MCC `customer_client` lookup, and the active SQLite file path used by runtime.
+- Positive keyword sync excludes `ad_group_criterion.negative = true` at query, mapping, and before-save layers.
+

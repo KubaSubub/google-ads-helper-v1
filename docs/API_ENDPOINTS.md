@@ -17,14 +17,47 @@ Base API URL: `/api/v1`
 - `POST /clients/` -> create client
 - `PATCH /clients/{id}` -> update client
 - `DELETE /clients/{id}` -> delete client
+- `POST /clients/{id}/hard-reset` -> delete only this client's local runtime data, keep client profile
 - `POST /clients/discover` -> auto-discover from MCC
 
 ## Sync
 - `POST /sync/trigger?client_id=X&days=30` -> full sync
 - `GET /sync/status` -> Google Ads connection status
 - `GET /sync/logs?client_id=X&limit=10` -> recent sync logs
-- `GET /sync/debug?client_id=X` -> row counts + last sync diagnostics
+- `GET /sync/debug?client_id=X` -> row counts + last sync diagnostics + active/legacy SQLite paths
+- `GET /sync/debug/keywords?client_id=X&search=term&search=term2&include_removed=true&limit=50` -> helper debug comparing keyword_view API rows with local positive/negative SQLite rows
+- `GET /sync/debug/keyword-source-of-truth?client_id=X&criterion_id=Y` -> authoritative debug for one criterion across Google Ads `keyword_view`, `ad_group_criterion`, local SQLite, and request context
 - `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase
+
+### Keyword source-of-truth debug
+- Returns Google Ads request context: `customer_id_used`, `login_customer_id`, masked OAuth/developer token metadata, and `request_id` values from Google Ads API responses.
+- Returns both account-access perspectives:
+  - `accessible_customers` from `ListAccessibleCustomers`
+  - `mcc_customer_lookup` from `customer_client` queried under the configured `login_customer_id`
+- Returns normalized rows from both Google Ads API and local SQLite.
+- Each row contains:
+  - `customer_id`
+  - `campaign_id`, `campaign_name`, `campaign_status`, `campaign_advertising_channel_type`
+  - `ad_group_id`, `ad_group_name`, `ad_group_status`
+  - `criterion_id`
+  - `criterion_kind`
+  - `criterion_status`
+  - `negative`
+  - `keyword_text`
+  - `match_type`
+  - `request_id`
+  - `source_query_type`
+  - `storage_kind`
+- Returns local SQLite evidence:
+  - `synced_to_db`
+  - `presence_state`
+  - `db_rows_found`
+  - `db_positive_rows_found`
+  - `db_negative_rows_found`
+  - `db_rows`
+  - `db_source_path`
+  - `db_legacy_path`
+  - `db_legacy_exists`
 
 ## Campaigns
 - `GET /campaigns/?client_id=X&page=1&page_size=50&campaign_type=&status=`
@@ -33,8 +66,24 @@ Base API URL: `/api/v1`
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
 ## Keywords and Ads
-- `GET /keywords/?client_id=X&campaign_type=&status=&match_type=&date_from=&date_to=`
+- `GET /keywords/?client_id=X&campaign_id=&ad_group_id=&status=&match_type=&campaign_type=&campaign_status=&include_removed=false&date_from=&date_to=&page=`
+- `GET /negative-keywords/?client_id=X&campaign_id=&ad_group_id=&status=&negative_scope=&include_removed=false&page=`
 - `GET /ads/?client_id=X&campaign_type=&status=&ad_type=&date_from=&date_to=`
+
+### Keyword response fields
+- `criterion_kind` is always `POSITIVE` on `/keywords/`.
+- `status` is the real Google Ads lifecycle status for the keyword: `ENABLED`, `PAUSED`, `REMOVED`.
+- `serving_status` stays separate and only describes delivery issues such as `LOW_SEARCH_VOLUME`.
+- Keyword payload now includes `campaign_id`, `campaign_name`, and `ad_group_name`.
+- Default keyword list excludes local `REMOVED` rows unless `include_removed=true` is sent.
+- Keyword sync only persists positive search keywords. Rows where `ad_group_criterion.negative = true` are excluded from sync and should be inspected through source-of-truth debug instead of the normal keyword list.
+
+### Negative keyword response fields
+- `criterion_kind` is always `NEGATIVE` on `/negative-keywords/`.
+- `negative_scope` is `CAMPAIGN` or `AD_GROUP`.
+- `status` uses the Google Ads lifecycle vocabulary (`ENABLED`, `REMOVED`).
+- `source` indicates whether the row came from Google Ads sync (`GOOGLE_ADS_SYNC`) or a local write path (`LOCAL_ACTION`).
+- `google_criterion_id` is the canonical criterion identifier for synced/debugged negative keyword criteria.
 
 ## Search Terms
 - `GET /search-terms/?client_id=X&campaign_id=&ad_group_id=&search=&sort_by=&sort_order=&page=`
@@ -84,7 +133,7 @@ Base API URL: `/api/v1`
 
 ## Export
 - `GET /export/search-terms?client_id=X&format=xlsx`
-- `GET /export/keywords?client_id=X&format=xlsx`
+- `GET /export/keywords?client_id=X&campaign_id=&include_removed=false&format=xlsx`
 - `GET /export/metrics?client_id=X&format=xlsx&days=30`
 - `GET /export/recommendations?client_id=X&format=xlsx&days=30`
 
@@ -98,3 +147,9 @@ Base API URL: `/api/v1`
 
 ## Health
 - `GET /health` -> `{status: "ok", version, env}` (outside `/api/v1`)
+
+
+
+
+
+

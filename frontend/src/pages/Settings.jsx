@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react'
-import { getClient, updateClient } from '../api'
-import { useApp } from '../contexts/AppContext'
+﻿import { useEffect, useState } from 'react'
+import { BarChart3, Building2, Loader2, Plus, Save, ShieldAlert, Target, X } from 'lucide-react'
+
+import api, { getClient, updateClient } from '../api'
 import EmptyState from '../components/EmptyState'
-import { Save, Plus, X, Building2, Target, ShieldAlert, BarChart3, Loader2 } from 'lucide-react'
+import { useApp } from '../contexts/AppContext'
 
 const SAFETY_FIELDS = [
     { key: 'MAX_BID_CHANGE_PCT', label: 'Max zmiana stawki (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana stawki CPC w procentach' },
-    { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budżetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budżetu kampanii' },
+    { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budzetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budzetu kampanii' },
     { key: 'MIN_BID_USD', label: 'Min stawka (USD)', unit: '$', multiply: 1, tooltip: 'Minimalna dopuszczalna stawka CPC' },
     { key: 'MAX_BID_USD', label: 'Max stawka (USD)', unit: '$', multiply: 1, tooltip: 'Maksymalna dopuszczalna stawka CPC' },
-    { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzień (%)', unit: '%', multiply: 100, tooltip: 'Max procent słów kluczowych wstrzymanych w jednym dniu na kampanię' },
-    { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywów/dzień', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie' },
+    { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzien (%)', unit: '%', multiply: 100, tooltip: 'Max procent slow kluczowych wstrzymanych w jednym dniu na kampanie' },
+    { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywow/dzien', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie' },
 ]
 
 const GLOBAL_DEFAULTS = {
@@ -23,21 +24,27 @@ const GLOBAL_DEFAULTS = {
 }
 
 export default function Settings() {
-    const { selectedClientId, showToast } = useApp()
+    const { selectedClientId, showToast, refreshClients } = useApp()
     const [formData, setFormData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [resetting, setResetting] = useState(false)
+    const [resetConfirmation, setResetConfirmation] = useState('')
     const [error, setError] = useState(null)
 
     useEffect(() => {
-        if (selectedClientId) loadClient()
+        if (selectedClientId) {
+            loadClient()
+        }
     }, [selectedClientId])
 
     async function loadClient() {
         setLoading(true)
+        setError(null)
         try {
             const data = await getClient(selectedClientId)
             setFormData(data)
+            setResetConfirmation('')
         } catch (err) {
             setError(err.message)
         } finally {
@@ -51,52 +58,78 @@ export default function Settings() {
             await updateClient(formData.id, formData)
             showToast('Ustawienia zapisane', 'success')
         } catch (err) {
-            showToast('Błąd zapisu: ' + err.message, 'error')
+            showToast('Blad zapisu: ' + err.message, 'error')
         } finally {
             setSaving(false)
         }
     }
 
+    async function handleHardReset() {
+        if (!formData) return
+
+        if (resetConfirmation.trim() !== (formData.name || '')) {
+            showToast('Wpisz pelna nazwe klienta, aby potwierdzic reset', 'error')
+            return
+        }
+
+        setResetting(true)
+        try {
+            const result = await api.post(`/clients/${formData.id}/hard-reset`)
+            setResetConfirmation('')
+            await loadClient()
+            await refreshClients()
+            showToast(result.message || 'Dane klienta zostaly wyczyszczone', 'success')
+        } catch (err) {
+            if (err.status === 404) {
+                showToast('Endpoint resetu nie jest dostepny. Zrestartuj backend lub cala aplikacje.', 'error')
+            } else {
+                showToast('Blad resetu: ' + err.message, 'error')
+            }
+        } finally {
+            setResetting(false)
+        }
+    }
+
     function handleChange(field, value) {
-        setFormData(prev => ({ ...prev, [field]: value }))
+        setFormData((prev) => ({ ...prev, [field]: value }))
     }
 
     function handleBusinessRule(rule, value) {
-        const val = value === '' ? null : parseFloat(value)
-        setFormData(prev => ({
+        const parsedValue = value === '' ? null : parseFloat(value)
+        setFormData((prev) => ({
             ...prev,
-            business_rules: { ...prev.business_rules, [rule]: val }
+            business_rules: { ...prev.business_rules, [rule]: parsedValue },
         }))
     }
 
     function handleSafetyLimit(key, displayValue, multiply) {
-        const raw = displayValue === '' ? null : parseFloat(displayValue) / multiply
-        setFormData(prev => ({
+        const rawValue = displayValue === '' ? null : parseFloat(displayValue) / multiply
+        setFormData((prev) => ({
             ...prev,
             business_rules: {
                 ...prev.business_rules,
                 safety_limits: {
                     ...(prev.business_rules?.safety_limits || {}),
-                    [key]: raw,
-                }
-            }
+                    [key]: rawValue,
+                },
+            },
         }))
     }
 
     function addCompetitor() {
-        const comp = prompt('Podaj nazwę konkurenta:')
-        if (comp) {
-            setFormData(prev => ({
-                ...prev,
-                competitors: [...(prev.competitors || []), comp]
-            }))
-        }
+        const competitor = prompt('Podaj nazwe konkurenta:')
+        if (!competitor) return
+
+        setFormData((prev) => ({
+            ...prev,
+            competitors: [...(prev.competitors || []), competitor],
+        }))
     }
 
     function removeCompetitor(index) {
-        setFormData(prev => ({
+        setFormData((prev) => ({
             ...prev,
-            competitors: prev.competitors.filter((_, i) => i !== index)
+            competitors: prev.competitors.filter((_, currentIndex) => currentIndex !== index),
         }))
     }
 
@@ -114,12 +147,19 @@ export default function Settings() {
         return (
             <div className="v2-card" style={{ padding: 24, textAlign: 'center', maxWidth: 500, margin: '40px auto' }}>
                 <p style={{ color: '#F87171', fontSize: 13, marginBottom: 8 }}>{error}</p>
-                <button onClick={loadClient} style={{
-                    padding: '5px 14px', borderRadius: 7, fontSize: 12,
-                    background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
-                    color: '#4F8EF7', cursor: 'pointer',
-                }}>
-                    Spróbuj ponownie
+                <button
+                    onClick={loadClient}
+                    style={{
+                        padding: '5px 14px',
+                        borderRadius: 7,
+                        fontSize: 12,
+                        background: 'rgba(79,142,247,0.15)',
+                        border: '1px solid rgba(79,142,247,0.3)',
+                        color: '#4F8EF7',
+                        cursor: 'pointer',
+                    }}
+                >
+                    Sprobuj ponownie
                 </button>
             </div>
         )
@@ -149,28 +189,34 @@ export default function Settings() {
     }
 
     const safetyLimits = formData.business_rules?.safety_limits || {}
+    const resetReady = resetConfirmation.trim() === (formData.name || '')
 
     return (
         <div style={{ maxWidth: 900, paddingBottom: 48 }}>
-            {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Ustawienia klienta
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Kontekst biznesowy, reguły i limity bezpieczeństwa
+                        Kontekst biznesowy, reguly i limity bezpieczenstwa
                     </p>
                 </div>
                 <button
                     onClick={handleSave}
                     disabled={saving}
                     style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '7px 16px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 500,
                         background: 'rgba(79,142,247,0.15)',
                         border: '1px solid rgba(79,142,247,0.3)',
-                        color: '#4F8EF7', cursor: 'pointer',
+                        color: '#4F8EF7',
+                        cursor: 'pointer',
                         opacity: saving ? 0.5 : 1,
                     }}
                 >
@@ -180,11 +226,10 @@ export default function Settings() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                {/* General Info */}
                 <section>
                     <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 12 }}>
                         <Building2 size={16} style={{ color: '#4F8EF7' }} />
-                        Informacje ogólne
+                        Informacje ogolne
                     </h3>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -193,7 +238,7 @@ export default function Settings() {
                                 <input style={inputStyle} value={formData.name || ''} onChange={e => handleChange('name', e.target.value)} />
                             </div>
                             <div>
-                                <label style={labelStyle}>Branża</label>
+                                <label style={labelStyle}>Branza</label>
                                 <input style={inputStyle} value={formData.industry || ''} onChange={e => handleChange('industry', e.target.value)} />
                             </div>
                             <div>
@@ -212,7 +257,6 @@ export default function Settings() {
                     </div>
                 </section>
 
-                {/* Strategy */}
                 <section>
                     <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 12 }}>
                         <Target size={16} style={{ color: '#4ADE80' }} />
@@ -221,25 +265,32 @@ export default function Settings() {
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                             <div>
-                                <label style={labelStyle}>Target Audience</label>
+                                <label style={labelStyle}>Target audience</label>
                                 <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={formData.target_audience || ''} onChange={e => handleChange('target_audience', e.target.value)} />
                             </div>
                             <div>
-                                <label style={labelStyle}>USP (Unikalna Propozycja Wartości)</label>
+                                <label style={labelStyle}>USP (unikalna propozycja wartosci)</label>
                                 <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={formData.usp || ''} onChange={e => handleChange('usp', e.target.value)} />
                             </div>
                         </div>
                         <div>
                             <label style={labelStyle}>Konkurencja</label>
                             <div className="flex flex-wrap gap-2">
-                                {formData.competitors?.map((comp, i) => (
-                                    <div key={i} className="flex items-center gap-1.5" style={{
-                                        padding: '3px 10px', borderRadius: 999, fontSize: 12,
-                                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                                        color: 'rgba(255,255,255,0.6)',
-                                    }}>
-                                        {comp}
-                                        <button onClick={() => removeCompetitor(i)} style={{ color: 'rgba(255,255,255,0.3)', cursor: 'pointer', background: 'none', border: 'none' }}>
+                                {formData.competitors?.map((competitor, index) => (
+                                    <div
+                                        key={`${competitor}-${index}`}
+                                        className="flex items-center gap-1.5"
+                                        style={{
+                                            padding: '3px 10px',
+                                            borderRadius: 999,
+                                            fontSize: 12,
+                                            background: 'rgba(255,255,255,0.04)',
+                                            border: '1px solid rgba(255,255,255,0.08)',
+                                            color: 'rgba(255,255,255,0.6)',
+                                        }}
+                                    >
+                                        {competitor}
+                                        <button onClick={() => removeCompetitor(index)} style={{ color: 'rgba(255,255,255,0.3)', cursor: 'pointer', background: 'none', border: 'none' }}>
                                             <X size={12} />
                                         </button>
                                     </div>
@@ -248,9 +299,13 @@ export default function Settings() {
                                     onClick={addCompetitor}
                                     className="flex items-center gap-1"
                                     style={{
-                                        padding: '3px 10px', borderRadius: 999, fontSize: 12,
-                                        background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.2)',
-                                        color: '#4F8EF7', cursor: 'pointer',
+                                        padding: '3px 10px',
+                                        borderRadius: 999,
+                                        fontSize: 12,
+                                        background: 'rgba(79,142,247,0.08)',
+                                        border: '1px solid rgba(79,142,247,0.2)',
+                                        color: '#4F8EF7',
+                                        cursor: 'pointer',
                                     }}
                                 >
                                     <Plus size={12} /> Dodaj
@@ -260,41 +315,39 @@ export default function Settings() {
                     </div>
                 </section>
 
-                {/* Business Rules */}
                 <section>
                     <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 12 }}>
                         <BarChart3 size={16} style={{ color: '#FBBF24' }} />
-                        Reguły biznesowe
+                        Reguly biznesowe
                     </h3>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div>
-                                <label style={labelStyle} title="ROAS = przychód / koszt. Minimalna wartość poniżej której system alarmuje">Minimalny ROAS</label>
+                                <label style={labelStyle} title="ROAS = przychod / koszt. Minimalna wartosc ponizej ktorej system alarmuje">Minimalny ROAS</label>
                                 <input style={inputStyle} type="number" step="0.1" value={formData.business_rules?.min_roas ?? ''} onChange={e => handleBusinessRule('min_roas', e.target.value)} placeholder="np. 2.0" />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max budżet dzienny (USD)</label>
+                                <label style={labelStyle}>Max budzet dzienny (USD)</label>
                                 <input style={inputStyle} type="number" step="1" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
                             </div>
                         </div>
                     </div>
                 </section>
 
-                {/* Safety Limits */}
                 <section>
                     <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 4 }}>
                         <ShieldAlert size={16} style={{ color: '#F87171' }} />
-                        Limity bezpieczeństwa
+                        Limity bezpieczenstwa
                     </h3>
                     <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
-                        Nadpisz domyślne limity dla tego klienta. Puste pole = wartość globalna.
+                        Nadpisz domyslne limity dla tego klienta. Puste pole = wartosc globalna.
                     </p>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
                             {SAFETY_FIELDS.map(({ key, label, unit, multiply, tooltip }) => {
-                                const clientVal = safetyLimits[key]
-                                const displayVal = clientVal != null ? (clientVal * multiply).toFixed(multiply > 1 ? 0 : 2) : ''
-                                const defaultVal = (GLOBAL_DEFAULTS[key] * multiply).toFixed(multiply > 1 ? 0 : 2)
+                                const clientValue = safetyLimits[key]
+                                const displayValue = clientValue != null ? (clientValue * multiply).toFixed(multiply > 1 ? 0 : 2) : ''
+                                const defaultValue = (GLOBAL_DEFAULTS[key] * multiply).toFixed(multiply > 1 ? 0 : 2)
                                 return (
                                     <div key={key}>
                                         <label style={labelStyle} title={tooltip}>{label}</label>
@@ -303,14 +356,19 @@ export default function Settings() {
                                                 style={inputStyle}
                                                 type="number"
                                                 step={multiply > 1 ? '1' : '0.01'}
-                                                value={displayVal}
+                                                value={displayValue}
                                                 onChange={e => handleSafetyLimit(key, e.target.value, multiply)}
-                                                placeholder={`domyślnie: ${defaultVal}${unit}`}
+                                                placeholder={`domyslnie: ${defaultValue}${unit}`}
                                             />
                                             {unit && (
                                                 <span style={{
-                                                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                                                    fontSize: 11, color: 'rgba(255,255,255,0.2)', pointerEvents: 'none',
+                                                    position: 'absolute',
+                                                    right: 10,
+                                                    top: '50%',
+                                                    transform: 'translateY(-50%)',
+                                                    fontSize: 11,
+                                                    color: 'rgba(255,255,255,0.2)',
+                                                    pointerEvents: 'none',
                                                 }}>
                                                     {unit}
                                                 </span>
@@ -322,7 +380,57 @@ export default function Settings() {
                         </div>
                     </div>
                 </section>
+
+                <section>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 4 }}>
+                        <ShieldAlert size={16} style={{ color: '#F87171' }} />
+                        Twardy reset danych klienta
+                    </h3>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
+                        Usuwa lokalne dane tego klienta: kampanie, grupy reklam, slowa kluczowe, search terms, rekomendacje, alerty, historie i logi sync. Nie usuwa profilu klienta ani credentials Google Ads.
+                    </p>
+                    <div className="v2-card" style={{ padding: '18px 20px', border: '1px solid rgba(248,113,113,0.22)', background: 'rgba(248,113,113,0.05)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.6fr auto', gap: 16, alignItems: 'end' }}>
+                            <div>
+                                <label style={labelStyle}>Aby potwierdzic, wpisz nazwe klienta</label>
+                                <input
+                                    style={inputStyle}
+                                    value={resetConfirmation}
+                                    onChange={e => setResetConfirmation(e.target.value)}
+                                    placeholder={formData.name || ''}
+                                />
+                                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)', marginTop: 8 }}>
+                                    Potwierdzenie: {formData.name}
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleHardReset}
+                                disabled={resetting || !resetReady}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 6,
+                                    padding: '9px 16px',
+                                    borderRadius: 8,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    background: 'rgba(248,113,113,0.12)',
+                                    border: '1px solid rgba(248,113,113,0.28)',
+                                    color: '#FCA5A5',
+                                    cursor: 'pointer',
+                                    opacity: resetting || !resetReady ? 0.5 : 1,
+                                    minWidth: 220,
+                                }}
+                            >
+                                <ShieldAlert size={14} />
+                                {resetting ? 'Resetowanie...' : 'Twardy reset danych klienta'}
+                            </button>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     )
 }
+

@@ -1,15 +1,69 @@
-"""SQLAlchemy database engine and session factory for SQLite."""
+﻿"""SQLAlchemy database engine and session factory for SQLite."""
 
 from pathlib import Path
+import shutil
 
+from loguru import logger
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
 
 
-_db_path = settings.database_url.replace("sqlite:///", "")
-Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
+def _sqlite_path_from_url(database_url: str) -> Path | None:
+    if not database_url.startswith("sqlite:///"):
+        return None
+
+    path_part = database_url.removeprefix("sqlite:///")
+    if path_part in {"", ":memory:"}:
+        return None
+
+    return Path(path_part)
+
+
+def _migrate_legacy_sqlite_path() -> Path | None:
+    db_path = _sqlite_path_from_url(settings.database_url)
+    if db_path is None:
+        return None
+
+    legacy_path = settings.backend_dir / "data" / db_path.name
+    if legacy_path.resolve() == db_path.resolve():
+        return db_path
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if db_path.exists():
+        if legacy_path.exists():
+            logger.warning(
+                "Runtime SQLite database is {}. Legacy copy remains at {} and will be ignored.",
+                db_path,
+                legacy_path,
+            )
+        return db_path
+
+    if not legacy_path.exists():
+        return db_path
+
+    for suffix in ("", "-wal", "-shm"):
+        legacy_variant = Path(f"{legacy_path}{suffix}")
+        if not legacy_variant.exists():
+            continue
+
+        target_variant = Path(f"{db_path}{suffix}")
+        target_variant.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_variant), str(target_variant))
+
+    logger.warning(
+        "Migrated SQLite runtime data from legacy path {} to canonical path {}.",
+        legacy_path,
+        db_path,
+    )
+    return db_path
+
+
+_db_path = _migrate_legacy_sqlite_path() or _sqlite_path_from_url(settings.database_url)
+if _db_path is not None:
+    _db_path.parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     settings.database_url,
@@ -81,6 +135,18 @@ def _ensure_sqlite_columns():
             "context_json": "JSON",
             "action_payload": "JSON",
         },
+        "keywords": {
+            "criterion_kind": "TEXT DEFAULT 'POSITIVE'",
+        },
+        "negative_keywords": {
+            "ad_group_id": "INTEGER",
+            "google_criterion_id": "TEXT",
+            "google_resource_name": "TEXT",
+            "criterion_kind": "TEXT DEFAULT 'NEGATIVE'",
+            "negative_scope": "TEXT DEFAULT 'CAMPAIGN'",
+            "source": "TEXT DEFAULT 'LOCAL_ACTION'",
+            "updated_at": "DATETIME",
+        },
     }
 
     with engine.begin() as conn:
@@ -97,6 +163,24 @@ def _ensure_sqlite_columns():
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recommendations_stable_key ON recommendations (stable_key)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recommendations_campaign_id ON recommendations (campaign_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recommendations_ad_group_id ON recommendations (ad_group_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_keywords_criterion_kind ON keywords (criterion_kind)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_negative_keywords_google_criterion_id ON negative_keywords (google_criterion_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_negative_keywords_negative_scope ON negative_keywords (negative_scope)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_negative_keywords_source ON negative_keywords (source)"))
+
+        if inspector.has_table("keywords"):
+            conn.execute(text("UPDATE keywords SET criterion_kind = 'POSITIVE' WHERE criterion_kind IS NULL OR criterion_kind = ''"))
+
+        if inspector.has_table("negative_keywords"):
+            negative_existing = {col["name"] for col in inspector.get_columns("negative_keywords")}
+            conn.execute(text("UPDATE negative_keywords SET criterion_kind = 'NEGATIVE' WHERE criterion_kind IS NULL OR criterion_kind = ''"))
+            conn.execute(text("UPDATE negative_keywords SET status = 'ENABLED' WHERE status = 'ACTIVE' OR status IS NULL OR status = ''"))
+            if "level" in negative_existing:
+                conn.execute(text("UPDATE negative_keywords SET negative_scope = COALESCE(NULLIF(negative_scope, ''), NULLIF(level, ''), 'CAMPAIGN')"))
+            else:
+                conn.execute(text("UPDATE negative_keywords SET negative_scope = COALESCE(NULLIF(negative_scope, ''), 'CAMPAIGN')"))
+            conn.execute(text("UPDATE negative_keywords SET source = 'LOCAL_ACTION' WHERE source IS NULL OR source = ''"))
+            conn.execute(text("UPDATE negative_keywords SET updated_at = created_at WHERE updated_at IS NULL"))
 
 
 def init_db():
