@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
 from app.models.action_log import ActionLog
 from app.models.ad_group import AdGroup
@@ -89,9 +90,17 @@ def list_actions(
 def revert_action(
     action_log_id: int,
     client_id: int = Query(..., description="Client ID"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Revert a previously executed action when the action is reversible."""
+    ensure_demo_write_allowed(
+        db,
+        client_id,
+        allow_demo_write=allow_demo_write,
+        operation="Cofanie akcji",
+    )
+
     action = (
         db.query(ActionLog)
         .filter(ActionLog.id == action_log_id, ActionLog.client_id == client_id)
@@ -101,7 +110,7 @@ def revert_action(
         raise HTTPException(status_code=404, detail="Action not found")
 
     executor = ActionExecutor(db)
-    result = executor.revert_action(action_log_id)
+    result = executor.revert_action(action_log_id, allow_demo_write=allow_demo_write)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result

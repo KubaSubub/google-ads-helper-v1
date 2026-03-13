@@ -906,6 +906,33 @@ class Alert(Base):
 
 ---
 
+## API Contract Addendum (2026-03-13)
+
+- New protected endpoint:
+  - `POST /api/v1/clients/{id}/restore-runtime-from-legacy`
+  - Optional query param: `source_client_id`
+- Purpose: restore local runtime data for one client from legacy SQLite (`backend/data/google_ads_app.db`) into canonical runtime DB (`data/google_ads_app.db`) without mixing data from another live client.
+- Response contains source/target metadata plus per-table restored counts.
+
+- New protected endpoint:
+  - `POST /api/v1/clients/{id}/seed-demo-showcase`
+  - Query params: `days` (14-90), `allow_demo_write`
+- Purpose: generate local-only showcase data for DEMO views (RSA ads, recent `keywords_daily`, helper `action_log`, curated `search_terms`) without using data from other clients.
+- Seeder adds a small controlled set of zero-conversion spend patterns for presentation quality in `wasted-spend` / Search Optimization cards.
+- Constraint: endpoint is DEMO-only (`is_demo_protected_client` gate) and still requires explicit write override.
+
+- DEMO write-lock contract:
+  - Settings: `demo_protection_enabled`, `demo_client_id`, `demo_google_customer_id`
+  - Default matching uses `demo_google_customer_id`; `demo_client_id` is optional hard pin (`None` by default).
+  - Protected write endpoints require explicit `allow_demo_write=true` for DEMO client mutations.
+  - Default behavior is hard lock (`423 Locked`) for DEMO writes; reads are unchanged.
+
+- Forecast contract update:
+  - `GET /api/v1/analytics/forecast` accepts friendly aliases:
+    - `metric=cost` maps to `cost_micros`
+    - `metric=cpc` maps to `avg_cpc_micros`
+  - Micros metrics are normalized to currency units in forecast response values.
+
 **END OF TECHNICAL SPECIFICATION**
 
 This document + Implementation_Blueprint.md + Blueprint_Patch_v2_1.md = complete source of truth for implementation.

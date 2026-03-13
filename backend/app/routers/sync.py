@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from loguru import logger
 from app.config import settings
+from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
 from app.models import (
     Client, SyncLog, Campaign, AdGroup, Keyword, KeywordDaily, NegativeKeyword,
@@ -58,12 +59,19 @@ def _build_sync_response(success: bool, status: str, message: str, **extra):
 def trigger_sync(
     client_id: int = Query(...),
     days: int = Query(30, ge=1, le=365, description="How many days of data to fetch"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Trigger a full data sync from Google Ads API with per-phase error tracking."""
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         return _build_sync_response(False, "failed", "Client not found")
+    ensure_demo_write_allowed(
+        db,
+        client.id,
+        allow_demo_write=allow_demo_write,
+        operation="Synchronizacja danych",
+    )
 
     diagnostics = google_ads_service.get_connection_diagnostics()
     if not diagnostics["ready"]:
@@ -470,6 +478,7 @@ def sync_single_phase(
     phase_name: str,
     client_id: int = Query(...),
     days: int = Query(30, ge=1, le=365),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Run a single sync phase for debugging. Available phases:
@@ -479,6 +488,12 @@ def sync_single_phase(
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         return {"success": False, "error": "Client not found"}
+    ensure_demo_write_allowed(
+        db,
+        client.id,
+        allow_demo_write=allow_demo_write,
+        operation="Uruchamianie fazy synchronizacji",
+    )
 
     if not google_ads_service.is_connected:
         return {"success": False, "error": "Google Ads API not connected"}

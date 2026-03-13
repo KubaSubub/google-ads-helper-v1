@@ -146,3 +146,25 @@ Out of scope in phase 1:
 - The payload explicitly includes `criterion_kind`, `negative`, `presence_state`, lifecycle statuses, campaign/ad group context, Google Ads `request_id`, `ListAccessibleCustomers`, MCC `customer_client` lookup, and the active SQLite file path used by runtime.
 - Positive keyword sync excludes `ad_group_criterion.negative = true` at query, mapping, and before-save layers.
 
+## 16. Legacy Demo Data Restore
+- Backend exposes `POST /api/v1/clients/{id}/restore-runtime-from-legacy`.
+- Endpoint restores a selected client's local runtime dataset from legacy SQLite (`backend/data/google_ads_app.db`) into the canonical runtime DB.
+- Restore runs a hard reset first, then copies campaigns, ad groups, keywords, keyword daily, metrics, search terms, recommendations, negatives, alerts, sync logs, and change events.
+
+## 17. DEMO Write Lock
+- DEMO client is write-protected by backend guardrails.
+- Protected identity uses `demo_google_customer_id` from settings (with optional `demo_client_id` hard pin).
+- Write endpoints reject DEMO mutations with `423 Locked` unless explicit override is provided (`allow_demo_write=true`).
+- Read endpoints remain unaffected.
+
+## 18. DEMO Showcase Seeder
+- Backend exposes `POST /api/v1/clients/{id}/seed-demo-showcase`.
+- Endpoint is restricted to DEMO client identity only and requires explicit override (`allow_demo_write=true`).
+- Seeder refreshes local showcase datasets used by UI sections:
+  - `keywords_daily` for last N days,
+  - `ads` (RSA-style demo rows),
+  - `action_log` demo entries (`execution_mode=DEMO_SEED`),
+  - curated `search_terms` demo rows for presentation scenarios.
+- Seeder intentionally injects a small, controlled subset of zero-conversion spend patterns (keyword/ad/search-term) so `wasted-spend` and Search Optimization cards are visually meaningful during demos.
+- Purpose: keep demo views populated without copying data from real clients.
+

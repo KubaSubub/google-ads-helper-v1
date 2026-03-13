@@ -109,7 +109,11 @@ export const getQualityScoreAudit = (clientId) =>
     api.get('/analytics/quality-score-audit', { params: { client_id: clientId } });
 export const getForecast = (campaignId, metric = 'cost', forecastDays = 7) =>
     api.get('/analytics/forecast', {
-        params: { campaign_id: campaignId, metric, forecast_days: forecastDays },
+        params: {
+            campaign_id: campaignId,
+            metric: metric === 'cost' ? 'cost_micros' : metric === 'cpc' ? 'avg_cpc_micros' : metric,
+            forecast_days: forecastDays,
+        },
     });
 export const getCampaignAnalytics = (clientId) =>
     api.get('/analytics/campaigns', { params: { client_id: clientId } });

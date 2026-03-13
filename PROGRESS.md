@@ -145,3 +145,97 @@
   - `backend/tests/test_client_hard_reset.py`
   - `backend/tests/test_api_contract_smoke.py`
 
+## Demo Runtime Clone (2026-03-13)
+- Added `POST /api/v1/clients/{id}/clone-runtime?source_client_id=Y` to copy local runtime data from source client to target client.
+- Endpoint clears target client runtime data first (same policy as hard reset), then clones:
+  - campaigns, ad groups, keywords, keyword daily metrics
+  - daily + segmented metrics
+  - search terms
+  - recommendations, negative keywords, alerts
+  - action log, change events, sync logs
+- Intended for fast demo setup without mutating real Google Ads accounts.
+
+## Validation (demo runtime clone)
+- Verified API endpoint is exposed and clone operation executed for DEMO target in local run.
+- Frontend/Backend runtime smoke checks performed through live API:
+  - `/health`
+  - `/api/v1/auth/status?bootstrap=1`
+  - `/api/v1/clients/`
+  - `/api/v1/campaigns/?client_id=<demo>`
+
+## Legacy Demo Restore (2026-03-13)
+- Reverted frontend-only DEMO data remapping (no cross-client data substitution in UI reads).
+- Added `POST /api/v1/clients/{id}/restore-runtime-from-legacy`:
+  - source: `backend/data/google_ads_app.db` (legacy DB)
+  - target: canonical runtime DB from `settings.database_url` (currently `data/google_ads_app.db`)
+  - matching: by target client `google_customer_id` (fallback: first legacy client with `name LIKE '%demo%'`)
+  - optional override: `source_client_id`
+- Restore pipeline:
+  - hard reset target client runtime data
+  - restore campaigns, ad groups, keywords, keyword daily
+  - restore daily + segmented metrics
+  - restore search terms
+  - restore recommendations, negative keywords, alerts
+  - restore sync logs and change events (with unique `resource_name` suffix to avoid global conflicts)
+
+## Validation (legacy demo restore)
+- Confirmed both DB files exist and differ:
+  - canonical: `data/google_ads_app.db`
+  - legacy: `backend/data/google_ads_app.db`
+- Confirmed runtime currently uses canonical DB (`/api/v1/sync/debug`).
+- Automated endpoint execution is pending backend process reload/restart in desktop shortcut runtime.
+
+## DEMO Write Lock (2026-03-13)
+- Added backend DEMO guard (`backend/app/demo_guard.py`) with protected identity based on:
+  - `settings.demo_google_customer_id`
+  - optional `settings.demo_client_id` hard pin
+- Added config switches:
+  - `demo_protection_enabled` (default `True`)
+  - `demo_client_id` (default `None`)
+  - `demo_google_customer_id` (default `123-456-7890`)
+- Enforced lock on write paths:
+  - client mutations (`PATCH`, `DELETE`, `hard-reset`, `clone-runtime`, `restore-runtime-from-legacy`)
+  - sync mutations (`/sync/trigger`, `/sync/phase/*`)
+  - recommendation actions (`apply`, `dismiss`)
+  - action revert
+  - analytics writes (`anomalies resolve`, `detect`)
+  - campaign role override (`PATCH /campaigns/{id}`)
+- Override is explicit and per-request only: `allow_demo_write=true`.
+
+## Validation (demo lock + demo restore)
+- Restored DEMO from legacy data source:
+  - `POST /api/v1/clients/4/restore-runtime-from-legacy`
+  - restored counts included campaigns/ad groups/keywords/metrics/search terms/recommendations/history.
+- Runtime smoke after restore:
+  - `campaigns total=7`
+  - `recommendations total=26`
+  - `history total=35`
+- Note: lock validation requires backend process restart to load latest code in the currently running desktop process.
+
+## DEMO Showcase Seeder + Forecast Alias Fix (2026-03-13)
+- Added `POST /api/v1/clients/{id}/seed-demo-showcase` (DEMO-only, write-override required):
+  - seeds recent `keywords_daily` rows (14-90 days),
+  - seeds RSA-style `ads` rows for SEARCH ad groups,
+  - seeds helper `action_log` entries (`execution_mode=DEMO_SEED`),
+  - seeds curated DEMO `search_terms`,
+  - injects a controlled subset of zero-conversion spend patterns for showcase quality (`wasted-spend` visibility).
+- Added forecast metric aliases in backend:
+  - `cost` -> `cost_micros`
+  - `cpc` -> `avg_cpc_micros`
+  - micros metrics are normalized to currency units in forecast response values.
+- Added frontend compatibility mapping in `getForecast()` for the same aliases.
+- Cleaned duplicate demo tenant in runtime by deleting `client_id=5` (`DEMO - Prezentacja`) after hard reset, leaving one canonical DEMO client.
+
+## Validation (showcase + cleanup)
+- Runtime API checks before/after cleanup:
+  - `/api/v1/clients` confirmed duplicate demo client existed and was removed.
+  - `POST /api/v1/clients/5/hard-reset` -> `200`
+  - `DELETE /api/v1/clients/5` -> `200`
+- Runtime smoke after seeding:
+  - `POST /api/v1/clients/4/seed-demo-showcase?days=30&allow_demo_write=true` -> `200`
+  - key read endpoints for DEMO return `200` with populated payloads (dashboard, campaigns, keywords, search terms, recommendations, action history, monitoring, forecast).
+- Note on desktop runtime process:
+  - latest seeder extension (curated waste patterns/search terms) is committed in code and requires backend process restart/reload to be reflected in live response fields.
+- Environment limitation in this session:
+  - Playwright MCP/CLI browser automation failed with process spawn permissions (`EPERM`), so full click-through UI regression could not be executed here.
+

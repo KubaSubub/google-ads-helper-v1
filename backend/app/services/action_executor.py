@@ -9,6 +9,7 @@ from typing import Any, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.demo_guard import demo_write_lock_reason, is_demo_protected_client
 from app.models.action_log import ActionLog
 from app.models.ad import Ad
 from app.models.ad_group import AdGroup
@@ -126,7 +127,14 @@ class ActionExecutor:
         recommendation_id: int,
         client_id: int,
         dry_run: bool = False,
+        allow_demo_write: bool = False,
     ) -> dict:
+        if is_demo_protected_client(self.db, client_id) and not allow_demo_write:
+            return {
+                "status": "blocked",
+                "reason": demo_write_lock_reason("Zastosowanie rekomendacji"),
+            }
+
         rec = (
             self.db.query(Recommendation)
             .filter(
@@ -278,10 +286,12 @@ class ActionExecutor:
             )
             return {"status": "error", "message": str(exc)}
 
-    def revert_action(self, action_log_id: int) -> dict:
+    def revert_action(self, action_log_id: int, allow_demo_write: bool = False) -> dict:
         original = self.db.query(ActionLog).filter(ActionLog.id == action_log_id).first()
         if not original:
             return {"status": "error", "message": "Action not found"}
+        if is_demo_protected_client(self.db, original.client_id) and not allow_demo_write:
+            return {"status": "error", "message": demo_write_lock_reason("Cofanie akcji")}
 
         if original.status == "REVERTED":
             return {"status": "error", "message": "Already reverted"}

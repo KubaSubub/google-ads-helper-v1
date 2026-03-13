@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
 from app.models.recommendation import Recommendation as RecommendationModel
 from app.services.action_executor import ActionExecutor
@@ -366,11 +367,24 @@ def apply_recommendation(
     recommendation_id: int,
     client_id: int = Query(..., description="Client ID"),
     dry_run: bool = Query(False, description="Preview only, do not execute"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Apply a recommendation via ActionExecutor."""
+    ensure_demo_write_allowed(
+        db,
+        client_id,
+        allow_demo_write=allow_demo_write,
+        operation="Zastosowanie rekomendacji",
+    )
+
     executor = ActionExecutor(db)
-    result = executor.apply_recommendation(recommendation_id, client_id, dry_run=dry_run)
+    result = executor.apply_recommendation(
+        recommendation_id,
+        client_id,
+        dry_run=dry_run,
+        allow_demo_write=allow_demo_write,
+    )
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
@@ -384,9 +398,17 @@ def apply_recommendation(
 def dismiss_recommendation(
     recommendation_id: int,
     client_id: int = Query(..., description="Client ID"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Dismiss a pending recommendation locally."""
+    ensure_demo_write_allowed(
+        db,
+        client_id,
+        allow_demo_write=allow_demo_write,
+        operation="Odrzucanie rekomendacji",
+    )
+
     rec = (
         db.query(RecommendationModel)
         .filter(

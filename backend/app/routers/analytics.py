@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_ind
 
+from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
 from app.models import MetricDaily, Campaign, Keyword, AdGroup, Alert, MetricSegmented
 from app.schemas import PeriodComparisonRequest, PeriodComparisonResponse, CorrelationRequest
@@ -16,6 +17,11 @@ from app.utils.formatters import micros_to_currency
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 VALID_METRICS = {"clicks", "impressions", "ctr", "conversions", "conversion_rate", "cost_micros", "roas", "avg_cpc_micros"}
+FORECAST_METRIC_ALIASES = {
+    "cost": "cost_micros",
+    "cpc": "avg_cpc_micros",
+}
+FORECAST_MICROS_METRICS = {"cost_micros", "avg_cpc_micros"}
 
 
 # ---------------------------------------------------------------------------
@@ -71,10 +77,17 @@ def get_anomalies(
 def resolve_anomaly(
     alert_id: int,
     client_id: int = Query(..., description="Client ID"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Mark an anomaly alert as resolved."""
     from datetime import datetime
+    ensure_demo_write_allowed(
+        db,
+        client_id,
+        allow_demo_write=allow_demo_write,
+        operation="Rozwiazywanie alertu",
+    )
 
     alert = db.query(Alert).filter(
         Alert.id == alert_id,
@@ -96,9 +109,16 @@ def resolve_anomaly(
 @router.post("/detect")
 def run_anomaly_detection(
     client_id: int = Query(..., description="Client ID"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
     """Run anomaly detection rules and create alerts."""
+    ensure_demo_write_allowed(
+        db,
+        client_id,
+        allow_demo_write=allow_demo_write,
+        operation="Wykrywanie anomalii",
+    )
     service = AnalyticsService(db)
     alerts = service.detect_anomalies(client_id)
     return {
@@ -357,7 +377,8 @@ def forecast_metric(
     db: Session = Depends(get_db),
 ):
     """Simple linear regression forecast for a campaign metric."""
-    if metric not in VALID_METRICS:
+    normalized_metric = FORECAST_METRIC_ALIASES.get(metric, metric)
+    if normalized_metric not in VALID_METRICS:
         raise HTTPException(status_code=400, detail=f"Invalid metric: {metric}")
 
     cutoff = date.today() - timedelta(days=history_days)
@@ -375,7 +396,9 @@ def forecast_metric(
         return {"error": "Need at least 7 data points for forecast", "data_points": len(rows)}
 
     dates = [r.date for r in rows]
-    values = [getattr(r, metric) or 0 for r in rows]
+    raw_values = [getattr(r, normalized_metric) or 0 for r in rows]
+    metric_divisor = 1_000_000 if normalized_metric in FORECAST_MICROS_METRICS else 1
+    values = [float(v) / metric_divisor for v in raw_values]
 
     x = np.arange(len(values), dtype=float)
     y = np.array(values, dtype=float)
@@ -416,6 +439,7 @@ def forecast_metric(
 
     return {
         "metric": metric,
+        "metric_source": normalized_metric,
         "campaign_id": campaign_id,
         "historical": [
             {"date": str(dates[i]), "value": round(float(values[i]), 2)}
