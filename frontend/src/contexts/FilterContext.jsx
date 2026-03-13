@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo } from 'react';
+﻿import { createContext, useContext, useState, useMemo } from 'react';
 
 const FilterContext = createContext(null);
 
@@ -12,7 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 const defaultFilters = {
     campaignType: 'ALL',   // 'ALL' | 'SEARCH' | 'PERFORMANCE_MAX' | 'DISPLAY' | 'SHOPPING'
-    status: 'ALL',         // 'ALL' | 'ENABLED' | 'PAUSED'
+    status: 'ALL',         // 'ALL' | 'ENABLED' | 'PAUSED' | 'REMOVED'
     period: 30,            // 7 | 14 | 30 | 90 (quick-select) or null (custom range)
     dateFrom: daysAgo(30), // YYYY-MM-DD
     dateTo: today(),
@@ -61,3 +61,4 @@ export function useFilter() {
     if (!ctx) throw new Error('useFilter must be inside FilterProvider');
     return ctx;
 }
+

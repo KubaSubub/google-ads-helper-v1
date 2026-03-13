@@ -14,6 +14,7 @@ from app.models.ad_group import AdGroup
 from app.models.campaign import Campaign
 from app.models.client import Client
 from app.models.keyword import Keyword
+from app.models.negative_keyword import NegativeKeyword
 from app.models.recommendation import Recommendation
 
 
@@ -70,6 +71,7 @@ def _seed_contract_data(db):
     kw = Keyword(
         ad_group_id=ad_group.id,
         google_keyword_id=f"kw-{ad_group.id}",
+        criterion_kind="POSITIVE",
         text="contract keyword",
         match_type="EXACT",
         status="ENABLED",
@@ -78,6 +80,20 @@ def _seed_contract_data(db):
         cost_micros=5_000_000,
     )
     db.add(kw)
+    db.add(
+        NegativeKeyword(
+            client_id=client.id,
+            campaign_id=campaign.id,
+            ad_group_id=ad_group.id,
+            google_criterion_id=f"neg-{ad_group.id}",
+            criterion_kind="NEGATIVE",
+            text="contract negative",
+            match_type="PHRASE",
+            negative_scope="AD_GROUP",
+            status="ENABLED",
+            source="GOOGLE_ADS_SYNC",
+        )
+    )
     db.flush()
 
     rec = Recommendation(
@@ -123,6 +139,7 @@ def test_contract_routes_exist_for_critical_groups():
         ("GET", "/api/v1/clients/"),
         ("POST", "/api/v1/sync/trigger"),
         ("GET", "/api/v1/sync/status"),
+        ("GET", "/api/v1/negative-keywords/"),
         ("GET", "/api/v1/recommendations/"),
         ("POST", "/api/v1/recommendations/{recommendation_id}/apply"),
         ("GET", "/api/v1/actions/"),
@@ -142,6 +159,7 @@ def test_contract_smoke_across_auth_clients_sync_recommendations_actions_analyti
         ("get", "/api/v1/auth/status", None, 200),
         ("get", "/api/v1/clients/", {"page": 1, "page_size": 20}, 200),
         ("get", "/api/v1/sync/status", None, 200),
+        ("get", "/api/v1/negative-keywords/", {"client_id": client_obj.id}, 200),
         ("post", "/api/v1/sync/trigger", {"client_id": client_obj.id, "days": 7}, 200),
         ("get", "/api/v1/recommendations/", {"client_id": client_obj.id}, 200),
         (

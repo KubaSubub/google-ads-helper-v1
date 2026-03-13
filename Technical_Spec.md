@@ -1,4 +1,11 @@
-﻿> [!WARNING]
+﻿> [!IMPORTANT]
+> 2026-03-12 update:
+> - Keyword API now returns `campaign_id`, `campaign_name`, `ad_group_name`, and uses keyword `status` as the primary lifecycle field.
+> - `serving_status` is now presentation-only helper data for delivery issues.
+> - Runtime SQLite path is canonicalized to `<repo>/data/google_ads_app.db` in source mode, with one-time migration from legacy `backend/data/` if needed.
+> - Hard reset endpoint keeps the client profile but wipes only that client's local runtime cache after explicit typed-name confirmation in Settings.
+
+> [!WARNING]
 > LEGACY DOCUMENT NOTICE
 > This file is a historical snapshot from 2025-02-17 and is not the active Source of Truth.
 > Active SoT: `docs/SOURCE_OF_TRUTH.md` and `docs/API_ENDPOINTS.md`.
@@ -902,4 +909,7 @@ class Alert(Base):
 **END OF TECHNICAL SPECIFICATION**
 
 This document + Implementation_Blueprint.md + Blueprint_Patch_v2_1.md = complete source of truth for implementation.
+
+
+
 

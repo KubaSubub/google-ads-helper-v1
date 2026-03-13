@@ -10,6 +10,9 @@ Owner: Product + Engineering
 4. `PROGRESS.md` - delivery status and open work
 5. `Technical_Spec.md` - historical snapshot only
 
+## Recent Incident Notes
+- `docs/INCIDENT_NEGATIVE_KEYWORD_MAPPING_2026-03-13.md` - root cause, fix, and guardrails for the negative keyword mapping incident
+
 ## Current Baseline
 - Backend routers: 12
 - Frontend pages: 15

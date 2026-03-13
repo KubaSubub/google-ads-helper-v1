@@ -64,3 +64,21 @@
 **Decision:** Dark mode default, no light mode toggle
 **Why:** Faster development, consistent design. Target user works long hours — dark mode preferred.
 **Future:** Add toggle in v1.1 Settings page.
+
+## ADR-013: Canonical runtime SQLite path
+**Decision:** Resolve SQLite runtime data to a single canonical path independent of current working directory.
+**Why:** The previous relative `./data/google_ads_app.db` created two different databases depending on whether the app started from repo root or `backend/`.
+**Rule:** Source mode uses `<repo>/data/google_ads_app.db`; frozen mode uses `<exe_dir>/data/google_ads_app.db`.
+**Migration:** If the canonical DB does not exist and legacy `backend/data/google_ads_app.db` does, move the DB and SQLite sidecar files once before engine startup.
+
+## ADR-014: Missing rows after successful sync become REMOVED, not deleted
+**Decision:** Campaigns, ad groups, and keywords missing from a successful full sync are marked `REMOVED` locally.
+**Why:** We need historical/debug visibility without polluting default working views with stale cache rows.
+**UI rule:** Default keyword list hides `REMOVED`; users can opt in via `include_removed` / local toggle.
+**Trade-off:** Local DB keeps tombstones longer, but behavior is explainable and safer than hard-deleting rows.
+
+## ADR-015: Positive and negative keywords use separate canonical caches
+**Decision:** Keep positive keywords in `keywords` and negative keyword criteria in `negative_keywords`; do not merge them into one table.
+**Why:** Positive keywords carry bids, serving state, and performance metrics that do not apply cleanly to negatives. A unified table would increase null-heavy ambiguity and repeat the exact class of bug that caused the incident.
+**Rule:** Both caches expose explicit `criterion_kind` values (`POSITIVE`, `NEGATIVE`), and positive sync must reject `negative=true` rows at query, mapping, and before-save layers.
+**Scope:** `negative_keywords` is canonical for campaign-level and ad-group negative keyword criteria. No account-level negative cache in the current milestone.

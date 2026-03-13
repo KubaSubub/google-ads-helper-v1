@@ -1,4 +1,4 @@
-import { useFilter } from '../contexts/FilterContext'
+﻿import { useFilter } from '../contexts/FilterContext'
 
 const CAMPAIGN_TYPES = [
     { value: 'ALL', label: 'Wszystkie' },
@@ -11,6 +11,7 @@ const CAMPAIGN_TYPES = [
 const STATUSES = [
     { value: 'ENABLED', label: 'Aktywne' },
     { value: 'PAUSED', label: 'Wstrzymane' },
+    { value: 'REMOVED', label: 'Usuniete' },
     { value: 'ALL', label: 'Wszystkie' },
 ]
 

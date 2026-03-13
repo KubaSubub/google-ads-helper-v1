@@ -1,5 +1,5 @@
-"""
-Google Ads API Service Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ handles authentication and data fetching.
+﻿"""
+Google Ads API Service Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž handles authentication and data fetching.
 
 This service wraps the official google-ads Python client and provides
 methods to fetch campaigns, ad groups, keywords, search terms, and ads
@@ -11,12 +11,12 @@ See: https://developers.google.com/google-ads/api/docs/first-call/overview
 
 from datetime import date, datetime, timedelta, timezone
 from loguru import logger
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
-    ChangeEvent, ActionLog, KeywordDaily,
+    ChangeEvent, ActionLog, KeywordDaily, NegativeKeyword,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.campaign_roles import apply_role_classification
@@ -195,6 +195,324 @@ class GoogleAdsService:
 
         return str(exc)
 
+    def _find_client_record(self, db: Session, customer_id: str) -> Client | None:
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        return db.query(Client).filter(
+            func.replace(Client.google_customer_id, "-", "") == normalized_customer_id
+        ).first()
+
+    @staticmethod
+    def _mark_missing_campaigns_removed(
+        db: Session,
+        client_id: int,
+        seen_google_campaign_ids: set[str],
+    ) -> int:
+        removed = 0
+        existing_campaigns = db.query(Campaign).filter(Campaign.client_id == client_id).all()
+        for campaign in existing_campaigns:
+            if campaign.google_campaign_id not in seen_google_campaign_ids and campaign.status != "REMOVED":
+                campaign.status = "REMOVED"
+                removed += 1
+        return removed
+
+    @staticmethod
+    def _mark_missing_ad_groups_removed(
+        db: Session,
+        client_id: int,
+        seen_ad_group_keys: set[tuple[int, str]],
+    ) -> int:
+        removed = 0
+        existing_ad_groups = (
+            db.query(AdGroup)
+            .join(Campaign)
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+        for ad_group in existing_ad_groups:
+            key = (ad_group.campaign_id, ad_group.google_ad_group_id)
+            if key not in seen_ad_group_keys and ad_group.status != "REMOVED":
+                ad_group.status = "REMOVED"
+                removed += 1
+        return removed
+
+    @staticmethod
+    def _mark_missing_keywords_removed(
+        db: Session,
+        client_id: int,
+        seen_keyword_keys: set[tuple[int, str]],
+    ) -> int:
+        removed = 0
+        existing_keywords = (
+            db.query(Keyword)
+            .join(AdGroup)
+            .join(Campaign)
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+        for keyword in existing_keywords:
+            key = (keyword.ad_group_id, keyword.google_keyword_id)
+            if key not in seen_keyword_keys and keyword.status != "REMOVED":
+                keyword.status = "REMOVED"
+                removed += 1
+        return removed
+
+    @staticmethod
+    def _keyword_kind_from_negative(is_negative: bool) -> str:
+        return "NEGATIVE" if is_negative else "POSITIVE"
+
+    @staticmethod
+    def _negative_seen_key(
+        negative_scope: str,
+        campaign_id: int | None,
+        ad_group_id: int | None,
+        google_criterion_id: str | None,
+        text: str,
+        match_type: str | None,
+    ) -> tuple[str, int | None, int | None, str, str, str | None]:
+        return (
+            negative_scope,
+            campaign_id,
+            ad_group_id,
+            google_criterion_id or "",
+            (text or "").strip().lower(),
+            match_type,
+        )
+
+    @staticmethod
+    def _mark_missing_negative_keywords_removed(
+        db: Session,
+        client_id: int,
+        seen_negative_keys: set[tuple[str, int | None, int | None, str, str, str | None]],
+    ) -> int:
+        removed = 0
+        existing_negatives = db.query(NegativeKeyword).filter(NegativeKeyword.client_id == client_id).all()
+        for negative in existing_negatives:
+            key = GoogleAdsService._negative_seen_key(
+                negative.negative_scope,
+                negative.campaign_id,
+                negative.ad_group_id,
+                negative.google_criterion_id,
+                negative.text,
+                negative.match_type,
+            )
+            if key not in seen_negative_keys and negative.status != "REMOVED":
+                negative.status = "REMOVED"
+                removed += 1
+        return removed
+
+    @staticmethod
+    def _log_negative_positive_guard(
+        customer_id: str,
+        campaign_id: str | None,
+        ad_group_id: str | None,
+        criterion_id: str | None,
+        keyword_text: str | None,
+        path_label: str,
+    ) -> None:
+        logger.warning(
+            "Skipped negative criterion in positive keyword path '{}' customer_id={} campaign_id={} ad_group_id={} criterion_id={} keyword_text={}",
+            path_label,
+            customer_id,
+            campaign_id,
+            ad_group_id,
+            criterion_id,
+            keyword_text,
+        )
+
+    @staticmethod
+    def _find_matching_negative_keyword(
+        db: Session,
+        client_id: int,
+        campaign_id: int | None,
+        ad_group_id: int | None,
+        negative_scope: str,
+        google_criterion_id: str | None,
+        text: str,
+        match_type: str | None,
+    ) -> NegativeKeyword | None:
+        if google_criterion_id:
+            existing = (
+                db.query(NegativeKeyword)
+                .filter(
+                    NegativeKeyword.client_id == client_id,
+                    NegativeKeyword.google_criterion_id == google_criterion_id,
+                )
+                .first()
+            )
+            if existing:
+                return existing
+
+        return (
+            db.query(NegativeKeyword)
+            .filter(
+                NegativeKeyword.client_id == client_id,
+                NegativeKeyword.campaign_id == campaign_id,
+                NegativeKeyword.ad_group_id == ad_group_id,
+                NegativeKeyword.negative_scope == negative_scope,
+                func.lower(NegativeKeyword.text) == (text or "").strip().lower(),
+                NegativeKeyword.match_type == match_type,
+            )
+            .first()
+        )
+
+    @staticmethod
+    def _escape_gaql_string(value: str) -> str:
+        return value.replace("'", "''")
+
+    def _build_keyword_debug_query(
+        self,
+        search_terms: list[str] | None = None,
+        include_removed: bool = True,
+        limit: int = 50,
+    ) -> str:
+        has_search_terms = bool(search_terms)
+        filters = []
+
+        if not include_removed:
+            filters.extend(
+                [
+                    "ad_group_criterion.status != 'REMOVED'",
+                    "campaign.status != 'REMOVED'",
+                ]
+            )
+
+        where_clause = ""
+        if filters:
+            where_clause = "WHERE " + "\n              AND ".join(filters)
+
+        limit_clause = f"\n            LIMIT {int(limit)}" if not has_search_terms else ""
+
+        return """
+            SELECT
+                campaign.id,
+                campaign.name,
+                campaign.status,
+                ad_group.id,
+                ad_group.name,
+                ad_group.status,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.keyword.text,
+                ad_group_criterion.keyword.match_type,
+                ad_group_criterion.status
+            FROM keyword_view
+            {where_clause}
+            ORDER BY campaign.name, ad_group.name, ad_group_criterion.keyword.text{limit_clause}
+        """.format(where_clause=where_clause, limit_clause=limit_clause)
+    def debug_keyword_sources(
+        self,
+        db: Session,
+        customer_id: str,
+        search_terms: list[str] | None = None,
+        include_removed: bool = True,
+        limit: int = 50,
+    ) -> dict:
+        """Fetch raw keyword_view rows and matching local DB rows for source diagnostics."""
+        if not self.is_connected:
+            raise RuntimeError("Google Ads API not connected")
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            raise RuntimeError(f"Client with customer_id={customer_id} not found in DB")
+
+        normalized_terms = [term.strip() for term in (search_terms or []) if term and term.strip()]
+        query = self._build_keyword_debug_query(
+            search_terms=normalized_terms,
+            include_removed=include_removed,
+            limit=limit,
+        )
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        fetched_at = datetime.now(timezone.utc)
+        response = ga_service.search(customer_id=normalized_customer_id, query=query)
+
+        api_rows = []
+        for row in response:
+            api_row = {
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "campaign_status": getattr(row.campaign.status, "name", str(row.campaign.status)),
+                "ad_group_id": str(row.ad_group.id),
+                "ad_group_name": row.ad_group.name,
+                "ad_group_status": getattr(row.ad_group.status, "name", str(row.ad_group.status)),
+                "criterion_id": str(row.ad_group_criterion.criterion_id),
+                "keyword_text": row.ad_group_criterion.keyword.text,
+                "match_type": getattr(
+                    row.ad_group_criterion.keyword.match_type,
+                    "name",
+                    str(row.ad_group_criterion.keyword.match_type),
+                ),
+                "status": getattr(
+                    row.ad_group_criterion.status,
+                    "name",
+                    str(row.ad_group_criterion.status),
+                ),
+            }
+            if normalized_terms:
+                keyword_text = api_row["keyword_text"].lower()
+                if not any(term.lower() in keyword_text for term in normalized_terms):
+                    continue
+            api_rows.append(api_row)
+            if len(api_rows) >= limit:
+                break
+
+        local_query = (
+            db.query(Keyword, AdGroup, Campaign)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_record.id)
+        )
+
+        if not include_removed:
+            local_query = local_query.filter(Keyword.status != "REMOVED")
+
+        if normalized_terms:
+            local_filters = [
+                func.lower(Keyword.text).like(f"%{term.lower()}%")
+                for term in normalized_terms
+            ]
+            local_query = local_query.filter(or_(*local_filters))
+
+        local_rows = []
+        for keyword, ad_group, campaign in (
+            local_query
+            .order_by(Campaign.name.asc(), AdGroup.name.asc(), Keyword.text.asc())
+            .limit(limit)
+            .all()
+        ):
+            local_rows.append(
+                {
+                    "keyword_id": keyword.id,
+                    "campaign_id": campaign.id,
+                    "campaign_google_id": campaign.google_campaign_id,
+                    "campaign_name": campaign.name,
+                    "campaign_status": campaign.status,
+                    "ad_group_id": ad_group.id,
+                    "ad_group_google_id": ad_group.google_ad_group_id,
+                    "ad_group_name": ad_group.name,
+                    "ad_group_status": ad_group.status,
+                    "google_keyword_id": keyword.google_keyword_id,
+                    "keyword_text": keyword.text,
+                    "match_type": keyword.match_type,
+                    "status": keyword.status,
+                    "updated_at": keyword.updated_at.isoformat() if keyword.updated_at else None,
+                }
+            )
+
+        return {
+            "client_id": client_record.id,
+            "client_name": client_record.name,
+            "customer_id": normalized_customer_id,
+            "search_terms": normalized_terms,
+            "include_removed": include_removed,
+            "limit": limit,
+            "fetched_at": fetched_at.isoformat(),
+            "query": query,
+            "api_count": len(api_rows),
+            "local_count": len(local_rows),
+            "api_rows": api_rows,
+            "local_rows": local_rows,
+        }
     def get_connection_diagnostics(self) -> dict:
         credentials = CredentialsService.get_google_ads_credentials()
         missing_setup = self._missing_setup_credentials(credentials)
@@ -261,7 +579,7 @@ class GoogleAdsService:
         }
 
     # -----------------------------------------------------------------------
-    # Campaign Sync (structural data only Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ no metrics)
+    # Campaign Sync (structural data only Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž no metrics)
     # -----------------------------------------------------------------------
 
     def sync_campaigns(self, db: Session, customer_id: str) -> int:
@@ -274,9 +592,7 @@ class GoogleAdsService:
             return 0
 
         normalized_customer_id = self.normalize_customer_id(customer_id)
-        client_record = db.query(Client).filter(
-            func.replace(Client.google_customer_id, "-", "") == normalized_customer_id
-        ).first()
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             logger.error(f"Client with customer_id={customer_id} not found in DB")
             return 0
@@ -334,13 +650,16 @@ class GoogleAdsService:
                 raise RuntimeError(self._format_google_ads_error(last_error)) from last_error
 
             count = 0
+            seen_google_campaign_ids: set[str] = set()
             for row in response:
                 campaign = row.campaign
                 budget = row.campaign_budget
+                google_campaign_id = str(campaign.id)
+                seen_google_campaign_ids.add(google_campaign_id)
 
                 existing = db.query(Campaign).filter(
                     Campaign.client_id == client_record.id,
-                    Campaign.google_campaign_id == str(campaign.id),
+                    Campaign.google_campaign_id == google_campaign_id,
                 ).first()
 
                 bidding_strategy = existing.bidding_strategy if existing else None
@@ -349,7 +668,7 @@ class GoogleAdsService:
 
                 data = {
                     "client_id": client_record.id,
-                    "google_campaign_id": str(campaign.id),
+                    "google_campaign_id": google_campaign_id,
                     "name": campaign.name,
                     "status": campaign.status.name,
                     "campaign_type": campaign.advertising_channel_type.name,
@@ -358,24 +677,33 @@ class GoogleAdsService:
                 }
 
                 if existing:
-                    for k, v in data.items():
-                        setattr(existing, k, v)
+                    for key, value in data.items():
+                        setattr(existing, key, value)
                 else:
                     db.add(Campaign(**data))
                 count += 1
 
+            removed_count = self._mark_missing_campaigns_removed(
+                db,
+                client_record.id,
+                seen_google_campaign_ids,
+            )
             db.commit()
             if selected_query == "fallback":
                 logger.warning(
                     f"Campaign sync for customer {normalized_customer_id} succeeded with fallback GAQL query"
                 )
-            logger.info(f"Synced {count} campaigns for customer {normalized_customer_id}")
+            logger.info(
+                f"Synced {count} campaigns for customer {normalized_customer_id} "
+                f"(marked {removed_count} as REMOVED)"
+            )
             return count
 
         except Exception as e:
             logger.error(f"Error syncing campaigns: {self._format_google_ads_error(e)}")
             db.rollback()
             raise
+
     # -----------------------------------------------------------------------
     # Campaign Impression Share Sync (aggregated last 30 days)
     # -----------------------------------------------------------------------
@@ -385,9 +713,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -461,9 +788,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -481,10 +807,11 @@ class GoogleAdsService:
         """
 
         try:
-            response = ga_service.search(customer_id=customer_id, query=query)
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
             count = 0
+            seen_ad_group_keys: set[tuple[int, str]] = set()
             for row in response:
-                ag = row.ad_group
+                ad_group = row.ad_group
                 campaign_google_id = str(row.campaign.id)
 
                 campaign = db.query(Campaign).filter(
@@ -494,28 +821,39 @@ class GoogleAdsService:
                 if not campaign:
                     continue
 
+                google_ad_group_id = str(ad_group.id)
+                seen_ad_group_keys.add((campaign.id, google_ad_group_id))
+
                 existing = db.query(AdGroup).filter(
                     AdGroup.campaign_id == campaign.id,
-                    AdGroup.google_ad_group_id == str(ag.id),
+                    AdGroup.google_ad_group_id == google_ad_group_id,
                 ).first()
 
                 data = {
                     "campaign_id": campaign.id,
-                    "google_ad_group_id": str(ag.id),
-                    "name": ag.name,
-                    "status": ag.status.name,
-                    "bid_micros": ag.cpc_bid_micros if ag.cpc_bid_micros else 0,
+                    "google_ad_group_id": google_ad_group_id,
+                    "name": ad_group.name,
+                    "status": ad_group.status.name,
+                    "bid_micros": ad_group.cpc_bid_micros if ad_group.cpc_bid_micros else 0,
                 }
 
                 if existing:
-                    for k, v in data.items():
-                        setattr(existing, k, v)
+                    for key, value in data.items():
+                        setattr(existing, key, value)
                 else:
                     db.add(AdGroup(**data))
                 count += 1
 
+            removed_count = self._mark_missing_ad_groups_removed(
+                db,
+                client_record.id,
+                seen_ad_group_keys,
+            )
             db.commit()
-            logger.info(f"Synced {count} ad groups for customer {customer_id}")
+            logger.info(
+                f"Synced {count} ad groups for customer {normalized_customer_id} "
+                f"(marked {removed_count} as REMOVED)"
+            )
             return count
 
         except Exception as e:
@@ -532,15 +870,15 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
         ga_service = self.client.get_service("GoogleAdsService")
         query = """
             SELECT
+                campaign.id,
                 ad_group.id,
                 ad_group_criterion.criterion_id,
                 ad_group_criterion.keyword.text,
@@ -576,16 +914,31 @@ class GoogleAdsService:
                 metrics.top_impression_percentage
             FROM keyword_view
             WHERE ad_group_criterion.status != 'REMOVED'
+              AND ad_group_criterion.negative = false
               AND campaign.status != 'REMOVED'
         """
 
         try:
-            response = ga_service.search(customer_id=customer_id, query=query)
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
             count = 0
+            seen_keyword_keys: set[tuple[int, str]] = set()
             for row in response:
+                campaign_google_id = str(row.campaign.id)
                 ad_group_google_id = str(row.ad_group.id)
                 criterion = row.ad_group_criterion
-                m = row.metrics
+                metrics = row.metrics
+                criterion_kind = self._keyword_kind_from_negative(bool(getattr(criterion, "negative", False)))
+
+                if criterion_kind != "POSITIVE":
+                    self._log_negative_positive_guard(
+                        customer_id=normalized_customer_id,
+                        campaign_id=campaign_google_id,
+                        ad_group_id=ad_group_google_id,
+                        criterion_id=str(criterion.criterion_id),
+                        keyword_text=criterion.keyword.text,
+                        path_label="sync_keywords",
+                    )
+                    continue
 
                 ad_group = (
                     db.query(AdGroup)
@@ -600,23 +953,25 @@ class GoogleAdsService:
                     continue
 
                 google_keyword_id = str(criterion.criterion_id)
+                seen_keyword_keys.add((ad_group.id, google_keyword_id))
 
                 existing = db.query(Keyword).filter(
                     Keyword.ad_group_id == ad_group.id,
                     Keyword.google_keyword_id == google_keyword_id,
                 ).first()
 
-                clicks = m.clicks
-                impressions = m.impressions
-                conversions = float(m.conversions)
-                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
-                cost_micros = m.cost_micros
-                avg_cpc_micros = int(m.average_cpc) if m.average_cpc else 0
+                clicks = metrics.clicks
+                impressions = metrics.impressions
+                conversions = float(metrics.conversions)
+                conv_value = float(metrics.conversions_value) if metrics.conversions_value else 0.0
+                cost_micros = metrics.cost_micros
+                avg_cpc_micros = int(metrics.average_cpc) if metrics.average_cpc else 0
                 cpa_micros = int(cost_micros / conversions) if conversions > 0 else 0
 
                 data = {
                     "ad_group_id": ad_group.id,
                     "google_keyword_id": google_keyword_id,
+                    "criterion_kind": criterion_kind,
                     "text": criterion.keyword.text,
                     "match_type": criterion.keyword.match_type.name,
                     "status": criterion.status.name,
@@ -628,42 +983,46 @@ class GoogleAdsService:
                     "cost_micros": cost_micros,
                     "conversions": conversions,
                     "conversion_value_micros": int(conv_value * 1_000_000),
-                    "ctr": int(m.ctr * 1_000_000),
+                    "ctr": int(metrics.ctr * 1_000_000),
                     "avg_cpc_micros": avg_cpc_micros,
                     "cpa_micros": cpa_micros,
-                    # Impression Share (keyword-level, rank-based only)
-                    "search_impression_share": _safe_is(m.search_impression_share),
-                    "search_top_impression_share": _safe_is(m.search_top_impression_share),
-                    "search_abs_top_impression_share": _safe_is(m.search_absolute_top_impression_share),
-                    "search_rank_lost_is": _safe_is(m.search_rank_lost_impression_share),
-                    "search_rank_lost_top_is": _safe_is(m.search_rank_lost_top_impression_share),
-                    "search_rank_lost_abs_top_is": _safe_is(m.search_rank_lost_absolute_top_impression_share),
-                    "search_exact_match_is": _safe_is(m.search_exact_match_impression_share),
-                    # Historical Quality Score
-                    "historical_quality_score": _qs_enum(m.historical_quality_score),
-                    "historical_creative_quality": _qs_enum(m.historical_creative_quality_score),
-                    "historical_landing_page_quality": _qs_enum(m.historical_landing_page_quality_score),
-                    "historical_search_predicted_ctr": _qs_enum(m.historical_search_predicted_ctr),
-                    # Extended Conversions
-                    "all_conversions": _safe_float(m.all_conversions),
-                    "all_conversions_value_micros": int(float(m.all_conversions_value) * 1_000_000) if m.all_conversions_value else None,
-                    "cross_device_conversions": _safe_float(m.cross_device_conversions),
-                    "value_per_conversion_micros": int(float(m.value_per_conversion) * 1_000_000) if m.value_per_conversion else None,
-                    "conversions_value_per_cost": _safe_float(m.conversions_value_per_cost),
-                    # Top Impression %
-                    "abs_top_impression_pct": _safe_is(m.absolute_top_impression_percentage),
-                    "top_impression_pct": _safe_is(m.top_impression_percentage),
+                    "search_impression_share": _safe_is(metrics.search_impression_share),
+                    "search_top_impression_share": _safe_is(metrics.search_top_impression_share),
+                    "search_abs_top_impression_share": _safe_is(metrics.search_absolute_top_impression_share),
+                    "search_rank_lost_is": _safe_is(metrics.search_rank_lost_impression_share),
+                    "search_rank_lost_top_is": _safe_is(metrics.search_rank_lost_top_impression_share),
+                    "search_rank_lost_abs_top_is": _safe_is(metrics.search_rank_lost_absolute_top_impression_share),
+                    "search_exact_match_is": _safe_is(metrics.search_exact_match_impression_share),
+                    "historical_quality_score": _qs_enum(metrics.historical_quality_score),
+                    "historical_creative_quality": _qs_enum(metrics.historical_creative_quality_score),
+                    "historical_landing_page_quality": _qs_enum(metrics.historical_landing_page_quality_score),
+                    "historical_search_predicted_ctr": _qs_enum(metrics.historical_search_predicted_ctr),
+                    "all_conversions": _safe_float(metrics.all_conversions),
+                    "all_conversions_value_micros": int(float(metrics.all_conversions_value) * 1_000_000) if metrics.all_conversions_value else None,
+                    "cross_device_conversions": _safe_float(metrics.cross_device_conversions),
+                    "value_per_conversion_micros": int(float(metrics.value_per_conversion) * 1_000_000) if metrics.value_per_conversion else None,
+                    "conversions_value_per_cost": _safe_float(metrics.conversions_value_per_cost),
+                    "abs_top_impression_pct": _safe_is(metrics.absolute_top_impression_percentage),
+                    "top_impression_pct": _safe_is(metrics.top_impression_percentage),
                 }
 
                 if existing:
-                    for k, v in data.items():
-                        setattr(existing, k, v)
+                    for key, value in data.items():
+                        setattr(existing, key, value)
                 else:
                     db.add(Keyword(**data))
                 count += 1
 
+            removed_count = self._mark_missing_keywords_removed(
+                db,
+                client_record.id,
+                seen_keyword_keys,
+            )
             db.commit()
-            logger.info(f"Synced {count} keywords for customer {customer_id}")
+            logger.info(
+                f"Synced {count} keywords for customer {normalized_customer_id} "
+                f"(marked {removed_count} as REMOVED)"
+            )
             return count
 
         except Exception as e:
@@ -675,6 +1034,217 @@ class GoogleAdsService:
     # Keyword Daily Metrics Sync
     # -----------------------------------------------------------------------
 
+    def sync_negative_keywords(self, db: Session, customer_id: str) -> int:
+        """Fetch campaign/ad-group negative keyword criteria and upsert into local DB."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        ad_group_query = """
+            SELECT
+                campaign.id,
+                ad_group.id,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.resource_name,
+                ad_group_criterion.keyword.text,
+                ad_group_criterion.keyword.match_type,
+                ad_group_criterion.status,
+                ad_group_criterion.negative
+            FROM ad_group_criterion
+            WHERE ad_group_criterion.type = KEYWORD
+              AND ad_group_criterion.negative = true
+              AND ad_group_criterion.status != 'REMOVED'
+              AND campaign.status != 'REMOVED'
+        """
+        campaign_query = """
+            SELECT
+                campaign.id,
+                campaign_criterion.criterion_id,
+                campaign_criterion.resource_name,
+                campaign_criterion.keyword.text,
+                campaign_criterion.keyword.match_type,
+                campaign_criterion.status,
+                campaign_criterion.negative
+            FROM campaign_criterion
+            WHERE campaign_criterion.type = KEYWORD
+              AND campaign_criterion.negative = true
+              AND campaign_criterion.status != 'REMOVED'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            ad_group_rows = ga_service.search(customer_id=normalized_customer_id, query=ad_group_query)
+            campaign_rows = ga_service.search(customer_id=normalized_customer_id, query=campaign_query)
+            count = 0
+            seen_negative_keys: set[tuple[str, int | None, int | None, str, str, str | None]] = set()
+
+            for row in ad_group_rows:
+                campaign_google_id = str(row.campaign.id)
+                ad_group_google_id = str(row.ad_group.id)
+                criterion = row.ad_group_criterion
+
+                campaign = (
+                    db.query(Campaign)
+                    .filter(
+                        Campaign.client_id == client_record.id,
+                        Campaign.google_campaign_id == campaign_google_id,
+                    )
+                    .first()
+                )
+                if not campaign:
+                    logger.warning(
+                        "Skipping ad-group negative criterion because campaign {} is missing locally for customer {}",
+                        campaign_google_id,
+                        normalized_customer_id,
+                    )
+                    continue
+
+                ad_group = (
+                    db.query(AdGroup)
+                    .filter(
+                        AdGroup.campaign_id == campaign.id,
+                        AdGroup.google_ad_group_id == ad_group_google_id,
+                    )
+                    .first()
+                )
+                if not ad_group:
+                    logger.warning(
+                        "Skipping ad-group negative criterion because ad_group {} is missing locally for customer {}",
+                        ad_group_google_id,
+                        normalized_customer_id,
+                    )
+                    continue
+
+                google_criterion_id = str(criterion.criterion_id)
+                match_type = getattr(criterion.keyword.match_type, "name", str(criterion.keyword.match_type))
+                seen_key = self._negative_seen_key(
+                    "AD_GROUP",
+                    campaign.id,
+                    ad_group.id,
+                    google_criterion_id,
+                    criterion.keyword.text,
+                    match_type,
+                )
+                seen_negative_keys.add(seen_key)
+
+                existing = self._find_matching_negative_keyword(
+                    db,
+                    client_record.id,
+                    campaign.id,
+                    ad_group.id,
+                    "AD_GROUP",
+                    google_criterion_id,
+                    criterion.keyword.text,
+                    match_type,
+                )
+
+                data = {
+                    "client_id": client_record.id,
+                    "campaign_id": campaign.id,
+                    "ad_group_id": ad_group.id,
+                    "google_criterion_id": google_criterion_id,
+                    "google_resource_name": getattr(criterion, "resource_name", None),
+                    "criterion_kind": "NEGATIVE",
+                    "text": criterion.keyword.text,
+                    "match_type": match_type,
+                    "negative_scope": "AD_GROUP",
+                    "status": criterion.status.name,
+                    "source": existing.source if existing and existing.source == "LOCAL_ACTION" else "GOOGLE_ADS_SYNC",
+                }
+
+                if existing:
+                    for key, value in data.items():
+                        setattr(existing, key, value)
+                else:
+                    db.add(NegativeKeyword(**data))
+                count += 1
+
+            for row in campaign_rows:
+                campaign_google_id = str(row.campaign.id)
+                criterion = row.campaign_criterion
+
+                campaign = (
+                    db.query(Campaign)
+                    .filter(
+                        Campaign.client_id == client_record.id,
+                        Campaign.google_campaign_id == campaign_google_id,
+                    )
+                    .first()
+                )
+                if not campaign:
+                    logger.warning(
+                        "Skipping campaign negative criterion because campaign {} is missing locally for customer {}",
+                        campaign_google_id,
+                        normalized_customer_id,
+                    )
+                    continue
+
+                google_criterion_id = str(criterion.criterion_id)
+                match_type = getattr(criterion.keyword.match_type, "name", str(criterion.keyword.match_type))
+                seen_key = self._negative_seen_key(
+                    "CAMPAIGN",
+                    campaign.id,
+                    None,
+                    google_criterion_id,
+                    criterion.keyword.text,
+                    match_type,
+                )
+                seen_negative_keys.add(seen_key)
+
+                existing = self._find_matching_negative_keyword(
+                    db,
+                    client_record.id,
+                    campaign.id,
+                    None,
+                    "CAMPAIGN",
+                    google_criterion_id,
+                    criterion.keyword.text,
+                    match_type,
+                )
+
+                data = {
+                    "client_id": client_record.id,
+                    "campaign_id": campaign.id,
+                    "ad_group_id": None,
+                    "google_criterion_id": google_criterion_id,
+                    "google_resource_name": getattr(criterion, "resource_name", None),
+                    "criterion_kind": "NEGATIVE",
+                    "text": criterion.keyword.text,
+                    "match_type": match_type,
+                    "negative_scope": "CAMPAIGN",
+                    "status": criterion.status.name,
+                    "source": existing.source if existing and existing.source == "LOCAL_ACTION" else "GOOGLE_ADS_SYNC",
+                }
+
+                if existing:
+                    for key, value in data.items():
+                        setattr(existing, key, value)
+                else:
+                    db.add(NegativeKeyword(**data))
+                count += 1
+
+            removed_count = self._mark_missing_negative_keywords_removed(
+                db,
+                client_record.id,
+                seen_negative_keys,
+            )
+            db.commit()
+            logger.info(
+                f"Synced {count} negative keywords for customer {normalized_customer_id} "
+                f"(marked {removed_count} as REMOVED)"
+            )
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing negative keywords: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
     def sync_keyword_daily(
         self, db: Session, customer_id: str,
         date_from: date = None, date_to: date = None
@@ -683,9 +1253,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -697,8 +1266,10 @@ class GoogleAdsService:
         ga_service = self.client.get_service("GoogleAdsService")
         query = f"""
             SELECT
+                campaign.id,
                 ad_group.id,
                 ad_group_criterion.criterion_id,
+                ad_group_criterion.negative,
                 segments.date,
                 metrics.clicks,
                 metrics.impressions,
@@ -709,15 +1280,27 @@ class GoogleAdsService:
             FROM keyword_view
             WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
               AND ad_group_criterion.status != 'REMOVED'
+              AND ad_group_criterion.negative = false
               AND campaign.status != 'REMOVED'
         """
 
         try:
-            response = ga_service.search(customer_id=customer_id, query=query)
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
             count = 0
             for row in response:
+                campaign_google_id = str(row.campaign.id)
                 ad_group_google_id = str(row.ad_group.id)
                 google_keyword_id = str(row.ad_group_criterion.criterion_id)
+                if bool(getattr(row.ad_group_criterion, "negative", False)):
+                    self._log_negative_positive_guard(
+                        customer_id=normalized_customer_id,
+                        campaign_id=campaign_google_id,
+                        ad_group_id=ad_group_google_id,
+                        criterion_id=google_keyword_id,
+                        keyword_text=getattr(row.ad_group_criterion.keyword, "text", None),
+                        path_label="sync_keyword_daily",
+                    )
+                    continue
                 metric_date = date.fromisoformat(row.segments.date)
                 m = row.metrics
 
@@ -790,9 +1373,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -803,7 +1385,7 @@ class GoogleAdsService:
 
         ga_service = self.client.get_service("GoogleAdsService")
 
-        # Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬ Query 1: Core metrics for ALL campaign types Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬
+        # Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬ Query 1: Core metrics for ALL campaign types Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬
         core_query = f"""
             SELECT
                 campaign.id,
@@ -886,7 +1468,7 @@ class GoogleAdsService:
             db.rollback()
             raise
 
-        # Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬ Query 2: Search IS metrics (SEARCH campaigns only) Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąÄ„Ä‚ËĂ˘â‚¬ĹˇĂ‚Â¬
+        # Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬ Query 2: Search IS metrics (SEARCH campaigns only) Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬
         is_query = f"""
             SELECT
                 campaign.id,
@@ -949,7 +1531,7 @@ class GoogleAdsService:
             logger.info(f"Enriched {is_count} rows with Search IS for customer {customer_id}")
 
         except Exception as e:
-            # Non-critical Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ core metrics are already saved
+            # Non-critical Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž core metrics are already saved
             logger.warning(f"Search IS enrichment failed (non-critical): {e}")
 
         return count
@@ -966,9 +1548,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -1091,15 +1672,14 @@ class GoogleAdsService:
         campaign_search_term_view aggregates at campaign level and INCLUDES
         Performance Max data (unlike search_term_view which is ad_group level).
 
-        IMPORTANT: Do NOT use segments.keyword.info.* fields Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ they filter
+        IMPORTANT: Do NOT use segments.keyword.info.* fields Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž they filter
         out all PMax data from results.
         """
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -1110,7 +1690,7 @@ class GoogleAdsService:
 
         ga_service = self.client.get_service("GoogleAdsService")
 
-        # Single query for all PMax campaigns Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ no keyword segments!
+        # Single query for all PMax campaigns Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž no keyword segments!
         query = f"""
             SELECT
                 campaign.id,
@@ -1210,9 +1790,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -1337,9 +1916,8 @@ class GoogleAdsService:
         if not self.is_connected:
             return 0
 
-        client_record = db.query(Client).filter(
-            Client.google_customer_id == customer_id
-        ).first()
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
         if not client_record:
             return 0
 
@@ -1466,7 +2044,6 @@ class GoogleAdsService:
         mutation is sent to the API; otherwise the method returns `mode=LOCAL_ONLY`.
         """
         from app.models import Ad, Campaign, Keyword
-        from app.models.negative_keyword import NegativeKeyword
         from app.services.action_executor import SafetyViolationError, validate_action
         from app.utils.formatters import micros_to_currency
 
@@ -1616,8 +2193,9 @@ class GoogleAdsService:
                 db.query(NegativeKeyword)
                 .filter(
                     NegativeKeyword.campaign_id == campaign_id,
+                    NegativeKeyword.negative_scope == "CAMPAIGN",
                     func.lower(NegativeKeyword.text) == text.lower(),
-                    NegativeKeyword.status == "ACTIVE",
+                    NegativeKeyword.status != "REMOVED",
                 )
                 .first()
             )
@@ -1631,10 +2209,13 @@ class GoogleAdsService:
             negative = NegativeKeyword(
                 client_id=campaign.client_id,
                 campaign_id=campaign.id,
+                ad_group_id=None,
+                criterion_kind="NEGATIVE",
                 text=text,
                 match_type=match_type,
-                level=negative_level,
-                status="ACTIVE",
+                negative_scope=negative_level,
+                status="ENABLED",
+                source="LOCAL_ACTION",
             )
             db.add(negative)
             db.flush()
@@ -1895,7 +2476,11 @@ class GoogleAdsService:
         criterion.negative = True
         criterion.keyword.text = negative.text
         criterion.keyword.match_type = getattr(self.client.enums.KeywordMatchTypeEnum, negative.match_type)
-        service.mutate_campaign_criteria(customer_id=customer_id, operations=[operation])
+        response = service.mutate_campaign_criteria(customer_id=customer_id, operations=[operation])
+        if response.results:
+            resource_name = response.results[0].resource_name
+            negative.google_resource_name = resource_name
+            negative.google_criterion_id = resource_name.split("~")[-1]
 
     def _mutate_campaign_budget(self, campaign, db: Session):
         """Update campaign budget amount in Google Ads."""
@@ -1934,7 +2519,7 @@ class GoogleAdsService:
         return google_type.replace("_", " ").title()
 
     # -----------------------------------------------------------------------
-    # Discover Accounts (MCC Ă„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬Ă‚Â Ä‚ËĂ˘â€šÂ¬Ă˘â€žË list of client accounts)
+    # Discover Accounts (MCC Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€šĂ‚Â Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â‚¬ĹľĂ‹Â list of client accounts)
     # -----------------------------------------------------------------------
 
     def discover_accounts(self) -> list[dict]:
@@ -1987,7 +2572,7 @@ class GoogleAdsService:
             raise RuntimeError("Nie udalo sie pobrac listy kont z Google Ads API.") from e
 
     # ------------------------------------------------------------------
-    # Change Events Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ fetch full account change history
+    # Change Events Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž fetch full account change history
     # ------------------------------------------------------------------
 
     def sync_change_events(self, db: Session, customer_id: str, client_id: int, days: int = 30) -> int:
@@ -2000,7 +2585,7 @@ class GoogleAdsService:
         Returns number of change events synced.
         """
         if not self.is_connected:
-            logger.warning("Google Ads API not connected Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ skipping change events sync")
+            logger.warning("Google Ads API not connected Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž skipping change events sync")
             return 0
 
         import json
@@ -2043,7 +2628,7 @@ class GoogleAdsService:
                     ce = row.change_event
                     res_name = ce.resource_name
 
-                    # Dedup Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ skip if already in DB
+                    # Dedup Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž skip if already in DB
                     existing = db.query(ChangeEvent.id).filter(
                         ChangeEvent.resource_name == res_name
                     ).first()
@@ -2226,6 +2811,21 @@ def _match_change_events_to_actions(db: Session, client_id: int):
 
 # Singleton instance
 google_ads_service = GoogleAdsService()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,16 +1,18 @@
-"""Sync endpoint Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â€šÂ¬ÄąÄ„ trigger Google Ads data sync manually or check status."""
+﻿"""Sync endpoint Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž trigger Google Ads data sync manually or check status."""
 
 from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from loguru import logger
+from app.config import settings
 from app.database import get_db
 from app.models import (
-    Client, SyncLog, Campaign, AdGroup, Keyword, KeywordDaily,
+    Client, SyncLog, Campaign, AdGroup, Keyword, KeywordDaily, NegativeKeyword,
     MetricDaily, MetricSegmented, SearchTerm, ChangeEvent,
 )
 from app.services.google_ads import google_ads_service
+from app.services.google_ads_debug import google_ads_debug_service
 
 router = APIRouter(prefix="/sync", tags=["Data Sync"])
 
@@ -144,6 +146,23 @@ def trigger_sync(
     else:
         phases["keywords"] = {"count": 0, "status": "skipped", "error": "ad_groups failed"}
 
+    negative_keywords_synced = 0
+    if phases["ad_groups"]["status"] == "ok":
+        negative_keywords_synced = _run_phase(
+            "negative_keywords",
+            lambda: google_ads_service.sync_negative_keywords(db, cid),
+            phases,
+        )
+        total_synced += negative_keywords_synced
+        if phases["negative_keywords"]["status"] == "error":
+            total_errors += 1
+    else:
+        phases["negative_keywords"] = {
+            "count": 0,
+            "status": "skipped",
+            "error": "ad_groups failed",
+        }
+
     keyword_daily_synced = 0
     if phases.get("keywords", {}).get("status") == "ok":
         keyword_daily_synced = _run_phase(
@@ -251,6 +270,7 @@ def trigger_sync(
         campaigns_synced=campaigns_synced,
         ad_groups_synced=ad_groups_synced,
         keywords_synced=keywords_synced,
+        negative_keywords_synced=negative_keywords_synced,
         keyword_daily_synced=keyword_daily_synced,
         metrics_synced=metrics_synced,
         device_metrics_synced=device_metrics_synced,
@@ -321,6 +341,7 @@ def sync_debug(
     campaigns = db.query(func.count(Campaign.id)).filter(Campaign.client_id == client_id).scalar()
     ad_groups = db.query(func.count(AdGroup.id)).join(Campaign).filter(Campaign.client_id == client_id).scalar()
     keywords = db.query(func.count(Keyword.id)).join(AdGroup).join(Campaign).filter(Campaign.client_id == client_id).scalar()
+    negative_keywords = db.query(func.count(NegativeKeyword.id)).filter(NegativeKeyword.client_id == client_id).scalar()
 
     keyword_daily_7d = (
         db.query(func.count(KeywordDaily.id))
@@ -365,6 +386,8 @@ def sync_debug(
         .order_by(SyncLog.started_at.desc())
         .first()
     )
+    db_path = google_ads_debug_service._sqlite_path_from_url(settings.database_url)
+    legacy_path = settings.backend_dir / "data" / "google_ads_app.db"
 
     return {
         "client": client.name,
@@ -372,15 +395,74 @@ def sync_debug(
         "campaigns": campaigns,
         "ad_groups": ad_groups,
         "keywords": keywords,
+        "negative_keywords": negative_keywords,
         "keyword_metrics_last_7d": keyword_daily_7d,
         "campaign_metrics_last_7d": daily_metrics_7d,
         "device_metrics": device_metrics,
         "geo_metrics": geo_metrics,
         "search_terms": search_terms,
         "change_events": change_events,
+        "db_source_path": str(db_path) if db_path else None,
+        "db_legacy_path": str(legacy_path),
+        "db_legacy_exists": legacy_path.exists(),
         "last_sync": last_sync.started_at.isoformat() if last_sync else None,
         "last_sync_status": last_sync.status if last_sync else None,
     }
+
+
+@router.get("/debug/keywords")
+def sync_debug_keywords(
+    client_id: int = Query(...),
+    search: list[str] | None = Query(default=None),
+    include_removed: bool = Query(True),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Compare raw keyword_view rows with matching local SQLite rows for one client."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        return {"error": "Client not found"}
+
+    try:
+        return google_ads_debug_service.search_keyword_sources(
+            db=db,
+            client_id=client.id,
+            search_terms=search,
+            include_removed=include_removed,
+            limit=limit,
+        )
+    except Exception as e:
+        err_msg = google_ads_service._format_google_ads_error(e)
+        logger.error(f"Keyword source debug failed for client {client_id}: {err_msg}")
+        return {
+            "error": err_msg,
+            "client_id": client.id,
+            "client_name": client.name,
+            "customer_id": google_ads_service.normalize_customer_id(client.google_customer_id),
+            "search_terms": [term.strip() for term in (search or []) if term and term.strip()],
+        }
+
+@router.get("/debug/keyword-source-of-truth")
+def sync_debug_keyword_source_of_truth(
+    client_id: int = Query(...),
+    criterion_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    """Return authoritative Google Ads vs SQLite view for a single keyword criterion."""
+    try:
+        return google_ads_debug_service.build_keyword_source_of_truth(
+            db=db,
+            client_id=client_id,
+            criterion_id=criterion_id,
+        )
+    except Exception as e:
+        err_msg = google_ads_service._format_google_ads_error(e)
+        logger.error(f"Keyword source-of-truth debug failed for client {client_id}, criterion {criterion_id}: {err_msg}")
+        return {
+            "error": err_msg,
+            "client_id": client_id,
+            "criterion_id": str(criterion_id),
+        }
 
 
 @router.post("/phase/{phase_name}")
@@ -410,6 +492,7 @@ def sync_single_phase(
         "impression_share": lambda: google_ads_service.sync_campaign_impression_share(db, cid),
         "ad_groups": lambda: google_ads_service.sync_ad_groups(db, cid),
         "keywords": lambda: google_ads_service.sync_keywords(db, cid),
+        "negative_keywords": lambda: google_ads_service.sync_negative_keywords(db, cid),
         "keyword_daily": lambda: google_ads_service.sync_keyword_daily(db, cid, date_from, date_to),
         "daily_metrics": lambda: google_ads_service.sync_daily_metrics(db, cid, date_from, date_to),
         "device_metrics": lambda: google_ads_service.sync_device_metrics(db, cid, date_from, date_to),
@@ -427,4 +510,7 @@ def sync_single_phase(
         return {"success": True, "phase": phase_name, "count": count}
     except Exception as e:
         return {"success": False, "phase": phase_name, "error": str(e)[:500]}
+
+
+
 

@@ -529,8 +529,9 @@ class ActionExecutor:
                 self.db.query(NegativeKeyword)
                 .filter(
                     NegativeKeyword.campaign_id == campaign_id,
+                    NegativeKeyword.negative_scope == "CAMPAIGN",
                     func.lower(NegativeKeyword.text) == text,
-                    NegativeKeyword.status == "ACTIVE",
+                    NegativeKeyword.status != "REMOVED",
                 )
                 .first()
             )

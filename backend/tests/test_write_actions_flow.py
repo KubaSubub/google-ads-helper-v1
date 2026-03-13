@@ -394,7 +394,8 @@ def test_apply_recommendation_add_negative_creates_campaign_shadow(api_client, d
     assert response.status_code == 200, response.text
     negative = db.query(NegativeKeyword).filter(NegativeKeyword.campaign_id == campaign.id, NegativeKeyword.text == "free").first()
     assert negative is not None
-    assert negative.level == "CAMPAIGN"
+    assert negative.negative_scope == "CAMPAIGN"
+    assert negative.status == "ENABLED"
 
 
 def test_apply_recommendation_increase_budget_updates_campaign(api_client, db):

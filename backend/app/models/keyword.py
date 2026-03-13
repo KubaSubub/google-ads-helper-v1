@@ -12,6 +12,7 @@ class Keyword(Base):
     id = Column(Integer, primary_key=True, index=True)
     ad_group_id = Column(Integer, ForeignKey("ad_groups.id", ondelete="CASCADE"), nullable=False)
     google_keyword_id = Column(String(50))
+    criterion_kind = Column(String(20), nullable=False, default="POSITIVE")
     text = Column(String(500), nullable=False)
     match_type = Column(String(20))  # EXACT, PHRASE, BROAD
     status = Column(String(20))  # ENABLED, PAUSED, REMOVED

@@ -16,6 +16,7 @@ from .common import (
 from .client import ClientBase, ClientCreate, ClientResponse, ClientUpdate
 from .campaign import CampaignResponse, CampaignUpdate, MetricDailyResponse
 from .keyword import KeywordResponse
+from .negative_keyword import NegativeKeywordResponse
 from .ad import AdResponse
 from .search_term import SearchTermResponse
 from .recommendation import RecommendationResponse, RecommendationSummary
@@ -41,6 +42,7 @@ __all__ = [
     "CampaignUpdate",
     "MetricDailyResponse",
     "KeywordResponse",
+    "NegativeKeywordResponse",
     "AdResponse",
     "SearchTermResponse",
     "RecommendationResponse",
