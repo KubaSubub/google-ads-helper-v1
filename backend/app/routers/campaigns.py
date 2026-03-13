@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
 from app.models import AdGroup, Campaign, Client, MetricDaily
 from app.schemas import CampaignResponse, CampaignUpdate, MetricDailyResponse, PaginatedResponse
@@ -64,7 +65,12 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{campaign_id}", response_model=CampaignResponse)
-def update_campaign(campaign_id: int, data: CampaignUpdate, db: Session = Depends(get_db)):
+def update_campaign(
+    campaign_id: int,
+    data: CampaignUpdate,
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
+    db: Session = Depends(get_db),
+):
     """Patch campaign role override metadata."""
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -73,6 +79,12 @@ def update_campaign(campaign_id: int, data: CampaignUpdate, db: Session = Depend
     client = db.get(Client, campaign.client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    ensure_demo_write_allowed(
+        db,
+        client.id,
+        allow_demo_write=allow_demo_write,
+        operation="Edycja ustawien kampanii",
+    )
 
     if "campaign_role_final" in data.model_fields_set:
         final_role = data.campaign_role_final.value if data.campaign_role_final is not None else None

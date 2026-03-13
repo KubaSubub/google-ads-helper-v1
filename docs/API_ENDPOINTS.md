@@ -15,19 +15,22 @@ Base API URL: `/api/v1`
 - `GET /clients/?page=1&page_size=20` -> paginated list
 - `GET /clients/{id}` -> client detail
 - `POST /clients/` -> create client
-- `PATCH /clients/{id}` -> update client
-- `DELETE /clients/{id}` -> delete client
-- `POST /clients/{id}/hard-reset` -> delete only this client's local runtime data, keep client profile
+- `PATCH /clients/{id}` -> update client (`allow_demo_write=true` required for DEMO)
+- `DELETE /clients/{id}` -> delete client (`allow_demo_write=true` required for DEMO)
+- `POST /clients/{id}/hard-reset` -> delete only this client's local runtime data, keep client profile (`allow_demo_write=true` required for DEMO)
+- `POST /clients/{id}/seed-demo-showcase?days=30` -> wygeneruj lokalne dane pokazowe DEMO (keywords_daily, ads, helper actions, dodatkowe search_terms i kontrolowane wzorce waste) (`allow_demo_write=true` required, endpoint tylko dla DEMO)
+- `POST /clients/{id}/clone-runtime?source_client_id=Y` -> skopiuj lokalne dane runtime z klienta Y do klienta id (bez wywolan write do Google Ads API, `allow_demo_write=true` required for DEMO)
+- `POST /clients/{id}/restore-runtime-from-legacy` -> odtworz lokalne dane runtime klienta z legacy bazy `backend/data/google_ads_app.db` (domyslnie po `google_customer_id`, opcjonalnie `source_client_id`, `allow_demo_write=true` required for DEMO)
 - `POST /clients/discover` -> auto-discover from MCC
 
 ## Sync
-- `POST /sync/trigger?client_id=X&days=30` -> full sync
+- `POST /sync/trigger?client_id=X&days=30` -> full sync (`allow_demo_write=true` required for DEMO)
 - `GET /sync/status` -> Google Ads connection status
 - `GET /sync/logs?client_id=X&limit=10` -> recent sync logs
 - `GET /sync/debug?client_id=X` -> row counts + last sync diagnostics + active/legacy SQLite paths
 - `GET /sync/debug/keywords?client_id=X&search=term&search=term2&include_removed=true&limit=50` -> helper debug comparing keyword_view API rows with local positive/negative SQLite rows
 - `GET /sync/debug/keyword-source-of-truth?client_id=X&criterion_id=Y` -> authoritative debug for one criterion across Google Ads `keyword_view`, `ad_group_criterion`, local SQLite, and request context
-- `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase
+- `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase (`allow_demo_write=true` required for DEMO)
 
 ### Keyword source-of-truth debug
 - Returns Google Ads request context: `customer_id_used`, `login_customer_id`, masked OAuth/developer token metadata, and `request_id` values from Google Ads API responses.
@@ -93,19 +96,19 @@ Base API URL: `/api/v1`
 ## Recommendations
 - `GET /recommendations/?client_id=X&priority=&status=&category=&days=30`
 - `GET /recommendations/summary?client_id=X&days=30`
-- `POST /recommendations/{id}/apply?client_id=X&dry_run=false`
-- `POST /recommendations/{id}/dismiss?client_id=X`
+- `POST /recommendations/{id}/apply?client_id=X&dry_run=false` (`allow_demo_write=true` required for DEMO)
+- `POST /recommendations/{id}/dismiss?client_id=X` (`allow_demo_write=true` required for DEMO)
 
 ## Actions
 - `[PROD]` `GET /actions/?client_id=X&limit=50&offset=0`
-- `[PROD]` `POST /actions/revert/{action_log_id}?client_id=X`
+- `[PROD]` `POST /actions/revert/{action_log_id}?client_id=X` (`allow_demo_write=true` required for DEMO)
 
 ## Analytics - Core
 - `GET /analytics/kpis?client_id=X`
 - `GET /analytics/dashboard-kpis?client_id=X&days=30&campaign_type=ALL&status=ALL`
 - `GET /analytics/anomalies?client_id=X&status=unresolved|resolved`
-- `POST /analytics/anomalies/{alert_id}/resolve?client_id=X`
-- `POST /analytics/detect?client_id=X`
+- `POST /analytics/anomalies/{alert_id}/resolve?client_id=X` (`allow_demo_write=true` required for DEMO)
+- `POST /analytics/detect?client_id=X` (`allow_demo_write=true` required for DEMO)
 
 ## Analytics - Advanced
 - `POST /analytics/correlation`
@@ -116,6 +119,7 @@ Base API URL: `/api/v1`
 - `GET /analytics/budget-pacing?client_id=X`
 - `GET /analytics/quality-score-audit?client_id=X&qs_threshold=5`
 - `GET /analytics/forecast?campaign_id=X&metric=clicks&forecast_days=14`
+  - aliases supported: `metric=cost` -> `cost_micros`, `metric=cpc` -> `avg_cpc_micros`
 - `GET /analytics/impression-share?client_id=X`
 - `GET /analytics/device-breakdown?client_id=X&days=30`
 - `GET /analytics/geo-breakdown?client_id=X&days=30`

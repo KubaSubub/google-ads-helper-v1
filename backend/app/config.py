@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     # Cache TTL in seconds (default 1 hour)
     cache_ttl: int = 3600
 
+    # Demo protection
+    demo_protection_enabled: bool = True
+    # Optional hard pin by runtime client id (leave None to avoid accidental lock on non-demo clients).
+    demo_client_id: int | None = None
+    # Canonical demo customer id used for write-lock matching.
+    demo_google_customer_id: str = "123-456-7890"
+
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 
     @field_validator("database_url", mode="before")
