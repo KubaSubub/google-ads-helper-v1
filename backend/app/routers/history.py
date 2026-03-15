@@ -1,4 +1,4 @@
-﻿"""History endpoints â€” Google Ads change history from all sources."""
+"""History endpoints — Google Ads change history from all sources."""
 
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query

@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Loader2, PauseCircle, TrendingDown, TrendingUp, X } from 'lucide-react'
 
 import EmptyState from '../components/EmptyState'
-import FilterBar from '../components/FilterBar'
 import { MetricTooltip } from '../components/MetricTooltip'
 import { ErrorMessage, StatusBadge } from '../components/UI'
 import { getKeywords } from '../api'
@@ -384,9 +383,6 @@ export default function Keywords() {
                     </div>
                 </div>
             </div>
-
-            <FilterBar />
-
             <div className="v2-card" style={{ overflow: 'hidden' }}>
                 {loading ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>

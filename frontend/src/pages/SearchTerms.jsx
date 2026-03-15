@@ -10,12 +10,11 @@ import {
     TrendingUp, AlertTriangle, XCircle, LayoutGrid,
     List, Loader2, X, PlusCircle, MinusCircle,
 } from 'lucide-react'
-import FilterBar from '../components/FilterBar'
 import { MetricTooltip } from '../components/MetricTooltip'
 
 const SEGMENT_CONFIG = {
     HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: '#4ADE80', bg: 'rgba(74,222,128,0.1)',   border: 'rgba(74,222,128,0.2)'  },
-    WASTE:          { label: 'Waste',            icon: AlertTriangle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
+    WASTE:          { label: 'Strata',           icon: AlertTriangle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
     IRRELEVANT:     { label: 'Nieistotne',       icon: XCircle,       color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.1)' },
     OTHER:          { label: 'Inne',             icon: LayoutGrid,    color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',  border: 'rgba(79,142,247,0.2)'  },
 }
@@ -165,7 +164,6 @@ export default function SearchTerms() {
                 </div>
 
                 <div className="flex items-center gap-3 flex-wrap">
-                    <FilterBar hidePeriod />
                     {/* View mode toggle */}
                     <div className="flex items-center gap-1">
                         {[{ v: 'segments', label: 'Segmenty', icon: LayoutGrid }, { v: 'list', label: 'Lista', icon: List }].map(({ v, label, icon: Icon }) => {
@@ -393,7 +391,7 @@ export default function SearchTerms() {
                                                     <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 320 }}>
                                                         <span className="flex items-center gap-2">
                                                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
-                                                            {isWaste && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(248,113,113,0.15)', color: '#F87171', flexShrink: 0 }}>WASTE</span>}
+                                                            {isWaste && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(248,113,113,0.15)', color: '#F87171', flexShrink: 0 }}>STRATA</span>}
                                                         </span>
                                                     </td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString()}</td>

@@ -1,10 +1,23 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-13
+# Updated: 2026-03-15
 
 ## Status
 - Backend: human-centered recommendations milestone completed
 - Frontend: recommendations and campaigns UI updated for context-aware decisions
+- Frontend: first iteration of unified global filtering shipped
 - Google Ads native recommendation phase 1: ingest + cache + display + local dismiss
+
+## Frontend Filtering Iteration 1
+- Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`
+- Global filters now consistently cover:
+  - active client
+  - date range
+  - campaign type
+  - campaign status
+- Campaign type and campaign status now use single-select dropdowns with default `Wszystkie`
+- Removed duplicated global filter UI from sidebar, dashboard, campaigns, keywords, and search terms
+- Preserved existing local view filters such as keyword match type/include removed and search-term view mode/search/segment
+- No backend or API contract changes were required
 
 ## Completed In This Milestone
 

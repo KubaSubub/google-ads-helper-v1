@@ -1,4 +1,4 @@
-﻿"""Analytics endpoints â€” KPIs, anomaly detection, correlation, forecasting."""
+"""Analytics endpoints — KPIs, anomaly detection, correlation, forecasting."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -25,7 +25,7 @@ FORECAST_MICROS_METRICS = {"cost_micros", "avg_cpc_micros"}
 
 
 # ---------------------------------------------------------------------------
-# KPIs & Anomaly Detection â€” delegated to AnalyticsService
+# KPIs & Anomaly Detection — delegated to AnalyticsService
 # ---------------------------------------------------------------------------
 
 
@@ -461,7 +461,7 @@ def forecast_metric(
 
 
 # ---------------------------------------------------------------------------
-# NEW V2 Endpoints â€” TrendExplorer, Health Score, Campaign Trends
+# NEW V2 Endpoints — TrendExplorer, Health Score, Campaign Trends
 # ---------------------------------------------------------------------------
 
 
@@ -500,9 +500,9 @@ def get_health_score(
     status: str = Query(None, description="Filter by campaign status"),
     db: Session = Depends(get_db),
 ):
-    """Account health score (0â€“100) with issue breakdown.
+    """Account health score (0–100) with issue breakdown.
 
-    Lightweight â€” uses only MetricDaily + Alert + Campaign queries.
+    Lightweight — uses only MetricDaily + Alert + Campaign queries.
     Does NOT invoke recommendations engine.
     """
     service = AnalyticsService(db)
@@ -530,7 +530,7 @@ def get_campaign_trends(
 
 
 # ---------------------------------------------------------------------------
-# Budget Pacing â€” underspend / overspend tracking
+# Budget Pacing — underspend / overspend tracking
 # ---------------------------------------------------------------------------
 
 
@@ -566,7 +566,7 @@ def get_budget_pacing(
 
     results = []
     for camp in campaigns:
-        budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month  # daily budget Ă— days
+        budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month  # daily budget × days
 
         # Actual spend this month from MetricDaily
         actual_spend_micros = (
@@ -683,7 +683,7 @@ def get_geo_breakdown(
 
 
 # ---------------------------------------------------------------------------
-# Dayparting â€” day-of-week performance
+# Dayparting — day-of-week performance
 # ---------------------------------------------------------------------------
 
 
@@ -699,7 +699,7 @@ def get_dayparting(
 
 
 # ---------------------------------------------------------------------------
-# RSA Analysis â€” ad copy performance
+# RSA Analysis — ad copy performance
 # ---------------------------------------------------------------------------
 
 
@@ -714,7 +714,7 @@ def get_rsa_analysis(
 
 
 # ---------------------------------------------------------------------------
-# N-gram Analysis â€” word-level search term breakdown
+# N-gram Analysis — word-level search term breakdown
 # ---------------------------------------------------------------------------
 
 
@@ -733,7 +733,7 @@ def get_ngram_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Match Type Analysis â€” EXACT vs PHRASE vs BROAD
+# Match Type Analysis — EXACT vs PHRASE vs BROAD
 # ---------------------------------------------------------------------------
 
 
@@ -749,7 +749,7 @@ def get_match_type_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Landing Page Analysis â€” performance by URL
+# Landing Page Analysis — performance by URL
 # ---------------------------------------------------------------------------
 
 
@@ -765,7 +765,7 @@ def get_landing_pages(
 
 
 # ---------------------------------------------------------------------------
-# Wasted Spend â€” zero-conversion waste summary
+# Wasted Spend — zero-conversion waste summary
 # ---------------------------------------------------------------------------
 
 
@@ -781,7 +781,7 @@ def get_wasted_spend(
 
 
 # ---------------------------------------------------------------------------
-# Account Structure Audit â€” cannibalization, oversized groups, match mixing
+# Account Structure Audit — cannibalization, oversized groups, match mixing
 # ---------------------------------------------------------------------------
 
 
@@ -796,7 +796,7 @@ def get_account_structure(
 
 
 # ---------------------------------------------------------------------------
-# Bidding Strategy Advisor â€” recommend optimal strategy per campaign
+# Bidding Strategy Advisor — recommend optimal strategy per campaign
 # ---------------------------------------------------------------------------
 
 
@@ -812,7 +812,7 @@ def get_bidding_advisor(
 
 
 # ---------------------------------------------------------------------------
-# Hourly Dayparting â€” performance by hour of day
+# Hourly Dayparting — performance by hour of day
 # ---------------------------------------------------------------------------
 
 

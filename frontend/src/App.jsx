@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './contexts/AppContext';
 import { FilterProvider } from './contexts/FilterContext';
 import Toast from './components/Toast';
 import Sidebar from './components/Sidebar';
+import GlobalFilterBar from './components/GlobalFilterBar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Campaigns from './pages/Campaigns';
@@ -38,6 +39,7 @@ function AppContent() {
         <div className="flex h-screen overflow-hidden">
             <Sidebar />
             <main className="flex-1 overflow-y-auto p-6 lg:p-8 pt-16 lg:pt-8">
+                <GlobalFilterBar />
                 <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/campaigns" element={<Campaigns />} />

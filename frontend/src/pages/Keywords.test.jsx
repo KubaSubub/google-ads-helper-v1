@@ -30,10 +30,6 @@ vi.mock('../contexts/FilterContext', () => ({
     }),
 }))
 
-vi.mock('../components/FilterBar', () => ({
-    default: () => <div data-testid="filter-bar" />,
-}))
-
 vi.mock('../components/MetricTooltip', () => ({
     MetricTooltip: ({ children }) => <>{children}</>,
 }))

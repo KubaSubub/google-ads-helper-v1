@@ -1,4 +1,4 @@
-﻿"""Sync endpoint Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž trigger Google Ads data sync manually or check status."""
+"""Sync endpoint — trigger Google Ads data sync manually or check status."""
 
 from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query

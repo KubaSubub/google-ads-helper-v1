@@ -16,7 +16,6 @@ import {
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
-import FilterBar from '../components/FilterBar'
 import EmptyState from '../components/EmptyState'
 import { LoadingSpinner, ErrorMessage } from '../components/UI'
 
@@ -739,7 +738,6 @@ export default function Campaigns() {
                         {filteredCampaigns.length} z {campaigns.length} kampanii
                     </p>
                 </div>
-                <FilterBar hidePeriod />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>

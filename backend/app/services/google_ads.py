@@ -1,5 +1,5 @@
-﻿"""
-Google Ads API Service Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž handles authentication and data fetching.
+"""
+Google Ads API Service — handles authentication and data fetching.
 
 This service wraps the official google-ads Python client and provides
 methods to fetch campaigns, ad groups, keywords, search terms, and ads
@@ -579,7 +579,7 @@ class GoogleAdsService:
         }
 
     # -----------------------------------------------------------------------
-    # Campaign Sync (structural data only Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž no metrics)
+    # Campaign Sync (structural data only — no metrics)
     # -----------------------------------------------------------------------
 
     def sync_campaigns(self, db: Session, customer_id: str) -> int:
@@ -1385,7 +1385,7 @@ class GoogleAdsService:
 
         ga_service = self.client.get_service("GoogleAdsService")
 
-        # Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬ Query 1: Core metrics for ALL campaign types Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬
+        # ── Query 1: Core metrics for ALL campaign types ──
         core_query = f"""
             SELECT
                 campaign.id,
@@ -1468,7 +1468,7 @@ class GoogleAdsService:
             db.rollback()
             raise
 
-        # Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬ Query 2: Search IS metrics (SEARCH campaigns only) Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬
+        # ── Query 2: Search IS metrics (SEARCH campaigns only) ──
         is_query = f"""
             SELECT
                 campaign.id,
@@ -1531,7 +1531,7 @@ class GoogleAdsService:
             logger.info(f"Enriched {is_count} rows with Search IS for customer {customer_id}")
 
         except Exception as e:
-            # Non-critical Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž core metrics are already saved
+            # Non-critical — core metrics are already saved
             logger.warning(f"Search IS enrichment failed (non-critical): {e}")
 
         return count
@@ -1672,7 +1672,7 @@ class GoogleAdsService:
         campaign_search_term_view aggregates at campaign level and INCLUDES
         Performance Max data (unlike search_term_view which is ad_group level).
 
-        IMPORTANT: Do NOT use segments.keyword.info.* fields Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž they filter
+        IMPORTANT: Do NOT use segments.keyword.info.* fields — they filter
         out all PMax data from results.
         """
         if not self.is_connected:
@@ -1690,7 +1690,7 @@ class GoogleAdsService:
 
         ga_service = self.client.get_service("GoogleAdsService")
 
-        # Single query for all PMax campaigns Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž no keyword segments!
+        # Single query for all PMax campaigns — no keyword segments!
         query = f"""
             SELECT
                 campaign.id,
@@ -2519,7 +2519,7 @@ class GoogleAdsService:
         return google_type.replace("_", " ").title()
 
     # -----------------------------------------------------------------------
-    # Discover Accounts (MCC Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€šĂ‚Â Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚ËĂ˘â‚¬ĹľĂ‹Â list of client accounts)
+    # Discover Accounts (MCC -> list of client accounts)
     # -----------------------------------------------------------------------
 
     def discover_accounts(self) -> list[dict]:
@@ -2572,7 +2572,7 @@ class GoogleAdsService:
             raise RuntimeError("Nie udalo sie pobrac listy kont z Google Ads API.") from e
 
     # ------------------------------------------------------------------
-    # Change Events Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž fetch full account change history
+    # Change Events — fetch full account change history
     # ------------------------------------------------------------------
 
     def sync_change_events(self, db: Session, customer_id: str, client_id: int, days: int = 30) -> int:
@@ -2585,7 +2585,7 @@ class GoogleAdsService:
         Returns number of change events synced.
         """
         if not self.is_connected:
-            logger.warning("Google Ads API not connected Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž skipping change events sync")
+            logger.warning("Google Ads API not connected — skipping change events sync")
             return 0
 
         import json
@@ -2628,7 +2628,7 @@ class GoogleAdsService:
                     ce = row.change_event
                     res_name = ce.resource_name
 
-                    # Dedup Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž skip if already in DB
+                    # Dedup — skip if already in DB
                     existing = db.query(ChangeEvent.id).filter(
                         ChangeEvent.resource_name == res_name
                     ).first()
@@ -2811,7 +2811,6 @@ def _match_change_events_to_actions(db: Session, client_id: int):
 
 # Singleton instance
 google_ads_service = GoogleAdsService()
-
 
 
 

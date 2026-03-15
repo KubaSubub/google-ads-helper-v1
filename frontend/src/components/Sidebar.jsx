@@ -1,33 +1,32 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-    LayoutDashboard,
-    Megaphone,
-    Search,
-    KeyRound,
-    Settings,
-    Brain,
-    Lightbulb,
     Award,
-    Menu,
-    X,
-    Users,
-    History,
     Bell,
-    LogOut,
+    Brain,
+    Calendar,
     ChevronRight,
+    History,
+    KeyRound,
+    LayoutDashboard,
+    Lightbulb,
+    LogOut,
+    Megaphone,
+    Menu,
+    Search,
+    Settings,
+    Users,
+    X,
     Zap,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import { logout } from '../api'
-import { Calendar } from 'lucide-react'
 
-// Grupy nawigacyjne
 const NAV_GROUPS = [
     {
-        label: 'PRZEGLĄD',
+        label: 'PRZEGLAD',
         items: [
             { to: '/', label: 'Pulpit', icon: LayoutDashboard },
             { to: '/clients', label: 'Klienci', icon: Users },
@@ -37,14 +36,14 @@ const NAV_GROUPS = [
         label: 'DANE KAMPANII',
         items: [
             { to: '/campaigns', label: 'Kampanie', icon: Megaphone },
-            { to: '/keywords', label: 'Słowa kluczowe', icon: KeyRound },
+            { to: '/keywords', label: 'Slowa kluczowe', icon: KeyRound },
             { to: '/search-terms', label: 'Wyszukiwane frazy', icon: Search },
         ],
     },
     {
-        label: 'DZIAŁANIA',
+        label: 'DZIALANIA',
         items: [
-            { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb, showRecBadge: true },
+            { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb },
             { to: '/action-history', label: 'Historia akcji', icon: History },
         ],
     },
@@ -59,12 +58,19 @@ const NAV_GROUPS = [
         items: [
             { to: '/search-optimization', label: 'Optymalizacja', icon: Zap },
             { to: '/semantic', label: 'Inteligencja', icon: Brain },
-            { to: '/quality-score', label: 'Quality Score', icon: Award },
+            { to: '/quality-score', label: 'Wynik jakosci', icon: Award },
         ],
     },
 ]
 
-function NavItem({ to, label, icon: Icon, showBadge, showRecBadge, alertCount, onClick }) {
+const PERIOD_PRESETS = [
+    { label: '7d', value: 7 },
+    { label: '14d', value: 14 },
+    { label: '30d', value: 30 },
+    { label: '90d', value: 90 },
+]
+
+function NavItem({ to, label, icon: Icon, showBadge, alertCount, onClick }) {
     const location = useLocation()
     const active = location.pathname === to || (to !== '/' && location.pathname.startsWith(to))
 
@@ -88,15 +94,17 @@ function NavItem({ to, label, icon: Icon, showBadge, showRecBadge, alertCount, o
             <Icon size={15} style={{ width: 18, flexShrink: 0, textAlign: 'center' }} />
             <span className="flex-1 text-[13.5px]">{label}</span>
             {showBadge && alertCount > 0 && (
-                <span style={{
-                    background: '#EF4444',
-                    fontSize: 10,
-                    padding: '1px 6px',
-                    borderRadius: 999,
-                    color: 'white',
-                    fontWeight: 600,
-                    lineHeight: '16px',
-                }}>
+                <span
+                    style={{
+                        background: '#EF4444',
+                        fontSize: 10,
+                        padding: '1px 6px',
+                        borderRadius: 999,
+                        color: 'white',
+                        fontWeight: 600,
+                        lineHeight: '16px',
+                    }}
+                >
                     {alertCount}
                 </span>
             )}
@@ -104,84 +112,99 @@ function NavItem({ to, label, icon: Icon, showBadge, showRecBadge, alertCount, o
     )
 }
 
-const PERIOD_PRESETS = [
-    { label: '7d', value: 7 },
-    { label: '14d', value: 14 },
-    { label: '30d', value: 30 },
-    { label: '90d', value: 90 },
-]
-
 function DateRangePicker() {
     const { filters, setFilter } = useFilter()
-    const [showCustom, setShowCustom] = useState(false)
+    const [showCustom, setShowCustom] = useState(filters.period === null)
 
     return (
         <div style={{ padding: '0 10px 8px' }}>
-            <div style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 10,
-                padding: '8px 10px',
-            }}>
+            <div
+                style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 10,
+                    padding: '8px 10px',
+                }}
+            >
                 <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
                     Zakres dat
                 </div>
-                {/* Period presets */}
                 <div style={{ display: 'flex', gap: 4, marginBottom: showCustom ? 8 : 0 }}>
-                    {PERIOD_PRESETS.map(p => {
-                        const active = filters.period === p.value
+                    {PERIOD_PRESETS.map((preset) => {
+                        const active = filters.period === preset.value
                         return (
                             <button
-                                key={p.value}
-                                onClick={() => { setFilter('period', p.value); setShowCustom(false) }}
+                                key={preset.value}
+                                onClick={() => {
+                                    setFilter('period', preset.value)
+                                    setShowCustom(false)
+                                }}
                                 style={{
-                                    flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: active ? 600 : 400,
+                                    flex: 1,
+                                    padding: '4px 0',
+                                    borderRadius: 6,
+                                    fontSize: 11,
+                                    fontWeight: active ? 600 : 400,
                                     border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
                                     background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
                                     color: active ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
-                                    cursor: 'pointer', transition: 'all 0.15s',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
                                 }}
                             >
-                                {p.label}
+                                {preset.label}
                             </button>
                         )
                     })}
                     <button
-                        onClick={() => setShowCustom(!showCustom)}
+                        onClick={() => setShowCustom((current) => !current)}
+                        title="Wlasny zakres"
                         style={{
-                            padding: '4px 6px', borderRadius: 6, fontSize: 11,
-                            border: `1px solid ${!filters.period ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
-                            background: !filters.period ? 'rgba(79,142,247,0.18)' : 'transparent',
-                            color: !filters.period ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center',
+                            padding: '4px 6px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            border: `1px solid ${filters.period === null ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
+                            background: filters.period === null ? 'rgba(79,142,247,0.18)' : 'transparent',
+                            color: filters.period === null ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
                         }}
-                        title="Własny zakres"
                     >
                         <Calendar size={11} />
                     </button>
                 </div>
-                {/* Custom date inputs */}
                 {showCustom && (
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <input
                             type="date"
                             value={filters.dateFrom}
-                            onChange={e => setFilter('dateFrom', e.target.value)}
+                            onChange={(event) => setFilter('dateFrom', event.target.value)}
                             style={{
-                                flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 11,
-                                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                color: 'rgba(255,255,255,0.7)', outline: 'none',
+                                flex: 1,
+                                padding: '4px 6px',
+                                borderRadius: 6,
+                                fontSize: 11,
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.7)',
+                                outline: 'none',
                             }}
                         />
                         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>-</span>
                         <input
                             type="date"
                             value={filters.dateTo}
-                            onChange={e => setFilter('dateTo', e.target.value)}
+                            onChange={(event) => setFilter('dateTo', event.target.value)}
                             style={{
-                                flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 11,
-                                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                color: 'rgba(255,255,255,0.7)', outline: 'none',
+                                flex: 1,
+                                padding: '4px 6px',
+                                borderRadius: 6,
+                                fontSize: 11,
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.7)',
+                                outline: 'none',
                             }}
                         />
                     </div>
@@ -193,24 +216,31 @@ function DateRangePicker() {
 
 function SidebarContent({ onNavigate }) {
     const { selectedClientId, setSelectedClientId, alertCount, clients } = useApp()
-
-    const selectedClient = clients.find(c => c.id === selectedClientId)
+    const selectedClient = clients.find((client) => client.id === selectedClientId)
 
     const handleLogout = async () => {
-        try { await logout() } catch {}
+        try {
+            await logout()
+        } catch {}
         window.location.reload()
     }
 
     return (
         <div className="flex flex-col h-full" style={{ background: '#111318' }}>
-            {/* Logo area */}
             <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '16px 16px 14px' }}>
                 <div className="flex items-center gap-2.5">
-                    <div style={{
-                        width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                        background: 'linear-gradient(135deg, #4F8EF7 0%, #7B5CE0 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
+                    <div
+                        style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            flexShrink: 0,
+                            background: 'linear-gradient(135deg, #4F8EF7 0%, #7B5CE0 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
                         <Zap size={16} className="text-white" />
                     </div>
                     <div>
@@ -224,7 +254,6 @@ function SidebarContent({ onNavigate }) {
                 </div>
             </div>
 
-            {/* Client selector */}
             <div style={{ padding: '10px 10px 8px' }}>
                 <div
                     style={{
@@ -247,14 +276,15 @@ function SidebarContent({ onNavigate }) {
                             <div className="flex items-center gap-2 min-w-0">
                                 <span
                                     style={{
-                                        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: '50%',
+                                        flexShrink: 0,
                                         background: '#4ADE80',
                                         boxShadow: '0 0 6px #4ade80',
                                     }}
                                 />
-                                <span className="text-white text-[13px] font-medium truncate">
-                                    {selectedClient.name}
-                                </span>
+                                <span className="text-white text-[13px] font-medium truncate">{selectedClient.name}</span>
                             </div>
                             <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
                         </div>
@@ -266,44 +296,48 @@ function SidebarContent({ onNavigate }) {
                     )}
                     {selectedClient && (
                         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 3 }}>
-                            Sync • aktywny
+                            Sync * aktywny
                         </div>
                     )}
-                    {/* Hidden native select for actual selection */}
                     <select
                         value={selectedClientId || ''}
-                        onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : null)}
+                        onChange={(event) => setSelectedClientId(event.target.value ? Number(event.target.value) : null)}
                         style={{
-                            position: 'absolute', opacity: 0, inset: 0, width: '100%', height: '100%', cursor: 'pointer',
+                            position: 'absolute',
+                            opacity: 0,
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            cursor: 'pointer',
                         }}
                     >
                         <option value="">Wybierz klienta...</option>
-                        {clients.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
+                        {clients.map((client) => (
+                            <option key={client.id} value={client.id}>{client.name}</option>
                         ))}
                     </select>
                 </div>
             </div>
 
-            {/* Date Range Picker */}
             <DateRangePicker />
 
-            {/* Navigation */}
             <nav className="flex-1 overflow-y-auto" style={{ padding: '4px 8px' }}>
-                {NAV_GROUPS.map(group => (
+                {NAV_GROUPS.map((group) => (
                     <div key={group.label} style={{ marginBottom: 4 }}>
-                        <div style={{
-                            fontSize: 10,
-                            color: 'rgba(255,255,255,0.3)',
-                            letterSpacing: '0.1em',
-                            textTransform: 'uppercase',
-                            padding: '8px 8px 4px',
-                            fontWeight: 500,
-                        }}>
+                        <div
+                            style={{
+                                fontSize: 10,
+                                color: 'rgba(255,255,255,0.3)',
+                                letterSpacing: '0.1em',
+                                textTransform: 'uppercase',
+                                padding: '8px 8px 4px',
+                                fontWeight: 500,
+                            }}
+                        >
                             {group.label}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                            {group.items.map(item => (
+                            {group.items.map((item) => (
                                 <NavItem
                                     key={item.to}
                                     {...item}
@@ -316,32 +350,30 @@ function SidebarContent({ onNavigate }) {
                 ))}
             </nav>
 
-            {/* Bottom */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px 8px 10px' }}>
-                <NavItem
-                    to="/settings"
-                    label="Ustawienia"
-                    icon={Settings}
-                    onClick={onNavigate}
-                />
+                <NavItem to="/settings" label="Ustawienia" icon={Settings} onClick={onNavigate} />
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', margin: '6px 0' }} />
-                {/* User row */}
                 <div className="flex items-center gap-2.5 px-2 py-1.5">
-                    <div style={{
-                        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                        background: 'linear-gradient(135deg, #4F8EF7, #7B5CE0)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 11, color: 'white', fontWeight: 600,
-                    }}>
+                    <div
+                        style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            background: 'linear-gradient(135deg, #4F8EF7, #7B5CE0)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                            color: 'white',
+                            fontWeight: 600,
+                        }}
+                    >
                         GA
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
-                            Użytkownik
-                        </div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
-                            Admin
-                        </div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>Uzytkownik</div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Admin</div>
                     </div>
                     <button
                         onClick={handleLogout}
@@ -362,21 +394,28 @@ export default function Sidebar() {
 
     return (
         <>
-            {/* Mobile header */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3"
-                style={{ background: 'rgba(17,19,24,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div
+                className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3"
+                style={{ background: 'rgba(17,19,24,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+            >
                 <div className="flex items-center gap-2">
-                    <div style={{
-                        width: 28, height: 28, borderRadius: 7,
-                        background: 'linear-gradient(135deg, #4F8EF7, #7B5CE0)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
+                    <div
+                        style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 7,
+                            background: 'linear-gradient(135deg, #4F8EF7, #7B5CE0)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
                         <Zap size={14} className="text-white" />
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>Google Ads Helper</span>
                 </div>
                 <button
-                    onClick={() => setMobileOpen(!mobileOpen)}
+                    onClick={() => setMobileOpen((open) => !open)}
                     style={{ padding: 6, borderRadius: 7, color: 'rgba(255,255,255,0.5)' }}
                     className="hover:bg-white/5"
                 >
@@ -384,7 +423,6 @@ export default function Sidebar() {
                 </button>
             </div>
 
-            {/* Mobile drawer overlay */}
             {mobileOpen && (
                 <div
                     className="lg:hidden fixed inset-0 z-40"
@@ -394,14 +432,13 @@ export default function Sidebar() {
                     <div
                         className="absolute left-0 top-0 bottom-0 w-64"
                         style={{ paddingTop: 56 }}
-                        onClick={e => e.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
                     >
                         <SidebarContent onNavigate={() => setMobileOpen(false)} />
                     </div>
                 </div>
             )}
 
-            {/* Desktop sidebar */}
             <aside className="hidden lg:flex flex-col w-64 flex-shrink-0" style={{ borderRight: '1px solid rgba(255,255,255,0.07)' }}>
                 <SidebarContent onNavigate={undefined} />
             </aside>
