@@ -11,7 +11,6 @@ import {
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
-import FilterBar from '../components/FilterBar'
 import InsightsFeed from '../components/InsightsFeed'
 import TrendExplorer from '../components/TrendExplorer'
 import EmptyState from '../components/EmptyState'
@@ -263,7 +262,6 @@ export default function Dashboard() {
                         Ostatnie {days} dni
                     </p>
                 </div>
-                <FilterBar hidePeriod />
             </div>
 
             {error && (
@@ -523,4 +521,3 @@ export default function Dashboard() {
         </div>
     )
 }
-
