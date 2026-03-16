@@ -937,8 +937,46 @@ class Alert(Base):
     - `metric=cpc` maps to `avg_cpc_micros`
   - Micros metrics are normalized to currency units in forecast response values.
 
+## API Contract Addendum (2026-03-16)
+
+- New protected AI Agent endpoints:
+  - `GET /api/v1/agent/status`
+    - Purpose: runtime availability check for local Claude CLI.
+    - Response shape: `{ available: bool, version?: str, reason?: str }`
+  - `POST /api/v1/agent/chat?client_id=X`
+    - Purpose: generate AI report via streamed SSE response.
+    - Body: `{ message: string, report_type?: "weekly"|"campaigns"|"keywords"|"search_terms"|"budget"|"alerts"|"freeform" }`
+    - Invalid `report_type` fallback: `freeform`.
+
+- SSE contract for `POST /api/v1/agent/chat`:
+  - `status` - progress/status text
+  - `delta` - markdown content chunk
+  - `error` - user-visible generation/runtime error message
+  - `done` - stream terminator event
+  - Transport: `text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-Accel-Buffering: no`.
+
+- Concurrency and timeout rules:
+  - Single-flight generation is enforced with in-memory async lock (`asyncio.Lock`): one active report per backend process.
+  - Concurrent request behavior: stream emits `error` (busy) and then `done`.
+  - Generation timeout is controlled by backend setting `agent_timeout` (default: `120` seconds).
+
+- AI execution contract:
+  - Report generation is delegated to local Claude CLI subprocess:
+    - command family: `claude -p --output-format stream-json`
+  - Prompt is sent via `stdin` (avoids command-line length limits on Windows).
+  - CLI unavailability, timeout, or non-zero exit are returned as SSE `error` events.
+
+- Frontend contract update:
+  - New page route: `/agent`.
+  - Sidebar navigation includes `Raport AI`.
+  - Page behavior:
+    - checks `/api/v1/agent/status` on load
+    - sends report requests to `/api/v1/agent/chat`
+    - parses SSE event boundaries and updates assistant output incrementally
+    - renders assistant output as markdown (`react-markdown` + `remark-gfm`)
+    - dispatches `auth:unauthorized` on HTTP `401` during fetch handshake.
+
 **END OF TECHNICAL SPECIFICATION**
 
 This document + Implementation_Blueprint.md + Blueprint_Patch_v2_1.md = complete source of truth for implementation.
-
 

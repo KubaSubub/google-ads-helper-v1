@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-15
+# Updated: 2026-03-16
 
 ## Status
 - Backend: human-centered recommendations milestone completed
@@ -251,4 +251,56 @@
   - latest seeder extension (curated waste patterns/search terms) is committed in code and requires backend process restart/reload to be reflected in live response fields.
 - Environment limitation in this session:
   - Playwright MCP/CLI browser automation failed with process spawn permissions (`EPERM`), so full click-through UI regression could not be executed here.
+
+## AI Agent (Raport AI) (2026-03-16)
+- Added protected backend router `backend/app/routers/agent.py` with:
+  - `GET /api/v1/agent/status` for Claude CLI availability/version check
+  - `POST /api/v1/agent/chat?client_id=X` for SSE report generation
+- Added `AgentService` (`backend/app/services/agent_service.py`) to:
+  - gather scoped analytics context by `report_type`
+  - build bounded prompt payload
+  - invoke local Claude CLI in headless mode (`claude -p --output-format stream-json`)
+  - stream report chunks as SSE-safe events
+- Registered agent router in `backend/app/main.py` under protected API routes.
+- Added frontend AI page `frontend/src/pages/Agent.jsx` with:
+  - quick report actions (`weekly`, `campaigns`, `keywords`, `search_terms`, `budget`, `alerts`, `freeform`)
+  - SSE streaming parser and incremental assistant rendering
+  - markdown output rendering via `react-markdown` + `remark-gfm`
+- Added navigation + route wiring:
+  - `/agent` route in `frontend/src/App.jsx`
+  - `Raport AI` entry in `frontend/src/components/Sidebar.jsx`
+  - `getAgentStatus()` helper in `frontend/src/api.js`
+
+## AI Agent Stabilization (2026-03-16, current workspace)
+- Router lock flow hardened to atomic single-flight behavior:
+  - busy request now returns SSE `error` + `done` from the stream path
+  - lock check + acquire happen in one async context
+- KPI window parity fixed in agent analytics:
+  - current window: `today-6 .. today` (7 days)
+  - previous window: `today-13 .. today-7` (7 days)
+- Campaign metrics gathering optimized:
+  - replaced per-campaign aggregate queries (N+1) with grouped batch queries
+  - kept result limits (`30` summary, `40` detail) and empty-list fast paths
+- Claude subprocess noise/error handling simplified:
+  - removed `--verbose`
+  - redirected stderr to `DEVNULL`
+  - returncode error now emits short standardized message
+- Frontend cleanup in `Agent.jsx`:
+  - removed dead/partial legacy sender implementation
+  - added explicit 401 handling (`auth:unauthorized`) for SSE fetch failures
+
+## Validation (2026-03-16)
+- Implemented tests for AI Agent feature in `backend/tests/test_agent.py`:
+  - endpoint contract checks
+  - report type fallback behavior
+  - gather-data section coverage
+  - KPI date-range parity
+  - prompt truncation behavior
+- Additional coverage milestone already committed (2026-03-16):
+  - commit `1c555ea`: +81 tests across backend/frontend critical gaps
+- Pre-existing regression fixes already committed (2026-03-16):
+  - commit `60b24cb`: segmentation + keyword cleanup test fixes
+  - commit message states full backend suite passed in that run (`145` tests)
+- Environment limitation for this documentation update:
+  - local re-run was not possible in this session because `python`/`pytest` executables are unavailable in PATH.
 

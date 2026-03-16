@@ -84,3 +84,26 @@ Project command prompts are stored in `.claude/commands/`:
 - `commit.md`
 
 Use them as workflow helpers, but keep behavior aligned with `AGENTS.md`.
+
+## 8) Recent Delivered Snapshot (2026-03-16)
+
+- AI Agent feature delivered:
+  - backend router `agent.py` (`/api/v1/agent/status`, `/api/v1/agent/chat`)
+  - service orchestration in `agent_service.py` (data gather -> prompt -> Claude CLI stream)
+  - frontend page `Agent.jsx` with SSE streaming and markdown rendering
+  - navigation + route wiring for `/agent`
+- AI Agent stabilization in current workspace:
+  - single-flight lock flow hardened in stream path
+  - 7d vs 7d KPI comparison fixed
+  - campaign summary/detail aggregation switched from per-campaign queries to grouped batch queries
+  - Claude subprocess verbosity/noise reduced and error output simplified
+  - frontend SSE handshake now dispatches `auth:unauthorized` on 401
+- Test context:
+  - `backend/tests/test_agent.py` added for agent API/service behavior
+  - broader test expansion already committed (`1c555ea`, +81 tests)
+  - pre-existing regression test repairs committed (`60b24cb`)
+- Current source-of-truth pointers for these changes:
+  - `PROGRESS.md` (delivery + validation timeline)
+  - `DECISIONS.md` (ADR-016, ADR-017)
+  - `docs/API_ENDPOINTS.md` (endpoint index)
+  - `Technical_Spec.md` (API addendum 2026-03-16)

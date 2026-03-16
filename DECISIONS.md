@@ -82,3 +82,16 @@
 **Why:** Positive keywords carry bids, serving state, and performance metrics that do not apply cleanly to negatives. A unified table would increase null-heavy ambiguity and repeat the exact class of bug that caused the incident.
 **Rule:** Both caches expose explicit `criterion_kind` values (`POSITIVE`, `NEGATIVE`), and positive sync must reject `negative=true` rows at query, mapping, and before-save layers.
 **Scope:** `negative_keywords` is canonical for campaign-level and ad-group negative keyword criteria. No account-level negative cache in the current milestone.
+
+## ADR-016: AI report generation uses local Claude CLI streaming
+**Decision:** Integrate AI report generation through local Claude CLI (`claude -p --output-format stream-json`) invoked as a backend subprocess.
+**Why:** The app is local-first and desktop-oriented; local CLI integration avoids adding a second remote LLM credential/token flow into app storage and keeps runtime behavior aligned with user-managed Claude installation.
+**Rule:** Backend streams generated content to frontend via SSE and treats CLI availability as runtime capability (`/api/v1/agent/status`), not as a startup hard dependency.
+**Trade-off:** Behavior depends on local CLI installation/version and PATH correctness; failure paths must degrade gracefully with explicit user-facing error events.
+
+## ADR-017: AI report generation is single-flight per backend process
+**Decision:** Allow only one active AI report generation at a time using an in-memory `asyncio.Lock`.
+**Why:** The product is single-user desktop-first; parallel report generation provides limited user value but increases risk of resource contention, overlapping stream handling, and degraded UX stability.
+**Rule:** If generation is already in progress, the next request returns a busy SSE error and closes with `done`.
+**Trade-off:** No concurrent report generation in the same backend process; users must retry after completion.
+**Revisit if:** Multi-user/server mode or queued background report jobs become a product requirement.
