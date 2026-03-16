@@ -15,6 +15,7 @@ import {
     Menu,
     Search,
     Settings,
+    Sparkles,
     Users,
     X,
     Zap,
@@ -51,6 +52,12 @@ const NAV_GROUPS = [
         label: 'MONITORING',
         items: [
             { to: '/alerts', label: 'Monitoring', icon: Bell, showBadge: true },
+        ],
+    },
+    {
+        label: 'AI',
+        items: [
+            { to: '/agent', label: 'Raport AI', icon: Sparkles },
         ],
     },
     {

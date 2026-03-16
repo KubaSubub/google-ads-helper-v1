@@ -18,6 +18,7 @@ import Clients from './pages/Clients';
 import ActionHistory from './pages/ActionHistory';
 import Alerts from './pages/Alerts';
 import SearchOptimization from './pages/SearchOptimization';
+import Agent from './pages/Agent';
 import { Loader2 } from 'lucide-react';
 
 function AppContent() {
@@ -54,6 +55,7 @@ function AppContent() {
                     <Route path="/action-history" element={<ActionHistory />} />
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/search-optimization" element={<SearchOptimization />} />
+                    <Route path="/agent" element={<Agent />} />
                     <Route path="/settings" element={<Settings />} />
                 </Routes>
             </main>

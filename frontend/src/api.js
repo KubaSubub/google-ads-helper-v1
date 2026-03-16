@@ -188,6 +188,9 @@ export const getBiddingAdvisor = (clientId, days = 30) =>
 export const getHourlyDayparting = (clientId, days = 7) =>
     api.get('/analytics/hourly-dayparting', { params: { client_id: clientId, days } });
 
+// AI Agent
+export const getAgentStatus = () => api.get('/agent/status');
+
 // History
 export const getChangeHistory = (clientId, params = {}) =>
     api.get('/history/', { params: { client_id: clientId, ...params } });

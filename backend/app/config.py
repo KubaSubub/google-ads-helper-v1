@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Cache TTL in seconds (default 1 hour)
     cache_ttl: int = 3600
 
+    # AI Agent (Claude Code headless)
+    agent_timeout: int = 120
+
     # Demo protection
     demo_protection_enabled: bool = True
     # Optional hard pin by runtime client id (leave None to avoid accidental lock on non-demo clients).

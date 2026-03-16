@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import init_db
 from app.routers import (
     actions,
+    agent,
     analytics,
     auth,
     campaigns,
@@ -75,6 +76,7 @@ app.include_router(semantic.router, prefix=API_PREFIX, tags=["semantic"], depend
 app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendations"], dependencies=protected)
 app.include_router(actions.router, prefix=API_PREFIX, tags=["actions"], dependencies=protected)
 app.include_router(history.router, prefix=API_PREFIX, tags=["history"], dependencies=protected)
+app.include_router(agent.router, prefix=API_PREFIX, tags=["agent"], dependencies=protected)
 
 
 @app.get("/health", tags=["System"])
