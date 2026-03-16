@@ -360,7 +360,7 @@ def test_sync_trigger_reports_failed_and_partial_states(
 
     response = api_client.post(
         "/api/v1/sync/trigger",
-        params={"client_id": client.id, "days": 30},
+        params={"client_id": client.id, "days": 30, "allow_demo_write": True},
         cookies=_auth_cookies(),
     )
 
