@@ -1,8 +1,16 @@
 """Tests for search term segmentation logic."""
 
+import re
 from datetime import date, timedelta
 from app.models import Client, Campaign, AdGroup, SearchTerm
 from app.services.search_terms_service import SearchTermsService
+from app.utils.constants import IRRELEVANT_KEYWORDS
+
+# Pre-compiled patterns, same as the service builds them
+_IRRELEVANT_PATTERNS = [
+    re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
+    for kw in IRRELEVANT_KEYWORDS
+]
 
 
 def _setup_data(db, terms_data: list[dict]):
@@ -46,19 +54,21 @@ def test_irrelevant_segment(db):
     """Terms containing IRRELEVANT_KEYWORDS should be classified as IRRELEVANT."""
     client = _setup_data(db, [
         {"text": "darmowe kursy google ads", "clicks": 10, "impressions": 200},
-        {"text": "jak zrobic reklame", "clicks": 5, "impressions": 100},
+        {"text": "tutorial google ads", "clicks": 5, "impressions": 100},
     ])
 
     service = SearchTermsService(db)
     result = service._classify(
         db.query(SearchTerm).filter(SearchTerm.text == "darmowe kursy google ads").first(),
         {},
+        _IRRELEVANT_PATTERNS,
     )
     assert result == "IRRELEVANT"
 
     result2 = service._classify(
-        db.query(SearchTerm).filter(SearchTerm.text == "jak zrobic reklame").first(),
+        db.query(SearchTerm).filter(SearchTerm.text == "tutorial google ads").first(),
         {},
+        _IRRELEVANT_PATTERNS,
     )
     assert result2 == "IRRELEVANT"
 
@@ -75,6 +85,7 @@ def test_high_performer_segment(db):
     result = service._classify(
         db.query(SearchTerm).first(),
         campaign_cvrs,
+        _IRRELEVANT_PATTERNS,
     )
     assert result == "HIGH_PERFORMER"
 
@@ -92,7 +103,7 @@ def test_waste_segment(db):
     ])
 
     service = SearchTermsService(db)
-    result = service._classify(db.query(SearchTerm).first(), {})
+    result = service._classify(db.query(SearchTerm).first(), {}, _IRRELEVANT_PATTERNS)
     assert result == "WASTE"
 
 
@@ -103,7 +114,7 @@ def test_other_segment_default(db):
     ])
 
     service = SearchTermsService(db)
-    result = service._classify(db.query(SearchTerm).first(), {})
+    result = service._classify(db.query(SearchTerm).first(), {}, _IRRELEVANT_PATTERNS)
     assert result == "OTHER"
 
 
@@ -115,5 +126,5 @@ def test_irrelevant_takes_priority(db):
 
     service = SearchTermsService(db)
     campaign_cvrs = {1: 0.01}
-    result = service._classify(db.query(SearchTerm).first(), campaign_cvrs)
+    result = service._classify(db.query(SearchTerm).first(), campaign_cvrs, _IRRELEVANT_PATTERNS)
     assert result == "IRRELEVANT"  # "darmowe" is an irrelevant keyword

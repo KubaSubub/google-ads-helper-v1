@@ -466,7 +466,10 @@ def test_reset_and_resync_do_not_restore_negative_into_positive_keywords(api_cli
     before_reset = db.query(Keyword).filter(Keyword.google_keyword_id == "neg-ag-1").count()
     assert before_reset == 1
 
-    reset_response = api_client.post(f"/api/v1/clients/{client.id}/hard-reset")
+    reset_response = api_client.post(
+        f"/api/v1/clients/{client.id}/hard-reset",
+        params={"allow_demo_write": "true"},
+    )
     assert reset_response.status_code == 200
     assert db.query(Keyword).count() == 0
     assert db.query(NegativeKeyword).count() == 0
