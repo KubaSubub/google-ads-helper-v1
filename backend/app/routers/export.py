@@ -43,9 +43,14 @@ def export_search_terms(
 
     terms = (
         db.query(SearchTerm)
-        .join(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
-        .join(Campaign, AdGroup.campaign_id == Campaign.id)
-        .filter(Campaign.client_id == client_id)
+        .outerjoin(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
+        .outerjoin(Campaign, AdGroup.campaign_id == Campaign.id)
+        .filter(
+            (Campaign.client_id == client_id)
+            | (SearchTerm.campaign_id.in_(
+                db.query(Campaign.id).filter(Campaign.client_id == client_id)
+            ))
+        )
         .order_by(SearchTerm.cost_micros.desc())
         .all()
     )

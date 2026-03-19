@@ -825,7 +825,19 @@ class AgentService:
         process.stdin.close()
 
         try:
-            async for raw_line in process.stdout:
+            while True:
+                try:
+                    raw_line = await asyncio.wait_for(
+                        process.stdout.readline(), timeout=settings.agent_timeout
+                    )
+                except asyncio.TimeoutError:
+                    process.kill()
+                    yield json.dumps({"type": "error", "content": "Timeout — generowanie raportu trwalo zbyt dlugo."})
+                    return
+
+                if not raw_line:
+                    break
+
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
@@ -882,11 +894,11 @@ class AgentService:
                         "model_usage": model_usage,
                     }})
 
-            await asyncio.wait_for(process.wait(), timeout=settings.agent_timeout)
+            await asyncio.wait_for(process.wait(), timeout=10)
 
         except asyncio.TimeoutError:
             process.kill()
-            yield json.dumps({"type": "error", "content": "Timeout — generowanie raportu trwalo zbyt dlugo."})
+            yield json.dumps({"type": "error", "content": "Timeout — proces Claude CLI nie zakonczyl sie poprawnie."})
             return
 
         if process.returncode != 0:

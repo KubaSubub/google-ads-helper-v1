@@ -103,7 +103,6 @@ async def generate_report(
                 service = AgentService(db, client_id)
 
                 # Phase 1: Gather data section-by-section with progress
-                import calendar as cal2
                 service._period_start = period_start
                 service._period_end = period_end
 

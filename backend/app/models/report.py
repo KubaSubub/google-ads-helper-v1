@@ -1,6 +1,6 @@
 """Report model for persisting generated monthly/periodic reports."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Column, Integer, Float, String, Text, Date, DateTime, ForeignKey, Index
 from app.database import Base
@@ -25,7 +25,7 @@ class Report(Base):
     total_cost_usd = Column(Float, nullable=True)
     model_name = Column(String(100), nullable=True)
     duration_ms = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
