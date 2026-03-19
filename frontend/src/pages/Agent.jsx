@@ -151,6 +151,8 @@ export default function Agent() {
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState(''); // status text during generation
     const [agentAvailable, setAgentAvailable] = useState(null);
+    const [tokenUsage, setTokenUsage] = useState(null);
+    const [modelName, setModelName] = useState(null);
     const messagesEndRef = useRef(null);
     const textareaRef = useRef(null);
 
@@ -164,85 +166,6 @@ export default function Agent() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, status]);
 
-    const sendMessage = async (message, reportType = 'freeform') => {
-        if (!message.trim() || isLoading || !selectedClientId) return;
-
-        const userMsg = { role: 'user', content: message.trim() };
-        setMessages((prev) => [...prev, userMsg]);
-        setInput('');
-        setIsLoading(true);
-        setStatus('Pobieram dane...');
-
-        let assistantContent = '';
-
-        try {
-            const response = await fetch(`/api/v1/agent/chat?client_id=${selectedClientId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ message: message.trim(), report_type: reportType }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // keep incomplete line
-
-                for (const line of lines) {
-                    if (line.startsWith('event: ')) {
-                        const eventType = line.slice(7).trim();
-                        // Next line should be data
-                        continue;
-                    }
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6).replace(/\\n/g, '\n');
-
-                        // Determine event type from preceding event line
-                        // SSE events come as: event: <type>\ndata: <data>\n\n
-                        // We parse based on content
-                        if (data === '') continue;
-
-                        // Check if it's a status, error, delta, or done
-                        // We need to track the event type from the previous line
-                        // Let's refactor: parse the buffer as SSE properly
-                    }
-                }
-
-                // Better SSE parsing: split by double newline
-                const fullBuffer = buffer;
-                buffer = '';
-                // Re-parse everything as events
-            }
-
-            // Simpler SSE parsing approach
-        } catch {
-            // Fallback: re-attempt with simpler parsing
-        }
-
-        // Use a cleaner SSE parsing approach
-        setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'user') {
-                return [...prev, { role: 'assistant', content: assistantContent || 'Brak odpowiedzi.' }];
-            }
-            return prev;
-        });
-        setIsLoading(false);
-        setStatus('');
-    };
-
-    // Proper SSE implementation — override sendMessage
     const sendMessageSSE = async (message, reportType = 'freeform') => {
         if (!message.trim() || isLoading || !selectedClientId) return;
 
@@ -250,19 +173,27 @@ export default function Agent() {
         setMessages((prev) => [...prev, userMsg]);
         setInput('');
         setIsLoading(true);
+        setTokenUsage(null);
+        setModelName(null);
         setStatus('Pobieram dane...');
 
         let fullContent = '';
 
         try {
+            const abortCtrl = new AbortController();
+            const timeoutId = setTimeout(() => abortCtrl.abort(), 120_000); // 2 min timeout
             const response = await fetch(`/api/v1/agent/chat?client_id=${selectedClientId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({ message: message.trim(), report_type: reportType }),
+                signal: abortCtrl.signal,
             });
 
             if (!response.ok) {
+                if (response.status === 401) {
+                    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+                }
                 throw new Error(`Blad serwera: ${response.status}`);
             }
 
@@ -295,6 +226,10 @@ export default function Agent() {
 
                     if (eventType === 'status') {
                         setStatus(eventData);
+                    } else if (eventType === 'model') {
+                        setModelName(eventData);
+                    } else if (eventType === 'usage') {
+                        try { setTokenUsage(JSON.parse(eventData)); } catch {}
                     } else if (eventType === 'delta') {
                         fullContent += eventData;
                         // Update assistant message in real-time
@@ -328,10 +263,13 @@ export default function Agent() {
                     }
                 }
             }
+            clearTimeout(timeoutId);
         } catch (err) {
+            clearTimeout(timeoutId);
+            const msg = err.name === 'AbortError' ? 'Przekroczono limit czasu (120s). Sprobuj ponownie.' : err.message;
             setMessages((prev) => [
                 ...prev,
-                { role: 'assistant', content: `**Blad:** ${err.message}` },
+                { role: 'assistant', content: `**Blad:** ${msg}` },
             ]);
         }
 
@@ -437,6 +375,35 @@ export default function Agent() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
                                 <Loader2 size={14} className="animate-spin" style={{ color: '#7B5CE0' }} />
                                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>{status}</span>
+                            </div>
+                        )}
+
+                        {/* Token usage */}
+                        {tokenUsage && !isLoading && (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                                padding: '6px 12px', borderRadius: 8,
+                                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+                                fontSize: 11, color: 'rgba(255,255,255,0.5)',
+                            }}>
+                                {modelName && (
+                                    <span style={{
+                                        padding: '1px 6px', borderRadius: 999, fontSize: 10,
+                                        background: 'rgba(123,92,224,0.12)', color: '#7B5CE0',
+                                        border: '1px solid rgba(123,92,224,0.25)',
+                                    }}>{modelName}</span>
+                                )}
+                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>in:</span> {(tokenUsage.input_tokens || 0).toLocaleString()}</span>
+                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>out:</span> {(tokenUsage.output_tokens || 0).toLocaleString()}</span>
+                                {tokenUsage.cache_read_tokens > 0 && (
+                                    <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>cache:</span> <span style={{ color: '#4F8EF7' }}>{tokenUsage.cache_read_tokens.toLocaleString()}</span></span>
+                                )}
+                                {tokenUsage.duration_ms > 0 && (
+                                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>{(tokenUsage.duration_ms / 1000).toFixed(1)}s</span>
+                                )}
+                                {tokenUsage.total_cost_usd > 0 && (
+                                    <span style={{ color: '#FBBF24' }}>${tokenUsage.total_cost_usd.toFixed(4)}</span>
+                                )}
                             </div>
                         )}
 

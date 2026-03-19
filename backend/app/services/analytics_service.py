@@ -953,7 +953,7 @@ class AnalyticsService:
             headlines = ad.headlines or []
             descriptions = ad.descriptions or []
             cost = (ad.cost_micros or 0) / 1_000_000
-            ctr_pct = (ad.ctr or 0) / 10_000
+            ctr_pct = ad.ctr or 0  # already percentage
 
             by_group[gid]["ads"].append({
                 "id": ad.id,

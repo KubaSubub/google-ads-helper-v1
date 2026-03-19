@@ -59,3 +59,10 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Settings page requires exact-name confirmation before reset.
 - Reset clears campaigns and cascaded cache data plus direct client tables like recommendations, action logs, alerts, change events, negatives, and sync logs.
 
+## AI Agent (Raport AI)
+- Claude Code headless integration via subprocess (`claude -p --output-format stream-json`).
+- Backend: `AgentService` gathers data from existing services (KPIs, campaigns, keywords, search terms, alerts, recommendations, budget pacing), builds prompt, streams response via SSE.
+- Router: `agent.py` with `/agent/status` and `/agent/chat` endpoints, single-request lock prevents concurrent generation.
+- Frontend: `Agent.jsx` — chat interface with quick report buttons, SSE stream parsing, markdown rendering.
+- Quick report types: weekly, campaigns, keywords, search_terms, budget, alerts, freeform.
+

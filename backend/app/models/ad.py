@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, BigInteger, Float, String, DateTime, ForeignKey, JSON
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -27,10 +28,10 @@ class Ad(Base):
     impressions = Column(Integer, default=0)
     cost_micros = Column(BigInteger, default=0)
     conversions = Column(Float, default=0.0)
-    ctr = Column(Integer, default=0)  # Stored as micros
+    ctr = Column(Float, default=0.0)  # Percentage (5.0 = 5%), consistent with MetricDaily
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     ad_group = relationship("AdGroup", back_populates="ads")

@@ -59,8 +59,9 @@ def _micros_to_usd(micros: int | None) -> float:
     return round((micros or 0) / 1_000_000, 2)
 
 
-def _ctr_micros_to_pct(ctr_micros: int | None) -> float:
-    return round((ctr_micros or 0) / 10_000, 2)
+def _ctr_micros_to_pct(ctr_val: float | int | None) -> float:
+    """CTR is now stored as percentage (5.0 = 5%). Return as-is."""
+    return round(float(ctr_val or 0), 2)
 
 class RecommendationType(str, Enum):
     # MVP (R1-R7)

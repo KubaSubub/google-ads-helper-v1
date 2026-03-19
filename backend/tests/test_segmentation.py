@@ -98,7 +98,7 @@ def test_waste_segment(db):
             "clicks": 10,
             "conversions": 0,
             "impressions": 5000,
-            "ctr": 2000,  # 0.2% in micros (2000 / 1_000_000 = 0.000002 as decimal < 0.01)
+            "ctr": 0.2,  # 0.2% as percentage
         },
     ])
 

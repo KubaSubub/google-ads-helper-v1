@@ -2,13 +2,23 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Ad, AdGroup, Campaign, Keyword, KeywordDaily, NegativeKeyword
+from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
 from app.schemas import AdResponse, KeywordResponse, NegativeKeywordResponse, PaginatedResponse
+from app.schemas.negative_keyword import (
+    ApplyListRequest,
+    NegativeKeywordCreate,
+    NegativeKeywordListAddItems,
+    NegativeKeywordListCreate,
+    NegativeKeywordListDetailResponse,
+    NegativeKeywordListItemResponse,
+    NegativeKeywordListResponse,
+)
 
 router = APIRouter(tags=["Keywords & Ads"])
 
@@ -315,6 +325,372 @@ def list_negative_keywords(
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size,
     )
+
+
+@router.post("/negative-keywords/", response_model=list[NegativeKeywordResponse])
+def create_negative_keywords(
+    body: NegativeKeywordCreate,
+    db: Session = Depends(get_db),
+):
+    """Create one or more negative keywords for a campaign or ad group."""
+    scope = body.negative_scope.upper()
+    if scope not in ("CAMPAIGN", "AD_GROUP"):
+        raise HTTPException(400, "negative_scope must be CAMPAIGN or AD_GROUP")
+
+    if scope == "CAMPAIGN":
+        if not body.campaign_id:
+            raise HTTPException(400, "campaign_id is required for CAMPAIGN scope")
+        campaign = db.get(Campaign, body.campaign_id)
+        if not campaign:
+            raise HTTPException(404, f"Campaign {body.campaign_id} not found")
+    else:
+        if not body.ad_group_id:
+            raise HTTPException(400, "ad_group_id is required for AD_GROUP scope")
+        ad_group = db.get(AdGroup, body.ad_group_id)
+        if not ad_group:
+            raise HTTPException(404, f"Ad group {body.ad_group_id} not found")
+        if not body.campaign_id:
+            body.campaign_id = ad_group.campaign_id
+
+    created = []
+    for raw_text in body.texts:
+        text = raw_text.strip()
+        if not text:
+            continue
+
+        existing = (
+            db.query(NegativeKeyword)
+            .filter(
+                NegativeKeyword.client_id == body.client_id,
+                NegativeKeyword.negative_scope == scope,
+                func.lower(NegativeKeyword.text) == text.lower(),
+                NegativeKeyword.match_type == body.match_type.upper(),
+                NegativeKeyword.status != "REMOVED",
+                NegativeKeyword.campaign_id == body.campaign_id if scope == "CAMPAIGN" else True,
+                NegativeKeyword.ad_group_id == body.ad_group_id if scope == "AD_GROUP" else True,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        negative = NegativeKeyword(
+            client_id=body.client_id,
+            campaign_id=body.campaign_id,
+            ad_group_id=body.ad_group_id if scope == "AD_GROUP" else None,
+            criterion_kind="NEGATIVE",
+            text=text,
+            match_type=body.match_type.upper(),
+            negative_scope=scope,
+            status="ENABLED",
+            source="LOCAL_ACTION",
+        )
+        db.add(negative)
+        db.flush()
+        created.append(negative)
+
+    db.commit()
+
+    results = []
+    for neg in created:
+        campaign_name = db.query(Campaign.name).filter(Campaign.id == neg.campaign_id).scalar() if neg.campaign_id else None
+        ad_group_name = db.query(AdGroup.name).filter(AdGroup.id == neg.ad_group_id).scalar() if neg.ad_group_id else None
+        results.append(_serialize_negative_keyword(neg, campaign_name, ad_group_name))
+    return results
+
+
+@router.delete("/negative-keywords/{negative_keyword_id}")
+def delete_negative_keyword(
+    negative_keyword_id: int,
+    db: Session = Depends(get_db),
+):
+    """Soft-delete a negative keyword (set status to REMOVED)."""
+    neg = db.get(NegativeKeyword, negative_keyword_id)
+    if not neg:
+        raise HTTPException(404, "Negative keyword not found")
+    neg.status = "REMOVED"
+    db.commit()
+    return {"status": "ok", "message": "Negative keyword removed"}
+
+
+# ---------------------------------------------------------------------------
+# Negative keyword lists
+# ---------------------------------------------------------------------------
+
+
+@router.get("/negative-keyword-lists/", response_model=list[NegativeKeywordListResponse])
+def list_negative_keyword_lists(
+    client_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """List all negative keyword lists for a client."""
+    rows = (
+        db.query(
+            NegativeKeywordList,
+            func.count(NegativeKeywordListItem.id).label("item_count"),
+        )
+        .outerjoin(NegativeKeywordListItem, NegativeKeywordList.id == NegativeKeywordListItem.list_id)
+        .filter(NegativeKeywordList.client_id == client_id)
+        .group_by(NegativeKeywordList.id)
+        .order_by(NegativeKeywordList.name.asc())
+        .all()
+    )
+    return [
+        NegativeKeywordListResponse(
+            id=nkl.id,
+            client_id=nkl.client_id,
+            name=nkl.name,
+            description=nkl.description,
+            item_count=item_count,
+            created_at=nkl.created_at,
+            updated_at=nkl.updated_at,
+        )
+        for nkl, item_count in rows
+    ]
+
+
+@router.post("/negative-keyword-lists/", response_model=NegativeKeywordListResponse)
+def create_negative_keyword_list(
+    body: NegativeKeywordListCreate,
+    db: Session = Depends(get_db),
+):
+    """Create a new negative keyword list."""
+    nkl = NegativeKeywordList(
+        client_id=body.client_id,
+        name=body.name,
+        description=body.description,
+    )
+    db.add(nkl)
+    db.commit()
+    db.refresh(nkl)
+    return NegativeKeywordListResponse(
+        id=nkl.id,
+        client_id=nkl.client_id,
+        name=nkl.name,
+        description=nkl.description,
+        item_count=0,
+        created_at=nkl.created_at,
+        updated_at=nkl.updated_at,
+    )
+
+
+@router.get("/negative-keyword-lists/{list_id}", response_model=NegativeKeywordListDetailResponse)
+def get_negative_keyword_list(
+    list_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get a negative keyword list with all items."""
+    nkl = db.get(NegativeKeywordList, list_id)
+    if not nkl:
+        raise HTTPException(404, "List not found")
+    items = (
+        db.query(NegativeKeywordListItem)
+        .filter(NegativeKeywordListItem.list_id == list_id)
+        .order_by(NegativeKeywordListItem.text.asc())
+        .all()
+    )
+    return NegativeKeywordListDetailResponse(
+        id=nkl.id,
+        client_id=nkl.client_id,
+        name=nkl.name,
+        description=nkl.description,
+        item_count=len(items),
+        created_at=nkl.created_at,
+        updated_at=nkl.updated_at,
+        items=[
+            NegativeKeywordListItemResponse(id=it.id, text=it.text, match_type=it.match_type, created_at=it.created_at)
+            for it in items
+        ],
+    )
+
+
+@router.delete("/negative-keyword-lists/{list_id}")
+def delete_negative_keyword_list(
+    list_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete a negative keyword list and all its items."""
+    nkl = db.get(NegativeKeywordList, list_id)
+    if not nkl:
+        raise HTTPException(404, "List not found")
+    db.delete(nkl)
+    db.commit()
+    return {"status": "ok", "message": "List deleted"}
+
+
+@router.post("/negative-keyword-lists/{list_id}/items", response_model=list[NegativeKeywordListItemResponse])
+def add_items_to_list(
+    list_id: int,
+    body: NegativeKeywordListAddItems,
+    db: Session = Depends(get_db),
+):
+    """Add keywords to a negative keyword list (duplicates are skipped)."""
+    nkl = db.get(NegativeKeywordList, list_id)
+    if not nkl:
+        raise HTTPException(404, "List not found")
+
+    created = []
+    for raw_text in body.texts:
+        text = raw_text.strip()
+        if not text:
+            continue
+        exists = (
+            db.query(NegativeKeywordListItem)
+            .filter(
+                NegativeKeywordListItem.list_id == list_id,
+                func.lower(NegativeKeywordListItem.text) == text.lower(),
+                NegativeKeywordListItem.match_type == body.match_type.upper(),
+            )
+            .first()
+        )
+        if exists:
+            continue
+        item = NegativeKeywordListItem(list_id=list_id, text=text, match_type=body.match_type.upper())
+        db.add(item)
+        db.flush()
+        created.append(item)
+    db.commit()
+    return [
+        NegativeKeywordListItemResponse(id=it.id, text=it.text, match_type=it.match_type, created_at=it.created_at)
+        for it in created
+    ]
+
+
+@router.delete("/negative-keyword-lists/{list_id}/items/{item_id}")
+def remove_item_from_list(
+    list_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+):
+    """Remove a single keyword from a list."""
+    item = (
+        db.query(NegativeKeywordListItem)
+        .filter(NegativeKeywordListItem.id == item_id, NegativeKeywordListItem.list_id == list_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(404, "Item not found")
+    db.delete(item)
+    db.commit()
+    return {"status": "ok", "message": "Item removed"}
+
+
+@router.post("/negative-keyword-lists/{list_id}/apply")
+def apply_negative_keyword_list(
+    list_id: int,
+    body: ApplyListRequest,
+    db: Session = Depends(get_db),
+):
+    """Apply a negative keyword list to campaigns and/or ad groups.
+
+    Creates NegativeKeyword records for each list item × target combination.
+    Duplicates are silently skipped.
+    """
+    nkl = db.get(NegativeKeywordList, list_id)
+    if not nkl:
+        raise HTTPException(404, "List not found")
+
+    if not body.campaign_ids and not body.ad_group_ids:
+        raise HTTPException(400, "Provide at least one campaign_id or ad_group_id")
+
+    items = db.query(NegativeKeywordListItem).filter(NegativeKeywordListItem.list_id == list_id).all()
+    if not items:
+        return {"status": "ok", "created": 0, "skipped": 0}
+
+    created_count = 0
+    skipped_count = 0
+
+    for campaign_id in body.campaign_ids:
+        campaign = db.get(Campaign, campaign_id)
+        if not campaign:
+            continue
+        for item in items:
+            exists = (
+                db.query(NegativeKeyword)
+                .filter(
+                    NegativeKeyword.client_id == nkl.client_id,
+                    NegativeKeyword.campaign_id == campaign_id,
+                    NegativeKeyword.negative_scope == "CAMPAIGN",
+                    func.lower(NegativeKeyword.text) == item.text.lower(),
+                    NegativeKeyword.match_type == item.match_type,
+                    NegativeKeyword.status != "REMOVED",
+                )
+                .first()
+            )
+            if exists:
+                skipped_count += 1
+                continue
+            neg = NegativeKeyword(
+                client_id=nkl.client_id,
+                campaign_id=campaign_id,
+                criterion_kind="NEGATIVE",
+                text=item.text,
+                match_type=item.match_type,
+                negative_scope="CAMPAIGN",
+                status="ENABLED",
+                source="LOCAL_ACTION",
+            )
+            db.add(neg)
+            created_count += 1
+
+    for ad_group_id in body.ad_group_ids:
+        ad_group = db.get(AdGroup, ad_group_id)
+        if not ad_group:
+            continue
+        for item in items:
+            exists = (
+                db.query(NegativeKeyword)
+                .filter(
+                    NegativeKeyword.client_id == nkl.client_id,
+                    NegativeKeyword.ad_group_id == ad_group_id,
+                    NegativeKeyword.negative_scope == "AD_GROUP",
+                    func.lower(NegativeKeyword.text) == item.text.lower(),
+                    NegativeKeyword.match_type == item.match_type,
+                    NegativeKeyword.status != "REMOVED",
+                )
+                .first()
+            )
+            if exists:
+                skipped_count += 1
+                continue
+            neg = NegativeKeyword(
+                client_id=nkl.client_id,
+                campaign_id=ad_group.campaign_id,
+                ad_group_id=ad_group_id,
+                criterion_kind="NEGATIVE",
+                text=item.text,
+                match_type=item.match_type,
+                negative_scope="AD_GROUP",
+                status="ENABLED",
+                source="LOCAL_ACTION",
+            )
+            db.add(neg)
+            created_count += 1
+
+    db.commit()
+    return {"status": "ok", "created": created_count, "skipped": skipped_count}
+
+
+# ---------------------------------------------------------------------------
+# Ad Groups (lightweight lookup)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ad-groups/")
+def list_ad_groups(
+    client_id: int = Query(None),
+    campaign_id: int = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Lightweight ad group lookup for dropdowns."""
+    query = db.query(AdGroup.id, AdGroup.name, AdGroup.campaign_id).join(Campaign, AdGroup.campaign_id == Campaign.id)
+    if client_id:
+        query = query.filter(Campaign.client_id == client_id)
+    if campaign_id:
+        query = query.filter(AdGroup.campaign_id == campaign_id)
+    query = query.filter(AdGroup.status != "REMOVED").order_by(AdGroup.name.asc())
+    rows = query.all()
+    return [{"id": r.id, "name": r.name, "campaign_id": r.campaign_id} for r in rows]
 
 
 # ---------------------------------------------------------------------------

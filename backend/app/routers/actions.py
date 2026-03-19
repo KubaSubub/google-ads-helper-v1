@@ -78,11 +78,83 @@ def list_actions(
 
     total = query.count()
     actions = query.offset(offset).limit(limit).all()
+
+    # Batch-load entities to avoid N+1 queries
+    kw_ids = set()
+    camp_ids = set()
+    for a in actions:
+        try:
+            eid = int(a.entity_id) if a.entity_id else None
+        except (ValueError, TypeError):
+            continue
+        if eid and a.entity_type == "keyword":
+            kw_ids.add(eid)
+        elif eid and a.entity_type == "campaign":
+            camp_ids.add(eid)
+
+    kw_map = {}
+    ag_map = {}
+    if kw_ids:
+        keywords = db.query(Keyword).filter(Keyword.id.in_(kw_ids)).all()
+        kw_map = {k.id: k for k in keywords}
+        ag_ids = {k.ad_group_id for k in keywords if k.ad_group_id}
+        if ag_ids:
+            ad_groups = db.query(AdGroup).filter(AdGroup.id.in_(ag_ids)).all()
+            ag_map = {ag.id: ag for ag in ad_groups}
+            camp_ids.update(ag.campaign_id for ag in ad_groups if ag.campaign_id)
+
+    camp_map = {}
+    if camp_ids:
+        campaigns = db.query(Campaign).filter(Campaign.id.in_(camp_ids)).all()
+        camp_map = {c.id: c for c in campaigns}
+
+    def _enrich_batch(action: ActionLog) -> dict:
+        result = {
+            "id": action.id,
+            "recommendation_id": action.recommendation_id,
+            "action_type": action.action_type,
+            "entity_type": action.entity_type,
+            "entity_id": action.entity_id,
+            "entity_name": None,
+            "campaign_name": None,
+            "status": action.status,
+            "execution_mode": action.execution_mode,
+            "precondition_status": action.precondition_status,
+            "old_value_json": action.old_value_json,
+            "new_value_json": action.new_value_json,
+            "error_message": action.error_message,
+            "context_json": action.context_json,
+            "action_payload": action.action_payload,
+            "executed_at": str(action.executed_at) if action.executed_at else None,
+            "reverted_at": str(action.reverted_at) if action.reverted_at else None,
+        }
+        try:
+            eid = int(action.entity_id) if action.entity_id else None
+        except (ValueError, TypeError):
+            return result
+        if not eid:
+            return result
+        if action.entity_type == "keyword":
+            kw = kw_map.get(eid)
+            if kw:
+                result["entity_name"] = kw.text
+                ag = ag_map.get(kw.ad_group_id)
+                if ag:
+                    camp = camp_map.get(ag.campaign_id)
+                    if camp:
+                        result["campaign_name"] = camp.name
+        elif action.entity_type == "campaign":
+            camp = camp_map.get(eid)
+            if camp:
+                result["entity_name"] = camp.name
+                result["campaign_name"] = camp.name
+        return result
+
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
-        "actions": [_enrich_action(action, db) for action in actions],
+        "actions": [_enrich_batch(action) for action in actions],
     }
 
 

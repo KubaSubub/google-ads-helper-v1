@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -30,7 +31,7 @@ class ActionLog(Base):
     context_json = Column(JSON, nullable=True)
     action_payload = Column(JSON, nullable=True)
     reverted_at = Column(DateTime, nullable=True)
-    executed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    executed_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     client = relationship("Client")

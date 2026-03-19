@@ -11,6 +11,7 @@ from .keyword_daily import KeywordDaily
 from .search_term import SearchTerm
 from .ad import Ad
 from .negative_keyword import NegativeKeyword
+from .negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
 from .metric_daily import MetricDaily
 from .metric_segmented import MetricSegmented
 from .recommendation import Recommendation
@@ -18,6 +19,7 @@ from .action_log import ActionLog
 from .alert import Alert
 from .change_event import ChangeEvent
 from .sync_log import SyncLog
+from .report import Report
 
 __all__ = [
     "Client",
@@ -28,6 +30,8 @@ __all__ = [
     "SearchTerm",
     "Ad",
     "NegativeKeyword",
+    "NegativeKeywordList",
+    "NegativeKeywordListItem",
     "MetricDaily",
     "MetricSegmented",
     "Recommendation",
@@ -35,5 +39,6 @@ __all__ = [
     "Alert",
     "ChangeEvent",
     "SyncLog",
+    "Report",
 ]
 

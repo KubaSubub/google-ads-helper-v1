@@ -983,7 +983,7 @@ class GoogleAdsService:
                     "cost_micros": cost_micros,
                     "conversions": conversions,
                     "conversion_value_micros": int(conv_value * 1_000_000),
-                    "ctr": int(metrics.ctr * 1_000_000),
+                    "ctr": round(metrics.ctr * 100, 2),  # fraction → percentage
                     "avg_cpc_micros": avg_cpc_micros,
                     "cpa_micros": cpa_micros,
                     "search_impression_share": _safe_is(metrics.search_impression_share),
@@ -1632,8 +1632,8 @@ class GoogleAdsService:
                     "cost_micros": m.cost_micros,
                     "conversions": float(m.conversions),
                     "conversion_value_micros": int(conv_value * 1_000_000),
-                    "ctr": int(m.ctr * 1_000_000),
-                    "conversion_rate": int(m.conversions_from_interactions_rate * 1_000_000),
+                    "ctr": round(m.ctr * 100, 2),  # fraction → percentage
+                    "conversion_rate": round(m.conversions_from_interactions_rate * 100, 2),
                     "all_conversions": _safe_float(m.all_conversions),
                     "all_conversions_value_micros": int(float(m.all_conversions_value) * 1_000_000) if m.all_conversions_value else None,
                     "cross_device_conversions": _safe_float(m.cross_device_conversions),
@@ -1754,10 +1754,10 @@ class GoogleAdsService:
                     "cost_micros": m.cost_micros,
                     "conversions": conv,
                     "conversion_value_micros": int(conv_value * 1_000_000),
-                    "ctr": int(m.ctr * 1_000_000),
-                    "conversion_rate": int(
-                        (conv / m.clicks * 1_000_000) if m.clicks > 0 else 0
-                    ),
+                    "ctr": round(m.ctr * 100, 2),  # fraction → percentage
+                    "conversion_rate": round(
+                        (conv / m.clicks * 100), 2
+                    ) if m.clicks > 0 else 0.0,
                     "date_from": date_from,
                     "date_to": date_to,
                 }
@@ -2181,11 +2181,61 @@ class GoogleAdsService:
 
         if action_type == "ADD_NEGATIVE":
             campaign_id = target.get("campaign_id") or params.get("campaign_id") or entity_id
+            ad_group_id = params.get("ad_group_id")
             text = (params.get("text") or "").strip()
             match_type = params.get("match_type", "PHRASE")
             negative_level = params.get("negative_level", "CAMPAIGN")
-            if negative_level != "CAMPAIGN":
-                return {"status": "error", "message": "Only campaign-level negatives are supported"}
+            if negative_level not in ("CAMPAIGN", "AD_GROUP"):
+                return {"status": "error", "message": "negative_level must be CAMPAIGN or AD_GROUP"}
+
+            if negative_level == "AD_GROUP":
+                if not ad_group_id:
+                    return {"status": "error", "message": "Missing ad_group_id for AD_GROUP level"}
+                ad_group = db.get(AdGroup, ad_group_id)
+                if not ad_group:
+                    return {"status": "error", "message": f"Ad group {ad_group_id} not found"}
+                campaign_id = ad_group.campaign_id
+                if not text:
+                    return {"status": "error", "message": "Missing text"}
+                existing = (
+                    db.query(NegativeKeyword)
+                    .filter(
+                        NegativeKeyword.ad_group_id == ad_group_id,
+                        NegativeKeyword.negative_scope == "AD_GROUP",
+                        func.lower(NegativeKeyword.text) == text.lower(),
+                        NegativeKeyword.status != "REMOVED",
+                    )
+                    .first()
+                )
+                if existing:
+                    return {"status": "error", "message": "Negative keyword already exists"}
+                campaign = db.get(Campaign, campaign_id)
+                if not campaign:
+                    return {"status": "error", "message": f"Campaign {campaign_id} not found"}
+                negative = NegativeKeyword(
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    ad_group_id=ad_group_id,
+                    criterion_kind="NEGATIVE",
+                    text=text,
+                    match_type=match_type,
+                    negative_scope="AD_GROUP",
+                    status="ENABLED",
+                    source="LOCAL_ACTION",
+                )
+                db.add(negative)
+                db.flush()
+                if self.is_connected:
+                    self._mutate_ad_group_negative(ad_group, db, negative)
+                return {
+                    "status": "success",
+                    "message": "Executed ADD_NEGATIVE",
+                    "entity_type": "ad_group",
+                    "entity_id": ad_group.id,
+                    "mode": mode,
+                }
+
+            # CAMPAIGN level (default)
             if not campaign_id or not text:
                 return {"status": "error", "message": "Missing campaign_id or text"}
 
@@ -2213,7 +2263,7 @@ class GoogleAdsService:
                 criterion_kind="NEGATIVE",
                 text=text,
                 match_type=match_type,
-                negative_scope=negative_level,
+                negative_scope="CAMPAIGN",
                 status="ENABLED",
                 source="LOCAL_ACTION",
             )
@@ -2482,6 +2532,34 @@ class GoogleAdsService:
             negative.google_resource_name = resource_name
             negative.google_criterion_id = resource_name.split("~")[-1]
 
+    def _mutate_ad_group_negative(self, ad_group, db: Session, negative):
+        """Create an ad-group-level negative keyword in Google Ads."""
+        if not self.client:
+            return
+        campaign = db.get(Campaign, ad_group.campaign_id)
+        if not campaign:
+            raise RuntimeError("Campaign not found for ad-group negative keyword mutation")
+        client_record = db.get(Client, campaign.client_id)
+        if not client_record:
+            raise RuntimeError("Client not found for ad-group negative keyword mutation")
+
+        customer_id = client_record.google_customer_id.replace("-", "")
+        service = self.client.get_service("AdGroupCriterionService")
+        operation = self.client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = self.client.get_service("AdGroupService").ad_group_path(
+            customer_id,
+            str(ad_group.google_ad_group_id),
+        )
+        criterion.negative = True
+        criterion.keyword.text = negative.text
+        criterion.keyword.match_type = getattr(self.client.enums.KeywordMatchTypeEnum, negative.match_type)
+        response = service.mutate_ad_group_criteria(customer_id=customer_id, operations=[operation])
+        if response.results:
+            resource_name = response.results[0].resource_name
+            negative.google_resource_name = resource_name
+            negative.google_criterion_id = resource_name.split("~")[-1]
+
     def _mutate_campaign_budget(self, campaign, db: Session):
         """Update campaign budget amount in Google Ads."""
         if not self.client:
@@ -2690,7 +2768,12 @@ class GoogleAdsService:
                         entity_name=entity_name,
                         campaign_name=campaign_name,
                     )
-                    db.add(event)
+                    try:
+                        db.add(event)
+                        db.flush()
+                    except Exception:
+                        db.rollback()  # skip duplicate — resource_name UNIQUE violation
+                        continue
                     page_count += 1
                     last_timestamp = change_dt
 

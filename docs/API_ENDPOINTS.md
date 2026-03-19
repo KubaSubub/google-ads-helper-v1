@@ -149,6 +149,12 @@ Base API URL: `/api/v1`
 - `GET /history/unified?client_id=X&days=30&source=all|helper|external&page=1&page_size=50`
 - `GET /history/filters?client_id=X`
 
+## AI Agent
+- `GET /agent/status` -> Claude CLI availability check (`{available: bool, version?: str, reason?: str}`)
+- `POST /agent/chat?client_id=X` -> SSE stream: report generation via Claude Code headless
+  - Body: `{message: str, report_type: "weekly"|"campaigns"|"keywords"|"search_terms"|"budget"|"alerts"|"freeform"}`
+  - SSE events: `status` (progress), `delta` (content chunk), `error`, `done`
+
 ## Health
 - `GET /health` -> `{status: "ok", version, env}` (outside `/api/v1`)
 

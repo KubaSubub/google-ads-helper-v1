@@ -213,7 +213,7 @@ def _seed_demo_ads(
                 impressions=impressions,
                 cost_micros=cost_micros,
                 conversions=conversions,
-                ctr=int(round(ctr_pct * 10_000)),
+                ctr=round(ctr_pct, 2),
                 created_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
@@ -268,8 +268,8 @@ def _seed_demo_search_terms(
         clicks = template["clicks"]
         impressions = template["impressions"]
         conversions = template["conversions"]
-        ctr_micros = int(round((clicks / max(impressions, 1)) * 100 * 10_000))
-        conversion_rate_micros = int(round((conversions / max(clicks, 1)) * 100 * 10_000)) if clicks else 0
+        ctr_pct = round((clicks / max(impressions, 1)) * 100, 2)
+        conversion_rate_pct = round((conversions / max(clicks, 1)) * 100, 2) if clicks else 0.0
         conversion_value_micros = int(template["cost_micros"] * (3.2 if conversions > 0 else 0.0))
 
         db.add(
@@ -286,8 +286,8 @@ def _seed_demo_search_terms(
                 cost_micros=template["cost_micros"],
                 conversions=conversions,
                 conversion_value_micros=conversion_value_micros,
-                ctr=ctr_micros,
-                conversion_rate=conversion_rate_micros,
+                ctr=ctr_pct,
+                conversion_rate=conversion_rate_pct,
                 date_from=date_from,
                 date_to=date_to,
             )

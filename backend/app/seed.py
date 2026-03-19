@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
 from app.models import (
     Client, Campaign, AdGroup, Keyword, KeywordDaily, SearchTerm, Ad, MetricDaily, MetricSegmented,
-    ActionLog, ChangeEvent, Alert,
+    ActionLog, ChangeEvent, Alert, NegativeKeyword,
 )
+from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
 
 
 # Deterministic seed for reproducibility
@@ -238,7 +239,7 @@ def seed_demo_data():
                     cost_micros=int(cost * 1_000_000),
                     conversions=conversions,
                     conversion_value_micros=int(conv_value * 1_000_000),
-                    ctr=int(RNG.uniform(1.0, 8.0) * 10_000),
+                    ctr=round(RNG.uniform(1.0, 8.0), 2),
                     avg_cpc_micros=int(RNG.uniform(0.5, 5.0) * 1_000_000),
                     cpa_micros=int(cpa * 1_000_000),
                     quality_score=qs,
@@ -366,8 +367,8 @@ def seed_demo_data():
                 cost_micros=int(cost * 1_000_000),
                 conversions=conversions,
                 conversion_value_micros=int(conv_value * 1_000_000),
-                ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),
-                conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),
+                ctr=round(clicks / impressions * 100, 2) if impressions else 0.0,
+                conversion_rate=round(conversions / clicks * 100, 2) if clicks else 0.0,
                 date_from=st_date_from,
                 date_to=st_date_to,
                 # Extended conversions
@@ -413,8 +414,8 @@ def seed_demo_data():
             cost_micros=int(cost * 1_000_000),
             conversions=conversions,
             conversion_value_micros=int(conv_value * 1_000_000),
-            ctr=int((clicks / impressions * 100) * 10_000 if impressions else 0),
-            conversion_rate=int((conversions / clicks * 100) * 10_000 if clicks else 0),
+            ctr=round(clicks / impressions * 100, 2) if impressions else 0.0,
+            conversion_rate=round(conversions / clicks * 100, 2) if clicks else 0.0,
             date_from=st_date_from,
             date_to=st_date_to,
             all_conversions=round(conversions * RNG.uniform(1.0, 1.2), 2) if conversions > 0 else None,
@@ -469,7 +470,7 @@ def seed_demo_data():
                 impressions=impressions,
                 cost_micros=int(cost * 1_000_000),
                 conversions=conversions,
-                ctr=int((clicks / impressions * 100) * 10_000),
+                ctr=round(clicks / impressions * 100, 2) if impressions else 0.0,
             )
             db.add(ad)
 
@@ -872,6 +873,48 @@ def seed_demo_data():
     ]
     for alert in alerts_data:
         db.add(alert)
+
+    # ---- Negative keywords (campaign + ad group level) ----
+    search_campaigns_for_neg = [c for c in campaigns if c.campaign_type == "SEARCH"]
+    neg_phrases_campaign = [
+        ("darmowe", "BROAD"), ("za darmo", "PHRASE"), ("tanie", "BROAD"),
+        ("jak zrobić", "PHRASE"), ("DIY", "EXACT"), ("używane", "PHRASE"),
+        ("allegro", "EXACT"), ("olx", "EXACT"),
+    ]
+    neg_count = 0
+    for camp in search_campaigns_for_neg[:3]:
+        for text, mt in neg_phrases_campaign:
+            db.add(NegativeKeyword(
+                client_id=client.id, campaign_id=camp.id,
+                criterion_kind="NEGATIVE", text=text, match_type=mt,
+                negative_scope="CAMPAIGN", status="ENABLED", source="GOOGLE_ADS_SYNC",
+            ))
+            neg_count += 1
+
+    if all_ad_groups:
+        ag_neg_phrases = [("praca", "PHRASE"), ("zatrudnienie", "PHRASE"), ("forum", "EXACT")]
+        for text, mt in ag_neg_phrases:
+            ag = all_ad_groups[0]
+            db.add(NegativeKeyword(
+                client_id=client.id, campaign_id=ag.campaign_id, ad_group_id=ag.id,
+                criterion_kind="NEGATIVE", text=text, match_type=mt,
+                negative_scope="AD_GROUP", status="ENABLED", source="GOOGLE_ADS_SYNC",
+            ))
+            neg_count += 1
+
+    # ---- Negative keyword lists ----
+    nkl_general = NegativeKeywordList(client_id=client.id, name="Ogólne wykluczenia", description="Standardowe wykluczenia dla wszystkich kampanii")
+    nkl_brand = NegativeKeywordList(client_id=client.id, name="Konkurencja", description="Nazwy konkurencyjnych marek")
+    db.add(nkl_general)
+    db.add(nkl_brand)
+    db.flush()
+
+    general_items = ["darmowe", "za darmo", "tanie", "jak zrobić", "DIY", "używane", "praca", "zatrudnienie", "forum", "wikipedia"]
+    brand_items = ["IKEA", "Agata Meble", "Black Red White", "Bodzio", "Jysk"]
+    for text in general_items:
+        db.add(NegativeKeywordListItem(list_id=nkl_general.id, text=text, match_type="PHRASE"))
+    for text in brand_items:
+        db.add(NegativeKeywordListItem(list_id=nkl_brand.id, text=text, match_type="EXACT"))
 
     db.commit()
     db.close()

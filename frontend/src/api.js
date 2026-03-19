@@ -64,6 +64,34 @@ export const getCampaignMetrics = (campaignId, dateFrom, dateTo) => {
 export const getKeywords = (params = {}) =>
     api.get('/keywords/', { params: typeof params === 'object' ? params : { campaign_id: params } });
 
+// Ad Groups (lightweight lookup)
+export const getAdGroups = (params = {}) =>
+    api.get('/keywords/ad-groups/', { params });
+
+// Negative Keywords
+export const getNegativeKeywords = (params = {}) =>
+    api.get('/keywords/negative-keywords/', { params });
+export const addNegativeKeyword = (data) =>
+    api.post('/keywords/negative-keywords/', data);
+export const removeNegativeKeyword = (id) =>
+    api.delete(`/keywords/negative-keywords/${id}`);
+
+// Negative Keyword Lists
+export const getNegativeKeywordLists = (params = {}) =>
+    api.get('/keywords/negative-keyword-lists/', { params });
+export const createNegativeKeywordList = (data) =>
+    api.post('/keywords/negative-keyword-lists/', data);
+export const getNegativeKeywordListDetail = (listId) =>
+    api.get(`/keywords/negative-keyword-lists/${listId}`);
+export const deleteNegativeKeywordList = (listId) =>
+    api.delete(`/keywords/negative-keyword-lists/${listId}`);
+export const addToNegativeKeywordList = (listId, data) =>
+    api.post(`/keywords/negative-keyword-lists/${listId}/items`, data);
+export const removeFromNegativeKeywordList = (listId, itemId) =>
+    api.delete(`/keywords/negative-keyword-lists/${listId}/items/${itemId}`);
+export const applyNegativeKeywordList = (listId, data) =>
+    api.post(`/keywords/negative-keyword-lists/${listId}/apply`, data);
+
 // Search Terms
 export const getSegmentedSearchTerms = (clientId, params = {}) =>
     api.get('/search-terms/segmented', { params: { client_id: clientId, ...params } });
@@ -190,6 +218,12 @@ export const getHourlyDayparting = (clientId, days = 7) =>
 
 // AI Agent
 export const getAgentStatus = () => api.get('/agent/status');
+
+// Reports
+export const getReports = (clientId, params = {}) =>
+    api.get('/reports/', { params: { client_id: clientId, ...params } });
+export const getReport = (reportId) =>
+    api.get(`/reports/${reportId}`);
 
 // History
 export const getChangeHistory = (clientId, params = {}) =>

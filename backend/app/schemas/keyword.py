@@ -25,7 +25,7 @@ class KeywordResponse(BaseModel):
     cost_micros: int = 0
     conversions: float = 0.0
     conversion_value_micros: int = 0
-    ctr_micros: int = Field(0, alias="ctr")
+    ctr: float = 0.0
     avg_cpc_micros: int = 0
     cpa_micros: int = 0
     quality_score: int = 0
@@ -81,8 +81,9 @@ class KeywordResponse(BaseModel):
 
     @computed_field
     @property
-    def ctr(self) -> float:
-        return round(self.ctr_micros / 10_000, 2)
+    def ctr_pct(self) -> float:
+        """CTR as percentage string (backward compat alias)."""
+        return round(self.ctr, 2)
 
     @computed_field
     @property
@@ -96,4 +97,4 @@ class KeywordResponse(BaseModel):
         cv = self.conversion_value_micros / 1_000_000
         return round(cv / cost, 2) if cost > 0 else 0.0
 
-    model_config = {"from_attributes": True, "populate_by_name": True}
+    model_config = {"from_attributes": True}

@@ -1,7 +1,8 @@
 """SearchTerm model."""
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, BigInteger, Float, String, Date, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, BigInteger, Float, String, Date, DateTime, ForeignKey, Index, CheckConstraint
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -24,8 +25,8 @@ class SearchTerm(Base):
     cost_micros = Column(BigInteger, default=0)
     conversions = Column(Float, default=0.0)  # Float — Google Ads returns fractional values
     conversion_value_micros = Column(BigInteger, default=0)  # Revenue in micros
-    ctr = Column(Integer, default=0)  # Stored as micros (e.g., 50000 = 5%)
-    conversion_rate = Column(Integer, default=0)  # Stored as micros
+    ctr = Column(Float, default=0.0)  # Percentage (5.0 = 5%), consistent with MetricDaily
+    conversion_rate = Column(Float, default=0.0)  # Percentage (5.0 = 5%)
 
     # ── Extended Conversions ──
     all_conversions = Column(Float, nullable=True)
@@ -38,12 +39,16 @@ class SearchTerm(Base):
     date_from = Column(Date, nullable=False)
     date_to = Column(Date, nullable=False)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (
         Index("idx_search_terms_cost", "cost_micros"),
         Index("idx_search_terms_date", "date_from", "date_to"),
         Index("idx_search_terms_text", "text"),
+        CheckConstraint(
+            "ad_group_id IS NOT NULL OR campaign_id IS NOT NULL",
+            name="ck_search_term_has_parent",
+        ),
     )
 
     # Relationships

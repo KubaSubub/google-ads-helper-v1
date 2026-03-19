@@ -206,13 +206,14 @@ export default function Dashboard() {
             budgetFilterParams.campaign_status = budgetFilterParams.status
             delete budgetFilterParams.status
         }
+        const _catch = (p) => p.catch(err => { console.error('[Dashboard secondary]', err); return null })
         Promise.all([
-            getHealthScore(selectedClientId, filterParams).catch(() => null),
-            getCampaignTrends(selectedClientId, days, filterParams).catch(() => null),
-            getRecommendations(selectedClientId, { status: 'pending' }).catch(() => ({ recommendations: [] })),
-            getBudgetPacing(selectedClientId, budgetFilterParams).catch(() => null),
-            getDeviceBreakdown(selectedClientId, { days, ...filterParams }).catch(() => null),
-            getGeoBreakdown(selectedClientId, { days, ...filterParams }).catch(() => null),
+            _catch(getHealthScore(selectedClientId, filterParams)),
+            _catch(getCampaignTrends(selectedClientId, days, filterParams)),
+            getRecommendations(selectedClientId, { status: 'pending' }).catch(err => { console.error('[Dashboard recs]', err); return { recommendations: [] } }),
+            _catch(getBudgetPacing(selectedClientId, budgetFilterParams)),
+            _catch(getDeviceBreakdown(selectedClientId, { days, ...filterParams })),
+            _catch(getGeoBreakdown(selectedClientId, { days, ...filterParams })),
         ]).then(([hs, ct, recs, bp, dev, geo]) => {
             setHealthScore(hs)
             setCampaignTrends(ct)

@@ -182,6 +182,18 @@ def _ensure_sqlite_columns():
             conn.execute(text("UPDATE negative_keywords SET source = 'LOCAL_ACTION' WHERE source IS NULL OR source = ''"))
             conn.execute(text("UPDATE negative_keywords SET updated_at = created_at WHERE updated_at IS NULL"))
 
+        # BUG-H1 fix: SQLite NULL != NULL in UNIQUE constraints allows duplicate rows.
+        # Add a functional unique index using COALESCE to treat NULLs as sentinel values.
+        if inspector.has_table("metrics_segmented"):
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_metric_segmented_coalesced "
+                "ON metrics_segmented("
+                "campaign_id, date, "
+                "COALESCE(device, '__NONE__'), "
+                "COALESCE(geo_city, '__NONE__'), "
+                "COALESCE(hour_of_day, -1))"
+            ))
+
 
 def init_db():
     """Create all tables. Call once at startup."""

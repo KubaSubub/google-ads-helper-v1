@@ -20,8 +20,8 @@ class SearchTermResponse(BaseModel):
     cost_micros: int = 0
     conversions: float = 0.0
     conversion_value_micros: int = 0
-    ctr: int = 0  # Stored as micros
-    conversion_rate: int = 0  # Stored as micros
+    ctr: float = 0.0  # Percentage (5.0 = 5%)
+    conversion_rate: float = 0.0  # Percentage (5.0 = 5%)
     date_from: date
     date_to: date
 
@@ -34,14 +34,14 @@ class SearchTermResponse(BaseModel):
     @computed_field
     @property
     def ctr_pct(self) -> float:
-        """Convert CTR from micros to percentage."""
-        return round(self.ctr / 10_000, 2)
+        """CTR as percentage (backward compat alias)."""
+        return round(self.ctr, 2)
 
     @computed_field
     @property
     def conversion_rate_pct(self) -> float:
-        """Convert conversion rate from micros to percentage."""
-        return round(self.conversion_rate / 10_000, 2)
+        """Conversion rate as percentage (backward compat alias)."""
+        return round(self.conversion_rate, 2)
 
     @computed_field
     @property

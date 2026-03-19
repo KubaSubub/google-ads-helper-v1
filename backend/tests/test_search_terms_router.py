@@ -41,9 +41,9 @@ def _seed(db):
     db.flush()
 
     terms = [
-        SearchTerm(ad_group_id=ag.id, text="buty sportowe", clicks=100, impressions=1000, cost_micros=20_000_000, conversions=5.0, ctr=100000, date_from=week_ago, date_to=today),
-        SearchTerm(ad_group_id=ag.id, text="buty zimowe", clicks=50, impressions=500, cost_micros=10_000_000, conversions=2.0, ctr=100000, date_from=week_ago, date_to=today),
-        SearchTerm(ad_group_id=ag.id, text="kalosze gumowe", clicks=2, impressions=200, cost_micros=500_000, conversions=0, ctr=10000, date_from=week_ago, date_to=today),
+        SearchTerm(ad_group_id=ag.id, text="buty sportowe", clicks=100, impressions=1000, cost_micros=20_000_000, conversions=5.0, ctr=10.0, date_from=week_ago, date_to=today),
+        SearchTerm(ad_group_id=ag.id, text="buty zimowe", clicks=50, impressions=500, cost_micros=10_000_000, conversions=2.0, ctr=10.0, date_from=week_ago, date_to=today),
+        SearchTerm(ad_group_id=ag.id, text="kalosze gumowe", clicks=2, impressions=200, cost_micros=500_000, conversions=0, ctr=1.0, date_from=week_ago, date_to=today),
     ]
     db.add_all(terms)
     db.commit()

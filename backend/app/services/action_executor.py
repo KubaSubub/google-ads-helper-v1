@@ -166,6 +166,7 @@ class ActionExecutor:
                 context_json={"reason": reason},
                 error_message=reason,
             )
+            self.db.commit()
             return {"status": "blocked", "reason": reason}
 
         client_record = self.db.query(Client).filter(Client.id == client_id).first()
@@ -192,6 +193,7 @@ class ActionExecutor:
                 new_value_json=self._json_dumps(self._build_after_state(payload, precondition_state if 'precondition_state' in locals() else {})),
                 error_message=str(exc),
             )
+            self.db.commit()
             return {"status": "blocked", "reason": str(exc)}
 
         before_state = self._build_before_state(payload, precondition_state)
@@ -211,6 +213,7 @@ class ActionExecutor:
                 old_value_json=self._json_dumps(before_state),
                 new_value_json=self._json_dumps(after_state),
             )
+            self.db.commit()
             return {
                 "status": "dry_run",
                 "action": payload,
@@ -284,6 +287,7 @@ class ActionExecutor:
                 new_value_json=self._json_dumps(after_state),
                 error_message=str(exc),
             )
+            self.db.commit()  # new transaction after rollback — persist FAILED log
             return {"status": "error", "message": str(exc)}
 
     def revert_action(self, action_log_id: int, allow_demo_write: bool = False) -> dict:

@@ -212,7 +212,7 @@ class SearchTermsService:
 
         # 3. WASTE - clicks >= 5, conv = 0, CTR < 1%
         if clicks >= 5 and conversions == 0:
-            ctr_pct = (term.ctr or 0) / 10_000  # micros to percent
+            ctr_pct = term.ctr or 0  # already percentage
             if ctr_pct < 1.0:
                 return "WASTE"
 

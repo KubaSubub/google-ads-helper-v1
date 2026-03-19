@@ -51,7 +51,7 @@ def _seed_search_terms(db):
         impressions=500,
         cost_micros=10_000_000,
         conversions=3.0,
-        ctr=100000,  # 10% in micros
+        ctr=10.0,  # 10% as percentage
         date_from=week_ago,
         date_to=today,
     ))
@@ -93,7 +93,7 @@ def _seed_keywords(db):
         impressions=200,
         cost_micros=5_000_000,
         conversions=1.0,
-        ctr=100000,
+        ctr=10.0,  # 10% as percentage
         avg_cpc_micros=250_000,
     ))
     db.add(Keyword(

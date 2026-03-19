@@ -25,10 +25,24 @@ from app.models.metric_daily import MetricDaily
 from app.models.recommendation import Recommendation
 from app.models.search_term import SearchTerm
 from app.models.ad_group import AdGroup
+from app.models.change_event import ChangeEvent
 from app.services.analytics_service import AnalyticsService
 from app.utils.formatters import micros_to_currency
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_changed_fields(raw) -> list:
+    """Parse changed_fields from DB — may be JSON string or already a list."""
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
 
 
 def _find_claude_binary() -> str | None:
@@ -73,7 +87,33 @@ REPORT_DATA_MAP = {
     "budget": ["budget_pacing", "wasted_spend"],
     "alerts": ["alerts", "health"],
     "freeform": ["kpis", "campaigns", "alerts"],
+    "monthly": [
+        "month_comparison", "campaigns_detail", "change_history",
+        "change_impact", "budget_pacing", "wasted_spend", "alerts", "health",
+    ],
 }
+
+MONTHLY_PROMPT = """\
+Przygotuj kompletny raport miesieczny Google Ads.
+
+STRUKTURA DANYCH (nie duplikuj, nie sumuj ponownie):
+- `month_comparison` = zagregowane KPI calego konta (current vs previous) — to jest zrodlo prawdy dla sumarycznych metryk
+- `campaigns_detail` = metryki per kampania z deltami vs poprzedni okres — NIE sumuj tych wartosci, sa juz zagregowane w month_comparison
+- `change_history` = podsumowanie zmian na koncie
+- `change_impact` = analiza before/after dla zmian budzetu/biddingu
+- `budget_pacing` = realizacja budzetow
+- `wasted_spend` = zmarnowane wydatki
+- `alerts` + `health` = aktywne alerty i health score
+
+SEKCJE RAPORTU:
+1. Podsumowanie KPI — uzyj TYLKO danych z `month_comparison`, podaj delty procentowe
+2. Analiza kampanii — uzyj `campaigns_detail`, skup sie na kampaniach z najwiekszymi zmianami
+3. Wplyw zmian — uzyj `change_impact`, opisz co sie zmienilo i jaki mial wplyw
+4. Budzety — uzyj `budget_pacing`, wskaz under/overspend
+5. Rekomendacje — 5 konkretnych dzialan priorytetyzowanych wg potencjalnego wplywu
+
+WAZNE: Kazda metryka pojawia sie DOKLADNIE raz. Nie podawaj tych samych liczb w roznych sekcjach.\
+"""
 
 
 class AgentService:
@@ -83,6 +123,23 @@ class AgentService:
         self.db = db
         self.client_id = client_id
         self.analytics = AnalyticsService(db)
+        self._period_start: date | None = None
+        self._period_end: date | None = None
+
+    def _date_window(self, default_days: int = 30) -> tuple[date, date]:
+        """Return (start, end) date window — uses period if set, else last N days."""
+        if self._period_start and self._period_end:
+            return self._period_start, self._period_end
+        today = date.today()
+        return today - timedelta(days=default_days - 1), today
+
+    def gather_data_for_month(self, year: int, month: int) -> dict:
+        """Set period to a full calendar month, then gather monthly data."""
+        import calendar as cal
+        self._period_start = date(year, month, 1)
+        last_day = cal.monthrange(year, month)[1]
+        self._period_end = date(year, month, last_day)
+        return self.gather_data("monthly")
 
     def gather_data(self, report_type: str) -> dict:
         """Collect data from existing services based on report type."""
@@ -111,6 +168,9 @@ class AgentService:
             "search_terms": self._get_search_terms,
             "budget_pacing": self._get_budget_pacing,
             "wasted_spend": self._get_wasted_spend,
+            "change_history": self._get_change_history,
+            "month_comparison": self._get_month_comparison,
+            "change_impact": self._get_change_impact,
         }
         handler = handlers.get(section)
         if not handler:
@@ -121,119 +181,192 @@ class AgentService:
     # Data gathering methods (delegate to existing services/queries)
     # ------------------------------------------------------------------
 
-    def _get_kpis(self) -> dict:
-        """KPIs with period-over-period comparison (7d current vs 7d previous)."""
-        today = date.today()
-        campaigns = self.db.query(Campaign).filter(
-            Campaign.client_id == self.client_id,
+    def _agg_metrics(self, campaign_ids: list[int], start: date, end: date) -> dict:
+        """Aggregate MetricDaily for given campaigns and date range."""
+        rows = self.db.query(MetricDaily).filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= start,
+            MetricDaily.date <= end,
         ).all()
-        campaign_ids = [c.id for c in campaigns]
+        if not rows:
+            return {"clicks": 0, "impressions": 0, "cost_usd": 0,
+                    "conversions": 0, "ctr": 0, "cpa": 0, "roas": 0}
+        clicks = sum(r.clicks or 0 for r in rows)
+        impressions = sum(r.impressions or 0 for r in rows)
+        cost = sum(r.cost_micros or 0 for r in rows) / 1_000_000
+        conversions = sum(r.conversions or 0 for r in rows)
+        conv_value = sum(r.conversion_value_micros or 0 for r in rows) / 1_000_000
+        return {
+            "clicks": clicks,
+            "impressions": impressions,
+            "cost_usd": round(cost, 2),
+            "conversions": round(conversions, 2),
+            "ctr": round(clicks / impressions * 100 if impressions else 0, 2),
+            "cpa": round(cost / conversions if conversions else 0, 2),
+            "roas": round(conv_value / cost if cost else 0, 2),
+        }
+
+    def _get_campaign_ids(self) -> list[int]:
+        """Get all campaign IDs for the current client."""
+        return [c.id for c in self.db.query(Campaign).filter(
+            Campaign.client_id == self.client_id,
+        ).all()]
+
+    def _get_kpis(self) -> dict:
+        """KPIs with period-over-period comparison."""
+        campaign_ids = self._get_campaign_ids()
         if not campaign_ids:
             return {"current": {}, "previous": {}, "note": "Brak kampanii"}
 
-        def _agg(start: date, end: date) -> dict:
-            rows = self.db.query(MetricDaily).filter(
-                MetricDaily.campaign_id.in_(campaign_ids),
-                MetricDaily.date >= start,
-                MetricDaily.date <= end,
-            ).all()
-            if not rows:
-                return {"clicks": 0, "impressions": 0, "cost_usd": 0,
-                        "conversions": 0, "ctr": 0, "roas": 0}
-            clicks = sum(r.clicks or 0 for r in rows)
-            impressions = sum(r.impressions or 0 for r in rows)
-            cost = sum(r.cost_micros or 0 for r in rows) / 1_000_000
-            conversions = sum(r.conversions or 0 for r in rows)
-            conv_value = sum(r.conversion_value_micros or 0 for r in rows) / 1_000_000
-            return {
-                "clicks": clicks,
-                "impressions": impressions,
-                "cost_usd": round(cost, 2),
-                "conversions": round(conversions, 2),
-                "ctr": round(clicks / impressions * 100 if impressions else 0, 2),
-                "cpa": round(cost / conversions if conversions else 0, 2),
-                "roas": round(conv_value / cost if cost else 0, 2),
-            }
+        window_start, window_end = self._date_window(7)
+        window_days = (window_end - window_start).days + 1
+        prev_end = window_start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=window_days - 1)
 
-        current = _agg(today - timedelta(days=7), today)
-        previous = _agg(today - timedelta(days=14), today - timedelta(days=8))
-        return {"current_7d": current, "previous_7d": previous}
+        current = self._agg_metrics(campaign_ids, window_start, window_end)
+        previous = self._agg_metrics(campaign_ids, prev_start, prev_end)
+        period_label = f"{window_days}d"
+        return {
+            f"current_{period_label}": current,
+            f"previous_{period_label}": previous,
+            "period_days": window_days,
+        }
 
     def _get_campaigns_summary(self) -> list:
         """Active campaigns with basic metrics."""
         campaigns = self.db.query(Campaign).filter(
             Campaign.client_id == self.client_id,
             Campaign.status == "ENABLED",
-        ).all()
+        ).limit(30).all()
+
+        if not campaigns:
+            return []
 
         today = date.today()
         days_30_ago = today - timedelta(days=30)
-        result = []
-        for c in campaigns[:30]:  # truncate to 30
-            metrics = self.db.query(
-                func.sum(MetricDaily.clicks).label("clicks"),
-                func.sum(MetricDaily.impressions).label("impressions"),
-                func.sum(MetricDaily.cost_micros).label("cost_micros"),
-                func.sum(MetricDaily.conversions).label("conversions"),
-            ).filter(
-                MetricDaily.campaign_id == c.id,
-                MetricDaily.date >= days_30_ago,
-            ).first()
+        campaign_ids = [c.id for c in campaigns]
 
+        metrics_rows = self.db.query(
+            MetricDaily.campaign_id,
+            func.sum(MetricDaily.clicks).label("clicks"),
+            func.sum(MetricDaily.impressions).label("impressions"),
+            func.sum(MetricDaily.cost_micros).label("cost_micros"),
+            func.sum(MetricDaily.conversions).label("conversions"),
+        ).filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= days_30_ago,
+        ).group_by(MetricDaily.campaign_id).all()
+
+        metrics_map = {row.campaign_id: row for row in metrics_rows}
+
+        result = []
+        for c in campaigns:
+            m = metrics_map.get(c.id)
             result.append({
                 "name": c.name,
                 "type": c.campaign_type,
                 "status": c.status,
                 "daily_budget_usd": round(micros_to_currency(c.budget_micros), 2),
                 "role": c.campaign_role_final or c.campaign_role_auto,
-                "clicks_30d": metrics.clicks or 0 if metrics else 0,
-                "impressions_30d": metrics.impressions or 0 if metrics else 0,
-                "cost_30d_usd": round((metrics.cost_micros or 0) / 1_000_000, 2) if metrics else 0,
-                "conversions_30d": round(metrics.conversions or 0, 2) if metrics else 0,
+                "clicks_30d": (m.clicks or 0) if m else 0,
+                "impressions_30d": (m.impressions or 0) if m else 0,
+                "cost_30d_usd": round((m.cost_micros or 0) / 1_000_000, 2) if m else 0,
+                "conversions_30d": round((m.conversions or 0), 2) if m else 0,
             })
         return result
 
     def _get_campaigns_detail(self) -> list:
-        """All campaigns (including paused) with more detail."""
+        """All campaigns (including paused) with metrics + optional prev-period comparison."""
         campaigns = self.db.query(Campaign).filter(
             Campaign.client_id == self.client_id,
             Campaign.status.in_(["ENABLED", "PAUSED"]),
-        ).all()
+        ).limit(40).all()
 
-        today = date.today()
-        days_30_ago = today - timedelta(days=30)
-        result = []
-        for c in campaigns[:40]:
-            metrics = self.db.query(
-                func.sum(MetricDaily.clicks).label("clicks"),
-                func.sum(MetricDaily.impressions).label("impressions"),
+        if not campaigns:
+            return []
+
+        window_start, window_end = self._date_window(30)
+        campaign_ids = [c.id for c in campaigns]
+
+        # Current period — single grouped query
+        metrics_rows = self.db.query(
+            MetricDaily.campaign_id,
+            func.sum(MetricDaily.clicks).label("clicks"),
+            func.sum(MetricDaily.impressions).label("impressions"),
+            func.sum(MetricDaily.cost_micros).label("cost_micros"),
+            func.sum(MetricDaily.conversions).label("conversions"),
+            func.sum(MetricDaily.conversion_value_micros).label("conv_value"),
+        ).filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= window_start,
+            MetricDaily.date <= window_end,
+        ).group_by(MetricDaily.campaign_id).all()
+
+        metrics_map = {row.campaign_id: row for row in metrics_rows}
+
+        # Previous period — single grouped query (for monthly reports)
+        prev_map = {}
+        if self._period_start and self._period_end:
+            period_days = (window_end - window_start).days + 1
+            prev_end = window_start - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=period_days - 1)
+
+            prev_rows = self.db.query(
+                MetricDaily.campaign_id,
                 func.sum(MetricDaily.cost_micros).label("cost_micros"),
                 func.sum(MetricDaily.conversions).label("conversions"),
                 func.sum(MetricDaily.conversion_value_micros).label("conv_value"),
             ).filter(
-                MetricDaily.campaign_id == c.id,
-                MetricDaily.date >= days_30_ago,
-            ).first()
+                MetricDaily.campaign_id.in_(campaign_ids),
+                MetricDaily.date >= prev_start,
+                MetricDaily.date <= prev_end,
+            ).group_by(MetricDaily.campaign_id).all()
 
-            cost = (metrics.cost_micros or 0) / 1_000_000 if metrics else 0
-            conv = metrics.conversions or 0 if metrics else 0
-            conv_value = (metrics.conv_value or 0) / 1_000_000 if metrics else 0
+            prev_map = {row.campaign_id: row for row in prev_rows}
 
-            result.append({
+        def _delta_pct(curr_val, prev_val):
+            if not prev_val:
+                return None
+            return round((curr_val - prev_val) / abs(prev_val) * 100, 1)
+
+        result = []
+        for c in campaigns:
+            m = metrics_map.get(c.id)
+            cost = (m.cost_micros or 0) / 1_000_000 if m else 0
+            conv = (m.conversions or 0) if m else 0
+            conv_value = (m.conv_value or 0) / 1_000_000 if m else 0
+
+            entry = {
                 "name": c.name,
                 "type": c.campaign_type,
                 "status": c.status,
                 "bidding_strategy": c.bidding_strategy,
                 "daily_budget_usd": round(micros_to_currency(c.budget_micros), 2),
                 "role": c.campaign_role_final or c.campaign_role_auto,
-                "clicks_30d": metrics.clicks or 0 if metrics else 0,
-                "impressions_30d": metrics.impressions or 0 if metrics else 0,
-                "cost_30d_usd": round(cost, 2),
-                "conversions_30d": round(conv, 2),
-                "roas_30d": round(conv_value / cost if cost else 0, 2),
-                "cpa_30d": round(cost / conv if conv else 0, 2),
+                "clicks": (m.clicks or 0) if m else 0,
+                "impressions": (m.impressions or 0) if m else 0,
+                "cost_usd": round(cost, 2),
+                "conversions": round(conv, 2),
+                "roas": round(conv_value / cost if cost else 0, 2),
+                "cpa": round(cost / conv if conv else 0, 2),
                 "impression_share": round((c.search_impression_share or 0) * 100, 1),
-            })
+            }
+
+            # Add prev-period comparison if available
+            p = prev_map.get(c.id)
+            if p is not None:
+                prev_cost = (p.cost_micros or 0) / 1_000_000
+                prev_conv = (p.conversions or 0)
+                prev_conv_val = (p.conv_value or 0) / 1_000_000
+                entry["prev_cost_usd"] = round(prev_cost, 2)
+                entry["prev_conversions"] = round(prev_conv, 2)
+                entry["cost_delta_pct"] = _delta_pct(cost, prev_cost)
+                entry["conv_delta_pct"] = _delta_pct(conv, prev_conv)
+                prev_roas = round(prev_conv_val / prev_cost if prev_cost else 0, 2)
+                entry["prev_roas"] = prev_roas
+                entry["roas_delta_pct"] = _delta_pct(entry["roas"], prev_roas)
+
+            result.append(entry)
         return result
 
     def _get_alerts(self) -> list:
@@ -376,12 +509,25 @@ class AgentService:
         return result[:50]
 
     def _get_budget_pacing(self) -> dict:
-        """Budget pacing — reuses logic from analytics router."""
-        import calendar
+        """Budget pacing — calculates within a single calendar month."""
+        import calendar as cal
+        window_start, _window_end = self._date_window(30)
+        # Determine which month to report on
+        report_month = window_start.replace(day=1)
+        report_year, report_mo = report_month.year, report_month.month
+        days_in_month = cal.monthrange(report_year, report_mo)[1]
+        month_end = date(report_year, report_mo, days_in_month)
+
         today = date.today()
-        month_start = today.replace(day=1)
-        days_elapsed = (today - month_start).days + 1
-        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        if today >= month_end:
+            # Past month — use full month
+            days_elapsed = days_in_month
+        elif today >= report_month:
+            # Current month — days so far
+            days_elapsed = (today - report_month).days + 1
+        else:
+            # Future month (shouldn't happen) — full month
+            days_elapsed = days_in_month
         pacing_ratio = days_elapsed / days_in_month
 
         campaigns = self.db.query(Campaign).filter(
@@ -394,7 +540,11 @@ class AgentService:
             budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month
             actual_micros = (
                 self.db.query(func.sum(MetricDaily.cost_micros))
-                .filter(MetricDaily.campaign_id == camp.id, MetricDaily.date >= month_start)
+                .filter(
+                    MetricDaily.campaign_id == camp.id,
+                    MetricDaily.date >= report_month,
+                    MetricDaily.date <= month_end,
+                )
                 .scalar()
             ) or 0
             actual = micros_to_currency(actual_micros)
@@ -417,7 +567,7 @@ class AgentService:
             })
 
         return {
-            "month": today.strftime("%Y-%m"),
+            "month": report_month.strftime("%Y-%m"),
             "days_elapsed": days_elapsed,
             "days_in_month": days_in_month,
             "campaigns": results,
@@ -425,7 +575,192 @@ class AgentService:
 
     def _get_wasted_spend(self) -> dict:
         """Wasted spend — delegates to AnalyticsService."""
-        return self.analytics.get_wasted_spend(self.client_id, days=30)
+        window_start, window_end = self._date_window(30)
+        days = (window_end - window_start).days + 1
+        return self.analytics.get_wasted_spend(self.client_id, days=days)
+
+    # ------------------------------------------------------------------
+    # Monthly report sections
+    # ------------------------------------------------------------------
+
+    def _get_change_history(self) -> dict:
+        """Summarize ChangeEvents for the report period."""
+        window_start, window_end = self._date_window(30)
+        from datetime import datetime as dt
+
+        events = self.db.query(ChangeEvent).filter(
+            ChangeEvent.client_id == self.client_id,
+            ChangeEvent.change_date_time >= dt.combine(window_start, dt.min.time()),
+            ChangeEvent.change_date_time <= dt.combine(window_end, dt.max.time()),
+        ).all()
+
+        if not events:
+            return {"total_changes": 0, "note": "Brak zmian w okresie"}
+
+        by_resource_type: dict[str, int] = {}
+        by_operation: dict[str, int] = {}
+        by_source: dict[str, int] = {}
+        user_counts: dict[str, int] = {}
+
+        for e in events:
+            rt = e.change_resource_type or "UNKNOWN"
+            by_resource_type[rt] = by_resource_type.get(rt, 0) + 1
+            op = e.resource_change_operation or "UNKNOWN"
+            by_operation[op] = by_operation.get(op, 0) + 1
+            src = e.client_type or "UNKNOWN"
+            by_source[src] = by_source.get(src, 0) + 1
+            if e.user_email:
+                user_counts[e.user_email] = user_counts.get(e.user_email, 0) + 1
+
+        top_users = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        notable = []
+        sorted_events = sorted(events, key=lambda e: str(e.change_date_time or ""), reverse=True)
+        for e in sorted_events[:20]:
+            notable.append({
+                "date": str(e.change_date_time)[:16] if e.change_date_time else None,
+                "type": e.change_resource_type,
+                "name": e.entity_name or e.campaign_name or "",
+                "operation": e.resource_change_operation,
+                "fields": _parse_changed_fields(e.changed_fields)[:5],
+            })
+
+        return {
+            "total_changes": len(events),
+            "by_resource_type": by_resource_type,
+            "by_operation": by_operation,
+            "by_source": by_source,
+            "top_users": [{"email": email, "count": cnt} for email, cnt in top_users],
+            "notable": notable,
+        }
+
+    def _get_month_comparison(self) -> dict:
+        """Aggregated account-level KPIs: current period vs previous, with deltas."""
+        campaign_ids = self._get_campaign_ids()
+        if not campaign_ids:
+            return {"note": "Brak kampanii"}
+
+        curr_start, curr_end = self._date_window(30)
+        period_days = (curr_end - curr_start).days + 1
+        prev_end = curr_start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=period_days - 1)
+
+        current = self._agg_metrics(campaign_ids, curr_start, curr_end)
+        previous = self._agg_metrics(campaign_ids, prev_start, prev_end)
+
+        def _delta_pct(curr_val, prev_val):
+            if not prev_val:
+                return None
+            return round((curr_val - prev_val) / abs(prev_val) * 100, 1)
+
+        deltas = {}
+        for key in ["clicks", "impressions", "cost_usd", "conversions", "ctr", "cpa", "roas"]:
+            deltas[f"{key}_pct"] = _delta_pct(current.get(key, 0), previous.get(key, 0))
+
+        return {
+            "period": {"label": f"{curr_start} — {curr_end}", "date_from": str(curr_start), "date_to": str(curr_end)},
+            "previous_period": {"label": f"{prev_start} — {prev_end}", "date_from": str(prev_start), "date_to": str(prev_end)},
+            "current": current,
+            "previous": previous,
+            "deltas": deltas,
+        }
+
+    def _get_change_impact(self) -> list:
+        """Analyze before/after metrics for significant account changes."""
+        window_start, window_end = self._date_window(30)
+        from datetime import datetime as dt
+
+        # Find campaign-level UPDATE changes with budget/bidding fields
+        events = self.db.query(ChangeEvent).filter(
+            ChangeEvent.client_id == self.client_id,
+            ChangeEvent.change_resource_type == "CAMPAIGN",
+            ChangeEvent.resource_change_operation == "UPDATE",
+            ChangeEvent.change_date_time >= dt.combine(window_start, dt.min.time()),
+            ChangeEvent.change_date_time <= dt.combine(window_end, dt.max.time()),
+        ).order_by(ChangeEvent.change_date_time.desc()).all()
+
+        budget_bidding_fields = {
+            "campaign_budget", "budget", "bidding_strategy", "target_cpa",
+            "target_roas", "maximize_conversions", "maximize_conversion_value",
+            "manual_cpc", "status",
+        }
+
+        results = []
+        campaign_map = {c.id: c for c in self.db.query(Campaign).filter(
+            Campaign.client_id == self.client_id,
+        ).all()}
+
+        for e in events:
+            fields_list = _parse_changed_fields(e.changed_fields)
+            if not fields_list:
+                continue
+
+            # Check if any changed field is budget/bidding related
+            relevant_fields = [f for f in fields_list
+                               if any(bf in f.lower() for bf in budget_bidding_fields)]
+            if not relevant_fields:
+                continue
+
+            change_date = e.change_date_time.date() if e.change_date_time else None
+            if not change_date:
+                continue
+
+            # Need 7 days before and after — allow pre-period data as baseline
+            before_start = change_date - timedelta(days=7)
+            after_end = change_date + timedelta(days=7)
+            today = date.today()
+            if after_end > today:
+                after_end = today
+            # Need at least 2 days of "after" data for meaningful comparison
+            if (after_end - change_date).days < 2:
+                continue
+
+            # Find the campaign
+            campaign = None
+            if e.entity_id:
+                for cid, c in campaign_map.items():
+                    if str(c.google_campaign_id) == str(e.entity_id) or str(cid) == str(e.entity_id):
+                        campaign = c
+                        break
+            if not campaign:
+                continue
+
+            before = self._agg_metrics([campaign.id], before_start, change_date - timedelta(days=1))
+            after = self._agg_metrics([campaign.id], change_date, after_end)
+
+            # Build impact summary
+            impact_parts = []
+            if before["cpa"] and after["cpa"]:
+                cpa_delta = round((after["cpa"] - before["cpa"]) / before["cpa"] * 100, 1)
+                impact_parts.append(f"CPA {'+' if cpa_delta > 0 else ''}{cpa_delta}%")
+            if before["conversions"] and after["conversions"]:
+                conv_delta = round((after["conversions"] - before["conversions"]) / before["conversions"] * 100, 1)
+                impact_parts.append(f"konwersje {'+' if conv_delta > 0 else ''}{conv_delta}%")
+
+            # Determine change type
+            change_type = "other"
+            fields_lower = " ".join(relevant_fields).lower()
+            if "budget" in fields_lower:
+                change_type = "budget_change"
+            elif "bidding" in fields_lower or "target" in fields_lower:
+                change_type = "bidding_change"
+            elif "status" in fields_lower:
+                change_type = "status_change"
+
+            results.append({
+                "change_date": str(change_date),
+                "entity_name": e.entity_name or e.campaign_name or campaign.name,
+                "change_type": change_type,
+                "changed_fields": relevant_fields[:5],
+                "before_7d": before,
+                "after_7d": after,
+                "impact_summary": ", ".join(impact_parts) if impact_parts else "brak danych do porownania",
+            })
+
+            if len(results) >= 10:
+                break
+
+        return results
 
     # ------------------------------------------------------------------
     # Prompt building
@@ -455,23 +790,27 @@ class AgentService:
     # ------------------------------------------------------------------
 
     async def generate_report(
-        self, user_message: str, report_type: str = "freeform"
+        self, user_message: str, report_type: str = "freeform",
+        pre_gathered_data: dict | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Invoke claude -p via stdin and stream the response."""
+        """Invoke claude -p via stdin and stream the response.
+
+        If pre_gathered_data is provided, skip data gathering (avoids double queries).
+        """
         claude_bin = _find_claude_binary()
         if not claude_bin:
             yield json.dumps({"type": "error", "content": "Claude CLI nie jest zainstalowane lub niedostepne w PATH."})
             return
 
-        data = self.gather_data(report_type)
+        data = pre_gathered_data if pre_gathered_data is not None else self.gather_data(report_type)
         prompt = self.build_prompt(data, user_message)
 
         try:
             process = await asyncio.create_subprocess_exec(
                 claude_bin,
                 "-p",
-                "--output-format", "stream-json",
                 "--verbose",
+                "--output-format", "stream-json",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -497,6 +836,22 @@ class AgentService:
 
                 event_type = event.get("type", "")
 
+                # "system" init event: extract model name
+                if event_type == "system":
+                    model_name = event.get("model", "")
+                    if model_name:
+                        yield json.dumps({"type": "model", "content": model_name})
+                    continue
+
+                # "content_block_delta" event: streaming text chunks
+                if event_type == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        text = delta.get("text", "")
+                        if text:
+                            yield json.dumps({"type": "delta", "content": text})
+                    continue
+
                 # "assistant" event: contains the full message with text content
                 if event_type == "assistant" and "message" in event:
                     msg = event["message"]
@@ -507,13 +862,25 @@ class AgentService:
                                 if isinstance(block, dict) and block.get("type") == "text":
                                     yield json.dumps({"type": "delta", "content": block["text"]})
 
-                # "result" event: final result text (backup)
+                # "result" event: final result with usage stats
                 elif event_type == "result":
                     result_text = event.get("result", "")
                     is_error = event.get("is_error", False)
                     if is_error and result_text:
                         yield json.dumps({"type": "error", "content": result_text})
-                    # result text is same as assistant content — skip to avoid duplication
+
+                    # Extract token usage
+                    usage = event.get("usage", {})
+                    model_usage = event.get("modelUsage", {})
+                    yield json.dumps({"type": "usage", "content": {
+                        "input_tokens": usage.get("input_tokens", 0),
+                        "output_tokens": usage.get("output_tokens", 0),
+                        "cache_read_tokens": usage.get("cache_read_input_tokens", 0),
+                        "cache_creation_tokens": usage.get("cache_creation_input_tokens", 0),
+                        "total_cost_usd": event.get("total_cost_usd", 0),
+                        "duration_ms": event.get("duration_ms", 0),
+                        "model_usage": model_usage,
+                    }})
 
             await asyncio.wait_for(process.wait(), timeout=settings.agent_timeout)
 
@@ -523,11 +890,13 @@ class AgentService:
             return
 
         if process.returncode != 0:
-            stderr = ""
+            stderr_text = ""
             if process.stderr:
                 stderr_bytes = await process.stderr.read()
-                stderr = stderr_bytes.decode("utf-8", errors="replace")
-            yield json.dumps({"type": "error", "content": f"Claude CLI error (code {process.returncode}): {stderr[:500]}"})
+                stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+                logger.error("Claude CLI stderr (kod %d): %s", process.returncode, stderr_text[:500])
+            detail = stderr_text[:300] if stderr_text else f"kod {process.returncode}"
+            yield json.dumps({"type": "error", "content": f"Claude CLI error: {detail}"})
 
 
 async def check_claude_available() -> dict:

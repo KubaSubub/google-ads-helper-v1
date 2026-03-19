@@ -26,7 +26,7 @@ class Keyword(Base):
     cost_micros = Column(BigInteger, default=0)
     conversions = Column(Float, default=0.0)  # Float — Google Ads returns fractional values
     conversion_value_micros = Column(BigInteger, default=0)  # Revenue in micros
-    ctr = Column(Integer, default=0)  # Stored as micros (e.g., 50000 = 5%)
+    ctr = Column(Float, default=0.0)  # Percentage (5.0 = 5%), consistent with MetricDaily
     avg_cpc_micros = Column(BigInteger, default=0)
     cpa_micros = Column(BigInteger, default=0)  # Cost per acquisition
     quality_score = Column(Integer, default=0)  # Google Ads Quality Score 1-10

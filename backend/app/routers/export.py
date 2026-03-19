@@ -56,7 +56,7 @@ def export_search_terms(
         cost_usd = micros_to_currency(term.cost_micros)
         cpc = cost_usd / term.clicks if term.clicks else 0
         cpconv = cost_usd / term.conversions if (term.conversions or 0) > 0 else 0
-        ctr_pct = round((term.ctr or 0) / 10_000, 2)
+        ctr_pct = round(term.ctr or 0, 2)
         return [term.text, term.clicks or 0, term.impressions or 0, cost_usd, term.conversions or 0, ctr_pct, round(cpc, 2), round(cpconv, 2)]
 
     if format == "csv":
@@ -117,7 +117,7 @@ def export_metrics(
     def _row(metric):
         cost_usd = micros_to_currency(metric.cost_micros)
         cpa = cost_usd / metric.conversions if (metric.conversions or 0) > 0 else 0
-        ctr_pct = round((metric.ctr or 0) / 10_000, 2)
+        ctr_pct = round(metric.ctr or 0, 2)
         avg_cpc_usd = micros_to_currency(metric.avg_cpc_micros)
         return [str(metric.date), metric.clicks or 0, metric.impressions or 0, ctr_pct, cost_usd, metric.conversions or 0, round(cpa, 2), round(metric.roas or 0, 2), avg_cpc_usd]
 
@@ -185,7 +185,7 @@ def export_keywords(
 
     def _row(keyword, campaign_name, ad_group_name):
         cost_usd = micros_to_currency(keyword.cost_micros)
-        ctr_pct = round((keyword.ctr or 0) / 10_000, 2)
+        ctr_pct = round(keyword.ctr or 0, 2)
         avg_cpc_usd = micros_to_currency(keyword.avg_cpc_micros)
         return [campaign_name, ad_group_name, keyword.text, keyword.match_type, keyword.status, keyword.clicks or 0, keyword.impressions or 0, cost_usd, keyword.conversions or 0, ctr_pct, avg_cpc_usd]
 

@@ -329,7 +329,7 @@ def quality_score_audit(
         )
 
         issues = []
-        kw_ctr_pct = (kw.ctr or 0) / 10_000  # micros to %
+        kw_ctr_pct = kw.ctr or 0  # already percentage
         if kw_ctr_pct < 2.0:
             issues.append("Low CTR - ad copy may not match keyword intent")
         if kw.quality_score <= 3:
