@@ -18,10 +18,12 @@ from app.routers import (
     auth,
     campaigns,
     clients,
+    daily_audit,
     export,
     history,
     keywords_ads,
     recommendations,
+    reports,
     search_terms,
     semantic,
     sync,
@@ -77,6 +79,8 @@ app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendat
 app.include_router(actions.router, prefix=API_PREFIX, tags=["actions"], dependencies=protected)
 app.include_router(history.router, prefix=API_PREFIX, tags=["history"], dependencies=protected)
 app.include_router(agent.router, prefix=API_PREFIX, tags=["agent"], dependencies=protected)
+app.include_router(reports.router, prefix=API_PREFIX, tags=["reports"], dependencies=protected)
+app.include_router(daily_audit.router, prefix=API_PREFIX, tags=["daily-audit"], dependencies=protected)
 
 
 @app.get("/health", tags=["System"])

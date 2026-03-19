@@ -19,6 +19,8 @@ import ActionHistory from './pages/ActionHistory';
 import Alerts from './pages/Alerts';
 import SearchOptimization from './pages/SearchOptimization';
 import Agent from './pages/Agent';
+import Reports from './pages/Reports';
+import DailyAudit from './pages/DailyAudit';
 import { Loader2 } from 'lucide-react';
 
 function AppContent() {
@@ -43,6 +45,7 @@ function AppContent() {
                 <GlobalFilterBar />
                 <Routes>
                     <Route path="/" element={<Dashboard />} />
+                    <Route path="/daily-audit" element={<DailyAudit />} />
                     <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/search-terms" element={<SearchTerms />} />
                     <Route path="/keywords" element={<Keywords />} />
@@ -56,6 +59,7 @@ function AppContent() {
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/search-optimization" element={<SearchOptimization />} />
                     <Route path="/agent" element={<Agent />} />
+                    <Route path="/reports" element={<Reports />} />
                     <Route path="/settings" element={<Settings />} />
                 </Routes>
             </main>

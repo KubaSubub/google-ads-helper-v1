@@ -425,3 +425,174 @@ def dismiss_recommendation(
     rec.status = "dismissed"
     db.commit()
     return {"status": "success", "message": f"Recommendation {recommendation_id} dismissed"}
+
+
+# ---------------------------------------------------------------------------
+# Bulk-apply "quick scripts" endpoint
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel  # noqa: E402
+from typing import List  # noqa: E402
+
+
+class BulkApplyRequest(BaseModel):
+    client_id: int
+    category: str  # "clean_waste", "pause_burning", "boost_winners", "emergency_brake", "add_negatives"
+    dry_run: bool = True  # Default to preview mode
+
+
+_CATEGORY_FILTERS: dict[str, dict] = {
+    "clean_waste": {
+        "rule_ids": ["ADD_NEGATIVE"],
+        "priority": None,
+    },
+    "pause_burning": {
+        "rule_ids": ["PAUSE_KEYWORD"],
+        "priority": None,
+    },
+    "boost_winners": {
+        "rule_ids": ["INCREASE_BUDGET", "REALLOCATE_BUDGET"],
+        "priority": "HIGH",
+    },
+    "emergency_brake": {
+        "rule_ids": ["DECREASE_BID", "PAUSE_KEYWORD"],
+        "priority": "HIGH",
+    },
+    "add_negatives": {
+        "rule_ids": ["ADD_NEGATIVE", "NGRAM_NEGATIVE"],
+        "priority": None,
+    },
+}
+
+
+def _build_item_summary(rec: RecommendationModel) -> str:
+    """Build a human-readable summary string from a recommendation row."""
+    action_payload = _normalize_action_payload(rec)
+    evidence, metadata, _ctx, _expl = _normalize_evidence(rec)
+
+    keyword_text = (
+        action_payload.get("keyword_text")
+        or action_payload.get("keyword")
+        or metadata.get("keyword_text")
+        or ""
+    )
+    campaign_name = (
+        metadata.get("campaign_name")
+        or action_payload.get("campaign_name")
+        or rec.entity_name
+        or ""
+    )
+
+    rule = rec.rule_id or ""
+    parts = [rule.replace("_", " ").title()]
+    if keyword_text:
+        parts.append(f"'{keyword_text}'")
+    if campaign_name:
+        parts.append(f"in campaign '{campaign_name}'")
+
+    return ": ".join(parts[:1]) + (" " + " ".join(parts[1:]) if len(parts) > 1 else "")
+
+
+def _estimated_savings_usd(rec: RecommendationModel) -> float:
+    """Return estimated savings in USD (from micros)."""
+    if rec.impact_micros and rec.impact_micros > 0:
+        return round(rec.impact_micros / 1_000_000, 2)
+    evidence = rec.evidence_json if isinstance(rec.evidence_json, dict) else {}
+    impact = evidence.get("estimated_impact") if isinstance(evidence.get("estimated_impact"), dict) else {}
+    if isinstance(impact, dict):
+        for key in ("savings_usd", "estimated_savings_usd", "value"):
+            val = impact.get(key)
+            if val is not None:
+                try:
+                    return round(float(val), 2)
+                except (ValueError, TypeError):
+                    pass
+    return 0.0
+
+
+@router.post("/bulk-apply")
+def bulk_apply_recommendations(
+    body: BulkApplyRequest,
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
+    db: Session = Depends(get_db),
+):
+    """Apply a batch of recommendations by quick-script category.
+
+    When dry_run is True (default) returns a preview of matching recommendations.
+    When dry_run is False, applies each via ActionExecutor and reports results.
+    """
+    if body.category not in _CATEGORY_FILTERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown category '{body.category}'. Valid: {', '.join(_CATEGORY_FILTERS)}",
+        )
+
+    if not body.dry_run:
+        ensure_demo_write_allowed(
+            db,
+            body.client_id,
+            allow_demo_write=allow_demo_write,
+            operation=f"Bulk apply: {body.category}",
+        )
+
+    cfg = _CATEGORY_FILTERS[body.category]
+    rule_ids: list[str] = cfg["rule_ids"]
+    priority_filter: str | None = cfg["priority"]
+
+    query = (
+        db.query(RecommendationModel)
+        .filter(
+            RecommendationModel.client_id == body.client_id,
+            RecommendationModel.status == "pending",
+            RecommendationModel.rule_id.in_(rule_ids),
+        )
+    )
+    if priority_filter:
+        query = query.filter(RecommendationModel.priority == priority_filter)
+
+    matching_recs: list[RecommendationModel] = query.all()
+
+    items: List[dict] = []
+    for rec in matching_recs:
+        items.append({
+            "id": rec.id,
+            "action_type": rec.rule_id,
+            "priority": rec.priority,
+            "summary": _build_item_summary(rec),
+            "estimated_savings_usd": _estimated_savings_usd(rec),
+        })
+
+    applied = 0
+    failed = 0
+    errors: List[str] = []
+
+    if not body.dry_run:
+        executor = ActionExecutor(db)
+        for rec in matching_recs:
+            try:
+                result = executor.apply_recommendation(
+                    rec.id,
+                    body.client_id,
+                    dry_run=False,
+                    allow_demo_write=allow_demo_write,
+                )
+                if result.get("status") in ("success", "applied", "dry_run"):
+                    applied += 1
+                else:
+                    failed += 1
+                    errors.append(
+                        f"Rec #{rec.id}: {result.get('message') or result.get('reason', 'unknown error')}"
+                    )
+            except Exception as exc:
+                failed += 1
+                errors.append(f"Rec #{rec.id}: {exc}")
+
+    return {
+        "category": body.category,
+        "dry_run": body.dry_run,
+        "total_matching": len(matching_recs),
+        "items": items,
+        "applied": applied,
+        "failed": failed,
+        "errors": errors,
+    }

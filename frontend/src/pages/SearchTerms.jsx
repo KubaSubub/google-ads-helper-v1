@@ -1,16 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ErrorMessage } from '../components/UI'
 import { getSearchTerms, getSegmentedSearchTerms } from '../api'
+import api from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
     TrendingUp, AlertTriangle, XCircle, LayoutGrid,
-    List, Loader2, X, PlusCircle, MinusCircle,
+    List, Loader2, X, PlusCircle, MinusCircle, CheckSquare, Square,
 } from 'lucide-react'
 import { MetricTooltip } from '../components/MetricTooltip'
+
+// ─── Bulk actions API ───
+const bulkAddNegative = (data) => api.post('/search-terms/bulk-add-negative', data)
+const bulkAddKeyword = (data) => api.post('/search-terms/bulk-add-keyword', data)
 
 const SEGMENT_CONFIG = {
     HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: '#4ADE80', bg: 'rgba(74,222,128,0.1)',   border: 'rgba(74,222,128,0.2)'  },
@@ -59,6 +64,50 @@ function InlineAction({ icon: Icon, label, color, bg, border, onClick }) {
     )
 }
 
+// ─── Bulk Action Bar ───
+function BulkActionBar({ selectedCount, onAddNegative, onAddKeyword, onClear, loading: bulkLoading }) {
+    if (selectedCount === 0) return null
+    return (
+        <div style={{
+            position: 'sticky', top: 0, zIndex: 20,
+            background: 'rgba(13,15,20,0.95)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(79,142,247,0.3)', borderRadius: 10,
+            padding: '10px 16px', marginBottom: 12,
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#4F8EF7' }}>
+                {selectedCount} zaznaczonych
+            </span>
+            <div style={{ flex: 1 }} />
+            <button onClick={onAddNegative} disabled={bulkLoading} style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 500,
+                background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
+                color: '#F87171', cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
+            }}>
+                {bulkLoading ? <Loader2 size={11} className="animate-spin" /> : <MinusCircle size={11} />}
+                Dodaj jako negatywy (EXACT)
+            </button>
+            <button onClick={onAddKeyword} disabled={bulkLoading} style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 500,
+                background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)',
+                color: '#4ADE80', cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
+            }}>
+                {bulkLoading ? <Loader2 size={11} className="animate-spin" /> : <PlusCircle size={11} />}
+                Dodaj jako slowa kluczowe
+            </button>
+            <button onClick={onClear} style={{
+                padding: '5px 10px', borderRadius: 7, fontSize: 11,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
+            }}>
+                <X size={11} />
+            </button>
+        </div>
+    )
+}
+
 export default function SearchTerms() {
     const { selectedClientId, showToast } = useApp()
     const { filters } = useFilter()
@@ -75,6 +124,56 @@ export default function SearchTerms() {
     const [sortOrder, setSortOrder] = useState('desc')
     const [page, setPage] = useState(1)
     const [activeSegment, setActiveSegment] = useState('ALL')
+    const [selectedIds, setSelectedIds] = useState(new Set())
+    const [bulkLoading, setBulkLoading] = useState(false)
+
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+
+    const toggleSelectAll = (items) => {
+        const ids = items.map(t => t.id).filter(Boolean)
+        const allSelected = ids.every(id => selectedIds.has(id))
+        if (allSelected) {
+            setSelectedIds(prev => {
+                const next = new Set(prev)
+                ids.forEach(id => next.delete(id))
+                return next
+            })
+        } else {
+            setSelectedIds(prev => {
+                const next = new Set(prev)
+                ids.forEach(id => next.add(id))
+                return next
+            })
+        }
+    }
+
+    const handleBulkAddNegative = async () => {
+        if (selectedIds.size === 0) return
+        setBulkLoading(true)
+        try {
+            const res = await bulkAddNegative({
+                search_term_ids: [...selectedIds],
+                level: 'campaign',
+                match_type: 'EXACT',
+                client_id: selectedClientId,
+            })
+            showToast(`Dodano ${res.added} negatywow, pominito ${res.skipped_duplicates} duplikatow`, 'success')
+            setSelectedIds(new Set())
+        } catch (err) { showToast(`Blad: ${err.message}`, 'error') }
+        finally { setBulkLoading(false) }
+    }
+
+    const handleBulkAddKeyword = async () => {
+        if (selectedIds.size === 0) return
+        showToast('Wybierz grupe reklam w oknie dialogowym aby dodac slowa kluczowe', 'info')
+    }
 
     useEffect(() => {
         if (!selectedClientId) return
@@ -264,6 +363,15 @@ export default function SearchTerms() {
                         </div>
                     )}
 
+                    {/* Bulk action bar */}
+                    <BulkActionBar
+                        selectedCount={selectedIds.size}
+                        onAddNegative={handleBulkAddNegative}
+                        onAddKeyword={handleBulkAddKeyword}
+                        onClear={() => setSelectedIds(new Set())}
+                        loading={bulkLoading}
+                    />
+
                     {/* Table */}
                     <div className="v2-card" style={{ overflow: 'hidden' }}>
                         {loading ? (
@@ -275,6 +383,13 @@ export default function SearchTerms() {
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <th style={{ ...TH_STYLE, width: 36, textAlign: 'center' }}>
+                                                <button onClick={() => toggleSelectAll(segmentItems)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'rgba(255,255,255,0.3)' }}>
+                                                    {segmentItems.length > 0 && segmentItems.every(t => selectedIds.has(t.id))
+                                                        ? <CheckSquare size={13} style={{ color: '#4F8EF7' }} />
+                                                        : <Square size={13} />}
+                                                </button>
+                                            </th>
                                             <th style={TH_STYLE}>Segment</th>
                                             <th style={TH_STYLE}>Fraza</th>
                                             <th style={TH_STYLE}>Kampania</th>
@@ -288,7 +403,7 @@ export default function SearchTerms() {
                                     </thead>
                                     <tbody>
                                         {segmentItems.length === 0 ? (
-                                            <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
+                                            <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
                                         ) : segmentItems.map((t, i) => {
                                             let seg = 'OTHER'
                                             for (const [key, items] of Object.entries(segData?.segments || {})) {
@@ -296,12 +411,22 @@ export default function SearchTerms() {
                                             }
                                             const showAddKw = seg === 'HIGH_PERFORMER'
                                             const showAddNeg = seg === 'WASTE' || seg === 'IRRELEVANT'
+                                            const isSelected = selectedIds.has(t.id)
                                             return (
                                                 <tr key={t.id || i}
-                                                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s' }}
-                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
-                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                    style={{
+                                                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                                        transition: 'background 0.12s',
+                                                        background: isSelected ? 'rgba(79,142,247,0.06)' : 'transparent',
+                                                    }}
+                                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
+                                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                                                 >
+                                                    <td style={{ padding: '10px 6px', textAlign: 'center', width: 36 }}>
+                                                        <button onClick={() => toggleSelect(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'rgba(255,255,255,0.3)' }}>
+                                                            {isSelected ? <CheckSquare size={13} style={{ color: '#4F8EF7' }} /> : <Square size={13} />}
+                                                        </button>
+                                                    </td>
                                                     <td style={{ padding: '10px 12px' }}><SegmentBadge seg={seg} /></td>
                                                     <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 280 }}>
                                                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
@@ -381,7 +506,7 @@ export default function SearchTerms() {
                                     </thead>
                                     <tbody>
                                         {data.items.map((t, i) => {
-                                            const isWaste = t.cost > 20 && t.conversions === 0
+                                            const isWaste = t.cost_usd > 20 && (t.conversions == null || t.conversions < 0.01)
                                             return (
                                                 <tr key={t.id || i}
                                                     style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isWaste ? 'rgba(248,113,113,0.03)' : 'transparent', transition: 'background 0.12s' }}
@@ -396,11 +521,11 @@ export default function SearchTerms() {
                                                     </td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString()}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.impressions?.toLocaleString()}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost != null ? `${t.cost.toFixed(2)} zł` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost_usd != null ? `${t.cost_usd.toFixed(2)} zł` : '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions != null ? t.conversions.toFixed(1) : '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.ctr != null ? `${t.ctr.toFixed(2)}%` : '—'}</td>
                                                     <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>
-                                                        {t.conversions > 0 && t.cost != null ? `${(t.cost / t.conversions).toFixed(2)} zł` : '—'}
+                                                        {t.cost_per_conversion_usd > 0 ? `${t.cost_per_conversion_usd.toFixed(2)} zł` : '—'}
                                                     </td>
                                                 </tr>
                                             )

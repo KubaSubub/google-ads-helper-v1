@@ -1,11 +1,15 @@
 """Search terms endpoints — list, filter, and segmented view."""
 
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 
 from app.database import get_db
 from app.models import SearchTerm, AdGroup, Campaign
+from app.models.negative_keyword import NegativeKeyword
+from app.models.keyword import Keyword
 from app.schemas import SearchTermResponse, PaginatedResponse
 from app.services.search_terms_service import SearchTermsService
 from app.utils.formatters import micros_to_currency
@@ -148,7 +152,7 @@ def search_terms_summary(
                 "cost_usd": micros_to_currency(t.cost_micros),
                 "clicks": t.clicks or 0,
                 "conversions": t.conversions or 0,
-                "ctr_pct": round((t.ctr or 0) / 10_000, 2),
+                "ctr_pct": round(t.ctr or 0, 2),
             }
             for t in sorted_by_cost
         ],
@@ -175,3 +179,215 @@ def segmented_search_terms(
         client_id, date_from=date_from, date_to=date_to,
         campaign_type=campaign_type, campaign_status=campaign_status,
     )
+
+
+# ---------------------------------------------------------------------------
+# Bulk Action Endpoints
+# ---------------------------------------------------------------------------
+
+
+class BulkAddNegativeRequest(BaseModel):
+    search_term_ids: list[int]
+    level: str = "campaign"       # "campaign" or "ad_group"
+    match_type: str = "EXACT"     # EXACT, PHRASE, BROAD
+    client_id: int
+
+
+class BulkAddKeywordRequest(BaseModel):
+    search_term_ids: list[int]
+    ad_group_id: int              # Target ad group for new keywords
+    match_type: str = "EXACT"     # EXACT, PHRASE, BROAD
+    client_id: int
+
+
+class BulkPreviewRequest(BaseModel):
+    search_term_ids: list[int]
+    client_id: int
+
+
+@router.post("/bulk-add-negative")
+def bulk_add_negative(
+    body: BulkAddNegativeRequest,
+    db: Session = Depends(get_db),
+):
+    """Add selected search terms as negative keywords (campaign- or ad-group-level)."""
+    from sqlalchemy import or_
+
+    if not body.search_term_ids:
+        raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
+
+    if body.level not in ("campaign", "ad_group"):
+        raise HTTPException(status_code=400, detail="level must be 'campaign' or 'ad_group'")
+
+    if body.match_type not in ("EXACT", "PHRASE", "BROAD"):
+        raise HTTPException(status_code=400, detail="match_type must be EXACT, PHRASE, or BROAD")
+
+    terms = db.query(SearchTerm).filter(SearchTerm.id.in_(body.search_term_ids)).all()
+    if not terms:
+        raise HTTPException(status_code=400, detail="No search terms found for the given IDs")
+
+    added = 0
+    skipped = 0
+    items: list[str] = []
+
+    try:
+        for term in terms:
+            # Resolve campaign_id: direct (PMax) or through ad_group (Search)
+            campaign_id = term.campaign_id
+            if campaign_id is None and term.ad_group_id:
+                ad_group = db.query(AdGroup).filter(AdGroup.id == term.ad_group_id).first()
+                if ad_group:
+                    campaign_id = ad_group.campaign_id
+
+            if campaign_id is None:
+                skipped += 1
+                continue
+
+            # Determine ad_group_id for the negative keyword
+            neg_ad_group_id = term.ad_group_id if body.level == "ad_group" else None
+
+            # Check for duplicates
+            dup_query = db.query(NegativeKeyword).filter(
+                NegativeKeyword.text == term.text,
+                NegativeKeyword.campaign_id == campaign_id,
+                NegativeKeyword.match_type == body.match_type,
+                NegativeKeyword.client_id == body.client_id,
+            )
+            if neg_ad_group_id is not None:
+                dup_query = dup_query.filter(NegativeKeyword.ad_group_id == neg_ad_group_id)
+            if dup_query.first():
+                skipped += 1
+                continue
+
+            neg_kw = NegativeKeyword(
+                client_id=body.client_id,
+                campaign_id=campaign_id,
+                ad_group_id=neg_ad_group_id,
+                text=term.text,
+                match_type=body.match_type,
+                negative_scope="AD_GROUP" if body.level == "ad_group" else "CAMPAIGN",
+                status="ENABLED",
+                source="LOCAL_ACTION",
+            )
+            db.add(neg_kw)
+            added += 1
+            items.append(term.text)
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")
+
+    return {
+        "added": added,
+        "skipped_duplicates": skipped,
+        "items": items,
+    }
+
+
+@router.post("/bulk-add-keyword")
+def bulk_add_keyword(
+    body: BulkAddKeywordRequest,
+    db: Session = Depends(get_db),
+):
+    """Promote selected search terms as new positive keywords in a target ad group."""
+    if not body.search_term_ids:
+        raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
+
+    if body.match_type not in ("EXACT", "PHRASE", "BROAD"):
+        raise HTTPException(status_code=400, detail="match_type must be EXACT, PHRASE, or BROAD")
+
+    # Verify target ad group exists
+    target_ad_group = db.query(AdGroup).filter(AdGroup.id == body.ad_group_id).first()
+    if not target_ad_group:
+        raise HTTPException(status_code=400, detail=f"Ad group {body.ad_group_id} not found")
+
+    terms = db.query(SearchTerm).filter(SearchTerm.id.in_(body.search_term_ids)).all()
+    if not terms:
+        raise HTTPException(status_code=400, detail="No search terms found for the given IDs")
+
+    added = 0
+    skipped = 0
+    items: list[str] = []
+
+    try:
+        for term in terms:
+            # Check for duplicates in the target ad group
+            existing = (
+                db.query(Keyword)
+                .filter(
+                    Keyword.text == term.text,
+                    Keyword.ad_group_id == body.ad_group_id,
+                )
+                .first()
+            )
+            if existing:
+                skipped += 1
+                continue
+
+            kw = Keyword(
+                ad_group_id=body.ad_group_id,
+                text=term.text,
+                match_type=body.match_type,
+                status="ENABLED",
+                bid_micros=0,
+            )
+            db.add(kw)
+            added += 1
+            items.append(term.text)
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")
+
+    return {
+        "added": added,
+        "skipped_duplicates": skipped,
+        "items": items,
+    }
+
+
+@router.post("/bulk-preview")
+def bulk_preview(
+    body: BulkPreviewRequest,
+    db: Session = Depends(get_db),
+):
+    """Return detailed preview data for selected search terms before a bulk action."""
+    if not body.search_term_ids:
+        raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
+
+    terms = db.query(SearchTerm).filter(SearchTerm.id.in_(body.search_term_ids)).all()
+    if not terms:
+        raise HTTPException(status_code=400, detail="No search terms found for the given IDs")
+
+    result = []
+    for term in terms:
+        # Resolve campaign name
+        campaign_name = None
+        ad_group_name = None
+
+        if term.ad_group_id:
+            ad_group = db.query(AdGroup).filter(AdGroup.id == term.ad_group_id).first()
+            if ad_group:
+                ad_group_name = ad_group.name
+                campaign = db.query(Campaign).filter(Campaign.id == ad_group.campaign_id).first()
+                if campaign:
+                    campaign_name = campaign.name
+
+        if campaign_name is None and term.campaign_id:
+            campaign = db.query(Campaign).filter(Campaign.id == term.campaign_id).first()
+            if campaign:
+                campaign_name = campaign.name
+
+        result.append({
+            "id": term.id,
+            "text": term.text,
+            "clicks": term.clicks or 0,
+            "cost_usd": micros_to_currency(term.cost_micros or 0),
+            "conversions": term.conversions or 0,
+            "campaign_name": campaign_name,
+            "ad_group_name": ad_group_name,
+        })
+
+    return result

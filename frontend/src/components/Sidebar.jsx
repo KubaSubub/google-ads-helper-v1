@@ -6,6 +6,7 @@ import {
     Brain,
     Calendar,
     ChevronRight,
+    ClipboardCheck,
     History,
     KeyRound,
     LayoutDashboard,
@@ -15,6 +16,7 @@ import {
     Menu,
     Search,
     Settings,
+    FileBarChart2,
     Sparkles,
     Users,
     X,
@@ -30,6 +32,7 @@ const NAV_GROUPS = [
         label: 'PRZEGLAD',
         items: [
             { to: '/', label: 'Pulpit', icon: LayoutDashboard },
+            { to: '/daily-audit', label: 'Codzienny audyt', icon: ClipboardCheck },
             { to: '/clients', label: 'Klienci', icon: Users },
         ],
     },
@@ -58,6 +61,7 @@ const NAV_GROUPS = [
         label: 'AI',
         items: [
             { to: '/agent', label: 'Raport AI', icon: Sparkles },
+            { to: '/reports', label: 'Raporty', icon: FileBarChart2 },
         ],
     },
     {
