@@ -10,14 +10,18 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - SearchTerm model: `ad_group_id` is nullable (PMax has no ad_groups), `campaign_id` FK for PMax direct link, `source` column ("SEARCH"/"PMAX")
 - Sync Phase 5b calls `sync_pmax_search_terms()` after standard `sync_search_terms()`
 
-## Global Date Range Picker
-- DateRangePicker component lives in Sidebar.jsx (after client selector, before nav)
-- FilterContext exposes: `filters.period`, `filters.dateFrom`, `filters.dateTo`, computed `days`
+## Global Date Range Picker + Unified Filtering
+- DateRangePicker component lives in GlobalFilterBar (campaign type, status, date range).
+- FilterContext exposes: `filters.period`, `filters.dateFrom`, `filters.dateTo`, computed `days`, `dateParams`, `campaignParams`, `allParams`.
 - Period preset (7/14/30/90) auto-sets dateFrom/dateTo. Custom dates clear period to null.
-- Pages using dates: Dashboard (`days`), Campaigns (`days`), TrendExplorer (`days`), SearchTerms (`date_from`/`date_to`), Keywords (`date_from`/`date_to` via KeywordDaily)
-- Campaigns list: snapshot data — NO date filtering
-- Keywords: date filtering aggregates from `keywords_daily` table (SUM per keyword); without dates falls back to Keyword snapshot
-- FilterBar period pills hidden (`hidePeriod`) since dates are global in sidebar
+- Backend: `resolve_dates()` in `backend/app/utils/date_utils.py` — central date resolution (`date_from`/`date_to` override `days`).
+- Backend: `_filter_campaigns()` / `_filter_campaign_ids()` in AnalyticsService — reusable campaign filtering by type/status.
+- ~20 analytics endpoints accept `date_from`, `date_to`, `campaign_type`, `campaign_status` (additive — `days` still works).
+- Category A pages (Dashboard, Campaigns, Keywords, SearchTerms, SearchOptimization, Recommendations) use `allParams` from FilterContext.
+- Category B pages (DailyAudit, ActionHistory, Alerts, QualityScore, Reports, Forecast) have independent or no filtering.
+- GlobalFilterBar is conditionally rendered only on Category A routes.
+- Campaigns list now uses server-side filtering via API params (was in-memory).
+- Keywords: date filtering aggregates from `keywords_daily` table (SUM per keyword); without dates falls back to Keyword snapshot.
 
 ## AppContext — Centralized Client State
 - `clients`, `clientsLoading`, `refreshClients` live in AppContext (NOT useClients hook)

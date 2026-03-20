@@ -67,7 +67,7 @@ Base API URL: `/api/v1`
 - `GET /campaigns/?client_id=X&page=1&page_size=50&campaign_type=&status=`
 - `GET /campaigns/{id}`
 - `PATCH /campaigns/{id}` -> patch campaign role override / reset (`allow_demo_write=true` required for DEMO)
-- `GET /campaigns/{id}/kpis?days=30`
+- `GET /campaigns/{id}/kpis?days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
 ## Keywords and Ads
@@ -111,8 +111,8 @@ Base API URL: `/api/v1`
 - `POST /search-terms/bulk-preview` — preview details for selected search terms before bulk action (body: `{search_term_ids, client_id}`)
 
 ## Recommendations
-- `GET /recommendations/?client_id=X&priority=&status=&category=&days=30`
-- `GET /recommendations/summary?client_id=X&days=30`
+- `GET /recommendations/?client_id=X&priority=&status=&category=&source=&executable=&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
+- `GET /recommendations/summary?client_id=X&source=&category=&executable=&status=&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `POST /recommendations/{id}/apply?client_id=X&dry_run=false` (`allow_demo_write=true` required for DEMO)
 - `POST /recommendations/{id}/dismiss?client_id=X` (`allow_demo_write=true` required for DEMO)
 - `POST /recommendations/bulk-apply` — apply batch of recommendations by quick-script category (`allow_demo_write=true` required for DEMO)
@@ -125,7 +125,7 @@ Base API URL: `/api/v1`
 
 ## Analytics - Core
 - `GET /analytics/kpis?client_id=X`
-- `GET /analytics/dashboard-kpis?client_id=X&days=30&campaign_type=ALL&status=ALL`
+- `GET /analytics/dashboard-kpis?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias)
 - `GET /analytics/anomalies?client_id=X&status=unresolved|resolved`
 - `POST /analytics/anomalies/{alert_id}/resolve?client_id=X` (`allow_demo_write=true` required for DEMO)
 - `POST /analytics/detect?client_id=X` (`allow_demo_write=true` required for DEMO)
@@ -133,32 +133,32 @@ Base API URL: `/api/v1`
 ## Analytics - Advanced
 - `POST /analytics/correlation`
 - `POST /analytics/compare-periods`
-- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&campaign_type=ALL&status=ALL`
+- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias)
   - allowed metrics: `cost`, `clicks`, `impressions`, `conversions`, `ctr`, `cpc`, `roas`, `cpa`, `cvr`
-- `GET /analytics/health-score?client_id=X`
-- `GET /analytics/campaign-trends?client_id=X&days=7`
-- `GET /analytics/budget-pacing?client_id=X`
+- `GET /analytics/health-score?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
+- `GET /analytics/campaign-trends?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
+- `GET /analytics/budget-pacing?client_id=X&campaign_type=&campaign_status=`
 - `GET /analytics/quality-score-audit?client_id=X&qs_threshold=5`
 - `GET /analytics/forecast?campaign_id=X&metric=clicks&forecast_days=14`
   - aliases supported: `metric=cost` -> `cost_micros`, `metric=cpc` -> `avg_cpc_micros`
-- `GET /analytics/impression-share?client_id=X`
-- `GET /analytics/device-breakdown?client_id=X&days=30`
-- `GET /analytics/geo-breakdown?client_id=X&days=30`
+- `GET /analytics/impression-share?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_id=&campaign_type=&campaign_status=`
+- `GET /analytics/device-breakdown?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_id=&campaign_type=&campaign_status=&status=`
+- `GET /analytics/geo-breakdown?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_id=&limit=20&campaign_type=&campaign_status=&status=`
 - `GET /analytics/account-structure?client_id=X`
-- `GET /analytics/bidding-advisor?client_id=X&days=30`
-- `GET /analytics/hourly-dayparting?client_id=X&days=30`
+- `GET /analytics/bidding-advisor?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/hourly-dayparting?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
 
 ## Analytics - Search Optimization
-- `GET /analytics/dayparting?client_id=X&days=30`
-- `GET /analytics/rsa-analysis?client_id=X`
-- `GET /analytics/ngram-analysis?client_id=X&ngram_size=1&min_occurrences=2`
-- `GET /analytics/match-type-analysis?client_id=X&days=30`
-- `GET /analytics/landing-pages?client_id=X&days=30`
-- `GET /analytics/wasted-spend?client_id=X&days=30`
-- `GET /analytics/search-term-trends?client_id=X&days=30&min_clicks=5` — search term trend analysis: rising, declining, and new terms (B2)
-- `GET /analytics/close-variants?client_id=X&days=30` — close variant analysis: search terms vs exact keywords (B3)
-- `GET /analytics/conversion-health?client_id=X&days=30` — conversion tracking health audit per campaign (A3)
-- `GET /analytics/keyword-expansion?client_id=X&days=30&min_clicks=3` — keyword expansion suggestions from high-performing search terms (G2)
+- `GET /analytics/dayparting?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/rsa-analysis?client_id=X&campaign_type=&campaign_status=`
+- `GET /analytics/ngram-analysis?client_id=X&ngram_size=1&min_occurrences=2&campaign_type=&campaign_status=`
+- `GET /analytics/match-type-analysis?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/landing-pages?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/wasted-spend?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/search-term-trends?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&min_clicks=5&campaign_type=&campaign_status=` — search term trend analysis (B2)
+- `GET /analytics/close-variants?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — close variant analysis (B3)
+- `GET /analytics/conversion-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — conversion tracking health audit (A3)
+- `GET /analytics/keyword-expansion?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&min_clicks=3&campaign_type=&campaign_status=` — keyword expansion suggestions (G2)
 
 ## Daily Audit
 - `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
@@ -181,7 +181,7 @@ Base API URL: `/api/v1`
 ## Export
 - `GET /export/search-terms?client_id=X&format=xlsx`
 - `GET /export/keywords?client_id=X&campaign_id=&include_removed=false&format=xlsx`
-- `GET /export/metrics?client_id=X&format=xlsx&days=30`
+- `GET /export/metrics?campaign_id=X&days=30&format=xlsx` (note: `campaign_id` is required, not `client_id`)
 - `GET /export/recommendations?client_id=X&format=xlsx&days=30`
 
 ## Semantic

@@ -388,3 +388,32 @@
 - Backend: 293 tests passed
 - Roadmap status updated: 10 DONE, 2 PARTIAL, 14 NOT DONE (was 6/4/16)
 
+## Unified Filtering Refactor (2026-03-20 — commit 1bda791)
+- Unified the entire filtering system across backend and frontend — one consistent pattern for dates, campaign type, and campaign status.
+
+### Backend
+- Added `backend/app/utils/date_utils.py` with `resolve_dates()` helper — central date resolution from `date_from`/`date_to` or `days` lookback.
+- Added `_filter_campaigns()` and `_filter_campaign_ids()` helpers in `AnalyticsService` for reusable campaign filtering.
+- Extended ~20 analytics endpoints with `date_from`, `date_to`, `campaign_type`, `campaign_status` params (additive — `days` still works).
+- Extended `campaigns/{id}/kpis` with `date_from`/`date_to` (overrides `days`).
+- Extended `recommendations/` and `recommendations/summary` with `date_from`/`date_to` (converted to `effective_days` for protected service).
+- Added `campaign_status` alias alongside existing `status` param on endpoints that had it (backward compat preserved).
+
+### Frontend
+- Added computed `dateParams`, `campaignParams`, `allParams` to `FilterContext` — pages spread `allParams` into API calls.
+- Migrated Dashboard, Campaigns, SearchTerms, SearchOptimization, Recommendations pages to use `allParams` from `FilterContext`.
+- Campaigns page now uses server-side campaign filtering via API params (was in-memory `useMemo` filter).
+- SearchTerms Trends/Variants now react to global date range (was hardcoded `days: 30`).
+- Recommendations hook now accepts `days` from FilterContext.
+- Removed dead `useFilter` import from DailyAudit.
+- GlobalFilterBar now conditionally rendered only on Category A routes (Dashboard, Campaigns, Keywords, SearchTerms, SearchOptimization, Recommendations).
+- API functions in `api.js` updated to accept `params` objects for consistent parameter passing.
+
+### Page Categories
+- **Category A** (use global filters): Dashboard, Campaigns, Keywords, SearchTerms, SearchOptimization, Recommendations
+- **Category B** (independent/own filters): DailyAudit, ActionHistory, Alerts, QualityScore, Reports, Forecast
+
+## Validation (unified filtering 2026-03-20)
+- Backend: 293 tests passed
+- All changes additive — no breaking changes to existing API contracts
+
