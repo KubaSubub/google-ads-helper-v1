@@ -127,3 +127,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Surfaces high-performing search terms not yet added as keywords, grouped by match type recommendation.
 - Implemented in `AnalyticsService.get_keyword_expansion()`.
 
+## Forecast Page
+- `Forecast.jsx` — per-campaign metric forecast (clicks, cost, conversions) for the next 14 days.
+- Backend: `GET /analytics/forecast?campaign_id=X&metric=clicks&forecast_days=14` with metric aliases (`cost` → `cost_micros`, `cpc` → `avg_cpc_micros`).
+- Sidebar nav: "Prognoza" in navigation.
+- Category B page (independent filters, no GlobalFilterBar).
+

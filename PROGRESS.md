@@ -1,11 +1,11 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-20
+# Updated: 2026-03-20 (ec1d22c)
 
 ## Status
-- Backend: human-centered recommendations milestone completed
-- Frontend: recommendations and campaigns UI updated for context-aware decisions
-- Frontend: first iteration of unified global filtering shipped
-- Google Ads native recommendation phase 1: ingest + cache + display + local dismiss
+- Backend: 293 tests passing (`pytest --tb=short -q`)
+- Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke tests)
+- Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
+- Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~20 analytics endpoints
 
 ## Frontend Filtering Iteration 1
 - Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`
@@ -416,4 +416,9 @@
 ## Validation (unified filtering 2026-03-20)
 - Backend: 293 tests passed
 - All changes additive — no breaking changes to existing API contracts
+
+## Forecast Sidebar + Anomalies Cleanup (2026-03-20 — commit ec1d22c)
+- Added `Forecast` entry to Sidebar navigation (`frontend/src/components/Sidebar.jsx`) — the `Forecast.jsx` page existed but was not linked.
+- Removed orphaned `Anomalies` frontend page (was disconnected from navigation; anomaly management remains via `Alerts.jsx` and `/analytics/anomalies` backend endpoints).
+- Added `/frontend/e2e/` to `.gitignore` to exclude Playwright test artifacts from repo.
 
