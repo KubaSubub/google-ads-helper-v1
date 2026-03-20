@@ -339,6 +339,12 @@
 - Environment limitation for this documentation update:
   - local re-run was not possible in this session because `python`/`pytest` executables are unavailable in PATH.
 
+## Code Review Fixes (2026-03-20 — commit 2111501)
+- Removed dead `import calendar as cal2` in `reports.py`
+- Fixed PMax search terms export: INNER JOIN → `outerjoin` so terms with no `ad_group_id` (PMax) are included
+- Fixed `Report.created_at` timezone: naive UTC (`datetime.utcnow`) for SQLite compatibility
+- Added per-read timeout guard in agent streaming loop to prevent hangs when Claude CLI stalls
+
 ## Full Project Audit + Cleanup (2026-03-20 — commit 9760f4d)
 - Full PM/Tech Lead audit: 6 CRITICAL + 6 WARNING issues identified and fixed
 - Fixed UTF-8 mojibake in Dashboard.jsx (~30 occurrences) and ActionHistory.jsx (~17 occurrences)
@@ -354,7 +360,16 @@
 - Updated SOURCE_OF_TRUTH.md and AGENTS.md references
 - TaskCompleted hook upgraded to auto-commit instead of remind-only
 
+## Test Coverage Expansion (2026-03-20 — commit e4456ee)
+- Added 53 new backend tests covering previously untested endpoints:
+  - `test_analytics_endpoints.py`: 30 tests for all /analytics/* routes
+  - `test_daily_audit.py`: 8 tests for /daily-audit/ endpoint
+  - `test_bulk_search_terms.py`: 5 tests for bulk-add-negative, bulk-add-keyword, bulk-preview
+  - `test_bulk_apply.py`: 5 tests for /recommendations/bulk-apply
+  - `test_semantic_clusters.py`: 4 tests for /semantic/clusters
+- Polish labels in Recommendations.jsx TYPE_CONFIG (was English)
+
 ## Validation (2026-03-20)
-- Backend: 222 tests passed (`pytest --tb=short -q`)
+- Backend: 275 tests passed (`pytest --tb=short -q`)
 - Playwright E2E: 19 smoke tests (all pages render, no JS errors, Polish encoding verified)
 
