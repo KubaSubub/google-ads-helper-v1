@@ -7,6 +7,7 @@ import {
     getDayparting, getRsaAnalysis, getNgramAnalysis,
     getMatchTypeAnalysis, getLandingPages, getWastedSpend,
     getAccountStructure, getBiddingAdvisor, getHourlyDayparting,
+    getConversionHealth,
 } from '../api'
 import {
     Loader2, CalendarDays, FileText, Hash, Layers, Globe, AlertTriangle,
@@ -629,6 +630,7 @@ export default function SearchOptimization() {
         waste: true, dayparting: true, matchType: true,
         ngram: false, rsa: false, landing: false,
         hourly: false, structure: false, bidding: false,
+        convHealth: false,
     })
     const [ngramSize, setNgramSize] = useState(1)
 
@@ -641,6 +643,7 @@ export default function SearchOptimization() {
     const [hourly, setHourly] = useState(null)
     const [structure, setStructure] = useState(null)
     const [bidding, setBidding] = useState(null)
+    const [convHealth, setConvHealth] = useState(null)
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -656,7 +659,7 @@ export default function SearchOptimization() {
         setLoading(true)
         setError(null)
         try {
-            const [w, dp, mt, ng, r, lp, hr, st, bd] = await Promise.all([
+            const [w, dp, mt, ng, r, lp, hr, st, bd, ch] = await Promise.all([
                 getWastedSpend(selectedClientId, days).catch(() => null),
                 getDayparting(selectedClientId, days).catch(() => null),
                 getMatchTypeAnalysis(selectedClientId, days).catch(() => null),
@@ -666,6 +669,7 @@ export default function SearchOptimization() {
                 getHourlyDayparting(selectedClientId).catch(() => null),
                 getAccountStructure(selectedClientId).catch(() => null),
                 getBiddingAdvisor(selectedClientId, days).catch(() => null),
+                getConversionHealth(selectedClientId, { days }).catch(() => null),
             ])
             setWaste(w)
             setDaypart(dp)
@@ -676,6 +680,7 @@ export default function SearchOptimization() {
             setHourly(hr)
             setStructure(st)
             setBidding(bd)
+            setConvHealth(ch)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -766,6 +771,55 @@ export default function SearchOptimization() {
             <div className={CARD} style={SECTION_STYLE}>
                 <SectionHeader icon={Target} title="Doradca strategii bidowania" subtitle={bidding ? `${bidding.changes_needed} do zmiany` : ''} open={sections.bidding} onToggle={() => toggle('bidding')} />
                 {sections.bidding && <BiddingAdvisorSection data={bidding} />}
+            </div>
+
+            {/* 9. Conversion Tracking Health */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader
+                    icon={AlertTriangle}
+                    title="Zdrowie konwersji"
+                    subtitle={convHealth ? `${convHealth.score}/100 — ${convHealth.status === 'healthy' ? 'OK' : convHealth.status === 'warning' ? 'Uwaga' : 'Krytyczne'}` : ''}
+                    open={sections.convHealth}
+                    onToggle={() => toggle('convHealth')}
+                />
+                {sections.convHealth && convHealth && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                            <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', flex: '1 1 120px' }}>
+                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 4 }}>Score</div>
+                                <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne', color: convHealth.score >= 80 ? '#4ADE80' : convHealth.score >= 50 ? '#FBBF24' : '#F87171' }}>{convHealth.score}</div>
+                            </div>
+                            <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', flex: '1 1 120px' }}>
+                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 4 }}>Kampanie</div>
+                                <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0' }}>{convHealth.total_campaigns}</div>
+                            </div>
+                        </div>
+                        {convHealth.campaigns?.length > 0 && (
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                <thead>
+                                    <tr>
+                                        {['Kampania', 'Typ', 'Koszt', 'Konwersje', 'CVR', 'Score', 'Problemy'].map(h => (
+                                            <th key={h} style={{ ...TH, textAlign: h === 'Kampania' || h === 'Problemy' ? 'left' : 'right' }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {convHealth.campaigns.map((c, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                            <td style={{ ...TD, color: '#F0F0F0', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.campaign_name}</td>
+                                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.campaign_type}</td>
+                                            <td style={{ ...TD, textAlign: 'right' }}>{c.cost_usd} zł</td>
+                                            <td style={{ ...TD, textAlign: 'right' }}>{c.conversions}</td>
+                                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.conv_rate_pct}%</td>
+                                            <td style={{ ...TD, textAlign: 'right', color: c.score >= 80 ? '#4ADE80' : c.score >= 50 ? '#FBBF24' : '#F87171', fontWeight: 600 }}>{c.score}</td>
+                                            <td style={{ ...TD_DIM, textAlign: 'left', fontSize: 11 }}>{c.issues?.join(', ') || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     )

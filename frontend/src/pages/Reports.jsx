@@ -22,10 +22,20 @@ const MONTH_NAMES = [
     'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
 ];
 
+const REPORT_TYPES = [
+    { value: 'monthly', label: 'Miesięczny', icon: Calendar },
+    { value: 'weekly', label: 'Tygodniowy', icon: TrendingUp },
+    { value: 'health', label: 'Zdrowie konta', icon: AlertTriangle },
+];
+
 function formatPeriodLabel(label) {
     if (!label) return '';
+    if (label.startsWith('week-')) return `Tydzień ${label.slice(5)}`;
+    if (label.startsWith('health-')) return `Zdrowie ${label.slice(7)}`;
     const [y, m] = label.split('-');
-    return `${MONTH_NAMES[parseInt(m) - 1]} ${y}`;
+    const idx = parseInt(m) - 1;
+    if (idx >= 0 && idx < 12) return `${MONTH_NAMES[idx]} ${y}`;
+    return label;
 }
 
 import { markdownComponents } from '../components/MarkdownComponents';
@@ -385,6 +395,7 @@ export default function Reports() {
     const [progress, setProgress] = useState({ pct: 0, label: '' });
     const [modelName, setModelName] = useState(null);
     const [tokenUsage, setTokenUsage] = useState(null);
+    const [reportType, setReportType] = useState('monthly');
     const streamRef = useRef(null);
 
     // Load a specific report
@@ -447,7 +458,7 @@ export default function Reports() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ report_type: 'monthly' }),
+                body: JSON.stringify({ report_type: reportType }),
             });
 
             if (!response.ok) {
@@ -558,23 +569,50 @@ export default function Reports() {
                         </span>
                     )}
                 </div>
-                <button
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 20px', borderRadius: 10, border: 'none',
-                        background: generating ? 'rgba(123,92,224,0.2)' : 'linear-gradient(135deg, #4F8EF7, #7B5CE0)',
-                        color: '#fff', fontSize: 13, fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.15s', opacity: generating ? 0.7 : 1,
-                    }}
-                >
-                    {generating ? (
-                        <><Loader2 size={14} className="animate-spin" /> Generuje...</>
-                    ) : (
-                        <><Sparkles size={14} /> Generuj raport miesięczny</>
-                    )}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* Report type pills */}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                        {REPORT_TYPES.map(rt => {
+                            const Icon = rt.icon;
+                            const active = reportType === rt.value;
+                            return (
+                                <button
+                                    key={rt.value}
+                                    onClick={() => setReportType(rt.value)}
+                                    disabled={generating}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 5,
+                                        padding: '7px 14px', borderRadius: 999, fontSize: 12, fontWeight: 500,
+                                        border: `1px solid ${active ? 'rgba(79,142,247,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                                        background: active ? 'rgba(79,142,247,0.12)' : 'rgba(255,255,255,0.04)',
+                                        color: active ? '#4F8EF7' : 'rgba(255,255,255,0.5)',
+                                        cursor: generating ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    <Icon size={12} />{rt.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <button
+                        onClick={handleGenerate}
+                        disabled={generating}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '10px 20px', borderRadius: 10, border: 'none',
+                            background: generating ? 'rgba(123,92,224,0.2)' : 'linear-gradient(135deg, #4F8EF7, #7B5CE0)',
+                            color: '#fff', fontSize: 13, fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.15s', opacity: generating ? 0.7 : 1,
+                        }}
+                    >
+                        {generating ? (
+                            <><Loader2 size={14} className="animate-spin" /> Generuje...</>
+                        ) : (
+                            <><Sparkles size={14} /> Generuj</>
+                        )}
+                    </button>
+                </div>
             </div>
 
             <div style={{ display: 'flex', gap: 20 }}>
@@ -631,6 +669,17 @@ export default function Reports() {
                                         <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        {r.report_type && r.report_type !== 'monthly' && (
+                                            <span style={{
+                                                fontSize: 9, padding: '1px 6px', borderRadius: 999,
+                                                background: r.report_type === 'weekly' ? 'rgba(79,142,247,0.12)' : 'rgba(251,191,36,0.12)',
+                                                color: r.report_type === 'weekly' ? '#4F8EF7' : '#FBBF24',
+                                                border: `1px solid ${r.report_type === 'weekly' ? 'rgba(79,142,247,0.25)' : 'rgba(251,191,36,0.25)'}`,
+                                                textTransform: 'uppercase', fontWeight: 600,
+                                            }}>
+                                                {r.report_type === 'weekly' ? 'tyg.' : 'zdrowie'}
+                                            </span>
+                                        )}
                                         <StatusPill status={r.status} />
                                         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
                                             {r.created_at ? new Date(r.created_at).toLocaleDateString('pl-PL') : ''}

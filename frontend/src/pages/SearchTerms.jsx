@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ErrorMessage, TH_STYLE } from '../components/UI'
-import { getSearchTerms, getSegmentedSearchTerms } from '../api'
+import { getSearchTerms, getSegmentedSearchTerms, getSearchTermTrends, getCloseVariants } from '../api'
 import api from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
 import {
     Search, ArrowUpDown, ChevronLeft, ChevronRight, Download,
-    TrendingUp, AlertTriangle, XCircle, LayoutGrid,
+    TrendingUp, TrendingDown, AlertTriangle, XCircle, LayoutGrid,
     List, Loader2, X, PlusCircle, MinusCircle, CheckSquare, Square,
+    BarChart3, GitCompare,
 } from 'lucide-react'
 import { MetricTooltip } from '../components/MetricTooltip'
 
@@ -117,6 +118,10 @@ export default function SearchTerms() {
     const [activeSegment, setActiveSegment] = useState('ALL')
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [bulkLoading, setBulkLoading] = useState(false)
+    const [trendsData, setTrendsData] = useState(null)
+    const [variantsData, setVariantsData] = useState(null)
+    const [trendsLoading, setTrendsLoading] = useState(false)
+    const [variantsLoading, setVariantsLoading] = useState(false)
 
     const toggleSelect = (id) => {
         setSelectedIds(prev => {
@@ -169,6 +174,8 @@ export default function SearchTerms() {
     useEffect(() => {
         if (!selectedClientId) return
         if (viewMode === 'list') loadListData()
+        else if (viewMode === 'trends') loadTrendsData()
+        else if (viewMode === 'variants') loadVariantsData()
         else loadSegmentedData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status])
@@ -207,6 +214,24 @@ export default function SearchTerms() {
             setSegData(res)
         } catch (err) { setError(err.message) }
         finally { setLoading(false) }
+    }
+
+    async function loadTrendsData() {
+        setTrendsLoading(true); setError(null)
+        try {
+            const res = await getSearchTermTrends(selectedClientId, { days: 30 })
+            setTrendsData(res)
+        } catch (err) { setError(err.message) }
+        finally { setTrendsLoading(false) }
+    }
+
+    async function loadVariantsData() {
+        setVariantsLoading(true); setError(null)
+        try {
+            const res = await getCloseVariants(selectedClientId, { days: 30 })
+            setVariantsData(res)
+        } catch (err) { setError(err.message) }
+        finally { setVariantsLoading(false) }
     }
 
     function handleSort(field) {
@@ -268,7 +293,12 @@ export default function SearchTerms() {
                 <div className="flex items-center gap-3 flex-wrap">
                     {/* View mode toggle */}
                     <div className="flex items-center gap-1">
-                        {[{ v: 'segments', label: 'Segmenty', icon: LayoutGrid }, { v: 'list', label: 'Lista', icon: List }].map(({ v, label, icon: Icon }) => {
+                        {[
+                            { v: 'segments', label: 'Segmenty', icon: LayoutGrid },
+                            { v: 'list', label: 'Lista', icon: List },
+                            { v: 'trends', label: 'Trendy', icon: BarChart3 },
+                            { v: 'variants', label: 'Warianty', icon: GitCompare },
+                        ].map(({ v, label, icon: Icon }) => {
                             const active = viewMode === v
                             return (
                                 <button key={v} onClick={() => setViewMode(v)} style={{
@@ -543,6 +573,174 @@ export default function SearchTerms() {
                             </div>
                         </>
                     )}
+                </div>
+            )}
+
+            {/* ===== TRENDS VIEW ===== */}
+            {viewMode === 'trends' && (
+                <div>
+                    {trendsLoading ? (
+                        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: '#4F8EF7' }} /></div>
+                    ) : trendsData ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                                {trendsData.total_terms} unikalnych fraz w ostatnich {trendsData.period_days} dniach
+                            </div>
+
+                            {/* Rising */}
+                            {trendsData.rising?.length > 0 && (
+                                <div className="v2-card" style={{ padding: 16 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#4ADE80', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <TrendingUp size={16} /> Rosnące frazy ({trendsData.rising.length})
+                                    </div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                        <thead>
+                                            <tr>
+                                                {['Fraza', 'Kliknięcia (wcześniej)', 'Kliknięcia (ostatnio)', 'Zmiana', 'Koszt', 'Konw.'].map(h => (
+                                                    <th key={h} style={{ ...TH_STYLE, textAlign: h === 'Fraza' ? 'left' : 'right' }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {trendsData.rising.slice(0, 15).map((t, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500 }}>{t.text}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.clicks_early}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{t.clicks_recent}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#4ADE80', fontWeight: 600 }}>+{t.change_pct}%</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.total_cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{t.conversions}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Declining */}
+                            {trendsData.declining?.length > 0 && (
+                                <div className="v2-card" style={{ padding: 16 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#F87171', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <TrendingDown size={16} /> Spadające frazy ({trendsData.declining.length})
+                                    </div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                        <thead>
+                                            <tr>
+                                                {['Fraza', 'Kliknięcia (wcześniej)', 'Kliknięcia (ostatnio)', 'Zmiana', 'Koszt', 'Konw.'].map(h => (
+                                                    <th key={h} style={{ ...TH_STYLE, textAlign: h === 'Fraza' ? 'left' : 'right' }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {trendsData.declining.slice(0, 15).map((t, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500 }}>{t.text}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.clicks_early}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{t.clicks_recent}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F87171', fontWeight: 600 }}>{t.change_pct}%</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.total_cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{t.conversions}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* New terms */}
+                            {trendsData.new_terms?.length > 0 && (
+                                <div className="v2-card" style={{ padding: 16 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#4F8EF7', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <PlusCircle size={16} /> Nowe frazy ({trendsData.new_terms.length})
+                                    </div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                        <thead>
+                                            <tr>
+                                                {['Fraza', 'Kliknięcia', 'Koszt', 'Konwersje'].map(h => (
+                                                    <th key={h} style={{ ...TH_STYLE, textAlign: h === 'Fraza' ? 'left' : 'right' }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {trendsData.new_terms.slice(0, 15).map((t, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500 }}>{t.text}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{t.clicks}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{t.conversions}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {!trendsData.rising?.length && !trendsData.declining?.length && !trendsData.new_terms?.length && (
+                                <EmptyState message="Brak danych o trendach" />
+                            )}
+                        </div>
+                    ) : <EmptyState message="Brak danych" />}
+                </div>
+            )}
+
+            {/* ===== VARIANTS VIEW ===== */}
+            {viewMode === 'variants' && (
+                <div>
+                    {variantsLoading ? (
+                        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: '#4F8EF7' }} /></div>
+                    ) : variantsData ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {/* Summary */}
+                            {variantsData.summary && (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+                                    {[
+                                        { label: 'Wyszukiwania', value: variantsData.summary.total_search_terms },
+                                        { label: 'Dokładne dopasowania', value: variantsData.summary.exact_matches },
+                                        { label: 'Bliskie warianty', value: variantsData.summary.close_variants },
+                                        { label: 'Koszt wariantów', value: `${variantsData.summary.variant_cost_usd} zł` },
+                                    ].map(({ label, value }) => (
+                                        <div key={label} className="v2-card" style={{ padding: '12px 14px' }}>
+                                            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+                                            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0' }}>{value}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Variants table */}
+                            {variantsData.variants?.length > 0 ? (
+                                <div className="v2-card" style={{ padding: 16 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#fff', marginBottom: 12 }}>
+                                        Bliskie warianty wg kosztu
+                                    </div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                        <thead>
+                                            <tr>
+                                                {['Wyszukiwana fraza', 'Dopasowane słowo', 'Typ', 'Kliknięcia', 'Koszt', 'Konw.', 'CTR'].map(h => (
+                                                    <th key={h} style={{ ...TH_STYLE, textAlign: h === 'Wyszukiwana fraza' || h === 'Dopasowane słowo' ? 'left' : 'right' }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {variantsData.variants.slice(0, 25).map((v, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.search_term}</td>
+                                                    <td style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.6)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.matched_keyword}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                                                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, background: 'rgba(79,142,247,0.1)', color: '#4F8EF7', border: '1px solid rgba(79,142,247,0.2)' }}>{v.match_type}</span>
+                                                    </td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{v.clicks}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{v.cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{v.conversions}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{v.ctr}%</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : <EmptyState message="Brak bliskich wariantów" />}
+                        </div>
+                    ) : <EmptyState message="Brak danych" />}
                 </div>
             )}
         </div>

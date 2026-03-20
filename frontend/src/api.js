@@ -216,6 +216,16 @@ export const getBiddingAdvisor = (clientId, days = 30) =>
 export const getHourlyDayparting = (clientId, days = 7) =>
     api.get('/analytics/hourly-dayparting', { params: { client_id: clientId, days } });
 
+// Analytics — new endpoints (B2, B3, A3, G2)
+export const getSearchTermTrends = (clientId, params = {}) =>
+    api.get('/analytics/search-term-trends', { params: { client_id: clientId, ...params } });
+export const getCloseVariants = (clientId, params = {}) =>
+    api.get('/analytics/close-variants', { params: { client_id: clientId, ...params } });
+export const getConversionHealth = (clientId, params = {}) =>
+    api.get('/analytics/conversion-health', { params: { client_id: clientId, ...params } });
+export const getKeywordExpansion = (clientId, params = {}) =>
+    api.get('/analytics/keyword-expansion', { params: { client_id: clientId, ...params } });
+
 // AI Agent
 export const getAgentStatus = () => api.get('/agent/status');
 
