@@ -1,0 +1,132 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-start.sh",
+            "timeout": 10,
+            "statusMessage": "Ladowanie statusu projektu..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop.sh",
+            "timeout": 10,
+            "statusMessage": "Podsumowanie sesji..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-edit-test.sh",
+            "timeout": 30,
+            "statusMessage": "Auto-test powiazanego pliku..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-commit.sh",
+            "timeout": 10,
+            "statusMessage": "Sprawdzanie post-commit..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-push.sh",
+            "timeout": 10,
+            "statusMessage": "Sprawdzanie pre-push gate..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-commit-feature-check.sh",
+            "timeout": 15,
+            "statusMessage": "Sprawdzanie frontend coverage..."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-compact.sh",
+            "timeout": 10,
+            "statusMessage": "Zapisywanie kontekstu przed kompresja..."
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/task-completed.sh",
+            "timeout": 10,
+            "statusMessage": "Sprawdzanie statusu po ukonczeniu tasku..."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(echo:*)",
+      "Bash(pip install:*)",
+      "Bash(npm run build:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(timeout 8 uvicorn:*)",
+      "Bash(wmic process where \"name=''python.exe''\" get ProcessId,CommandLine)",
+      "Bash(npx vite:*)",
+      "Bash(npm run dev)",
+      "Read(//c/Users/zmuda/.claude/projects/c--Users-zmuda-google-ads-helper-v1/d9546130-2825-4f44-8758-989783b309cb/tool-results/**)",
+      "Read(//c/Users/zmuda/.claude/projects/c--Users-zmuda-google-ads-helper-v1/ab4c6fff-0077-4206-896f-10a9320ffc10/tool-results/**)",
+      "Bash(findstr \":8000\\\\|:5173\")",
+      "Bash(start \"\" cmd /c \"cd backend && python -m uvicorn app.main:app --reload --port 8000\")",
+      "Bash(timeout 5 start \"\" cmd /c \"cd frontend && npm run dev\")",
+      "Bash(timeout 10 bash -c 'while ! curl -s http://localhost:8000/health >/dev/null 2>&1; do sleep 1; done; curl -s http://localhost:8000/health')",
+      "Bash(sqlite3 \"c:\\\\Users\\\\zmuda\\\\google ads helper v1\\\\data\\\\google_ads_app.db\" \"SELECT COUNT\\(*\\) as count_metric_daily FROM metric_daily WHERE campaign_id IN \\(SELECT id FROM campaign WHERE client_id = 3\\); SELECT COUNT\\(*\\) as count_keyword_daily FROM keyword_daily WHERE keyword_id IN \\(SELECT id FROM keyword WHERE campaign_id IN \\(SELECT id FROM campaign WHERE client_id = 3\\)\\);\")",
+      "Bash(pgrep -f \"uvicorn\")",
+      "Bash(wmic process where \"ProcessId=21124\" delete /nointeractive)",
+      "Read(//c/Users/zmuda/google ads helper v1/**)",
+      "Bash(grep -n '\\\\\\\\\\\\\\\\' \"c:\\\\Users\\\\zmuda\\\\google ads helper v1\\\\frontend\\\\src\\\\api.js\")",
+      "Bash(ping -n 8 127.0.0.1)",
+      "Bash(xargs grep -l \"SyncButton\")",
+      "WebFetch(domain:kursy.karoldziedzic.pl)",
+      "Bash(where claude:*)",
+      "Bash(claude --version)",
+      "Bash(\"C:\\\\Users\\\\zmuda\\\\AppData\\\\Roaming\\\\npm\\\\claude.cmd\" --version)",
+      "Read(//c/Users/zmuda/.vscode/extensions/**)",
+      "Bash(npm list:*)",
+      "Bash(cmd.exe /c \"claude --version\")",
+      "Bash(\"/c/Users/zmuda/AppData/Roaming/npm/claude.cmd\" --version)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}
