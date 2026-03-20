@@ -47,12 +47,12 @@ export const discoverClients = (customerIds) =>
     });
 
 // Campaigns
-export const getCampaigns = (clientId) =>
-    api.get('/campaigns/', { params: { client_id: clientId } });
+export const getCampaigns = (clientId, params = {}) =>
+    api.get('/campaigns/', { params: { client_id: clientId, ...params } });
 export const updateCampaign = (campaignId, data) =>
     api.patch(`/campaigns/${campaignId}`, data);
-export const getCampaignKPIs = (campaignId, days = 30) =>
-    api.get(`/campaigns/${campaignId}/kpis`, { params: { days } });
+export const getCampaignKPIs = (campaignId, days = 30, params = {}) =>
+    api.get(`/campaigns/${campaignId}/kpis`, { params: { days, ...params } });
 export const getCampaignMetrics = (campaignId, dateFrom, dateTo) => {
     const params = {};
     if (dateFrom) params.date_from = dateFrom;
@@ -197,24 +197,24 @@ export const getGeoBreakdown = (clientId, params = {}) =>
     api.get('/analytics/geo-breakdown', { params: { client_id: clientId, ...params } });
 
 // SEARCH Optimization
-export const getDayparting = (clientId, days = 30) =>
-    api.get('/analytics/dayparting', { params: { client_id: clientId, days } });
-export const getRsaAnalysis = (clientId) =>
-    api.get('/analytics/rsa-analysis', { params: { client_id: clientId } });
+export const getDayparting = (clientId, params = {}) =>
+    api.get('/analytics/dayparting', { params: { client_id: clientId, ...params } });
+export const getRsaAnalysis = (clientId, params = {}) =>
+    api.get('/analytics/rsa-analysis', { params: { client_id: clientId, ...params } });
 export const getNgramAnalysis = (clientId, params = {}) =>
     api.get('/analytics/ngram-analysis', { params: { client_id: clientId, ...params } });
-export const getMatchTypeAnalysis = (clientId, days = 30) =>
-    api.get('/analytics/match-type-analysis', { params: { client_id: clientId, days } });
-export const getLandingPages = (clientId, days = 30) =>
-    api.get('/analytics/landing-pages', { params: { client_id: clientId, days } });
-export const getWastedSpend = (clientId, days = 30) =>
-    api.get('/analytics/wasted-spend', { params: { client_id: clientId, days } });
+export const getMatchTypeAnalysis = (clientId, params = {}) =>
+    api.get('/analytics/match-type-analysis', { params: { client_id: clientId, ...params } });
+export const getLandingPages = (clientId, params = {}) =>
+    api.get('/analytics/landing-pages', { params: { client_id: clientId, ...params } });
+export const getWastedSpend = (clientId, params = {}) =>
+    api.get('/analytics/wasted-spend', { params: { client_id: clientId, ...params } });
 export const getAccountStructure = (clientId) =>
     api.get('/analytics/account-structure', { params: { client_id: clientId } });
-export const getBiddingAdvisor = (clientId, days = 30) =>
-    api.get('/analytics/bidding-advisor', { params: { client_id: clientId, days } });
-export const getHourlyDayparting = (clientId, days = 7) =>
-    api.get('/analytics/hourly-dayparting', { params: { client_id: clientId, days } });
+export const getBiddingAdvisor = (clientId, params = {}) =>
+    api.get('/analytics/bidding-advisor', { params: { client_id: clientId, ...params } });
+export const getHourlyDayparting = (clientId, params = {}) =>
+    api.get('/analytics/hourly-dayparting', { params: { client_id: clientId, ...params } });
 
 // Analytics — new endpoints (B2, B3, A3, G2)
 export const getSearchTermTrends = (clientId, params = {}) =>

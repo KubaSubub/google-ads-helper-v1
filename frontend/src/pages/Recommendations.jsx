@@ -16,6 +16,7 @@ import ConfirmationModal from '../components/ConfirmationModal'
 import EmptyState from '../components/EmptyState'
 import { LoadingSpinner } from '../components/UI'
 import { useApp } from '../contexts/AppContext'
+import { useFilter } from '../contexts/FilterContext'
 import { useRecommendations } from '../hooks/useRecommendations'
 
 const TYPE_CONFIG = {
@@ -510,7 +511,8 @@ function Section({ title, count, items, onApply, onDismiss, applyingId, selected
 
 export default function Recommendations() {
     const { selectedClientId, showToast } = useApp()
-    const { recommendations, summary, loading, updateFilters, refetch, apply, dismiss } = useRecommendations(selectedClientId)
+    const { days } = useFilter()
+    const { recommendations, summary, loading, updateFilters, refetch, apply, dismiss } = useRecommendations(selectedClientId, { days })
 
     const [filterPriority, setFilterPriority] = useState('ALL')
     const [filterSource, setFilterSource] = useState('ALL')

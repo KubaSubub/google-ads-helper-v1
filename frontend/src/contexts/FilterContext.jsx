@@ -49,8 +49,26 @@ export function FilterProvider({ children }) {
         return Math.max(1, Math.round((to - from) / 86400000));
     }, [filters.period, filters.dateFrom, filters.dateTo]);
 
+    // Pre-built param objects for API calls — avoids per-page boilerplate
+    const dateParams = useMemo(() => ({
+        date_from: filters.dateFrom,
+        date_to: filters.dateTo,
+    }), [filters.dateFrom, filters.dateTo]);
+
+    const campaignParams = useMemo(() => {
+        const p = {};
+        if (filters.campaignType !== 'ALL') p.campaign_type = filters.campaignType;
+        if (filters.status !== 'ALL') p.campaign_status = filters.status;
+        return p;
+    }, [filters.campaignType, filters.status]);
+
+    const allParams = useMemo(() => ({
+        ...dateParams,
+        ...campaignParams,
+    }), [dateParams, campaignParams]);
+
     return (
-        <FilterContext.Provider value={{ filters, setFilter, resetFilters, days }}>
+        <FilterContext.Provider value={{ filters, setFilter, resetFilters, days, dateParams, campaignParams, allParams }}>
             {children}
         </FilterContext.Provider>
     );

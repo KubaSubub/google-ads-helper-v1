@@ -129,16 +129,19 @@ def get_campaign_metrics(
 def get_campaign_kpis(
     campaign_id: int,
     days: int = Query(30, ge=1, le=365, description="Lookback period in days"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     db: Session = Depends(get_db),
 ):
     """Get aggregated KPIs for a campaign for the current period vs the previous period."""
+    from app.utils.date_utils import resolve_dates
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    today = date.today()
-    current_start = today - timedelta(days=days)
-    previous_start = current_start - timedelta(days=days)
+    current_start, today = resolve_dates(days, date_from, date_to)
+    period_len = (today - current_start).days
+    previous_start = current_start - timedelta(days=period_len)
 
     def _aggregate(start: date, end: date) -> dict:
         metrics = (

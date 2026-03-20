@@ -621,8 +621,7 @@ function BiddingAdvisorSection({ data }) {
 // ─────────────────────────────────────────────────────────
 export default function SearchOptimization() {
     const { selectedClientId } = useApp()
-    const { filters } = useFilter()
-    const days = filters.period || 30
+    const { allParams } = useFilter()
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -647,29 +646,29 @@ export default function SearchOptimization() {
 
     useEffect(() => {
         if (selectedClientId) loadAll()
-    }, [selectedClientId, days])
+    }, [selectedClientId, allParams])
 
     useEffect(() => {
         if (selectedClientId && sections.ngram) {
-            getNgramAnalysis(selectedClientId, { ngram_size: ngramSize }).then(setNgram).catch(() => setNgram(null))
+            getNgramAnalysis(selectedClientId, { ngram_size: ngramSize, ...allParams }).then(setNgram).catch(() => setNgram(null))
         }
-    }, [ngramSize, selectedClientId])
+    }, [ngramSize, selectedClientId, allParams])
 
     async function loadAll() {
         setLoading(true)
         setError(null)
         try {
             const [w, dp, mt, ng, r, lp, hr, st, bd, ch] = await Promise.all([
-                getWastedSpend(selectedClientId, days).catch(() => null),
-                getDayparting(selectedClientId, days).catch(() => null),
-                getMatchTypeAnalysis(selectedClientId, days).catch(() => null),
-                getNgramAnalysis(selectedClientId, { ngram_size: ngramSize }).catch(() => null),
-                getRsaAnalysis(selectedClientId).catch(() => null),
-                getLandingPages(selectedClientId, days).catch(() => null),
-                getHourlyDayparting(selectedClientId).catch(() => null),
+                getWastedSpend(selectedClientId, allParams).catch(() => null),
+                getDayparting(selectedClientId, allParams).catch(() => null),
+                getMatchTypeAnalysis(selectedClientId, allParams).catch(() => null),
+                getNgramAnalysis(selectedClientId, { ngram_size: ngramSize, ...allParams }).catch(() => null),
+                getRsaAnalysis(selectedClientId, allParams).catch(() => null),
+                getLandingPages(selectedClientId, allParams).catch(() => null),
+                getHourlyDayparting(selectedClientId, allParams).catch(() => null),
                 getAccountStructure(selectedClientId).catch(() => null),
-                getBiddingAdvisor(selectedClientId, days).catch(() => null),
-                getConversionHealth(selectedClientId, { days }).catch(() => null),
+                getBiddingAdvisor(selectedClientId, allParams).catch(() => null),
+                getConversionHealth(selectedClientId, allParams).catch(() => null),
             ])
             setWaste(w)
             setDaypart(dp)

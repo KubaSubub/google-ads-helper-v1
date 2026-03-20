@@ -8,11 +8,11 @@ import {
 
 const DEFAULT_PARAMS = { status: 'pending' }
 
-export function useRecommendations(clientId) {
+export function useRecommendations(clientId, { days } = {}) {
     const [recommendations, setRecommendations] = useState([])
     const [summary, setSummary] = useState({ high_priority: 0, medium: 0, total: 0 })
     const [loading, setLoading] = useState(true)
-    const [queryParams, setQueryParams] = useState(DEFAULT_PARAMS)
+    const [queryParams, setQueryParams] = useState({ ...DEFAULT_PARAMS, ...(days ? { days } : {}) })
 
     const fetchRecs = useCallback(
         async (params = queryParams) => {

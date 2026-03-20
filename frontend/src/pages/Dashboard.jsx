@@ -160,7 +160,7 @@ function Sparkline({ data, direction }) {
 // â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Dashboard() {
     const { selectedClientId } = useApp()
-    const { filters, days } = useFilter()
+    const { filters, allParams, campaignParams } = useFilter()
 
     const [kpis, setKpis]                   = useState(null)
     const [campaigns, setCampaigns]         = useState([])
@@ -182,11 +182,8 @@ export default function Dashboard() {
         setError(null)
 
         try {
-            const kpiParams = { days }
-            if (filters.campaignType !== 'ALL') kpiParams.campaign_type = filters.campaignType
-            if (filters.status !== 'ALL') kpiParams.status = filters.status
             const [kpiData, campData] = await Promise.all([
-                getDashboardKPIs(selectedClientId, kpiParams),
+                getDashboardKPIs(selectedClientId, allParams),
                 getCampaigns(selectedClientId),
             ])
             setKpis(kpiData)
@@ -198,24 +195,16 @@ export default function Dashboard() {
         }
 
         // Secondary data — non-blocking
-        const filterParams = {}
-        if (filters.campaignType !== 'ALL') filterParams.campaign_type = filters.campaignType
-        if (filters.status !== 'ALL') filterParams.status = filters.status
-        const budgetFilterParams = { ...filterParams }
-        if (budgetFilterParams.status) {
-            budgetFilterParams.campaign_status = budgetFilterParams.status
-            delete budgetFilterParams.status
-        }
         const _catch = (p) => p.catch(err => { console.error('[Dashboard secondary]', err); return null })
         return Promise.all([
-            _catch(getHealthScore(selectedClientId, filterParams)),
-            _catch(getCampaignTrends(selectedClientId, days, filterParams)),
+            _catch(getHealthScore(selectedClientId, allParams)),
+            _catch(getCampaignTrends(selectedClientId, null, allParams)),
             getRecommendations(selectedClientId, { status: 'pending' }).catch(err => { console.error('[Dashboard recs]', err); return { recommendations: [] } }),
-            _catch(getBudgetPacing(selectedClientId, budgetFilterParams)),
-            _catch(getDeviceBreakdown(selectedClientId, { days, ...filterParams })),
-            _catch(getGeoBreakdown(selectedClientId, { days, ...filterParams })),
+            _catch(getBudgetPacing(selectedClientId, campaignParams)),
+            _catch(getDeviceBreakdown(selectedClientId, allParams)),
+            _catch(getGeoBreakdown(selectedClientId, allParams)),
         ])
-    }, [selectedClientId, days, filters.campaignType, filters.status])
+    }, [selectedClientId, allParams, campaignParams])
 
     useEffect(() => {
         let cancelled = false

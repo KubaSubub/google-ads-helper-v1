@@ -27,6 +27,19 @@ class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _filter_campaigns(self, client_id: int, campaign_type: str | None = None, campaign_status: str | None = None):
+        """Build filtered Campaign query. Reusable across all analytics methods."""
+        q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
+        if campaign_type and campaign_type != "ALL":
+            q = q.filter(Campaign.campaign_type == campaign_type)
+        if campaign_status and campaign_status != "ALL":
+            q = q.filter(Campaign.status == campaign_status)
+        return q
+
+    def _filter_campaign_ids(self, client_id: int, campaign_type: str | None = None, campaign_status: str | None = None) -> list[int]:
+        """Return list of campaign IDs matching filters."""
+        return [c.id for c in self._filter_campaigns(client_id, campaign_type, campaign_status).all()]
+
     def get_kpis(self, client_id: int) -> dict:
         """Aggregate KPIs across all campaigns for a client.
 
@@ -267,27 +280,27 @@ class AnalyticsService:
         client_id: int,
         metrics: list[str],
         days: int = 30,
+        date_from: date | None = None,
+        date_to: date | None = None,
         campaign_type: str = "ALL",
-        status: str = "ALL",
+        campaign_status: str = "ALL",
+        # backward compat alias
+        status: str | None = None,
     ) -> dict:
         """Return daily aggregated metrics for TrendExplorer chart.
 
         Queries MetricDaily joined to Campaign, aggregates per day.
         Falls back to mock data if MetricDaily is empty.
         """
-        today = date.today()
-        date_from = today - timedelta(days=days)
+        effective_status = campaign_status if status is None else status
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
 
-        # Build campaign filter
-        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
-        if campaign_type != "ALL":
-            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
-        if status != "ALL":
-            campaign_q = campaign_q.filter(Campaign.status == status)
-        campaign_ids = [c.id for c in campaign_q.all()]
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, effective_status)
+        period_days = (date_to - date_from).days
 
         if not campaign_ids:
-            return {"period_days": days, "data": [], "totals": {}}
+            return {"period_days": period_days, "data": [], "totals": {}}
 
         # Query daily rows
         rows = (
@@ -295,7 +308,7 @@ class AnalyticsService:
             .filter(
                 MetricDaily.campaign_id.in_(campaign_ids),
                 MetricDaily.date >= date_from,
-                MetricDaily.date <= today,
+                MetricDaily.date <= date_to,
             )
             .order_by(MetricDaily.date)
             .all()
@@ -317,7 +330,7 @@ class AnalyticsService:
         is_mock = False
         if not day_map:
             is_mock = True
-            day_map = self._mock_daily_data(campaign_ids, date_from, today)
+            day_map = self._mock_daily_data(campaign_ids, date_from, date_to)
 
         # Build output rows with derived metrics
         data = []
@@ -361,7 +374,7 @@ class AnalyticsService:
         total_conversions = sum(day_map[d]["conversions"] for d in day_map)
 
         return {
-            "period_days": days,
+            "period_days": period_days,
             "is_mock": is_mock,
             "data": data,
             "totals": {
@@ -416,17 +429,23 @@ class AnalyticsService:
     # NEW: Health Score
     # -----------------------------------------------------------------------
 
-    def get_health_score(self, client_id: int, campaign_type: str | None = None, status: str | None = None) -> dict:
+    def get_health_score(
+        self, client_id: int, campaign_type: str | None = None,
+        campaign_status: str | None = None, status: str | None = None,
+        days: int | None = None, date_from: date | None = None, date_to: date | None = None,
+    ) -> dict:
         """Calculate account health score (0-100) based on lightweight DB queries.
 
         Does NOT call recommendations_engine — uses only MetricDaily + Alert + Campaign.
         """
+        effective_status = campaign_status if campaign_status is not None else status
+        from app.utils.date_utils import resolve_dates as _rd
+        period_start, period_end = _rd(days, date_from, date_to)
+        period_len = (period_end - period_start).days
+        half_period = period_len // 2
+
         score = 100
         issues = []
-        today = date.today()
-        days_30_ago = today - timedelta(days=30)
-        days_7_ago = today - timedelta(days=7)
-        days_14_ago = today - timedelta(days=14)
 
         # 1. Unresolved alerts
         alerts = self.db.query(Alert).filter(
@@ -450,13 +469,9 @@ class AnalyticsService:
                 "action": "alerts",
             })
 
-        # 2. Active campaigns with 0 conversions in last 30 days
-        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
-        if campaign_type and campaign_type != "ALL":
-            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
-        if status and status != "ALL":
-            campaign_q = campaign_q.filter(Campaign.status == status)
-        else:
+        # 2. Active campaigns with 0 conversions in period
+        campaign_q = self._filter_campaigns(client_id, campaign_type, effective_status)
+        if not effective_status or effective_status == "ALL":
             campaign_q = campaign_q.filter(Campaign.status == "ENABLED")
         active_campaigns = campaign_q.all()
 
@@ -468,7 +483,8 @@ class AnalyticsService:
         for campaign in active_campaigns:
             rows = self.db.query(MetricDaily).filter(
                 MetricDaily.campaign_id == campaign.id,
-                MetricDaily.date >= days_30_ago,
+                MetricDaily.date >= period_start,
+                MetricDaily.date <= period_end,
             ).all()
             if not rows:
                 continue
@@ -490,7 +506,7 @@ class AnalyticsService:
         if no_conv_campaigns:
             issues.append({
                 "severity": "HIGH",
-                "message": f"{len(no_conv_campaigns)} kampania/e aktywne bez konwersji (ostatnie 30 dni)",
+                "message": f"{len(no_conv_campaigns)} kampania/e aktywne bez konwersji (ostatnie {period_len} dni)",
                 "action": "recommendations",
             })
         if low_roas_campaigns:
@@ -500,8 +516,9 @@ class AnalyticsService:
                 "action": "campaigns",
             })
 
-        # 3. CTR trend: last 7d vs previous 7d
+        # 3. CTR trend: second half vs first half of period
         campaign_ids = [c.id for c in active_campaigns]
+        midpoint = period_start + timedelta(days=half_period)
         if campaign_ids:
             def _sum_ctr(d_from, d_to):
                 rows = self.db.query(MetricDaily).filter(
@@ -513,8 +530,8 @@ class AnalyticsService:
                 impressions = sum(r.impressions or 0 for r in rows)
                 return clicks / impressions if impressions else 0
 
-            ctr_last = _sum_ctr(days_7_ago, today)
-            ctr_prev = _sum_ctr(days_14_ago, days_7_ago)
+            ctr_last = _sum_ctr(midpoint, period_end)
+            ctr_prev = _sum_ctr(period_start, midpoint)
             if ctr_prev > 0 and ctr_last < ctr_prev * 0.85:
                 score -= 5
                 drop_pct = round((ctr_prev - ctr_last) / ctr_prev * 100, 1)
@@ -554,21 +571,18 @@ class AnalyticsService:
     # NEW: Campaign Trends — mini sparklines for campaigns table
     # -----------------------------------------------------------------------
 
-    def get_campaign_trends(self, client_id: int, days: int = 7, campaign_type: str | None = None, status: str | None = None) -> dict:
-        """Return per-campaign cost trend for sparkline display.
+    def get_campaign_trends(
+        self, client_id: int, days: int = 7,
+        date_from: date | None = None, date_to: date | None = None,
+        campaign_type: str | None = None, campaign_status: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+        """Return per-campaign cost trend for sparkline display."""
+        effective_status = campaign_status if campaign_status is not None else status
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to, default_days=7)
 
-        Returns last `days` daily cost values for each campaign.
-        Falls back to mock data if MetricDaily is empty.
-        """
-        today = date.today()
-        date_from = today - timedelta(days=days)
-
-        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
-        if campaign_type and campaign_type != "ALL":
-            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
-        if status and status != "ALL":
-            campaign_q = campaign_q.filter(Campaign.status == status)
-        campaigns = campaign_q.all()
+        campaigns = self._filter_campaigns(client_id, campaign_type, effective_status).all()
 
         result = {}
         rand = random.Random(99)
@@ -579,18 +593,19 @@ class AnalyticsService:
                 .filter(
                     MetricDaily.campaign_id == campaign.id,
                     MetricDaily.date >= date_from,
-                    MetricDaily.date <= today,
+                    MetricDaily.date <= date_to,
                 )
                 .order_by(MetricDaily.date)
                 .all()
             )
 
+            period_days = (date_to - date_from).days or 7
             if rows:
                 trend = [round(r.cost_micros / 1_000_000, 2) for r in rows]
             else:
                 # Mock: gentle curve with noise around budget
                 base = campaign.budget_micros / 1_000_000 / 30 if campaign.budget_micros else 10
-                trend = [round(max(0, base * (1 + rand.uniform(-0.25, 0.25))), 2) for _ in range(days)]
+                trend = [round(max(0, base * (1 + rand.uniform(-0.25, 0.25))), 2) for _ in range(period_days)]
 
             # Direction: compare first half vs second half
             half = len(trend) // 2
@@ -621,33 +636,29 @@ class AnalyticsService:
         self,
         client_id: int,
         days: int = 30,
+        date_from: date | None = None, date_to: date | None = None,
         campaign_id: int | None = None,
+        campaign_type: str | None = None, campaign_status: str | None = None,
     ) -> dict:
-        """Daily impression share metrics for SEARCH campaigns.
+        """Daily impression share metrics for SEARCH campaigns."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
 
-        Returns time-series of IS, budget-lost IS, rank-lost IS per day.
-        If campaign_id is provided, returns for that campaign only.
-        """
-        today = date.today()
-        date_from = today - timedelta(days=days)
-
-        campaign_q = self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-            Campaign.campaign_type == "SEARCH",
-        )
+        campaign_q = self._filter_campaigns(client_id, campaign_type or "SEARCH", campaign_status)
         if campaign_id:
             campaign_q = campaign_q.filter(Campaign.id == campaign_id)
         campaign_ids = [c.id for c in campaign_q.all()]
 
         if not campaign_ids:
-            return {"period_days": days, "data": [], "summary": {}}
+            return {"period_days": period_days, "data": [], "summary": {}}
 
         rows = (
             self.db.query(MetricDaily)
             .filter(
                 MetricDaily.campaign_id.in_(campaign_ids),
                 MetricDaily.date >= date_from,
-                MetricDaily.date <= today,
+                MetricDaily.date <= date_to,
             )
             .order_by(MetricDaily.date)
             .all()
@@ -698,7 +709,7 @@ class AnalyticsService:
         else:
             summary = {}
 
-        return {"period_days": days, "data": data, "summary": summary}
+        return {"period_days": period_days, "data": data, "summary": summary}
 
     # -----------------------------------------------------------------------
     # NEW: Device Breakdown
@@ -708,35 +719,31 @@ class AnalyticsService:
         self,
         client_id: int,
         days: int = 30,
+        date_from: date | None = None, date_to: date | None = None,
         campaign_id: int | None = None,
-        campaign_type: str | None = None,
+        campaign_type: str | None = None, campaign_status: str | None = None,
         status: str | None = None,
     ) -> dict:
-        """Aggregate MetricSegmented by device for SEARCH campaigns.
+        """Aggregate MetricSegmented by device."""
+        effective_status = campaign_status if campaign_status is not None else status
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
 
-        Returns per-device totals: clicks, impressions, cost, conversions, CTR, CPC, ROAS.
-        """
-        today = date.today()
-        date_from = today - timedelta(days=days)
-
-        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
+        campaign_q = self._filter_campaigns(client_id, campaign_type, effective_status)
         if campaign_id:
             campaign_q = campaign_q.filter(Campaign.id == campaign_id)
-        if campaign_type and campaign_type != "ALL":
-            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
-        if status and status != "ALL":
-            campaign_q = campaign_q.filter(Campaign.status == status)
         campaign_ids = [c.id for c in campaign_q.all()]
 
         if not campaign_ids:
-            return {"period_days": days, "devices": []}
+            return {"period_days": period_days, "devices": []}
 
         rows = (
             self.db.query(MetricSegmented)
             .filter(
                 MetricSegmented.campaign_id.in_(campaign_ids),
                 MetricSegmented.date >= date_from,
-                MetricSegmented.date <= today,
+                MetricSegmented.date <= date_to,
                 MetricSegmented.device.isnot(None),
             )
             .all()
@@ -774,7 +781,7 @@ class AnalyticsService:
                 "share_cost_pct": round(agg["cost_micros"] / total_cost * 100, 1) if total_cost else 0,
             })
 
-        return {"period_days": days, "devices": devices}
+        return {"period_days": period_days, "devices": devices}
 
     # -----------------------------------------------------------------------
     # NEW: Geo Breakdown
@@ -784,36 +791,32 @@ class AnalyticsService:
         self,
         client_id: int,
         days: int = 7,
+        date_from: date | None = None, date_to: date | None = None,
         campaign_id: int | None = None,
         limit: int = 20,
-        campaign_type: str | None = None,
+        campaign_type: str | None = None, campaign_status: str | None = None,
         status: str | None = None,
     ) -> dict:
-        """Aggregate MetricSegmented by geo_city.
+        """Aggregate MetricSegmented by geo_city."""
+        effective_status = campaign_status if campaign_status is not None else status
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to, default_days=7)
+        period_days = (date_to - date_from).days
 
-        Returns top cities by cost, with per-city totals.
-        """
-        today = date.today()
-        date_from = today - timedelta(days=days)
-
-        campaign_q = self.db.query(Campaign).filter(Campaign.client_id == client_id)
+        campaign_q = self._filter_campaigns(client_id, campaign_type, effective_status)
         if campaign_id:
             campaign_q = campaign_q.filter(Campaign.id == campaign_id)
-        if campaign_type and campaign_type != "ALL":
-            campaign_q = campaign_q.filter(Campaign.campaign_type == campaign_type)
-        if status and status != "ALL":
-            campaign_q = campaign_q.filter(Campaign.status == status)
         campaign_ids = [c.id for c in campaign_q.all()]
 
         if not campaign_ids:
-            return {"period_days": days, "cities": []}
+            return {"period_days": period_days, "cities": []}
 
         rows = (
             self.db.query(MetricSegmented)
             .filter(
                 MetricSegmented.campaign_id.in_(campaign_ids),
                 MetricSegmented.date >= date_from,
-                MetricSegmented.date <= today,
+                MetricSegmented.date <= date_to,
                 MetricSegmented.geo_city.isnot(None),
             )
             .all()
@@ -851,29 +854,30 @@ class AnalyticsService:
                 "share_cost_pct": round(agg["cost_micros"] / total_cost * 100, 1) if total_cost else 0,
             })
 
-        return {"period_days": days, "cities": cities}
+        return {"period_days": period_days, "cities": cities}
 
     # -----------------------------------------------------------------------
     # Dayparting — day-of-week performance analysis
     # -----------------------------------------------------------------------
 
-    def get_dayparting(self, client_id: int, days: int = 30) -> dict:
-        """Aggregate SEARCH campaign metrics by day of week from MetricDaily."""
-        today = date.today()
-        date_from = today - timedelta(days=days)
+    def get_dayparting(
+        self, client_id: int, days: int = 30,
+        date_from: date | None = None, date_to: date | None = None,
+        campaign_type: str | None = None, campaign_status: str | None = None,
+    ) -> dict:
+        """Aggregate campaign metrics by day of week from MetricDaily."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
 
-        campaign_ids = [
-            c.id for c in self.db.query(Campaign).filter(
-                Campaign.client_id == client_id,
-                Campaign.campaign_type == "SEARCH",
-            ).all()
-        ]
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type or "SEARCH", campaign_status)
         if not campaign_ids:
-            return {"period_days": days, "days": []}
+            return {"period_days": period_days, "days": []}
 
         rows = self.db.query(MetricDaily).filter(
             MetricDaily.campaign_id.in_(campaign_ids),
             MetricDaily.date >= date_from,
+            MetricDaily.date <= date_to,
         ).all()
 
         dow_agg: dict[int, dict] = {}
@@ -913,25 +917,29 @@ class AnalyticsService:
                 "roas": round(cv / cost, 2) if cost > 0 else 0,
                 "cvr": round(a["conversions"] / a["clicks"] * 100, 2) if a["clicks"] else 0,
             })
-        return {"period_days": days, "days": days_data}
+        return {"period_days": period_days, "days": days_data}
 
     # -----------------------------------------------------------------------
     # RSA Analysis — ad copy performance per ad group
     # -----------------------------------------------------------------------
 
-    def get_rsa_analysis(self, client_id: int) -> dict:
-        """Analyze RSA ad performance per ad group for SEARCH campaigns."""
+    def get_rsa_analysis(
+        self, client_id: int,
+        campaign_type: str | None = None, campaign_status: str | None = None,
+    ) -> dict:
+        """Analyze RSA ad performance per ad group."""
         from app.models.ad import Ad
         from app.models.ad_group import AdGroup
+
+        campaign_q = self._filter_campaigns(client_id, campaign_type or "SEARCH", campaign_status)
+        campaign_ids = [c.id for c in campaign_q.all()]
+        if not campaign_ids:
+            return {"ad_groups": []}
 
         ads = (
             self.db.query(Ad)
             .join(AdGroup, Ad.ad_group_id == AdGroup.id)
-            .join(Campaign, AdGroup.campaign_id == Campaign.id)
-            .filter(
-                Campaign.client_id == client_id,
-                Campaign.campaign_type == "SEARCH",
-            )
+            .filter(AdGroup.campaign_id.in_(campaign_ids))
             .all()
         )
 
@@ -1010,12 +1018,17 @@ class AnalyticsService:
 
     def get_ngram_analysis(
         self, client_id: int, ngram_size: int = 1, min_occurrences: int = 2,
+        campaign_type: str | None = None, campaign_status: str | None = None,
     ) -> dict:
         """Aggregate search term metrics by word/n-gram."""
         from app.models.search_term import SearchTerm
         from app.models.ad_group import AdGroup
         from collections import defaultdict
         from sqlalchemy import or_
+
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"ngrams": [], "ngram_size": ngram_size}
 
         # SEARCH terms link via ad_group_id, PMax terms link via campaign_id
         terms = (
@@ -1028,7 +1041,7 @@ class AnalyticsService:
                     AdGroup.campaign_id == Campaign.id,
                 ),
             )
-            .filter(Campaign.client_id == client_id)
+            .filter(Campaign.id.in_(campaign_ids))
             .all()
         )
 
@@ -1072,29 +1085,35 @@ class AnalyticsService:
     # Match Type Analysis — keyword performance by match type
     # -----------------------------------------------------------------------
 
-    def get_match_type_analysis(self, client_id: int, days: int = 30) -> dict:
+    def get_match_type_analysis(self, client_id: int, days: int = 30,
+                               date_from: date | None = None, date_to: date | None = None,
+                               campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Compare keyword performance grouped by match type using KeywordDaily."""
         from app.models.keyword_daily import KeywordDaily
         from app.models.ad_group import AdGroup
+        from app.utils.date_utils import resolve_dates as _rd
 
-        today = date.today()
-        date_from = today - timedelta(days=days)
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type or "SEARCH", campaign_status)
+        if not campaign_ids:
+            return {"period_days": period_days, "match_types": []}
 
         keywords = (
             self.db.query(Keyword)
             .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
-            .join(Campaign, AdGroup.campaign_id == Campaign.id)
-            .filter(Campaign.client_id == client_id, Campaign.campaign_type == "SEARCH")
+            .filter(AdGroup.campaign_id.in_(campaign_ids))
             .all()
         )
         kw_match = {kw.id: kw.match_type for kw in keywords}
         kw_ids = list(kw_match.keys())
         if not kw_ids:
-            return {"period_days": days, "match_types": []}
+            return {"period_days": period_days, "match_types": []}
 
         daily = (
             self.db.query(KeywordDaily)
-            .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from)
+            .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from, KeywordDaily.date <= date_to)
             .all()
         )
 
@@ -1133,35 +1152,41 @@ class AnalyticsService:
                 "cost_share_pct": round(a["cost_micros"] / total_cost * 100, 1) if total_cost else 0,
             })
         match_types.sort(key=lambda x: x["cost_usd"], reverse=True)
-        return {"period_days": days, "match_types": match_types}
+        return {"period_days": period_days, "match_types": match_types}
 
     # -----------------------------------------------------------------------
     # Landing Page Analysis — performance by final URL
     # -----------------------------------------------------------------------
 
-    def get_landing_page_analysis(self, client_id: int, days: int = 30) -> dict:
+    def get_landing_page_analysis(self, client_id: int, days: int = 30,
+                                 date_from: date | None = None, date_to: date | None = None,
+                                 campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Aggregate keyword metrics grouped by landing page (final_url)."""
         from app.models.keyword_daily import KeywordDaily
         from app.models.ad_group import AdGroup
+        from app.utils.date_utils import resolve_dates as _rd
 
-        today = date.today()
-        date_from = today - timedelta(days=days)
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"period_days": period_days, "pages": []}
 
         keywords = (
             self.db.query(Keyword)
             .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
-            .join(Campaign, AdGroup.campaign_id == Campaign.id)
-            .filter(Campaign.client_id == client_id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids))
             .all()
         )
         kw_url = {kw.id: kw.final_url or "brak URL" for kw in keywords}
         kw_ids = list(kw_url.keys())
         if not kw_ids:
-            return {"period_days": days, "pages": []}
+            return {"period_days": period_days, "pages": []}
 
         daily = (
             self.db.query(KeywordDaily)
-            .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from)
+            .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from, KeywordDaily.date <= date_to)
             .all()
         )
 
@@ -1197,35 +1222,35 @@ class AnalyticsService:
                 "roas": round(cv / cost, 2) if cost > 0 else 0,
             })
         pages.sort(key=lambda x: x["cost_usd"], reverse=True)
-        return {"period_days": days, "pages": pages}
+        return {"period_days": period_days, "pages": pages}
 
     # -----------------------------------------------------------------------
     # Wasted Spend Summary — total waste across all entities
     # -----------------------------------------------------------------------
 
-    def get_wasted_spend(self, client_id: int, days: int = 30) -> dict:
+    def get_wasted_spend(self, client_id: int, days: int = 30,
+                         date_from: date | None = None, date_to: date | None = None,
+                         campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Calculate wasted spend: keywords, search terms, ads with 0 conversions."""
         from app.models.search_term import SearchTerm
         from app.models.ad import Ad
         from app.models.ad_group import AdGroup
         from app.models.keyword_daily import KeywordDaily
         from sqlalchemy import or_
+        from app.utils.date_utils import resolve_dates as _rd
 
-        today = date.today()
-        date_from = today - timedelta(days=days)
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
 
-        campaigns = self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-        ).all()
-        campaign_ids = [c.id for c in campaigns]
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
         if not campaign_ids:
-            return {"period_days": days, "total_waste_usd": 0, "total_spend_usd": 0,
+            return {"period_days": period_days, "total_waste_usd": 0, "total_spend_usd": 0,
                     "waste_pct": 0, "categories": {}}
 
         # Total spend for context
         total_spend_micros = (
             self.db.query(func.sum(MetricDaily.cost_micros))
-            .filter(MetricDaily.campaign_id.in_(campaign_ids), MetricDaily.date >= date_from)
+            .filter(MetricDaily.campaign_id.in_(campaign_ids), MetricDaily.date >= date_from, MetricDaily.date <= date_to)
             .scalar()
         ) or 0
         total_spend = total_spend_micros / 1_000_000
@@ -1250,7 +1275,7 @@ class AnalyticsService:
                     func.sum(KeywordDaily.cost_micros).label("cost_micros"),
                     func.sum(KeywordDaily.conversions).label("conversions"),
                 )
-                .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from)
+                .filter(KeywordDaily.keyword_id.in_(kw_ids), KeywordDaily.date >= date_from, KeywordDaily.date <= date_to)
                 .group_by(KeywordDaily.keyword_id)
                 .all()
             )
@@ -1318,7 +1343,7 @@ class AnalyticsService:
         total_waste = kw_waste + st_waste + ad_waste
 
         return {
-            "period_days": days,
+            "period_days": period_days,
             "total_waste_usd": round(total_waste, 2),
             "total_spend_usd": round(total_spend, 2),
             "waste_pct": round(total_waste / total_spend * 100, 1) if total_spend > 0 else 0,
@@ -1457,16 +1482,16 @@ class AnalyticsService:
     # Bidding Strategy Advisor — recommend optimal strategy per campaign
     # -----------------------------------------------------------------------
 
-    def get_bidding_advisor(self, client_id: int, days: int = 30) -> dict:
+    def get_bidding_advisor(self, client_id: int, days: int = 30,
+                            date_from: date | None = None, date_to: date | None = None,
+                            campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Analyze conversion volume per campaign and recommend bidding strategy."""
-        today = date.today()
-        date_from = today - timedelta(days=days)
+        from app.utils.date_utils import resolve_dates as _rd
 
-        campaigns = self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-            Campaign.campaign_type == "SEARCH",
-            Campaign.status == "ENABLED",
-        ).all()
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+
+        campaigns = self._filter_campaigns(client_id, campaign_type or "SEARCH", campaign_status or "ENABLED").all()
 
         MANUAL_STRATEGIES = {"MANUAL_CPC", "MAXIMIZE_CLICKS", "ENHANCED_CPC"}
         SMART_LOW = {"TARGET_CPA", "MAXIMIZE_CONVERSIONS"}
@@ -1477,6 +1502,7 @@ class AnalyticsService:
             rows = self.db.query(MetricDaily).filter(
                 MetricDaily.campaign_id == campaign.id,
                 MetricDaily.date >= date_from,
+                MetricDaily.date <= date_to,
             ).all()
 
             total_conv = sum(r.conversions or 0 for r in rows)
@@ -1485,18 +1511,18 @@ class AnalyticsService:
 
             if total_conv < 30:
                 recommended = "MANUAL_CPC"
-                reason = f"Tylko {total_conv:.0f} konwersji w {days}d — za mało dla Smart Bidding (min. 30)"
+                reason = f"Tylko {total_conv:.0f} konwersji w {period_days}d — za mało dla Smart Bidding (min. 30)"
                 status = "OK" if current in MANUAL_STRATEGIES else "CHANGE_RECOMMENDED"
             elif total_conv <= 50:
                 recommended = "TARGET_CPA"
-                reason = f"{total_conv:.0f} konwersji w {days}d — wystarczające dla Target CPA"
+                reason = f"{total_conv:.0f} konwersji w {period_days}d — wystarczające dla Target CPA"
                 if current in SMART_LOW or current in SMART_HIGH:
                     status = "OK"
                 else:
                     status = "UPGRADE_RECOMMENDED"
             else:
                 recommended = "TARGET_ROAS"
-                reason = f"{total_conv:.0f} konwersji w {days}d — wystarczające dla Target ROAS"
+                reason = f"{total_conv:.0f} konwersji w {period_days}d — wystarczające dla Target ROAS"
                 if current in SMART_HIGH:
                     status = "OK"
                 elif current in SMART_LOW:
@@ -1517,7 +1543,7 @@ class AnalyticsService:
 
         changes_needed = [r for r in results if r["status"] != "OK"]
         return {
-            "period_days": days,
+            "period_days": period_days,
             "campaigns": results,
             "changes_needed": len(changes_needed),
             "summary": {
@@ -1531,23 +1557,23 @@ class AnalyticsService:
     # Hourly Dayparting — performance by hour of day from MetricSegmented
     # -----------------------------------------------------------------------
 
-    def get_hourly_dayparting(self, client_id: int, days: int = 7) -> dict:
+    def get_hourly_dayparting(self, client_id: int, days: int = 7,
+                              date_from: date | None = None, date_to: date | None = None,
+                              campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Aggregate SEARCH campaign metrics by hour of day."""
-        today = date.today()
-        date_from = today - timedelta(days=days)
+        from app.utils.date_utils import resolve_dates as _rd
 
-        campaign_ids = [
-            c.id for c in self.db.query(Campaign).filter(
-                Campaign.client_id == client_id,
-                Campaign.campaign_type == "SEARCH",
-            ).all()
-        ]
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type or "SEARCH", campaign_status)
         if not campaign_ids:
-            return {"period_days": days, "hours": []}
+            return {"period_days": period_days, "hours": []}
 
         rows = self.db.query(MetricSegmented).filter(
             MetricSegmented.campaign_id.in_(campaign_ids),
             MetricSegmented.date >= date_from,
+            MetricSegmented.date <= date_to,
             MetricSegmented.hour_of_day.isnot(None),
             MetricSegmented.device.is_(None),
             MetricSegmented.geo_city.is_(None),
@@ -1589,34 +1615,56 @@ class AnalyticsService:
                 "roas": round(cv / cost, 2) if cost > 0 else 0,
                 "cvr": round(a["conversions"] / a["clicks"] * 100, 2) if a["clicks"] else 0,
             })
-        return {"period_days": days, "hours": hours_data}
+        return {"period_days": period_days, "hours": hours_data}
 
     # ------------------------------------------------------------------
     # B2: Search Terms Trend Analysis
     # ------------------------------------------------------------------
 
-    def get_search_term_trends(self, client_id: int, days: int = 30, min_clicks: int = 5) -> dict:
+    def get_search_term_trends(self, client_id: int, days: int = 30, min_clicks: int = 5,
+                               date_from: date | None = None, date_to: date | None = None,
+                               campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Analyze search term performance trends over time.
 
         Groups search terms by text and compares recent vs earlier performance
-        to identify rising/declining terms.
+        to identify rising/declining terms.  Falls back to the full available
+        date range when the requested window contains no data.
         """
         from app.models.search_term import SearchTerm
+        from sqlalchemy import func as sa_func
+        from app.utils.date_utils import resolve_dates as _rd
 
-        today = date.today()
-        window_start = today - timedelta(days=days - 1)
-        mid_point = today - timedelta(days=days // 2)
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+        window_start = date_from
 
-        campaign_ids = [c.id for c in self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-        ).all()]
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
         if not campaign_ids:
-            return {"rising": [], "declining": [], "new_terms": [], "total_terms": 0}
+            return {"rising": [], "declining": [], "new_terms": [], "total_terms": 0, "period_days": period_days}
 
+        # Try requested window first; fall back to all available data
         terms = self.db.query(SearchTerm).filter(
             SearchTerm.campaign_id.in_(campaign_ids),
             SearchTerm.date_from >= window_start,
         ).all()
+
+        if not terms:
+            # No data in requested window — use whatever we have
+            date_range = self.db.query(
+                sa_func.min(SearchTerm.date_from),
+                sa_func.max(SearchTerm.date_from),
+            ).filter(SearchTerm.campaign_id.in_(campaign_ids)).first()
+            if not date_range or not date_range[0]:
+                return {"rising": [], "declining": [], "new_terms": [], "total_terms": 0, "period_days": period_days}
+            window_start = date_range[0]
+            actual_days = (date_range[1] - date_range[0]).days + 1
+            period_days = max(actual_days, 1)
+            terms = self.db.query(SearchTerm).filter(
+                SearchTerm.campaign_id.in_(campaign_ids),
+                SearchTerm.date_from >= window_start,
+            ).all()
+
+        mid_point = window_start + timedelta(days=period_days // 2)
 
         # Group by text
         term_map: dict[str, list] = {}
@@ -1680,35 +1728,52 @@ class AnalyticsService:
             "declining": declining[:20],
             "new_terms": sorted(new_terms, key=lambda x: x["clicks"], reverse=True)[:20],
             "total_terms": len(term_map),
-            "period_days": days,
+            "period_days": period_days,
         }
 
     # ------------------------------------------------------------------
     # B3: Close Variant Analysis
     # ------------------------------------------------------------------
 
-    def get_close_variant_analysis(self, client_id: int, days: int = 30) -> dict:
+    def get_close_variant_analysis(self, client_id: int, days: int = 30,
+                                    date_from: date | None = None, date_to: date | None = None,
+                                    campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Analyze close variants — search terms that triggered exact/phrase keywords
-        but differ from the keyword text.
+        but differ from the keyword text.  Falls back to full available date
+        range when the requested window is empty.
         """
         from app.models.ad_group import AdGroup
         from app.models.search_term import SearchTerm
+        from sqlalchemy import func as sa_func
+        from app.utils.date_utils import resolve_dates as _rd
 
-        today = date.today()
-        window_start = today - timedelta(days=days - 1)
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+        window_start = date_from
 
-        campaign_ids = [c.id for c in self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-            Campaign.campaign_type == "SEARCH",
-        ).all()]
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type or "SEARCH", campaign_status)
         if not campaign_ids:
-            return {"variants": [], "summary": {}}
+            return {"variants": [], "summary": {}, "period_days": period_days}
 
         # Get search terms with their triggering keywords
         terms = self.db.query(SearchTerm).filter(
             SearchTerm.campaign_id.in_(campaign_ids),
             SearchTerm.date_from >= window_start,
         ).all()
+
+        if not terms:
+            # Fall back to all available data
+            date_range = self.db.query(
+                sa_func.min(SearchTerm.date_from),
+            ).filter(SearchTerm.campaign_id.in_(campaign_ids)).scalar()
+            if not date_range:
+                return {"variants": [], "summary": {}, "period_days": period_days}
+            window_start = date_range
+            period_days = (date_to - window_start).days + 1
+            terms = self.db.query(SearchTerm).filter(
+                SearchTerm.campaign_id.in_(campaign_ids),
+                SearchTerm.date_from >= window_start,
+            ).all()
 
         # Get all keywords for matching
         keywords = (
@@ -1768,22 +1833,23 @@ class AnalyticsService:
                 "variant_click_share_pct": round(close_variant_clicks / total_clicks * 100, 1) if total_clicks else 0,
                 "variant_cost_usd": round(sum(v["cost_usd"] for v in variants), 2),
             },
-            "period_days": days,
+            "period_days": period_days,
         }
 
     # ------------------------------------------------------------------
     # A3: Conversion Tracking Health
     # ------------------------------------------------------------------
 
-    def get_conversion_tracking_health(self, client_id: int, days: int = 30) -> dict:
+    def get_conversion_tracking_health(self, client_id: int, days: int = 30,
+                                       date_from: date | None = None, date_to: date | None = None,
+                                       campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Audit conversion tracking setup and data quality."""
-        today = date.today()
-        window_start = today - timedelta(days=days - 1)
+        from app.utils.date_utils import resolve_dates as _rd
 
-        campaigns = self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-            Campaign.status == "ENABLED",
-        ).all()
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+
+        campaigns = self._filter_campaigns(client_id, campaign_type, campaign_status or "ENABLED").all()
         if not campaigns:
             return {"status": "no_campaigns", "campaigns": [], "score": 0}
 
@@ -1794,8 +1860,8 @@ class AnalyticsService:
         for c in campaigns:
             metrics = self.db.query(MetricDaily).filter(
                 MetricDaily.campaign_id == c.id,
-                MetricDaily.date >= window_start,
-                MetricDaily.date <= today,
+                MetricDaily.date >= date_from,
+                MetricDaily.date <= date_to,
             ).all()
 
             total_cost = sum(m.cost_micros or 0 for m in metrics) / 1_000_000
@@ -1821,8 +1887,8 @@ class AnalyticsService:
                 issues.append(f"Podejrzanie wysoki CVR ({round(conv_rate*100,1)}%)")
                 camp_score -= 15
 
-            if days_with_data < days * 0.5:
-                issues.append(f"Braki danych ({days_with_data}/{days} dni)")
+            if days_with_data < period_days * 0.5:
+                issues.append(f"Braki danych ({days_with_data}/{period_days} dni)")
                 camp_score -= 15
 
             camp_score = max(0, camp_score)
@@ -1847,27 +1913,28 @@ class AnalyticsService:
             "status": "healthy" if avg_score >= 80 else "warning" if avg_score >= 50 else "critical",
             "campaigns": sorted(results, key=lambda x: x["score"]),
             "total_campaigns": len(campaigns),
-            "period_days": days,
+            "period_days": period_days,
         }
 
     # ------------------------------------------------------------------
     # G2: Keyword Expansion Suggestions
     # ------------------------------------------------------------------
 
-    def get_keyword_expansion(self, client_id: int, days: int = 30, min_clicks: int = 3, min_conversions: float = 0.5) -> dict:
+    def get_keyword_expansion(self, client_id: int, days: int = 30, min_clicks: int = 3, min_conversions: float = 0.5,
+                              date_from: date | None = None, date_to: date | None = None,
+                              campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
         """Suggest new keywords based on high-performing search terms
         that aren't already tracked as keywords.
         """
         from app.models.ad_group import AdGroup
         from app.models.search_term import SearchTerm
+        from app.utils.date_utils import resolve_dates as _rd
 
-        today = date.today()
-        window_start = today - timedelta(days=days - 1)
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+        window_start = date_from
 
-        campaign_ids = [c.id for c in self.db.query(Campaign).filter(
-            Campaign.client_id == client_id,
-            Campaign.campaign_type == "SEARCH",
-        ).all()]
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type or "SEARCH", campaign_status)
         if not campaign_ids:
             return {"suggestions": [], "summary": {}}
 
@@ -1950,7 +2017,7 @@ class AnalyticsService:
                 "total_suggestions": len(suggestions),
                 "existing_keywords": len(existing_kw),
             },
-            "period_days": days,
+            "period_days": period_days,
         }
 
     def _create_alert(self, **kwargs) -> Alert | None:

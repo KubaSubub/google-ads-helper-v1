@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
@@ -317,11 +317,16 @@ def get_recommendations(
     source: str | None = Query(None, description="Filter by source"),
     executable: bool | None = Query(None, description="Filter by executable recommendations"),
     days: int = Query(30, ge=1, le=365, description="Lookback period in days"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     db: Session = Depends(get_db),
 ):
     """Generate active recommendations for a client and expose historical states on demand."""
+    from app.utils.date_utils import resolve_dates
+    start, end = resolve_dates(days, date_from, date_to)
+    effective_days = (end - start).days
     try:
-        generated = recommendations_engine.generate_all(db, client_id, days)
+        generated = recommendations_engine.generate_all(db, client_id, effective_days)
         generated.extend(_get_native_recommendations(db, client_id))
         active_ids = _persist_recommendations(db, client_id, generated)
     except Exception as exc:
@@ -346,10 +351,15 @@ def get_recommendations_summary(
     executable: bool | None = Query(None),
     status: str | None = Query(None),
     days: int = Query(30, ge=1, le=365),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     db: Session = Depends(get_db),
 ):
     """Quick recommendation summary for badges and overview widgets."""
-    generated = recommendations_engine.generate_all(db, client_id, days)
+    from app.utils.date_utils import resolve_dates
+    start, end = resolve_dates(days, date_from, date_to)
+    effective_days = (end - start).days
+    generated = recommendations_engine.generate_all(db, client_id, effective_days)
     generated.extend(_get_native_recommendations(db, client_id))
     active_ids = _persist_recommendations(db, client_id, generated)
 

@@ -102,7 +102,7 @@ function BulkActionBar({ selectedCount, onAddNegative, onAddKeyword, onClear, lo
 
 export default function SearchTerms() {
     const { selectedClientId, showToast } = useApp()
-    const { filters } = useFilter()
+    const { filters, allParams } = useFilter()
     const [searchParams, setSearchParams] = useSearchParams()
     const campaignId = searchParams.get('campaign_id')
     const campaignName = searchParams.get('campaign_name')
@@ -219,7 +219,7 @@ export default function SearchTerms() {
     async function loadTrendsData() {
         setTrendsLoading(true); setError(null)
         try {
-            const res = await getSearchTermTrends(selectedClientId, { days: 30 })
+            const res = await getSearchTermTrends(selectedClientId, allParams)
             setTrendsData(res)
         } catch (err) { setError(err.message) }
         finally { setTrendsLoading(false) }
@@ -228,7 +228,7 @@ export default function SearchTerms() {
     async function loadVariantsData() {
         setVariantsLoading(true); setError(null)
         try {
-            const res = await getCloseVariants(selectedClientId, { days: 30 })
+            const res = await getCloseVariants(selectedClientId, allParams)
             setVariantsData(res)
         } catch (err) { setError(err.message) }
         finally { setVariantsLoading(false) }
@@ -579,6 +579,7 @@ export default function SearchTerms() {
             {/* ===== TRENDS VIEW ===== */}
             {viewMode === 'trends' && (
                 <div>
+                    {error && <ErrorMessage message={error} />}
                     {trendsLoading ? (
                         <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: '#4F8EF7' }} /></div>
                     ) : trendsData ? (
@@ -686,6 +687,7 @@ export default function SearchTerms() {
             {/* ===== VARIANTS VIEW ===== */}
             {viewMode === 'variants' && (
                 <div>
+                    {error && <ErrorMessage message={error} />}
                     {variantsLoading ? (
                         <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: '#4F8EF7' }} /></div>
                     ) : variantsData ? (

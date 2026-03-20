@@ -7,7 +7,6 @@ import {
     TrendingUp, Zap, XCircle, Sparkles, Play, Eye,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
 import api from '../api'
 

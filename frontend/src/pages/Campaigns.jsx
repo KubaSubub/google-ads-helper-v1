@@ -594,7 +594,7 @@ function ActionHistoryTimeline({ entries }) {
 export default function Campaigns() {
     const navigate = useNavigate()
     const { selectedClientId, showToast } = useApp()
-    const { filters, days } = useFilter()
+    const { filters, allParams, dateParams, campaignParams } = useFilter()
 
     const [campaigns, setCampaigns] = useState([])
     const [selected, setSelected] = useState(null)
@@ -614,12 +614,12 @@ export default function Campaigns() {
 
     useEffect(() => {
         if (selectedClientId) loadCampaigns()
-    }, [selectedClientId])
+    }, [selectedClientId, campaignParams])
 
     async function loadCampaigns() {
         setLoading(true)
         try {
-            const data = await getCampaigns(selectedClientId)
+            const data = await getCampaigns(selectedClientId, campaignParams)
             const items = data.items || []
             setCampaigns(items)
             if (items.length > 0) selectCampaign(items[0])
@@ -641,7 +641,7 @@ export default function Campaigns() {
 
         try {
             const [kpiData, metricData] = await Promise.all([
-                getCampaignKPIs(campaign.id, days).catch(() => null),
+                getCampaignKPIs(campaign.id, null, dateParams).catch(() => null),
                 getCampaignMetrics(campaign.id, filters.dateFrom, filters.dateTo).catch(() => []),
             ])
             setKpis(kpiData)
@@ -653,9 +653,9 @@ export default function Campaigns() {
         // Secondary data (non-blocking)
         setLoadingSecondary(true)
         Promise.all([
-            getDeviceBreakdown(selectedClientId, { days, campaign_id: campaign.id }).catch(() => null),
-            getGeoBreakdown(selectedClientId, { days, campaign_id: campaign.id }).catch(() => null),
-            getBudgetPacing(selectedClientId).catch(() => null),
+            getDeviceBreakdown(selectedClientId, { ...allParams, campaign_id: campaign.id }).catch(() => null),
+            getGeoBreakdown(selectedClientId, { ...allParams, campaign_id: campaign.id }).catch(() => null),
+            getBudgetPacing(selectedClientId, campaignParams).catch(() => null),
             getUnifiedTimeline(selectedClientId, { limit: 200 }).catch(() => ({ entries: [] })),
         ]).then(([dev, geo, bp, timeline]) => {
             setDeviceData(dev)
@@ -666,12 +666,12 @@ export default function Campaigns() {
             setActionTimeline(filtered)
             setLoadingSecondary(false)
         })
-    }, [selectedClientId, days, filters.dateFrom, filters.dateTo])
+    }, [selectedClientId, allParams, dateParams, campaignParams])
 
     // Re-fetch on date change
     useEffect(() => {
         if (selected && selectedClientId) selectCampaign(selected)
-    }, [days, filters.dateFrom, filters.dateTo])
+    }, [allParams])
 
     useEffect(() => {
         if (!selected) {
@@ -715,12 +715,8 @@ export default function Campaigns() {
         }
     }
 
-    // Filter campaign list in-memory
-    const filteredCampaigns = useMemo(() => campaigns.filter(c => {
-        if (filters.campaignType !== 'ALL' && c.campaign_type !== filters.campaignType) return false
-        if (filters.status !== 'ALL' && c.status !== filters.status) return false
-        return true
-    }), [campaigns, filters.campaignType, filters.status])
+    // Campaigns already filtered by backend via campaignParams
+    const filteredCampaigns = campaigns
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (loading) return <LoadingSpinner />

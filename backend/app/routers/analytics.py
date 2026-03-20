@@ -13,6 +13,7 @@ from app.models import MetricDaily, Campaign, Keyword, AdGroup, Alert, MetricSeg
 from app.schemas import PeriodComparisonRequest, PeriodComparisonResponse, CorrelationRequest
 from app.services.analytics_service import AnalyticsService
 from app.utils.formatters import micros_to_currency
+from app.utils.date_utils import resolve_dates
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -221,21 +222,21 @@ def compare_periods(data: PeriodComparisonRequest, db: Session = Depends(get_db)
 def dashboard_kpis(
     client_id: int = Query(...),
     days: int = Query(30, ge=1, le=365),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_type: str = Query("ALL"),
-    status: str = Query("ALL"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    status: str = Query("ALL", description="Alias for campaign_status (backward compat)"),
     db: Session = Depends(get_db),
 ):
     """Aggregated KPIs with period-over-period comparison."""
-    today = date.today()
-    current_start = today - timedelta(days=days)
-    previous_start = current_start - timedelta(days=days)
+    effective_status = campaign_status or status
+    current_start, today = resolve_dates(days, date_from, date_to)
+    period_len = (today - current_start).days
+    previous_start = current_start - timedelta(days=period_len)
 
-    q = db.query(Campaign).filter(Campaign.client_id == client_id)
-    if campaign_type and campaign_type != "ALL":
-        q = q.filter(Campaign.campaign_type == campaign_type)
-    if status and status != "ALL":
-        q = q.filter(Campaign.status == status)
-    campaign_ids = [c.id for c in q.all()]
+    svc = AnalyticsService(db)
+    campaign_ids = svc._filter_campaign_ids(client_id, campaign_type, effective_status)
     if not campaign_ids:
         return {"current": {}, "previous": {}, "change_pct": {}}
 
@@ -281,7 +282,7 @@ def dashboard_kpis(
 
     change = {k: _pct(current[k], previous[k]) for k in current}
 
-    return {"current": current, "previous": previous, "change_pct": change, "period_days": days}
+    return {"current": current, "previous": previous, "change_pct": change, "period_days": period_len}
 
 
 # ---------------------------------------------------------------------------
@@ -476,14 +477,20 @@ def get_trends(
     client_id: int = Query(..., description="Client ID"),
     metrics: str = Query("cost,clicks", description="Comma-separated metrics: cost,clicks,ctr,cpc,conversions,roas,cpa,impressions,cvr"),
     days: int = Query(30, ge=7, le=365, description="Lookback period in days"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_type: str = Query("ALL", description="ALL | SEARCH | PERFORMANCE_MAX | DISPLAY | SHOPPING"),
-    status: str = Query("ALL", description="ALL | ENABLED | PAUSED"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    status: str = Query("ALL", description="Alias for campaign_status (backward compat)"),
     db: Session = Depends(get_db),
 ):
     """Daily aggregated metrics for TrendExplorer chart.
 
     Returns time-series data per day. Falls back to mock data if no MetricDaily rows exist.
     """
+    effective_status = campaign_status or status
+    start, end = resolve_dates(days, date_from, date_to)
+
     allowed = {"cost", "clicks", "impressions", "conversions", "ctr", "cpc", "roas", "cpa", "cvr"}
     metric_list = [m.strip() for m in metrics.split(",") if m.strip() in allowed]
     if not metric_list:
@@ -493,45 +500,51 @@ def get_trends(
     return service.get_trends(
         client_id=client_id,
         metrics=metric_list,
-        days=days,
+        date_from=start,
+        date_to=end,
         campaign_type=campaign_type,
-        status=status,
+        campaign_status=effective_status,
     )
 
 
 @router.get("/health-score")
 def get_health_score(
     client_id: int = Query(..., description="Client ID"),
+    days: int = Query(None, ge=7, le=365, description="Lookback period (optional)"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_type: str = Query(None, description="Filter by campaign type"),
-    status: str = Query(None, description="Filter by campaign status"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    status: str = Query(None, description="Alias for campaign_status (backward compat)"),
     db: Session = Depends(get_db),
 ):
-    """Account health score (0–100) with issue breakdown.
-
-    Lightweight — uses only MetricDaily + Alert + Campaign queries.
-    Does NOT invoke recommendations engine.
-    """
+    """Account health score (0–100) with issue breakdown."""
+    effective_status = campaign_status or status
     service = AnalyticsService(db)
-    return service.get_health_score(client_id, campaign_type=campaign_type, status=status)
+    return service.get_health_score(
+        client_id, campaign_type=campaign_type, campaign_status=effective_status,
+        date_from=date_from, date_to=date_to, days=days,
+    )
 
 
 @router.get("/campaign-trends")
 def get_campaign_trends(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(7, ge=3, le=90, description="Trend window in days"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_type: str = Query(None, description="Filter by campaign type"),
-    status: str = Query(None, description="Filter by campaign status"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    status: str = Query(None, description="Alias for campaign_status (backward compat)"),
     db: Session = Depends(get_db),
 ):
-    """Per-campaign cost trend for sparkline display in campaigns table.
-
-    Returns cost values for each of the last `days` days.
-    Falls back to mock data based on budget if no MetricDaily rows.
-    """
+    """Per-campaign cost trend for sparkline display in campaigns table."""
+    effective_status = campaign_status or status
+    start, end = resolve_dates(days, date_from, date_to, default_days=7)
     service = AnalyticsService(db)
     return service.get_campaign_trends(
-        client_id=client_id, days=days,
-        campaign_type=campaign_type, status=status,
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=effective_status,
     )
 
 
@@ -633,13 +646,19 @@ def get_budget_pacing(
 def get_impression_share(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_id: int = Query(None, description="Optional campaign filter"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Daily impression share trends for SEARCH campaigns."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
     return service.get_impression_share_trends(
-        client_id=client_id, days=days, campaign_id=campaign_id,
+        client_id=client_id, date_from=start, date_to=end, campaign_id=campaign_id,
+        campaign_type=campaign_type, campaign_status=campaign_status,
     )
 
 
@@ -652,16 +671,21 @@ def get_impression_share(
 def get_device_breakdown(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=1, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_id: int = Query(None, description="Optional campaign filter"),
     campaign_type: str = Query(None, description="Filter by campaign type"),
-    status: str = Query(None, description="Filter by campaign status"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    status: str = Query(None, description="Alias for campaign_status (backward compat)"),
     db: Session = Depends(get_db),
 ):
     """Performance breakdown by device (Mobile/Desktop/Tablet)."""
+    effective_status = campaign_status or status
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
     return service.get_device_breakdown(
-        client_id=client_id, days=days, campaign_id=campaign_id,
-        campaign_type=campaign_type, status=status,
+        client_id=client_id, date_from=start, date_to=end, campaign_id=campaign_id,
+        campaign_type=campaign_type, campaign_status=effective_status,
     )
 
 
@@ -674,17 +698,22 @@ def get_device_breakdown(
 def get_geo_breakdown(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(7, ge=1, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     campaign_id: int = Query(None, description="Optional campaign filter"),
     limit: int = Query(20, ge=1, le=50, description="Max cities"),
     campaign_type: str = Query(None, description="Filter by campaign type"),
-    status: str = Query(None, description="Filter by campaign status"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    status: str = Query(None, description="Alias for campaign_status (backward compat)"),
     db: Session = Depends(get_db),
 ):
     """Performance breakdown by city/geography."""
+    effective_status = campaign_status or status
+    start, end = resolve_dates(days, date_from, date_to, default_days=7)
     service = AnalyticsService(db)
     return service.get_geo_breakdown(
-        client_id=client_id, days=days, campaign_id=campaign_id, limit=limit,
-        campaign_type=campaign_type, status=status,
+        client_id=client_id, date_from=start, date_to=end, campaign_id=campaign_id, limit=limit,
+        campaign_type=campaign_type, campaign_status=effective_status,
     )
 
 
@@ -697,11 +726,19 @@ def get_geo_breakdown(
 def get_dayparting(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
-    """SEARCH campaign performance by day of week."""
+    """Campaign performance by day of week."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_dayparting(client_id=client_id, days=days)
+    return service.get_dayparting(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -712,11 +749,16 @@ def get_dayparting(
 @router.get("/rsa-analysis")
 def get_rsa_analysis(
     client_id: int = Query(..., description="Client ID"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """RSA ad performance comparison per ad group."""
     service = AnalyticsService(db)
-    return service.get_rsa_analysis(client_id=client_id)
+    return service.get_rsa_analysis(
+        client_id=client_id,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -729,12 +771,15 @@ def get_ngram_analysis(
     client_id: int = Query(..., description="Client ID"),
     ngram_size: int = Query(1, ge=1, le=3, description="1=words, 2=bigrams, 3=trigrams"),
     min_occurrences: int = Query(2, ge=1, description="Min occurrences to include"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Search term word/n-gram aggregation by performance."""
     service = AnalyticsService(db)
     return service.get_ngram_analysis(
         client_id=client_id, ngram_size=ngram_size, min_occurrences=min_occurrences,
+        campaign_type=campaign_type, campaign_status=campaign_status,
     )
 
 
@@ -747,11 +792,19 @@ def get_ngram_analysis(
 def get_match_type_analysis(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Keyword performance comparison by match type."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_match_type_analysis(client_id=client_id, days=days)
+    return service.get_match_type_analysis(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -763,11 +816,19 @@ def get_match_type_analysis(
 def get_landing_pages(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Keyword metrics aggregated by landing page URL."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_landing_page_analysis(client_id=client_id, days=days)
+    return service.get_landing_page_analysis(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -779,11 +840,19 @@ def get_landing_pages(
 def get_wasted_spend(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Total wasted spend on keywords, search terms, and ads with 0 conversions."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_wasted_spend(client_id=client_id, days=days)
+    return service.get_wasted_spend(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -810,11 +879,19 @@ def get_account_structure(
 def get_bidding_advisor(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Conversion lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Bidding strategy recommendations based on conversion volume."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_bidding_advisor(client_id=client_id, days=days)
+    return service.get_bidding_advisor(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -826,11 +903,19 @@ def get_bidding_advisor(
 def get_hourly_dayparting(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(7, ge=1, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
-    """SEARCH campaign performance by hour of day."""
+    """Campaign performance by hour of day."""
+    start, end = resolve_dates(days, date_from, date_to, default_days=7)
     service = AnalyticsService(db)
-    return service.get_hourly_dayparting(client_id=client_id, days=days)
+    return service.get_hourly_dayparting(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -842,13 +927,19 @@ def get_hourly_dayparting(
 def get_search_term_trends(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     min_clicks: int = Query(5, ge=1, description="Min clicks to include"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Search term trend analysis: rising, declining, and new terms."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
     return service.get_search_term_trends(
-        client_id=client_id, days=days, min_clicks=min_clicks,
+        client_id=client_id, date_from=start, date_to=end, min_clicks=min_clicks,
+        campaign_type=campaign_type, campaign_status=campaign_status,
     )
 
 
@@ -861,11 +952,19 @@ def get_search_term_trends(
 def get_close_variants(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Close variant analysis: search terms vs exact keywords."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_close_variant_analysis(client_id=client_id, days=days)
+    return service.get_close_variant_analysis(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -877,11 +976,19 @@ def get_close_variants(
 def get_conversion_health(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Conversion tracking health audit per campaign."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
-    return service.get_conversion_tracking_health(client_id=client_id, days=days)
+    return service.get_conversion_tracking_health(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -893,12 +1000,18 @@ def get_conversion_health(
 def get_keyword_expansion(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
     min_clicks: int = Query(3, ge=1, description="Min clicks for suggestion"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Keyword expansion suggestions from high-performing search terms."""
+    start, end = resolve_dates(days, date_from, date_to)
     service = AnalyticsService(db)
     return service.get_keyword_expansion(
-        client_id=client_id, days=days, min_clicks=min_clicks,
+        client_id=client_id, date_from=start, date_to=end, min_clicks=min_clicks,
+        campaign_type=campaign_type, campaign_status=campaign_status,
     )
 
