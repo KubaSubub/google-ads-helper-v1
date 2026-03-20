@@ -6,6 +6,7 @@ Base API URL: `/api/v1`
 ## Auth
 - `GET /auth/status` -> auth/config/session status
 - `GET /auth/setup-status` -> credentials setup status
+- `GET /auth/setup-values` -> current credential values (masked)
 - `POST /auth/setup` -> save credentials to keyring
 - `GET /auth/login` -> generate OAuth URL
 - `GET /auth/callback?code=...&state=...` -> OAuth callback (HTML)

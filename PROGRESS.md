@@ -339,3 +339,22 @@
 - Environment limitation for this documentation update:
   - local re-run was not possible in this session because `python`/`pytest` executables are unavailable in PATH.
 
+## Full Project Audit + Cleanup (2026-03-20 — commit 9760f4d)
+- Full PM/Tech Lead audit: 6 CRITICAL + 6 WARNING issues identified and fixed
+- Fixed UTF-8 mojibake in Dashboard.jsx (~30 occurrences) and ActionHistory.jsx (~17 occurrences)
+- Fixed silent error catches in AppContext.jsx, TrendExplorer.jsx, Alerts.jsx
+- Fixed OAUTHLIB conditional in auth.py (unconditional override → conditional)
+- Centralized shared styles (TH_STYLE, MODAL_OVERLAY, MODAL_BOX) in UI.jsx
+- Replaced 9 off-palette colors in Campaigns.jsx with v2 design system
+- Deleted dead code: Charts.jsx (17KB unused), SegmentBadge.jsx (duplicate)
+- Added Playwright E2E smoke tests: 19 tests covering all pages with mocked API
+- Archived 5 obsolete MD files to `docs/archive/`
+- Updated DEVELOPMENT_ROADMAP_OPTIMIZATION.md with implementation status (6 DONE, 4 PARTIAL, 16 NOT DONE)
+- Synced COMPLETED_FEATURES.md with 6 newly delivered features
+- Updated SOURCE_OF_TRUTH.md and AGENTS.md references
+- TaskCompleted hook upgraded to auto-commit instead of remind-only
+
+## Validation (2026-03-20)
+- Backend: 222 tests passed (`pytest --tb=short -q`)
+- Playwright E2E: 19 smoke tests (all pages render, no JS errors, Polish encoding verified)
+
