@@ -91,7 +91,52 @@ REPORT_DATA_MAP = {
         "month_comparison", "campaigns_detail", "change_history",
         "change_impact", "budget_pacing", "wasted_spend", "alerts", "health",
     ],
+    "health": [
+        "health", "kpis", "conversion_health", "quality_scores",
+        "account_structure", "wasted_spend",
+    ],
 }
+
+WEEKLY_PROMPT = """\
+Przygotuj zwiezly raport tygodniowy Google Ads.
+
+STRUKTURA DANYCH:
+- `kpis` = zagregowane KPI calego konta za ostatnie 7 dni
+- `campaigns` = podsumowanie kampanii (top 30 by cost)
+- `alerts` = aktywne alerty
+- `recommendations` = oczekujace rekomendacje
+- `health` = health score konta
+
+SEKCJE RAPORTU:
+1. Kluczowe KPI tygodnia — wydatki, klikniecia, konwersje, CPA, ROAS
+2. Top kampanie — 5 najlepszych i 5 najgorszych wg konwersji/kosztu
+3. Alerty i problemy — co wymaga natychmiastowej uwagi
+4. Rekomendacje — 3-5 konkretnych dzialan na nastepny tydzien
+
+Dlugosc: max 800 slow. Skup sie na actionable insights.\
+"""
+
+HEALTH_PROMPT = """\
+Przygotuj raport zdrowia konta Google Ads.
+
+STRUKTURA DANYCH:
+- `health` = ogolny health score (0-100) z lista problemow
+- `kpis` = kluczowe metryki konta
+- `conversion_health` = audyt konfiguracji konwersji
+- `quality_scores` = rozklad wynikow jakosci slow kluczowych
+- `account_structure` = audyt struktury konta
+- `wasted_spend` = zmarnowane wydatki
+
+SEKCJE RAPORTU:
+1. Ogolna ocena zdrowia konta — score, trend, top problemy
+2. Konwersje — czy tracking dziala poprawnie, coverage
+3. Jakosc slow kluczowych — rozklad QS, problemy
+4. Struktura konta — oversized ad groups, keyword cannibalization
+5. Zmarnowane wydatki — gdzie tracimy pieniadze
+6. Plan naprawczy — priorytetyzowane 5 dzialan
+
+Dlugosc: max 1000 slow.\
+"""
 
 MONTHLY_PROMPT = """\
 Przygotuj kompletny raport miesieczny Google Ads.
@@ -114,6 +159,12 @@ SEKCJE RAPORTU:
 
 WAZNE: Kazda metryka pojawia sie DOKLADNIE raz. Nie podawaj tych samych liczb w roznych sekcjach.\
 """
+
+REPORT_PROMPTS = {
+    "monthly": MONTHLY_PROMPT,
+    "weekly": WEEKLY_PROMPT,
+    "health": HEALTH_PROMPT,
+}
 
 
 class AgentService:
@@ -171,6 +222,9 @@ class AgentService:
             "change_history": self._get_change_history,
             "month_comparison": self._get_month_comparison,
             "change_impact": self._get_change_impact,
+            "conversion_health": self._get_conversion_health,
+            "quality_scores": self._get_quality_scores,
+            "account_structure": self._get_account_structure,
         }
         handler = handlers.get(section)
         if not handler:
@@ -770,6 +824,151 @@ class AgentService:
                 break
 
         return results
+
+    # ------------------------------------------------------------------
+    # Health report data sections
+    # ------------------------------------------------------------------
+
+    def _get_conversion_health(self) -> dict:
+        """Audit conversion tracking coverage and quality."""
+        campaign_ids = self._get_campaign_ids()
+        if not campaign_ids:
+            return {"status": "no_campaigns"}
+
+        window_start, window_end = self._date_window(30)
+
+        campaigns = self.db.query(Campaign).filter(
+            Campaign.client_id == self.client_id,
+            Campaign.status == "ENABLED",
+        ).all()
+
+        total = len(campaigns)
+        with_conversions = 0
+        zero_conversion_campaigns = []
+
+        for c in campaigns:
+            conv_sum = self.db.query(func.sum(MetricDaily.conversions)).filter(
+                MetricDaily.campaign_id == c.id,
+                MetricDaily.date >= window_start,
+                MetricDaily.date <= window_end,
+            ).scalar() or 0
+
+            if conv_sum > 0:
+                with_conversions += 1
+            else:
+                cost_sum = self.db.query(func.sum(MetricDaily.cost_micros)).filter(
+                    MetricDaily.campaign_id == c.id,
+                    MetricDaily.date >= window_start,
+                    MetricDaily.date <= window_end,
+                ).scalar() or 0
+                if cost_sum > 0:
+                    zero_conversion_campaigns.append({
+                        "name": c.name,
+                        "cost_usd": round(cost_sum / 1_000_000, 2),
+                    })
+
+        coverage_pct = round(with_conversions / total * 100, 1) if total else 0
+
+        return {
+            "total_campaigns": total,
+            "campaigns_with_conversions": with_conversions,
+            "coverage_pct": coverage_pct,
+            "zero_conversion_campaigns": zero_conversion_campaigns[:10],
+            "status": "healthy" if coverage_pct >= 80 else "warning" if coverage_pct >= 50 else "critical",
+        }
+
+    def _get_quality_scores(self) -> dict:
+        """Quality score distribution for SEARCH keywords."""
+        keywords = self.db.query(Keyword).join(
+            AdGroup, Keyword.ad_group_id == AdGroup.id,
+        ).join(
+            Campaign, Campaign.id == AdGroup.campaign_id,
+        ).filter(
+            Campaign.client_id == self.client_id,
+            Campaign.campaign_type == "SEARCH",
+            Keyword.status == "ENABLED",
+            Keyword.quality_score.isnot(None),
+        ).all()
+
+        if not keywords:
+            return {"total": 0, "distribution": {}, "avg": None}
+
+        distribution = {}
+        total_qs = 0
+        for kw in keywords:
+            qs = kw.quality_score
+            bucket = str(qs)
+            distribution[bucket] = distribution.get(bucket, 0) + 1
+            total_qs += qs
+
+        avg_qs = round(total_qs / len(keywords), 1)
+
+        low_qs = [
+            {"keyword": kw.text, "quality_score": kw.quality_score, "campaign": kw.campaign.name if kw.campaign else ""}
+            for kw in keywords if kw.quality_score and kw.quality_score <= 4
+        ][:15]
+
+        return {
+            "total": len(keywords),
+            "distribution": distribution,
+            "avg": avg_qs,
+            "low_quality_keywords": low_qs,
+            "status": "healthy" if avg_qs >= 7 else "warning" if avg_qs >= 5 else "critical",
+        }
+
+    def _get_account_structure(self) -> dict:
+        """Account structure audit — oversized groups, keyword cannibalization."""
+        campaigns = self.db.query(Campaign).filter(
+            Campaign.client_id == self.client_id,
+            Campaign.status == "ENABLED",
+        ).all()
+
+        if not campaigns:
+            return {"status": "no_campaigns"}
+
+        campaign_ids = [c.id for c in campaigns]
+        ad_groups = self.db.query(AdGroup).filter(
+            AdGroup.campaign_id.in_(campaign_ids),
+            AdGroup.status == "ENABLED",
+        ).all()
+
+        oversized_groups = []
+        for ag in ad_groups:
+            kw_count = self.db.query(func.count(Keyword.id)).filter(
+                Keyword.ad_group_id == ag.id,
+                Keyword.status == "ENABLED",
+            ).scalar() or 0
+            if kw_count > 30:
+                oversized_groups.append({
+                    "ad_group": ag.name,
+                    "keyword_count": kw_count,
+                })
+
+        # Keyword cannibalization: same keyword text in multiple ad groups
+        from sqlalchemy import distinct
+        keyword_texts = self.db.query(
+            Keyword.text,
+            func.count(distinct(Keyword.ad_group_id)).label("ag_count"),
+        ).join(
+            AdGroup, Keyword.ad_group_id == AdGroup.id,
+        ).join(
+            Campaign, Campaign.id == AdGroup.campaign_id,
+        ).filter(
+            Campaign.client_id == self.client_id,
+            Keyword.status == "ENABLED",
+        ).group_by(Keyword.text).having(
+            func.count(distinct(Keyword.ad_group_id)) > 1,
+        ).limit(20).all()
+
+        cannibalized = [{"keyword": row.text, "ad_group_count": row.ag_count} for row in keyword_texts]
+
+        return {
+            "total_campaigns": len(campaigns),
+            "total_ad_groups": len(ad_groups),
+            "oversized_ad_groups": oversized_groups[:10],
+            "cannibalized_keywords": cannibalized,
+            "issues_count": len(oversized_groups) + len(cannibalized),
+        }
 
     # ------------------------------------------------------------------
     # Prompt building

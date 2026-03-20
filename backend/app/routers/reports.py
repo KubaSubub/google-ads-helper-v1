@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.report import Report
-from app.services.agent_service import AgentService, MONTHLY_PROMPT, REPORT_DATA_MAP, check_claude_available
+from app.services.agent_service import AgentService, REPORT_PROMPTS, REPORT_DATA_MAP, check_claude_available
 from app.utils.sse import sse_event as _sse_event
 
 logger = logging.getLogger(__name__)
@@ -62,16 +62,26 @@ async def generate_report(
     client_id: int = Query(..., description="Client ID"),
     db: Session = Depends(get_db),
 ):
-    """Generate a monthly report. Returns SSE stream and saves to DB."""
+    """Generate a report (monthly/weekly/health). Returns SSE stream and saves to DB."""
     today = date.today()
-    year = req.year or today.year
-    month = req.month or today.month
 
-    import calendar as cal
-    period_start = date(year, month, 1)
-    last_day = cal.monthrange(year, month)[1]
-    period_end = date(year, month, last_day)
-    period_label = f"{year}-{month:02d}"
+    if req.report_type == "weekly":
+        period_end = today
+        period_start = today - timedelta(days=6)
+        period_label = f"week-{period_start.isoformat()}"
+    elif req.report_type == "health":
+        period_end = today
+        period_start = today - timedelta(days=29)
+        period_label = f"health-{today.isoformat()}"
+    else:
+        # monthly (default)
+        year = req.year or today.year
+        month = req.month or today.month
+        import calendar as cal
+        period_start = date(year, month, 1)
+        last_day = cal.monthrange(year, month)[1]
+        period_end = date(year, month, last_day)
+        period_label = f"{year}-{month:02d}"
 
     async def event_stream():
         try:
@@ -116,6 +126,12 @@ async def generate_report(
                     "wasted_spend": "Zmarnowane wydatki",
                     "alerts": "Alerty",
                     "health": "Health score",
+                    "kpis": "KPI",
+                    "conversion_health": "Audyt konwersji",
+                    "quality_scores": "Jakość słów kluczowych",
+                    "account_structure": "Struktura konta",
+                    "recommendations": "Rekomendacje",
+                    "campaigns": "Kampanie",
                 }
                 total_sections = len(sections)
                 data = {}
@@ -160,7 +176,8 @@ async def generate_report(
 
                 ai_narrative = ""
                 chunk_count = 0
-                async for chunk in service.generate_report(MONTHLY_PROMPT, "monthly", pre_gathered_data=data):
+                report_prompt = REPORT_PROMPTS.get(req.report_type, REPORT_PROMPTS["monthly"])
+                async for chunk in service.generate_report(report_prompt, req.report_type, pre_gathered_data=data):
                     try:
                         parsed = json.loads(chunk)
                         event_type = parsed.get("type", "delta")

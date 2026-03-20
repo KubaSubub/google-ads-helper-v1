@@ -1591,6 +1591,368 @@ class AnalyticsService:
             })
         return {"period_days": days, "hours": hours_data}
 
+    # ------------------------------------------------------------------
+    # B2: Search Terms Trend Analysis
+    # ------------------------------------------------------------------
+
+    def get_search_term_trends(self, client_id: int, days: int = 30, min_clicks: int = 5) -> dict:
+        """Analyze search term performance trends over time.
+
+        Groups search terms by text and compares recent vs earlier performance
+        to identify rising/declining terms.
+        """
+        from app.models.search_term import SearchTerm
+
+        today = date.today()
+        window_start = today - timedelta(days=days - 1)
+        mid_point = today - timedelta(days=days // 2)
+
+        campaign_ids = [c.id for c in self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+        ).all()]
+        if not campaign_ids:
+            return {"rising": [], "declining": [], "new_terms": [], "total_terms": 0}
+
+        terms = self.db.query(SearchTerm).filter(
+            SearchTerm.campaign_id.in_(campaign_ids),
+            SearchTerm.date_from >= window_start,
+        ).all()
+
+        # Group by text
+        term_map: dict[str, list] = {}
+        for t in terms:
+            term_map.setdefault(t.text, []).append(t)
+
+        rising = []
+        declining = []
+        new_terms = []
+
+        for text, entries in term_map.items():
+            total_clicks = sum(e.clicks or 0 for e in entries)
+            if total_clicks < min_clicks:
+                continue
+
+            early = [e for e in entries if e.date_from and e.date_from < mid_point]
+            recent = [e for e in entries if e.date_from and e.date_from >= mid_point]
+
+            if not early:
+                # New term — only appears in recent half
+                total_cost = sum(e.cost_micros or 0 for e in entries) / 1_000_000
+                total_conv = sum(e.conversions or 0 for e in entries)
+                new_terms.append({
+                    "text": text,
+                    "clicks": total_clicks,
+                    "cost_usd": round(total_cost, 2),
+                    "conversions": round(total_conv, 2),
+                })
+                continue
+
+            early_clicks = sum(e.clicks or 0 for e in early)
+            recent_clicks = sum(e.clicks or 0 for e in recent)
+
+            if early_clicks == 0:
+                change_pct = 100.0
+            else:
+                change_pct = round((recent_clicks - early_clicks) / early_clicks * 100, 1)
+
+            total_cost = sum(e.cost_micros or 0 for e in entries) / 1_000_000
+            total_conv = sum(e.conversions or 0 for e in entries)
+
+            entry = {
+                "text": text,
+                "clicks_early": early_clicks,
+                "clicks_recent": recent_clicks,
+                "change_pct": change_pct,
+                "total_cost_usd": round(total_cost, 2),
+                "conversions": round(total_conv, 2),
+            }
+
+            if change_pct > 20:
+                rising.append(entry)
+            elif change_pct < -20:
+                declining.append(entry)
+
+        rising.sort(key=lambda x: x["change_pct"], reverse=True)
+        declining.sort(key=lambda x: x["change_pct"])
+
+        return {
+            "rising": rising[:20],
+            "declining": declining[:20],
+            "new_terms": sorted(new_terms, key=lambda x: x["clicks"], reverse=True)[:20],
+            "total_terms": len(term_map),
+            "period_days": days,
+        }
+
+    # ------------------------------------------------------------------
+    # B3: Close Variant Analysis
+    # ------------------------------------------------------------------
+
+    def get_close_variant_analysis(self, client_id: int, days: int = 30) -> dict:
+        """Analyze close variants — search terms that triggered exact/phrase keywords
+        but differ from the keyword text.
+        """
+        from app.models.ad_group import AdGroup
+        from app.models.search_term import SearchTerm
+
+        today = date.today()
+        window_start = today - timedelta(days=days - 1)
+
+        campaign_ids = [c.id for c in self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.campaign_type == "SEARCH",
+        ).all()]
+        if not campaign_ids:
+            return {"variants": [], "summary": {}}
+
+        # Get search terms with their triggering keywords
+        terms = self.db.query(SearchTerm).filter(
+            SearchTerm.campaign_id.in_(campaign_ids),
+            SearchTerm.date_from >= window_start,
+        ).all()
+
+        # Get all keywords for matching
+        keywords = (
+            self.db.query(Keyword)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids), Keyword.status == "ENABLED")
+            .all()
+        )
+        kw_texts = {kw.text.lower().strip(): kw for kw in keywords}
+
+        variants = []
+        exact_matches = 0
+        close_variant_clicks = 0
+        exact_clicks = 0
+
+        for t in terms:
+            term_lower = t.text.lower().strip()
+            is_exact = term_lower in kw_texts
+
+            if is_exact:
+                exact_matches += 1
+                exact_clicks += t.clicks or 0
+            else:
+                # Find closest keyword by shared words
+                best_match = None
+                best_overlap = 0
+                term_words = set(term_lower.split())
+                for kw_text, kw in kw_texts.items():
+                    kw_words = set(kw_text.split())
+                    overlap = len(term_words & kw_words)
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_match = kw
+
+                if best_match and best_overlap > 0:
+                    close_variant_clicks += t.clicks or 0
+                    variants.append({
+                        "search_term": t.text,
+                        "matched_keyword": best_match.text,
+                        "match_type": best_match.match_type,
+                        "clicks": t.clicks or 0,
+                        "cost_usd": round((t.cost_micros or 0) / 1_000_000, 2),
+                        "conversions": round(t.conversions or 0, 2),
+                        "ctr": round(t.ctr or 0, 2),
+                    })
+
+        variants.sort(key=lambda x: x["cost_usd"], reverse=True)
+
+        total_clicks = exact_clicks + close_variant_clicks
+        return {
+            "variants": variants[:30],
+            "summary": {
+                "total_search_terms": len(terms),
+                "exact_matches": exact_matches,
+                "close_variants": len(variants),
+                "exact_click_share_pct": round(exact_clicks / total_clicks * 100, 1) if total_clicks else 0,
+                "variant_click_share_pct": round(close_variant_clicks / total_clicks * 100, 1) if total_clicks else 0,
+                "variant_cost_usd": round(sum(v["cost_usd"] for v in variants), 2),
+            },
+            "period_days": days,
+        }
+
+    # ------------------------------------------------------------------
+    # A3: Conversion Tracking Health
+    # ------------------------------------------------------------------
+
+    def get_conversion_tracking_health(self, client_id: int, days: int = 30) -> dict:
+        """Audit conversion tracking setup and data quality."""
+        today = date.today()
+        window_start = today - timedelta(days=days - 1)
+
+        campaigns = self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.status == "ENABLED",
+        ).all()
+        if not campaigns:
+            return {"status": "no_campaigns", "campaigns": [], "score": 0}
+
+        campaign_ids = [c.id for c in campaigns]
+        results = []
+        total_score = 0
+
+        for c in campaigns:
+            metrics = self.db.query(MetricDaily).filter(
+                MetricDaily.campaign_id == c.id,
+                MetricDaily.date >= window_start,
+                MetricDaily.date <= today,
+            ).all()
+
+            total_cost = sum(m.cost_micros or 0 for m in metrics) / 1_000_000
+            total_conv = sum(m.conversions or 0 for m in metrics)
+            total_clicks = sum(m.clicks or 0 for m in metrics)
+            conv_value = sum(m.conversion_value_micros or 0 for m in metrics) / 1_000_000
+            days_with_data = len(metrics)
+
+            # Scoring
+            issues = []
+            camp_score = 100
+
+            if total_cost > 50 and total_conv == 0:
+                issues.append("Wydatki bez konwersji")
+                camp_score -= 40
+
+            if total_conv > 0 and conv_value == 0:
+                issues.append("Konwersje bez wartości")
+                camp_score -= 20
+
+            conv_rate = total_conv / total_clicks if total_clicks else 0
+            if conv_rate > 0.5:
+                issues.append(f"Podejrzanie wysoki CVR ({round(conv_rate*100,1)}%)")
+                camp_score -= 15
+
+            if days_with_data < days * 0.5:
+                issues.append(f"Braki danych ({days_with_data}/{days} dni)")
+                camp_score -= 15
+
+            camp_score = max(0, camp_score)
+            total_score += camp_score
+
+            results.append({
+                "campaign_name": c.name,
+                "campaign_type": c.campaign_type,
+                "cost_usd": round(total_cost, 2),
+                "conversions": round(total_conv, 2),
+                "conversion_value_usd": round(conv_value, 2),
+                "conv_rate_pct": round(conv_rate * 100, 2),
+                "days_with_data": days_with_data,
+                "score": camp_score,
+                "issues": issues,
+            })
+
+        avg_score = round(total_score / len(campaigns)) if campaigns else 0
+
+        return {
+            "score": avg_score,
+            "status": "healthy" if avg_score >= 80 else "warning" if avg_score >= 50 else "critical",
+            "campaigns": sorted(results, key=lambda x: x["score"]),
+            "total_campaigns": len(campaigns),
+            "period_days": days,
+        }
+
+    # ------------------------------------------------------------------
+    # G2: Keyword Expansion Suggestions
+    # ------------------------------------------------------------------
+
+    def get_keyword_expansion(self, client_id: int, days: int = 30, min_clicks: int = 3, min_conversions: float = 0.5) -> dict:
+        """Suggest new keywords based on high-performing search terms
+        that aren't already tracked as keywords.
+        """
+        from app.models.ad_group import AdGroup
+        from app.models.search_term import SearchTerm
+
+        today = date.today()
+        window_start = today - timedelta(days=days - 1)
+
+        campaign_ids = [c.id for c in self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.campaign_type == "SEARCH",
+        ).all()]
+        if not campaign_ids:
+            return {"suggestions": [], "summary": {}}
+
+        # Get all current keyword texts
+        existing_kw = set(
+            kw.text.lower().strip()
+            for kw in self.db.query(Keyword.text)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids), Keyword.status == "ENABLED")
+            .all()
+        )
+
+        # Get search terms with good performance
+        terms = self.db.query(SearchTerm).filter(
+            SearchTerm.campaign_id.in_(campaign_ids),
+            SearchTerm.date_from >= window_start,
+        ).all()
+
+        # Group by text and aggregate
+        term_agg: dict[str, dict] = {}
+        for t in terms:
+            text = t.text.lower().strip()
+            if text in existing_kw:
+                continue
+            if text not in term_agg:
+                term_agg[text] = {
+                    "clicks": 0, "impressions": 0, "cost_micros": 0,
+                    "conversions": 0.0, "conv_value_micros": 0,
+                    "campaign_id": t.campaign_id, "ad_group_id": t.ad_group_id,
+                }
+            agg = term_agg[text]
+            agg["clicks"] += t.clicks or 0
+            agg["impressions"] += t.impressions or 0
+            agg["cost_micros"] += t.cost_micros or 0
+            agg["conversions"] += t.conversions or 0
+
+        suggestions = []
+        for text, agg in term_agg.items():
+            if agg["clicks"] < min_clicks:
+                continue
+
+            cost_usd = agg["cost_micros"] / 1_000_000
+            cpa = cost_usd / agg["conversions"] if agg["conversions"] else None
+            ctr = agg["clicks"] / agg["impressions"] * 100 if agg["impressions"] else 0
+
+            # Scoring: high conversions + low CPA = high priority
+            priority_score = 0
+            if agg["conversions"] >= min_conversions:
+                priority_score += 50
+            if ctr > 5:
+                priority_score += 20
+            if agg["clicks"] >= 10:
+                priority_score += 15
+            if cpa and cpa < 50:
+                priority_score += 15
+
+            suggested_match = "EXACT" if agg["conversions"] >= 1 else "PHRASE"
+
+            suggestions.append({
+                "search_term": text,
+                "clicks": agg["clicks"],
+                "impressions": agg["impressions"],
+                "ctr_pct": round(ctr, 2),
+                "cost_usd": round(cost_usd, 2),
+                "conversions": round(agg["conversions"], 2),
+                "cpa_usd": round(cpa, 2) if cpa else None,
+                "priority_score": priority_score,
+                "suggested_match_type": suggested_match,
+                "campaign_id": agg["campaign_id"],
+                "ad_group_id": agg["ad_group_id"],
+            })
+
+        suggestions.sort(key=lambda x: x["priority_score"], reverse=True)
+
+        return {
+            "suggestions": suggestions[:30],
+            "summary": {
+                "total_unmapped_terms": len(term_agg),
+                "high_priority": sum(1 for s in suggestions if s["priority_score"] >= 50),
+                "total_suggestions": len(suggestions),
+                "existing_keywords": len(existing_kw),
+            },
+            "period_days": days,
+        }
+
     def _create_alert(self, **kwargs) -> Alert | None:
         """Create alert if not already exists (deduplicate).
 

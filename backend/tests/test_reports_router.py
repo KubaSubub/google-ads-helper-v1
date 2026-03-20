@@ -199,3 +199,84 @@ class TestGetReport:
         resp = api_client.get(f"/api/v1/reports/{report.id}?client_id={client.id}")
         assert resp.status_code == 200
         assert resp.json()["ai_narrative"] is None
+
+
+# ---------------------------------------------------------------------------
+# Weekly / Health report type storage
+# ---------------------------------------------------------------------------
+
+
+class TestReportTypes:
+    def test_weekly_report_stored(self, api_client, db):
+        """Weekly report can be stored and retrieved."""
+        client = Client(name="Weekly Test", google_customer_id="6660004440")
+        db.add(client)
+        db.flush()
+
+        report = Report(
+            client_id=client.id,
+            report_type="weekly",
+            period_label="week-2026-03-14",
+            date_from=date(2026, 3, 14),
+            date_to=date(2026, 3, 20),
+            status="completed",
+            report_data=json.dumps({"kpis": {"clicks": 100}}),
+            ai_narrative="Raport tygodniowy.",
+        )
+        db.add(report)
+        db.commit()
+
+        resp = api_client.get(f"/api/v1/reports/{report.id}?client_id={client.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["report_type"] == "weekly"
+        assert "week-" in data["period_label"]
+
+    def test_health_report_stored(self, api_client, db):
+        """Health report can be stored and retrieved."""
+        client = Client(name="Health Test", google_customer_id="6660005550")
+        db.add(client)
+        db.flush()
+
+        report = Report(
+            client_id=client.id,
+            report_type="health",
+            period_label="health-2026-03-20",
+            date_from=date(2026, 2, 19),
+            date_to=date(2026, 3, 20),
+            status="completed",
+            report_data=json.dumps({"health": {"score": 78}}),
+            ai_narrative="Raport zdrowia konta.",
+        )
+        db.add(report)
+        db.commit()
+
+        resp = api_client.get(f"/api/v1/reports/{report.id}?client_id={client.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["report_type"] == "health"
+        assert "health-" in data["period_label"]
+
+    def test_list_filters_by_report_type_implicitly(self, api_client, db):
+        """All report types appear in list for a client."""
+        client = Client(name="Multi Type", google_customer_id="6660006660")
+        db.add(client)
+        db.flush()
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        for rt in ["monthly", "weekly", "health"]:
+            db.add(Report(
+                client_id=client.id,
+                report_type=rt,
+                period_label=f"{rt}-test",
+                status="completed",
+                created_at=now,
+            ))
+        db.commit()
+
+        resp = api_client.get(f"/api/v1/reports/?client_id={client.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 3
+        types = {r["report_type"] for r in data["reports"]}
+        assert types == {"monthly", "weekly", "health"}

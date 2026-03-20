@@ -832,3 +832,73 @@ def get_hourly_dayparting(
     service = AnalyticsService(db)
     return service.get_hourly_dayparting(client_id=client_id, days=days)
 
+
+# ---------------------------------------------------------------------------
+# B2: Search Terms Trend Analysis
+# ---------------------------------------------------------------------------
+
+
+@router.get("/search-term-trends")
+def get_search_term_trends(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    min_clicks: int = Query(5, ge=1, description="Min clicks to include"),
+    db: Session = Depends(get_db),
+):
+    """Search term trend analysis: rising, declining, and new terms."""
+    service = AnalyticsService(db)
+    return service.get_search_term_trends(
+        client_id=client_id, days=days, min_clicks=min_clicks,
+    )
+
+
+# ---------------------------------------------------------------------------
+# B3: Close Variant Analysis
+# ---------------------------------------------------------------------------
+
+
+@router.get("/close-variants")
+def get_close_variants(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Close variant analysis: search terms vs exact keywords."""
+    service = AnalyticsService(db)
+    return service.get_close_variant_analysis(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# A3: Conversion Tracking Health
+# ---------------------------------------------------------------------------
+
+
+@router.get("/conversion-health")
+def get_conversion_health(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Conversion tracking health audit per campaign."""
+    service = AnalyticsService(db)
+    return service.get_conversion_tracking_health(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# G2: Keyword Expansion Suggestions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/keyword-expansion")
+def get_keyword_expansion(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    min_clicks: int = Query(3, ge=1, description="Min clicks for suggestion"),
+    db: Session = Depends(get_db),
+):
+    """Keyword expansion suggestions from high-performing search terms."""
+    service = AnalyticsService(db)
+    return service.get_keyword_expansion(
+        client_id=client_id, days=days, min_clicks=min_clicks,
+    )
+
