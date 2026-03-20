@@ -73,7 +73,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## Change History Monitor (ActionHistory)
 - Model: `ChangeEvent` — tracking zmian w koncie Google Ads via Change Event API.
-- Router: `actions.py` — `/action-history` endpoint.
+- Router: `history.py` — `GET /history/`, `GET /history/unified`, `GET /history/filters` endpoints.
 - Frontend: `ActionHistory.jsx` — timeline view z filtrami (typ zmiany, zakres dat, kampania).
 - Źródła: lokalne action_log + Google Ads Change Events.
 
@@ -97,4 +97,29 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Full CRUD for negative keyword lists (create, read, update, delete).
 - Backend: endpoints in `keywords_ads.py` for list management.
 - Frontend: management UI in `Keywords.jsx` with modal for list operations.
+
+## Weekly & Health Reports
+- `POST /reports/generate` now supports `report_type: "weekly"` (last 7 days) and `report_type: "health"` (last 30 days).
+- Both types use dedicated `REPORT_DATA_MAP` sections and `REPORT_PROMPTS` in `agent_service.py`.
+- Same SSE streaming and DB persistence as monthly reports.
+
+## Search Term Trends (`/analytics/search-term-trends`)
+- `GET /analytics/search-term-trends?client_id=X&days=30&min_clicks=5`
+- Classifies search terms as rising, declining, or new based on week-over-week click trends.
+- Implemented in `AnalyticsService.get_search_term_trends()`.
+
+## Close Variant Analysis (`/analytics/close-variants`)
+- `GET /analytics/close-variants?client_id=X&days=30`
+- Compares search terms against exact-match keywords to identify close variant leakage.
+- Implemented in `AnalyticsService.get_close_variant_analysis()`.
+
+## Conversion Tracking Health (`/analytics/conversion-health`)
+- `GET /analytics/conversion-health?client_id=X&days=30`
+- Per-campaign audit: spend, conversions, conversion rate, and health status flag.
+- Implemented in `AnalyticsService.get_conversion_tracking_health()`.
+
+## Keyword Expansion Suggestions (`/analytics/keyword-expansion`)
+- `GET /analytics/keyword-expansion?client_id=X&days=30&min_clicks=3`
+- Surfaces high-performing search terms not yet added as keywords, grouped by match type recommendation.
+- Implemented in `AnalyticsService.get_keyword_expansion()`.
 
