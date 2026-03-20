@@ -19,13 +19,13 @@ import { useApp } from '../contexts/AppContext'
 import { useRecommendations } from '../hooks/useRecommendations'
 
 const TYPE_CONFIG = {
-    PAUSE_KEYWORD: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Pause keyword' },
-    UPDATE_BID: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Update bid' },
-    ADD_KEYWORD: { icon: TrendingUp, color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)', label: 'Add keyword' },
-    ADD_NEGATIVE: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Add negative' },
-    PAUSE_AD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Pause ad' },
-    INCREASE_BUDGET: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Increase budget' },
-    REALLOCATE_BUDGET: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Review budget' },
+    PAUSE_KEYWORD: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Wstrzymaj słowo' },
+    UPDATE_BID: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zmień stawkę' },
+    ADD_KEYWORD: { icon: TrendingUp, color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)', label: 'Dodaj słowo' },
+    ADD_NEGATIVE: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Dodaj wykluczenie' },
+    PAUSE_AD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Wstrzymaj reklamę' },
+    INCREASE_BUDGET: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zwiększ budżet' },
+    REALLOCATE_BUDGET: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Przesuń budżet' },
 }
 
 const PRIORITY_CONFIG = {
