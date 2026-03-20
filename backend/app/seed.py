@@ -41,11 +41,17 @@ def seed_demo_data():
     """Generate realistic demo data for the Google Ads Helper app."""
     init_db()
     db = SessionLocal()
+    try:
+        _seed_demo_data_impl(db)
+    finally:
+        db.close()
+
+
+def _seed_demo_data_impl(db):
 
     # Check if data already exists
     if db.query(Client).count() > 0:
         print("⚠️  Database already contains data. Skipping seed.")
-        db.close()
         return
 
     print("🌱 Seeding demo data...")

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ErrorMessage } from '../components/UI'
+import { ErrorMessage, TH_STYLE } from '../components/UI'
 import { getSearchTerms, getSegmentedSearchTerms } from '../api'
 import api from '../api'
 import { useApp } from '../contexts/AppContext'
@@ -24,15 +24,6 @@ const SEGMENT_CONFIG = {
     OTHER:          { label: 'Inne',             icon: LayoutGrid,    color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',  border: 'rgba(79,142,247,0.2)'  },
 }
 
-const TH_STYLE = {
-    padding: '10px 12px',
-    fontSize: 10, fontWeight: 500,
-    color: 'rgba(255,255,255,0.35)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    whiteSpace: 'nowrap',
-    textAlign: 'left',
-}
 
 function SegmentBadge({ seg }) {
     const conf = SEGMENT_CONFIG[seg] || SEGMENT_CONFIG.OTHER
@@ -179,6 +170,7 @@ export default function SearchTerms() {
         if (!selectedClientId) return
         if (viewMode === 'list') loadListData()
         else loadSegmentedData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewMode, page, search, sortBy, sortOrder, selectedClientId, campaignId, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status])
 
     async function loadListData() {
@@ -238,6 +230,17 @@ export default function SearchTerms() {
     const segmentItems = segData && activeSegment !== 'ALL'
         ? segData.segments?.[activeSegment] || []
         : segData ? Object.values(segData.segments || {}).flat() : []
+
+    // Pre-compute id → segment key map to avoid O(n²) lookup in render
+    const segmentMap = useMemo(() => {
+        const map = {}
+        if (segData?.segments) {
+            for (const [key, items] of Object.entries(segData.segments)) {
+                for (const item of items) { if (item.id) map[item.id] = key }
+            }
+        }
+        return map
+    }, [segData])
 
     return (
         <div style={{ maxWidth: 1400 }}>
@@ -405,10 +408,7 @@ export default function SearchTerms() {
                                         {segmentItems.length === 0 ? (
                                             <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
                                         ) : segmentItems.map((t, i) => {
-                                            let seg = 'OTHER'
-                                            for (const [key, items] of Object.entries(segData?.segments || {})) {
-                                                if (items.some(item => item.id === t.id)) { seg = key; break }
-                                            }
+                                            const seg = segmentMap[t.id] || 'OTHER'
                                             const showAddKw = seg === 'HIGH_PERFORMER'
                                             const showAddNeg = seg === 'WASTE' || seg === 'IRRELEVANT'
                                             const isSelected = selectedIds.has(t.id)

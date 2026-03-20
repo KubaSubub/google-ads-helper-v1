@@ -1,6 +1,6 @@
 ﻿# Source of Truth - Google Ads Helper
 
-Last updated: 2026-03-12
+Last updated: 2026-03-20
 Owner: Product + Engineering
 
 ## Document Priority
@@ -8,13 +8,21 @@ Owner: Product + Engineering
 2. `docs/API_ENDPOINTS.md` - API contract
 3. `docs/FEATURE_SET.md` - product behavior and scope
 4. `PROGRESS.md` - delivery status and open work
-5. `Technical_Spec.md` - historical snapshot only
+5. `docs/COMPLETED_FEATURES.md` - done features (do not touch)
+6. `docs/DEVELOPMENT_ROADMAP_OPTIMIZATION.md` - roadmap with implementation status
+
+## Archived Documents (in `docs/archive/`)
+- `Technical_Spec.md` - historical snapshot (LEGACY 2025-02-17)
+- `deep-research-report.md`, `deep-research-report-2.md` - research phase docs
+- `AGENT_EXECUTION_BOARD.md` - completed execution board
+- `API_CONTRACT_REPORT.md` - one-time test report (2026-03-12)
 
 ## Recent Incident Notes
 - `docs/INCIDENT_NEGATIVE_KEYWORD_MAPPING_2026-03-13.md` - root cause, fix, and guardrails for the negative keyword mapping incident
 
 ## Current Baseline
-- Backend routers: 12
+- Backend routers: 14 (including agent.py, reports.py)
+- Backend utils: sse.py (SSE streaming helper)
 - Frontend pages: 15
 - Recommendation engine: 17 playbook rules + analytics stream + optional Google Ads native ingest
 - Human-centered budget guardrails: enabled

@@ -18,7 +18,7 @@ class AdResponse(BaseModel):
     impressions: int = 0
     cost_micros: int = 0
     conversions: float = 0
-    ctr: int = 0
+    ctr: float = 0.0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

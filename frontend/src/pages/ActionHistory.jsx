@@ -12,7 +12,7 @@ import {
 
 const TABS = [
     { key: 'helper', label: 'Helper' },
-    { key: 'external', label: 'ZewnÄ™trzne' },
+    { key: 'external', label: 'Zewnętrzne' },
     { key: 'unified', label: 'Wszystko' },
 ];
 
@@ -44,17 +44,17 @@ const SOURCE_COLORS = {
 const OP_LABELS = {
     CREATE: 'Utworzono',
     UPDATE: 'Zmieniono',
-    REMOVE: 'UsuniÄ™to',
+    REMOVE: 'Usunięto',
     PAUSE_KEYWORD: 'Wstrzymano keyword',
-    ENABLE_KEYWORD: 'WĹ‚Ä…czono keyword',
+    ENABLE_KEYWORD: 'Włączono keyword',
     UPDATE_BID: 'Zmieniono stawke',
     SET_KEYWORD_BID: 'Przywrocono stawke',
     ADD_KEYWORD: 'Dodano keyword',
     ADD_NEGATIVE: 'Dodano negative',
-    PAUSE_AD: 'Wstrzymano reklamÄ™',
+    PAUSE_AD: 'Wstrzymano reklamę',
     INCREASE_BUDGET: 'Zwiekszono budzet',
     SET_BUDGET: 'Przywrocono budzet',
-    DECREASE_BUDGET: 'Zmniejszono budĹĽet',
+    DECREASE_BUDGET: 'Zmniejszono budżet',
 };
 
 const STATUS_COLORS = {
@@ -92,7 +92,7 @@ function buildDescription(entry) {
     if (entry.source === 'helper') {
         return `${op}${name ? ': ' + name : ''}`;
     }
-    return `${op} ${resType.toLowerCase().replace(/_/g, ' ')}${name ? ' â€” ' + name : ''}${user}`;
+    return `${op} ${resType.toLowerCase().replace(/_/g, ' ')}${name ? ' — ' + name : ''}${user}`;
 }
 
 // â”€â”€â”€ Timeline Entry Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -104,7 +104,7 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
     const ts = entry.timestamp || entry.change_date_time || entry.executed_at;
     const timeStr = ts ? new Date(ts).toLocaleString('pl-PL', {
         hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
-    }) : 'â€”';
+    }) : '—';
 
     return (
         <div>
@@ -301,7 +301,7 @@ export default function ActionHistory() {
                 setUnifiedEntries(data.entries || []);
             }
         } catch (err) {
-            showToast?.('BĹ‚Ä…d Ĺ‚adowania historii', 'error');
+            showToast?.('Błąd ładowania historii', 'error');
         } finally {
             setLoading(false);
         }
@@ -314,11 +314,11 @@ export default function ActionHistory() {
         try {
             const actionId = revertModal.action_log_id || revertModal.id;
             await revertAction(actionId, selectedClientId);
-            showToast('Akcja cofniÄ™ta', 'success');
+            showToast('Akcja cofnięta', 'success');
             setRevertModal(null);
             await fetchData();
         } catch (err) {
-            showToast('BĹ‚Ä…d cofania: ' + err.message, 'error');
+            showToast('Błąd cofania:' + err.message, 'error');
         } finally {
             setReverting(false);
         }
@@ -373,7 +373,7 @@ export default function ActionHistory() {
             accessorKey: 'campaign_name',
             header: 'Kampania',
             cell: ({ getValue }) => (
-                <span style={{ color: 'rgba(255,255,255,0.4)' }}>{getValue() || 'â€”'}</span>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>{getValue() || '—'}</span>
             ),
         },
         {
@@ -415,7 +415,7 @@ export default function ActionHistory() {
                     Historia zmian
                 </h1>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                    Rejestr wszystkich zmian na koncie Google Ads â€” z Helpera i zewnÄ™trznych
+                    Rejestr wszystkich zmian na koncie Google Ads — z Helpera i zewnÄ™trznych
                 </p>
             </div>
 
@@ -485,7 +485,7 @@ export default function ActionHistory() {
                                 onChange={e => setFilters(f => ({ ...f, userEmail: e.target.value }))}
                                 style={filterInputStyle}
                             >
-                                <option value="">UĹĽytkownik</option>
+                                <option value="">Użytkownik</option>
                                 {filterOptions.user_emails.map(e => (
                                     <option key={e} value={e}>{e}</option>
                                 ))}
@@ -495,7 +495,7 @@ export default function ActionHistory() {
                                 onChange={e => setFilters(f => ({ ...f, clientType: e.target.value }))}
                                 style={filterInputStyle}
                             >
-                                <option value="">ĹąrĂłdĹ‚o</option>
+                                <option value="">Źródło</option>
                                 {filterOptions.client_types.map(t => (
                                     <option key={t} value={t}>{SOURCE_LABELS[t] || t}</option>
                                 ))}
@@ -510,7 +510,7 @@ export default function ActionHistory() {
                                 border: 'none', cursor: 'pointer', padding: '4px 8px',
                             }}
                         >
-                            WyczyĹ›Ä‡ filtry
+                            Wyczyść filtry
                         </button>
                     )}
                 </div>
@@ -523,7 +523,7 @@ export default function ActionHistory() {
                 </div>
             )}
 
-            {/* Helper tab â€” existing DataTable */}
+            {/* Helper tab — existing DataTable */}
             {!loading && activeTab === 'helper' && (
                 <DataTable
                     data={helperActions}
@@ -533,7 +533,7 @@ export default function ActionHistory() {
                 />
             )}
 
-            {/* External / Unified tabs â€” Timeline */}
+            {/* External / Unified tabs — Timeline */}
             {!loading && activeTab !== 'helper' && timelineData && (
                 <>
                     <TimelineGroup
@@ -551,7 +551,7 @@ export default function ActionHistory() {
                         onRevert={setRevertModal}
                     />
                     <TimelineGroup
-                        title="Ten tydzieĹ„"
+                        title="Ten tydzień"
                         entries={timelineData.thisWeek}
                         expandedId={expandedId}
                         onToggle={id => setExpandedId(prev => prev === id ? null : id)}
@@ -566,7 +566,7 @@ export default function ActionHistory() {
                     />
                     {!timelineData.today.length && !timelineData.yesterday.length &&
                      !timelineData.thisWeek.length && !timelineData.older.length && (
-                        <EmptyState message="Brak zdarzeĹ„ dla wybranych filtrĂłw" />
+                        <EmptyState message="Brak zdarzeń dla wybranych filtrów" />
                     )}
                 </>
             )}
@@ -576,10 +576,10 @@ export default function ActionHistory() {
                 isOpen={!!revertModal}
                 onClose={() => setRevertModal(null)}
                 onConfirm={handleRevert}
-                title="Cofnij akcjÄ™?"
+                title="Cofnij akcję?"
                 actionType={revertModal?.action_type || revertModal?.operation}
                 entity={revertModal?.entity_name || revertModal?.entity_id}
-                reason="Akcja zostanie cofniÄ™ta do poprzedniego stanu"
+                reason="Akcja zostanie cofnięta do poprzedniego stanu"
                 isLoading={reverting}
             />
         </div>

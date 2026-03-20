@@ -19,7 +19,8 @@
 
 ## A. CODZIENNY AUDYT — "Morning Check" (brakujące elementy)
 
-### A1. ❌ Panel "Daily Audit" (nowa strona)
+### A1. ✅ Panel "Daily Audit" (nowa strona)
+> **Wdrożone:** `backend/app/routers/daily_audit.py` + `frontend/src/pages/DailyAudit.jsx` — agreguje budget pacing, anomalie 24h, disapproved ads, budget-capped performers, search terms do decyzji, pending recommendations, health score, KPI snapshot.
 **Co:** Jeden ekran, który agreguje WSZYSTKIE codzienne kontrole w jednym widoku.
 Zamiast klikania po 5 stronach, specjalista widzi od razu:
 - Budget pacing (wszystkie kampanie — wykres % wydania vs dzień miesiąca)
@@ -33,7 +34,8 @@ Zamiast klikania po 5 stronach, specjalista widzi od razu:
 
 **Nakład:** Średni — większość danych już jest w API, trzeba je zagregować w jednym widoku.
 
-### A2. ❌ Change History Monitor
+### A2. ✅ Change History Monitor
+> **Wdrożone:** Model `change_event.py` + router `history.py` + UI `ActionHistory.jsx` z 3 zakładkami (Helper / Zewnętrzne / Wszystko), filtry po resource_type, user_email, source. Unified timeline z grupowaniem Today/Yesterday/This Week.
 **Co:** Pobieranie `change_event` z Google Ads API (dostępne przez API, max 30 dni wstecz):
 - Kto zmienił co (user vs system vs API)
 - Wykrywanie zmian z `change_client_type = GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION` → auto-applied recommendations
@@ -64,7 +66,7 @@ Zamiast klikania po 5 stronach, specjalista widzi od razu:
 
 ## B. SEARCH TERMS — rozszerzenia
 
-### B1. 🟡 → ✅ Bulk Actions na Search Terms
+### B1. ✅ Bulk Actions na Search Terms
 **Co:** Obecnie: segmentacja (WASTE/HIGH_PERFORMER/IRRELEVANT) + rekomendacja.
 Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako keyword" jednym klikiem z poziomu listy.
 - Checkbox selection na tabeli search terms
@@ -136,7 +138,9 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## D. PMAX (Performance Max) — rozszerzenia kanału Search
 
-### D1. 🟡 → ✅ PMax Channel Performance Breakdown
+### D1. 🟡 PMax Channel Performance Breakdown
+> **Częściowo:** SearchTerm model ma pole `source` (SEARCH/PMAX), bulk actions wspierają PMax search terms. Brakuje channel-level breakdown i budget allocation per channel.
+
 **Co:** Obecnie: sync `pmax_search_terms`. Brakuje:
 - Breakdown wydatków per channel (Search vs Display vs YouTube vs Discover vs Shopping)
 - Porównanie: ile % budżetu PMax idzie na Search vs inne kanały
@@ -173,7 +177,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## E. GOTOWE RAPORTY (one-click reports)
 
-### E1. ❌ Weekly Performance Report
+### E1. 🟡 Weekly Performance Report
+> **Częściowo:** Framework raportów istnieje (`reports.py` + SSE streaming + AI narrative via Claude). Monthly report DONE. Weekly template do dodania.
 **Co:** Automatycznie generowany raport tygodniowy w formacie gotowym do wysłania klientowi:
 - KPI vs target (CPA, ROAS, spend, conversions)
 - Top 5 zmian w performance (co wzrosło/spadło)
@@ -185,7 +190,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — agregacja istniejących danych + template + eksport.
 
-### E2. ❌ Monthly Deep Dive Report
+### E2. ✅ Monthly Deep Dive Report
+> **Wdrożone:** `POST /reports/generate` z SSE streaming, AI narrative via Claude CLI, zapis do DB, lista raportów, pełny widok z danymi + narratywą. Frontend: `Reports.jsx`.
 **Co:** Raport miesięczny z głęboką analizą:
 - MoM i YoY porównanie (dane już są w compare-periods)
 - Breakdown per kampania z trendami
@@ -198,7 +204,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — podobnie jak E1, plus formatowanie.
 
-### E3. ❌ Account Health Report (Audyt)
+### E3. 🟡 Account Health Report (Audyt)
+> **Częściowo:** Health score obliczany w Daily Audit (`health_summary`). Brakuje: kompleksowy scoring 0-100, breakdown per kategoria, benchmarki branżowe.
 **Co:** Kompleksowy audyt konta z scoringiem:
 - Struktura konta (score 0-100)
 - Keyword coverage & match type balance
@@ -227,7 +234,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — scheduling (APScheduler/Celery) + notification system.
 
-### F2. ❌ Quick Optimization Scripts (one-click actions)
+### F2. ✅ Quick Optimization Scripts (one-click actions)
+> **Wdrożone:** `POST /recommendations/bulk-apply` z kategoriami: `clean_waste`, `pause_burning`, `boost_winners`, `emergency_brake`, `add_negatives`. Dry-run preview + full execution via ActionExecutor.
 **Co:** Zestaw "szybkich skryptów" dostępnych z UI:
 - **"Wyczyść search terms"** — auto-apply wszystkich rekomendacji ADD_NEGATIVE z kategorii IRRELEVANT (z preview)
 - **"Pauza spalających keywords"** — auto-apply PAUSE_KEYWORD dla all zero-conv high-spend keywords
@@ -276,7 +284,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — analiza na istniejących search terms + keyword deduplication.
 
-### G3. ❌ Landing Page Performance Audit
+### G3. 🟡 Landing Page Performance Audit
+> **Częściowo:** Endpoint `GET /analytics/landing-pages` istnieje — grupuje metryki per URL. Brakuje: PageSpeed Insights, mobile-friendliness, message match, bounce rate alerts.
 **Co:** Obecne: `landing-pages` endpoint grupuje metryki per URL. Brakuje:
 - Page speed check (Core Web Vitals via PageSpeed Insights API)
 - Mobile-friendliness score
@@ -337,59 +346,61 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 ## PRIORYTETY — REKOMENDOWANA KOLEJNOŚĆ IMPLEMENTACJI
 
 ### Fala 1: "Daily Audit Ready" (najwyższy impact)
-| # | Feature | Nakład | Impact |
-|---|---------|--------|--------|
-| 1 | **A1** Daily Audit Panel | Średni | 🔴 Krytyczny |
-| 2 | **B1** Bulk Actions na Search Terms | Średni | 🔴 Krytyczny |
-| 3 | **F2** Quick Optimization Scripts | Średni | 🔴 Krytyczny |
-| 4 | **E1** Weekly Performance Report | Średni | 🟠 Wysoki |
+| # | Feature | Nakład | Impact | Status |
+|---|---------|--------|--------|--------|
+| 1 | **A1** Daily Audit Panel | Średni | 🔴 Krytyczny | ✅ DONE |
+| 2 | **B1** Bulk Actions na Search Terms | Średni | 🔴 Krytyczny | ✅ DONE |
+| 3 | **F2** Quick Optimization Scripts | Średni | 🔴 Krytyczny | ✅ DONE |
+| 4 | **E1** Weekly Performance Report | Średni | 🟠 Wysoki | 🟡 PARTIAL |
 
 ### Fala 2: "Full Campaign Control"
-| # | Feature | Nakład | Impact |
-|---|---------|--------|--------|
-| 5 | **A2** Change History Monitor | Średni | 🟠 Wysoki |
-| 6 | **D1** PMax Channel Breakdown | Średni | 🟠 Wysoki |
-| 7 | **D3** PMax vs Search Cannibalization | Średni | 🟠 Wysoki |
-| 8 | **B3** Close Variant Analysis | Średni | 🟠 Wysoki |
-| 9 | **G2** Keyword Expansion Suggestions | Średni | 🟠 Wysoki |
+| # | Feature | Nakład | Impact | Status |
+|---|---------|--------|--------|--------|
+| 5 | **A2** Change History Monitor | Średni | 🟠 Wysoki | ✅ DONE |
+| 6 | **D1** PMax Channel Breakdown | Średni | 🟠 Wysoki | 🟡 PARTIAL |
+| 7 | **D3** PMax vs Search Cannibalization | Średni | 🟠 Wysoki | ❌ |
+| 8 | **B3** Close Variant Analysis | Średni | 🟠 Wysoki | ❌ |
+| 9 | **G2** Keyword Expansion Suggestions | Średni | 🟠 Wysoki | ❌ |
 
 ### Fala 3: "Deep Analysis"
-| # | Feature | Nakład | Impact |
-|---|---------|--------|--------|
-| 10 | **A3** Conversion Tracking Health | Średni | 🟠 Wysoki |
-| 11 | **E3** Account Health Report | Duży | 🟠 Wysoki |
-| 12 | **G1** Auction Insights | Duży | 🟡 Średni |
-| 13 | **C1** DSA Targets Analysis | Duży | 🟡 Średni |
-| 14 | **B2** Search Terms Trend Analysis | Średni | 🟡 Średni |
+| # | Feature | Nakład | Impact | Status |
+|---|---------|--------|--------|--------|
+| 10 | **A3** Conversion Tracking Health | Średni | 🟠 Wysoki | ❌ |
+| 11 | **E3** Account Health Report | Duży | 🟠 Wysoki | 🟡 PARTIAL |
+| 12 | **G1** Auction Insights | Duży | 🟡 Średni | ❌ |
+| 13 | **C1** DSA Targets Analysis | Duży | 🟡 Średni | ❌ |
+| 14 | **B2** Search Terms Trend Analysis | Średni | 🟡 Średni | ❌ |
 
 ### Fala 4: "Automation & Scale"
-| # | Feature | Nakład | Impact |
-|---|---------|--------|--------|
-| 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki |
-| 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni |
-| 17 | **D2** Asset Group Performance | Duży | 🟡 Średni |
-| 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni |
-| 19 | **G3** Landing Page Audit | Duży | 🟡 Średni |
+| # | Feature | Nakład | Impact | Status |
+|---|---------|--------|--------|--------|
+| 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki | ❌ |
+| 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni | ❌ |
+| 17 | **D2** Asset Group Performance | Duży | 🟡 Średni | ❌ |
+| 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni | ❌ |
+| 19 | **G3** Landing Page Audit | Duży | 🟡 Średni | 🟡 PARTIAL |
 
 ### Fala 5: "Polish & UX"
-| # | Feature | Nakład | Impact |
-|---|---------|--------|--------|
-| 20 | **H1** Task Queue / Action Plan | Średni | 🟡 Średni |
-| 21 | **G4** Cross-Campaign Analysis | Średni | 🟡 Średni |
-| 22 | **E2** Monthly Deep Dive Report | Średni | 🟡 Średni |
-| 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have |
-| 24 | **H3** Keyboard Shortcuts | Mały | 🟢 Nice-to-have |
-| 25 | **C2** DSA Headlines Audit | Średni | 🟢 Nice-to-have |
-| 26 | **C3** DSA ↔ Search Overlap | Średni | 🟢 Nice-to-have |
+| # | Feature | Nakład | Impact | Status |
+|---|---------|--------|--------|--------|
+| 20 | **H1** Task Queue / Action Plan | Średni | 🟡 Średni | ❌ |
+| 21 | **G4** Cross-Campaign Analysis | Średni | 🟡 Średni | ❌ |
+| 22 | **E2** Monthly Deep Dive Report | Średni | 🟡 Średni | ✅ DONE |
+| 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have | ❌ |
+| 24 | **H3** Keyboard Shortcuts | Mały | 🟢 Nice-to-have | ❌ |
+| 25 | **C2** DSA Headlines Audit | Średni | 🟢 Nice-to-have | ❌ |
+| 26 | **C3** DSA ↔ Search Overlap | Średni | 🟢 Nice-to-have | ❌ |
 
 ---
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
+**Stan na 2026-03-20: 6 DONE, 4 PARTIAL, 16 NOT DONE (z 26 feature'ów)**
+
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast
 - Kompletna analiza keywords: QS audit, match type, wasted spend, n-gram
-- Search terms: segmentacja, n-gram, rekomendacje
+- Search terms: segmentacja, n-gram, rekomendacje + **bulk actions** (add negatives, exclude terms)
 - RSA analysis z best/worst
 - Anomaly detection (5 typów)
 - 18 reguł rekomendacji
@@ -398,18 +409,21 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 - Budget pacing
 - Action execution + revert + history
 - AI Agent (Claude) do rozmów o danych
+- **Daily Audit Panel** — centralny widok codziennego workflow
+- **Change History Monitor** — tracking zmian w koncie Google Ads
+- **Quick Optimization Scripts** — bulk-apply: clean_waste, pause_burning, boost_winners, emergency_brake, add_negatives
+- **Monthly Deep Dive Report** — generowanie raportów AI z SSE streaming
+- **Negative keyword lists** — pełne zarządzanie listami negatywnych słów
 
-### ❌ Kluczowe luki:
-1. **Brak "daily workflow" view** — dane są, ale rozrzucone po stronach
-2. **Brak bulk actions** — specjalista musi aplikować rekomendacje po jednej
-3. **Brak DSA support** — zero funkcji dla dynamicznych reklam
-4. **PMax ograniczone do search terms** — brak channel breakdown i asset analysis
-5. **Brak change history monitoring** — nie widać co Google zmienił w koncie
-6. **Brak conversion tracking audit** — optymalizujemy potencjalnie na złych danych
-7. **Brak gotowych raportów** — eksport jest, ale nie ma "kliknij i wyślij klientowi"
-8. **Brak schedulingu** — sync manualny, alerty nie przychodzą proaktywnie
-9. **Brak auction insights** — nie widać konkurencji
-10. **Brak ad extensions audit** — rozszerzenia reklam to łatwy win, a nie są monitorowane
+### ❌ Kluczowe luki (pozostałe):
+1. **Brak DSA support** — zero funkcji dla dynamicznych reklam (C1-C3)
+2. **PMax ograniczone** — brak pełnego channel breakdown (D1 partial) i asset analysis (D2)
+3. **Brak conversion tracking audit** — optymalizujemy potencjalnie na złych danych (A3)
+4. **Brak schedulingu** — sync manualny, alerty nie przychodzą proaktywnie (F1)
+5. **Brak auction insights** — nie widać konkurencji (G1)
+6. **Brak ad extensions audit** — rozszerzenia reklam to łatwy win, a nie są monitorowane (G5)
+7. **Brak automated rules engine** — brak automatyzacji beyond scripts (F3)
+8. **Weekly report** — framework istnieje, ale wymaga dokończenia (E1 partial)
 
 ---
 

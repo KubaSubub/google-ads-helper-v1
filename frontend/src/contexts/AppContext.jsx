@@ -54,7 +54,8 @@ export function AppProvider({ children }) {
             const list = Array.isArray(data) ? data : data.items || [];
             setClients(list);
             return list;
-        } catch {
+        } catch (err) {
+            console.error('Failed to load clients:', err);
             return [];
         } finally {
             setClientsLoading(false);
@@ -65,6 +66,7 @@ export function AppProvider({ children }) {
         setAuthStatus(DEFAULT_AUTH_STATUS);
         setClients([]);
         setClientsLoading(false);
+        localStorage.removeItem('selectedClientId');
     }, []);
 
     useEffect(() => {
@@ -89,6 +91,8 @@ export function AppProvider({ children }) {
     useEffect(() => {
         if (selectedClientId) {
             localStorage.setItem('selectedClientId', String(selectedClientId));
+        } else {
+            localStorage.removeItem('selectedClientId');
         }
     }, [selectedClientId]);
 

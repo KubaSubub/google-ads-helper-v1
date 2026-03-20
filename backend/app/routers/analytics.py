@@ -81,7 +81,6 @@ def resolve_anomaly(
     db: Session = Depends(get_db),
 ):
     """Mark an anomaly alert as resolved."""
-    from datetime import datetime
     ensure_demo_write_allowed(
         db,
         client_id,
@@ -316,17 +315,24 @@ def quality_score_audit(
     all_qs = [k.quality_score for k in keywords]
     avg_qs = sum(all_qs) / len(all_qs)
 
+    # Pre-build ad_group_id → campaign_name lookup to avoid N+1 queries
+    low_kw_ag_ids = {kw.ad_group_id for kw in keywords if kw.quality_score < qs_threshold and kw.ad_group_id}
+    campaign_by_ag = {}
+    if low_kw_ag_ids:
+        rows = (
+            db.query(AdGroup.id, Campaign.name)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(AdGroup.id.in_(low_kw_ag_ids))
+            .all()
+        )
+        campaign_by_ag = {ag_id: cname for ag_id, cname in rows}
+
     low_qs = []
     for kw in keywords:
         if kw.quality_score >= qs_threshold:
             continue
 
-        campaign = (
-            db.query(Campaign)
-            .join(AdGroup, Campaign.id == AdGroup.campaign_id)
-            .filter(AdGroup.id == kw.ad_group_id)
-            .first()
-        )
+        campaign_name = campaign_by_ag.get(kw.ad_group_id, "Unknown")
 
         issues = []
         kw_ctr_pct = kw.ctr or 0  # already percentage
@@ -340,7 +346,7 @@ def quality_score_audit(
         low_qs.append({
             "keyword": kw.text,
             "quality_score": kw.quality_score,
-            "campaign": campaign.name if campaign else "Unknown",
+            "campaign": campaign_name,
             "match_type": kw.match_type,
             "ctr_pct": round(kw_ctr_pct, 2),
             "clicks": kw.clicks or 0,

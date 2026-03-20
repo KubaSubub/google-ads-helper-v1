@@ -105,7 +105,7 @@ After implementing any new functionality, run this loop before marking task done
 2. Update runtime/API docs that changed:
    - `docs/API_ENDPOINTS.md` (if endpoint/params/response changed)
    - `docs/FEATURE_SET.md` (if capability/UI flow changed)
-   - `Technical_Spec.md` (if frontend-backend contract changed)
+   - `docs/SOURCE_OF_TRUTH.md` (if contracts/baselines changed)
 3. Update project tracking docs:
    - `PROGRESS.md` (what was delivered, current status)
    - `DECISIONS.md` (only if architectural decision/tradeoff was made)
@@ -123,5 +123,5 @@ After implementing any new functionality, run this loop before marking task done
 - `PROGRESS.md` - current implementation status.
 - `DECISIONS.md` - ADR-style decisions.
 - `docs/API_ENDPOINTS.md` - API reference.
-- `Technical_Spec.md` - frontend/backend contract details.
+- `docs/SOURCE_OF_TRUTH.md` - canonical contracts and baselines.
 - `google_ads_optimization_playbook.md` - domain optimization logic.

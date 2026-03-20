@@ -7,7 +7,9 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.demo_guard import ensure_demo_write_allowed
 from app.models import Ad, AdGroup, Campaign, Keyword, KeywordDaily, NegativeKeyword
+from app.models.action_log import ActionLog
 from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
 from app.schemas import AdResponse, KeywordResponse, NegativeKeywordResponse, PaginatedResponse
 from app.schemas.negative_keyword import (
@@ -199,7 +201,7 @@ def list_keywords(
             "ctr": case(
                 (
                     func.coalesce(agg.c.agg_impressions, 0) > 0,
-                    func.coalesce(agg.c.agg_clicks, 0) * 1_000_000 / func.coalesce(agg.c.agg_impressions, 1),
+                    func.coalesce(agg.c.agg_clicks, 0) * 100.0 / func.coalesce(agg.c.agg_impressions, 1),
                 ),
                 else_=0,
             ),
@@ -224,7 +226,7 @@ def list_keywords(
                 "cost_micros": cost_micros,
                 "conversions": conversions,
                 "conversion_value_micros": cv_micros,
-                "ctr": int(clicks / impressions * 1_000_000) if impressions > 0 else 0,
+                "ctr": round(clicks / impressions * 100, 2) if impressions > 0 else 0,
                 "avg_cpc_micros": int(cost_micros / clicks) if clicks > 0 else 0,
                 "cpa_micros": int(cost_micros / conversions) if conversions > 0 else 0,
             }
@@ -333,6 +335,7 @@ def create_negative_keywords(
     db: Session = Depends(get_db),
 ):
     """Create one or more negative keywords for a campaign or ad group."""
+    ensure_demo_write_allowed(db, body.client_id)
     scope = body.negative_scope.upper()
     if scope not in ("CAMPAIGN", "AD_GROUP"):
         raise HTTPException(400, "negative_scope must be CAMPAIGN or AD_GROUP")
@@ -408,6 +411,7 @@ def delete_negative_keyword(
     neg = db.get(NegativeKeyword, negative_keyword_id)
     if not neg:
         raise HTTPException(404, "Negative keyword not found")
+    ensure_demo_write_allowed(db, neg.client_id)
     neg.status = "REMOVED"
     db.commit()
     return {"status": "ok", "message": "Negative keyword removed"}
@@ -589,6 +593,7 @@ def apply_negative_keyword_list(
     nkl = db.get(NegativeKeywordList, list_id)
     if not nkl:
         raise HTTPException(404, "List not found")
+    ensure_demo_write_allowed(db, nkl.client_id)
 
     if not body.campaign_ids and not body.ad_group_ids:
         raise HTTPException(400, "Provide at least one campaign_id or ad_group_id")

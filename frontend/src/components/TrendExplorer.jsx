@@ -115,6 +115,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
             setIsMock(result.is_mock || false)
         } catch (e) {
             console.error('TrendExplorer fetch error:', e)
+            setData([])
         } finally {
             setLoading(false)
         }

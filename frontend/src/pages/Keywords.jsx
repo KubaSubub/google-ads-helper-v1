@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ArrowUpDown, ChevronLeft, ChevronRight, Download, List, Loader2, Minus, PauseCircle, Plus, Shield, Trash2, TrendingDown, TrendingUp, X } from 'lucide-react'
 
 import EmptyState from '../components/EmptyState'
 import { MetricTooltip } from '../components/MetricTooltip'
-import { ErrorMessage, StatusBadge } from '../components/UI'
+import { ErrorMessage, StatusBadge, TH_STYLE, MODAL_OVERLAY, MODAL_BOX } from '../components/UI'
 import {
     getKeywords,
     getNegativeKeywords, addNegativeKeyword, removeNegativeKeyword,
@@ -31,16 +31,6 @@ const SERVING_STATUS_CONFIG = {
     RARELY_SERVED: { label: 'Rzadko', color: '#FBBF24' },
 }
 
-const TH_STYLE = {
-    padding: '10px 12px',
-    fontSize: 10,
-    fontWeight: 500,
-    color: 'rgba(255,255,255,0.35)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    whiteSpace: 'nowrap',
-    textAlign: 'left',
-}
 
 const PILL_STYLE = (active, color) => ({
     padding: '4px 11px',
@@ -67,14 +57,6 @@ const TAB_STYLE = (active) => ({
     gap: 6,
 })
 
-const MODAL_OVERLAY = {
-    position: 'fixed', inset: 0, zIndex: 1000,
-    background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-}
-const MODAL_BOX = {
-    background: '#181A20', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
-    padding: 24, minWidth: 420, maxWidth: 540, maxHeight: '80vh', overflowY: 'auto',
-}
 const INPUT_STYLE = {
     width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
@@ -214,11 +196,21 @@ function PositiveKeywordsTab({ selectedClientId, showToast, filters, searchParam
     const [matchFilter, setMatchFilter] = useState('')
     const [includeRemoved, setIncludeRemoved] = useState(false)
 
-    useEffect(() => { setPage(1) }, [selectedClientId, campaignId, filters.campaignType, filters.status, filters.dateFrom, filters.dateTo, matchFilter, includeRemoved])
+    // Reset page and fetch data in a single effect to avoid double requests
+    const filterKey = `${selectedClientId}-${campaignId}-${filters.campaignType}-${filters.status}-${filters.dateFrom}-${filters.dateTo}-${matchFilter}-${includeRemoved}`
+    const prevFilterKey = useRef(filterKey)
 
     useEffect(() => {
-        if (selectedClientId) loadData()
-    }, [page, matchFilter, sortBy, sortOrder, selectedClientId, campaignId, filters.campaignType, filters.status, filters.dateFrom, filters.dateTo, includeRemoved])
+        if (!selectedClientId) return
+        if (prevFilterKey.current !== filterKey) {
+            prevFilterKey.current = filterKey
+            setPage(1)
+            // loadData will fire on the next render when page is 1
+            return
+        }
+        loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page, sortBy, sortOrder, filterKey])
 
     async function loadData() {
         setLoading(true); setError(null)

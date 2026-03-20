@@ -66,3 +66,35 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Frontend: `Agent.jsx` — chat interface with quick report buttons, SSE stream parsing, markdown rendering.
 - Quick report types: weekly, campaigns, keywords, search_terms, budget, alerts, freeform.
 
+## Daily Audit Panel
+- `DailyAudit.jsx` — centralny widok codziennego workflow z health score, alerts, top movers, budget pacing.
+- Agreguje dane z istniejących endpointów (KPIs, alerts, recommendations, budget).
+- Sidebar nav: "Codzienny audyt" w grupie WORKFLOW.
+
+## Change History Monitor (ActionHistory)
+- Model: `ChangeEvent` — tracking zmian w koncie Google Ads via Change Event API.
+- Router: `actions.py` — `/action-history` endpoint.
+- Frontend: `ActionHistory.jsx` — timeline view z filtrami (typ zmiany, zakres dat, kampania).
+- Źródła: lokalne action_log + Google Ads Change Events.
+
+## Bulk Search Term Actions
+- SearchTerms page: multi-select + bulk add negative / bulk exclude.
+- Backend: batch endpoint for negative keyword operations.
+- Frontend: checkbox selection, bulk action toolbar w `SearchTerms.jsx`.
+
+## Quick Optimization Scripts (Bulk-Apply)
+- `POST /recommendations/bulk-apply` — apply batch of recommendations by quick-script category.
+- Categories: `clean_waste`, `pause_burning`, `boost_winners`, `emergency_brake`, `add_negatives`.
+- Dry-run mode supported. Frontend integration in Recommendations page.
+
+## Reports System (Monthly Deep Dive)
+- Backend: `reports.py` router with `/reports/generate` SSE endpoint.
+- SSE streaming via `backend/app/utils/sse.py` helper.
+- Frontend: `Reports.jsx` — report generation with real-time streaming, markdown rendering.
+- Report types: monthly performance deep dive.
+
+## Negative Keyword Lists
+- Full CRUD for negative keyword lists (create, read, update, delete).
+- Backend: endpoints in `keywords_ads.py` for list management.
+- Frontend: management UI in `Keywords.jsx` with modal for list operations.
+

@@ -3,16 +3,19 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 
 from app.database import get_db
+from app.demo_guard import ensure_demo_write_allowed
 from app.models import SearchTerm, AdGroup, Campaign
 from app.models.negative_keyword import NegativeKeyword
 from app.models.keyword import Keyword
+from app.models.action_log import ActionLog
 from app.schemas import SearchTermResponse, PaginatedResponse
 from app.services.search_terms_service import SearchTermsService
-from app.utils.formatters import micros_to_currency
+from app.utils.formatters import micros_to_currency, currency_to_micros
 
 router = APIRouter(prefix="/search-terms", tags=["Search Terms"])
 
@@ -48,8 +51,6 @@ def list_search_terms(
     db: Session = Depends(get_db),
 ):
     """List search terms with filtering, sorting, and pagination."""
-    from sqlalchemy import or_
-
     query = db.query(SearchTerm)
 
     # Join through ad_group -> campaign for Search terms, OR direct campaign link for PMax
@@ -84,7 +85,6 @@ def list_search_terms(
         query = query.filter(SearchTerm.clicks >= min_clicks)
     if min_cost is not None:
         # Convert USD to micros for DB comparison
-        from app.utils.formatters import currency_to_micros
         query = query.filter(SearchTerm.cost_micros >= currency_to_micros(min_cost))
     if min_impressions is not None:
         query = query.filter(SearchTerm.impressions >= min_impressions)
@@ -211,7 +211,7 @@ def bulk_add_negative(
     db: Session = Depends(get_db),
 ):
     """Add selected search terms as negative keywords (campaign- or ad-group-level)."""
-    from sqlalchemy import or_
+    ensure_demo_write_allowed(db, body.client_id)
 
     if not body.search_term_ids:
         raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
@@ -274,6 +274,20 @@ def bulk_add_negative(
             items.append(term.text)
 
         db.commit()
+
+        # Log bulk action
+        if added > 0:
+            action = ActionLog(
+                client_id=body.client_id,
+                action_type="BULK_ADD_NEGATIVE",
+                entity_type="negative_keyword",
+                entity_id=str(added),
+                status="APPLIED",
+                execution_mode="LOCAL",
+                new_value_json=f'{{"texts": {items}, "level": "{body.level}", "match_type": "{body.match_type}"}}',
+            )
+            db.add(action)
+            db.commit()
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")
@@ -291,6 +305,8 @@ def bulk_add_keyword(
     db: Session = Depends(get_db),
 ):
     """Promote selected search terms as new positive keywords in a target ad group."""
+    ensure_demo_write_allowed(db, body.client_id)
+
     if not body.search_term_ids:
         raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
 
@@ -337,6 +353,20 @@ def bulk_add_keyword(
             items.append(term.text)
 
         db.commit()
+
+        # Log bulk action
+        if added > 0:
+            action = ActionLog(
+                client_id=body.client_id,
+                action_type="BULK_ADD_KEYWORD",
+                entity_type="keyword",
+                entity_id=str(body.ad_group_id),
+                status="APPLIED",
+                execution_mode="LOCAL",
+                new_value_json=f'{{"texts": {items}, "ad_group_id": {body.ad_group_id}, "match_type": "{body.match_type}"}}',
+            )
+            db.add(action)
+            db.commit()
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")

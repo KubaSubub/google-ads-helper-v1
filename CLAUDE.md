@@ -16,7 +16,7 @@ If there is any mismatch, follow `AGENTS.md`.
 - Keep Google Ads money values in micros at storage level.
 - Route every Google Ads write through action validation/circuit breaker.
 - Store credentials only via Windows Credential Manager (`keyring`).
-- Do not auto-commit or auto-push.
+- Do not auto-commit or auto-push mid-task. Use `/done` to close a completed task (commit + docs-sync + push with PM gate).
 - Never run destructive git commands without explicit request (`git reset --hard`, `git checkout --`, `git clean -fd`).
 
 ## 3) Runtime Commands
@@ -63,9 +63,10 @@ Read in this order when context is needed:
 3. `DECISIONS.md`
 4. `docs/API_ENDPOINTS.md`
 5. `docs/COMPLETED_FEATURES.md`
-6. `Technical_Spec.md`
-7. `google_ads_optimization_playbook.md`
-8. `SEARCH_CAMPAIGN_WORKFLOW.md`
+6. `docs/SOURCE_OF_TRUTH.md`
+7. `docs/FEATURE_SET.md`
+8. `google_ads_optimization_playbook.md`
+9. `SEARCH_CAMPAIGN_WORKFLOW.md`
 
 ## 7) Claude Slash Commands
 
@@ -82,28 +83,32 @@ Project command prompts are stored in `.claude/commands/`:
 - `audit.md`
 - `progress.md`
 - `commit.md`
+- `docs-sync.md` — synchronizacja dokumentacji z kodem
+- `pm-check.md` — PM review (kod jako zrodlo prawdy)
+- `done.md` — zamkniecie zadania: testy → commit → docs-sync → push (z PM gate)
 
 Use them as workflow helpers, but keep behavior aligned with `AGENTS.md`.
 
-## 8) Recent Delivered Snapshot (2026-03-16)
+## 7a) Automation Pipeline
 
-- AI Agent feature delivered:
-  - backend router `agent.py` (`/api/v1/agent/status`, `/api/v1/agent/chat`)
-  - service orchestration in `agent_service.py` (data gather -> prompt -> Claude CLI stream)
-  - frontend page `Agent.jsx` with SSE streaming and markdown rendering
-  - navigation + route wiring for `/agent`
-- AI Agent stabilization in current workspace:
-  - single-flight lock flow hardened in stream path
-  - 7d vs 7d KPI comparison fixed
-  - campaign summary/detail aggregation switched from per-campaign queries to grouped batch queries
-  - Claude subprocess verbosity/noise reduced and error output simplified
-  - frontend SSE handshake now dispatches `auth:unauthorized` on 401
-- Test context:
-  - `backend/tests/test_agent.py` added for agent API/service behavior
-  - broader test expansion already committed (`1c555ea`, +81 tests)
-  - pre-existing regression test repairs committed (`60b24cb`)
-- Current source-of-truth pointers for these changes:
-  - `PROGRESS.md` (delivery + validation timeline)
-  - `DECISIONS.md` (ADR-016, ADR-017)
-  - `docs/API_ENDPOINTS.md` (endpoint index)
-  - `Technical_Spec.md` (API addendum 2026-03-16)
+Po zakonczeniu zadania uzyj `/done`. Pipeline:
+```
+/done
+  ├─ pytest (fail = stop)
+  ├─ git commit
+  ├─ /docs-sync (aktualizacja PROGRESS.md, API_ENDPOINTS.md)
+  ├─ git commit docs
+  └─ git push
+       └─ pre-push hook: /pm-check (blokuje jesli ocena < 7/10)
+```
+
+Hooki automatyczne:
+- `SessionStart` — wyswietla status projektu (ostatnie commity, TODO count, niezcommitowane pliki)
+- `Stop` — wyswietla podsumowanie sesji (zmienione pliki, przypomnienie o /done)
+- `post-commit` (git) — odpala /docs-sync w tle
+- `pre-push` (git) — odpala /pm-check, blokuje push jesli < 7/10
+
+## 8) Current State
+
+See `PROGRESS.md` for up-to-date delivery status and open work.
+See `docs/DEVELOPMENT_ROADMAP_OPTIMIZATION.md` for v1.1+ roadmap with implementation status.

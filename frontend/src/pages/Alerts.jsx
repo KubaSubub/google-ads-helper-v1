@@ -77,6 +77,8 @@ function AlertsTab({ selectedClientId, setAlertCount, showToast }) {
             const list = data.alerts || data || [];
             setAlerts(list);
             if (tab === 'unresolved') setAlertCount(list.length);
+        } catch (err) {
+            showToast?.('Błąd ładowania alertów: ' + (err.message || 'nieznany błąd'), 'error');
         } finally {
             setLoading(false);
         }

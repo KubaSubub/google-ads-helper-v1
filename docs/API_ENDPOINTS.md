@@ -69,9 +69,21 @@ Base API URL: `/api/v1`
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
 ## Keywords and Ads
-- `GET /keywords/?client_id=X&campaign_id=&ad_group_id=&status=&match_type=&campaign_type=&campaign_status=&include_removed=false&date_from=&date_to=&page=`
-- `GET /negative-keywords/?client_id=X&campaign_id=&ad_group_id=&status=&negative_scope=&include_removed=false&page=`
-- `GET /ads/?client_id=X&campaign_type=&status=&ad_type=&date_from=&date_to=`
+- `GET /keywords/?client_id=X&campaign_id=&ad_group_id=&status=&match_type=&campaign_type=&campaign_status=&include_removed=false&date_from=&date_to=&search=&sort_by=cost&sort_order=desc&page=&page_size=50`
+- `GET /negative-keywords/?client_id=X&campaign_id=&ad_group_id=&status=&negative_scope=&include_removed=false&search=&page=&page_size=50`
+- `POST /negative-keywords/` — create one or more negative keywords (body: `NegativeKeywordCreate`; `allow_demo_write` enforced)
+- `DELETE /negative-keywords/{negative_keyword_id}` — soft-delete (sets status to REMOVED; `allow_demo_write` enforced)
+- `GET /ad-groups/?client_id=X&campaign_id=` — lightweight ad group list for dropdowns
+- `GET /ads/?client_id=X&campaign_id=&ad_group_id=&status=&sort_by=cost&sort_order=desc&page=&page_size=50`
+
+### Negative Keyword Lists
+- `GET /negative-keyword-lists/?client_id=X` — list all negative keyword lists with item counts
+- `POST /negative-keyword-lists/` — create a new list (body: `NegativeKeywordListCreate`)
+- `GET /negative-keyword-lists/{list_id}` — get list detail with all items
+- `DELETE /negative-keyword-lists/{list_id}` — delete list and all its items
+- `POST /negative-keyword-lists/{list_id}/items` — add keywords to a list (body: `NegativeKeywordListAddItems`; duplicates skipped)
+- `DELETE /negative-keyword-lists/{list_id}/items/{item_id}` — remove a single item from a list
+- `POST /negative-keyword-lists/{list_id}/apply` — apply list to campaigns/ad groups (body: `ApplyListRequest`; creates `NegativeKeyword` records; `allow_demo_write` enforced)
 
 ### Keyword response fields
 - `criterion_kind` is always `POSITIVE` on `/keywords/`.
@@ -89,15 +101,21 @@ Base API URL: `/api/v1`
 - `google_criterion_id` is the canonical criterion identifier for synced/debugged negative keyword criteria.
 
 ## Search Terms
-- `GET /search-terms/?client_id=X&campaign_id=&ad_group_id=&search=&sort_by=&sort_order=&page=`
+- `GET /search-terms/?client_id=X&campaign_id=&ad_group_id=&min_clicks=&min_cost=&min_impressions=&campaign_type=&campaign_status=&date_from=&date_to=&search=&sort_by=cost&sort_order=desc&page=&page_size=50`
 - `GET /search-terms/segmented?client_id=X&date_from=&date_to=&campaign_type=&campaign_status=`
 - `GET /search-terms/summary?campaign_id=X&days=30` (note: `campaign_id` is required)
+- `POST /search-terms/bulk-add-negative` — add selected terms as negative keywords (body: `{search_term_ids, level: campaign|ad_group, match_type, client_id}`; `allow_demo_write` enforced)
+- `POST /search-terms/bulk-add-keyword` — promote selected terms as positive keywords to a target ad group (body: `{search_term_ids, ad_group_id, match_type, client_id}`; `allow_demo_write` enforced)
+- `POST /search-terms/bulk-preview` — preview details for selected search terms before bulk action (body: `{search_term_ids, client_id}`)
 
 ## Recommendations
 - `GET /recommendations/?client_id=X&priority=&status=&category=&days=30`
 - `GET /recommendations/summary?client_id=X&days=30`
 - `POST /recommendations/{id}/apply?client_id=X&dry_run=false` (`allow_demo_write=true` required for DEMO)
 - `POST /recommendations/{id}/dismiss?client_id=X` (`allow_demo_write=true` required for DEMO)
+- `POST /recommendations/bulk-apply` — apply batch of recommendations by quick-script category (`allow_demo_write=true` required for DEMO)
+  - Body: `{client_id: int, category: "clean_waste"|"pause_burning"|"boost_winners"|"emergency_brake"|"add_negatives", dry_run: true}`
+  - `dry_run=true` (default): preview matching recommendations; `dry_run=false`: apply via ActionExecutor
 
 ## Actions
 - `[PROD]` `GET /actions/?client_id=X&limit=50&offset=0`
@@ -113,7 +131,8 @@ Base API URL: `/api/v1`
 ## Analytics - Advanced
 - `POST /analytics/correlation`
 - `POST /analytics/compare-periods`
-- `GET /analytics/trends?client_id=X&metrics=clicks,cost_micros&days=30`
+- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&campaign_type=ALL&status=ALL`
+  - allowed metrics: `cost`, `clicks`, `impressions`, `conversions`, `ctr`, `cpc`, `roas`, `cpa`, `cvr`
 - `GET /analytics/health-score?client_id=X`
 - `GET /analytics/campaign-trends?client_id=X&days=7`
 - `GET /analytics/budget-pacing?client_id=X`
@@ -134,6 +153,24 @@ Base API URL: `/api/v1`
 - `GET /analytics/match-type-analysis?client_id=X&days=30`
 - `GET /analytics/landing-pages?client_id=X&days=30`
 - `GET /analytics/wasted-spend?client_id=X&days=30`
+
+## Daily Audit
+- `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
+  - `budget_pacing`: enabled campaigns with daily budget, today's spend, pacing %, budget-limited flag
+  - `anomalies_24h`: unresolved alerts from last 24 hours
+  - `disapproved_ads`: ads with `DISAPPROVED` or `APPROVED_LIMITED` approval status
+  - `budget_capped_performers`: campaigns with budget constraints but below-average CPA
+  - `search_terms_needing_action`: top 50 wasted search terms from last 7 days
+  - `pending_recommendations`: total count + top 5 by priority
+  - `health_summary`: health score + active campaign/keyword counts
+  - `kpi_snapshot`: today vs yesterday spend / clicks / conversions
+
+## Reports
+- `POST /reports/generate?client_id=X` — generate a monthly report (SSE stream); saves to DB
+  - Body: `{report_type: "monthly", year?: int, month?: int}`
+  - SSE events: `progress` (`{pct, label}`), `data_ready` (`{report_id, report_data}`), `delta` (AI narrative chunk), `model`, `usage`, `report_id`, `error`, `done`
+- `GET /reports/?client_id=X&limit=20&offset=0` — list saved reports (newest first)
+- `GET /reports/{report_id}?client_id=X` — get full report (data + AI narrative + token usage)
 
 ## Export
 - `GET /export/search-terms?client_id=X&format=xlsx`

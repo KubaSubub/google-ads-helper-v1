@@ -2,8 +2,10 @@
 
 import os
 
-# Allow HTTP redirect for localhost (desktop app)
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+# Allow HTTP redirect for localhost (desktop app).
+# Only needed when redirect URI is http:// (local development).
+if os.environ.get("OAUTHLIB_INSECURE_TRANSPORT") is None:
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse

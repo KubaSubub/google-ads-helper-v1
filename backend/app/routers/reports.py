@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.report import Report
 from app.services.agent_service import AgentService, MONTHLY_PROMPT, REPORT_DATA_MAP, check_claude_available
+from app.utils.sse import sse_event as _sse_event
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,6 @@ class ReportDetail(BaseModel):
     model_config = {"from_attributes": True}
 
 
-def _sse_event(event: str, data: str) -> str:
-    """Format a Server-Sent Event."""
-    escaped = data.replace("\n", "\\n")
-    return f"event: {event}\ndata: {escaped}\n\n"
-
-
 @router.post("/generate")
 async def generate_report(
     req: ReportGenerateRequest,
@@ -79,12 +74,17 @@ async def generate_report(
     period_label = f"{year}-{month:02d}"
 
     async def event_stream():
-        if _reports_lock.locked():
+        try:
+            acquired = await asyncio.wait_for(_reports_lock.acquire(), timeout=0.0)
+        except (asyncio.TimeoutError, Exception):
+            acquired = False
+
+        if not acquired:
             yield _sse_event("error", "Generowanie raportu jest juz w toku — poczekaj na zakonczenie.")
             yield _sse_event("done", "")
             return
 
-        async with _reports_lock:
+        try:
             # Create report row
             report = Report(
                 client_id=client_id,
@@ -209,6 +209,8 @@ async def generate_report(
                 yield _sse_event("error", f"Blad generowania raportu: {exc}")
 
             yield _sse_event("done", "")
+        finally:
+            _reports_lock.release()
 
     return StreamingResponse(
         event_stream(),
@@ -255,10 +257,11 @@ def list_reports(
 @router.get("/{report_id}")
 def get_report(
     report_id: int,
+    client_id: int = Query(..., description="Client ID"),
     db: Session = Depends(get_db),
 ):
     """Get a specific report with full data."""
-    report = db.query(Report).filter(Report.id == report_id).first()
+    report = db.query(Report).filter(Report.id == report_id, Report.client_id == client_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Raport nie znaleziony")
 

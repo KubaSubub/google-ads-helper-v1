@@ -29,7 +29,7 @@ const TYPE_LABELS = {
 const STATUS_CONFIG = {
     ENABLED:  { dot: '#4ADE80', label: 'Aktywna'     },
     PAUSED:   { dot: '#FBBF24', label: 'Wstrzymana'  },
-    REMOVED:  { dot: '#F87171', label: 'UsuniÄ™ta'    },
+    REMOVED:  { dot: '#F87171', label: 'Usunięta'    },
 }
 
 // â”€â”€â”€ Health Score card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -48,7 +48,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
 
             {loading ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>
-                    Ĺadowanieâ€¦
+                    Ładowanie…
                 </div>
             ) : dataAvailable === false ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -57,7 +57,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
                             Brak danych
                         </div>
                         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.4 }}>
-                            Synchronizuj konto aby zebraÄ‡ dane
+                            Synchronizuj konto aby zebrać dane
                         </div>
                     </div>
                 </div>
@@ -88,7 +88,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                         {(issues || []).length === 0 ? (
                             <div style={{ fontSize: 12, color: '#4ADE80', lineHeight: 1.5 }}>
-                                Wszystko dziaĹ‚a poprawnie
+                                Wszystko działa poprawnie
                             </div>
                         ) : (
                             (issues || []).slice(0, 3).map((issue, i) => (
@@ -116,7 +116,7 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
     const isDown = change < 0
     const display = typeof value === 'number'
         ? value.toLocaleString('pl-PL', { maximumFractionDigits: 2 })
-        : (value ?? 'â€”')
+        : (value ?? '—')
 
     return (
         <div className="v2-card" style={{ padding: '14px 18px' }}>
@@ -147,7 +147,7 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
 // â”€â”€â”€ Sparkline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Sparkline({ data, direction }) {
     if (!data || data.length < 2) {
-        return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>â€”</span>
+        return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>—</span>
     }
     const color = direction === 'up' ? '#4ADE80' : direction === 'down' ? '#F87171' : '#4F8EF7'
     return (
@@ -197,7 +197,7 @@ export default function Dashboard() {
             setLoading(false)
         }
 
-        // Secondary data â€” non-blocking
+        // Secondary data — non-blocking
         const filterParams = {}
         if (filters.campaignType !== 'ALL') filterParams.campaign_type = filters.campaignType
         if (filters.status !== 'ALL') filterParams.status = filters.status
@@ -207,25 +207,34 @@ export default function Dashboard() {
             delete budgetFilterParams.status
         }
         const _catch = (p) => p.catch(err => { console.error('[Dashboard secondary]', err); return null })
-        Promise.all([
+        return Promise.all([
             _catch(getHealthScore(selectedClientId, filterParams)),
             _catch(getCampaignTrends(selectedClientId, days, filterParams)),
             getRecommendations(selectedClientId, { status: 'pending' }).catch(err => { console.error('[Dashboard recs]', err); return { recommendations: [] } }),
             _catch(getBudgetPacing(selectedClientId, budgetFilterParams)),
             _catch(getDeviceBreakdown(selectedClientId, { days, ...filterParams })),
             _catch(getGeoBreakdown(selectedClientId, { days, ...filterParams })),
-        ]).then(([hs, ct, recs, bp, dev, geo]) => {
-            setHealthScore(hs)
-            setCampaignTrends(ct)
-            setRecs(recs?.recommendations || recs?.items || [])
-            setBudgetPacing(bp)
-            setDeviceData(dev)
-            setGeoData(geo)
-            setHealthLoading(false)
-        })
+        ])
     }, [selectedClientId, days, filters.campaignType, filters.status])
 
-    useEffect(() => { loadData() }, [loadData])
+    useEffect(() => {
+        let cancelled = false
+        const promise = loadData()
+        if (promise) {
+            promise.then(results => {
+                if (cancelled || !results) return
+                const [hs, ct, recs, bp, dev, geo] = results
+                setHealthScore(hs)
+                setCampaignTrends(ct)
+                setRecs(recs?.recommendations || recs?.items || [])
+                setBudgetPacing(bp)
+                setDeviceData(dev)
+                setGeoData(geo)
+                setHealthLoading(false)
+            })
+        }
+        return () => { cancelled = true }
+    }, [loadData])
 
     // In-memory filtering for campaign table
     const filteredCampaigns = useMemo(() => {
@@ -243,7 +252,7 @@ export default function Dashboard() {
     if (!selectedClientId) {
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <EmptyState message="Wybierz klienta w sidebarze, aby zobaczyÄ‡ dane" />
+                <EmptyState message="Wybierz klienta w sidebarze, aby zobaczyć dane" />
             </div>
         )
     }
@@ -267,7 +276,7 @@ export default function Dashboard() {
 
             {error && (
                 <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#F87171' }}>
-                    BĹ‚Ä…d Ĺ‚adowania danych: {error}
+                    Błąd ładowania danych: {error}
                 </div>
             )}
 
@@ -284,7 +293,7 @@ export default function Dashboard() {
                 {/* 4 KPI mini cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                     <MiniKPI
-                        title="KlikniÄ™cia"
+                        title="Kliknięcia"
                         value={current?.clicks}
                         change={change_pct?.clicks}
                         icon={MousePointerClick}
@@ -294,7 +303,7 @@ export default function Dashboard() {
                         title="Koszt"
                         value={current?.cost_usd}
                         change={change_pct?.cost_usd}
-                        suffix=" zĹ‚"
+                        suffix=" zł"
                         icon={DollarSign}
                         iconColor="#7B5CE0"
                     />
@@ -307,10 +316,10 @@ export default function Dashboard() {
                     />
                     <MiniKPI
                         title="ROAS"
-                        tooltip="Return On Ad Spend â€” przychĂłd na kaĹĽdÄ… wydanÄ… zĹ‚otĂłwkÄ™"
+                        tooltip="Return On Ad Spend — przychód na każdą wydaną złotówkę"
                         value={current?.roas}
                         change={change_pct?.roas}
-                        suffix="Ă—"
+                        suffix="×"
                         icon={BarChart3}
                         iconColor="#FBBF24"
                     />
@@ -335,7 +344,7 @@ export default function Dashboard() {
             {budgetPacing?.campaigns?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 8, fontFamily: 'Syne' }}>
-                        Pacing budĹĽetu ({budgetPacing.month})
+                        Pacing budżetu ({budgetPacing.month})
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
                         {budgetPacing.campaigns.map(c => {
@@ -358,7 +367,7 @@ export default function Dashboard() {
                                         <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(progressPct, 100)}%`, transition: 'width 0.3s' }} />
                                     </div>
                                     <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                                        <span>{c.actual_spend_usd?.toFixed(0) ?? 'â€”'} / {c.expected_spend_usd?.toFixed(0) ?? 'â€”'} zĹ‚</span>
+                                        <span>{c.actual_spend_usd?.toFixed(0) ?? '—'} / {c.expected_spend_usd?.toFixed(0) ?? '—'} zł</span>
                                         <span style={{ color }}>{c.pacing_pct}%</span>
                                     </div>
                                 </div>
@@ -375,7 +384,7 @@ export default function Dashboard() {
                     {deviceData?.devices?.length > 0 && (
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 12, fontFamily: 'Syne' }}>
-                                UrzÄ…dzenia
+                                Urządzenia
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {deviceData.devices.map(d => {
@@ -384,14 +393,14 @@ export default function Dashboard() {
                                         <div key={d.device}>
                                             <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
                                                 <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
-                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% klikniÄ™Ä‡</span>
+                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
                                             </div>
                                             <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
                                                 <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
                                             </div>
                                             <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-                                                <span>CTR {d.ctr}% Â· CPC {d.cpc.toFixed(2)} zĹ‚</span>
-                                                <span>ROAS {d.roas}Ă—</span>
+                                                <span>CTR {d.ctr}% Â· CPC {d.cpc.toFixed(2)} zł</span>
+                                                <span>ROAS {d.roas}×</span>
                                             </div>
                                         </div>
                                     )
@@ -409,7 +418,7 @@ export default function Dashboard() {
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
-                                        {['Miasto', 'KlikniÄ™cia', 'Koszt', 'ROAS'].map(h => (
+                                        {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
                                             <th key={h} style={{
                                                 padding: '4px 6px', fontSize: 10, fontWeight: 500,
                                                 color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
@@ -423,8 +432,8 @@ export default function Dashboard() {
                                         <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                             <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? 'â€”'} zĹ‚</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? 'â€”'}Ă—</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? '—'} zł</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? '—'}×</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -447,17 +456,17 @@ export default function Dashboard() {
 
                 {loading ? (
                     <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
-                        Ĺadowanie kampaniiâ€¦
+                        Ładowanie kampanii…
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                    {['Nazwa', 'Status', 'Typ', 'BudĹĽet/dzieĹ„', `Trend (${days}d)`, 'Strategia'].map(h => (
+                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', `Trend (${days}d)`, 'Strategia'].map(h => (
                                         <th key={h} style={{
                                             padding: '10px 16px',
-                                            textAlign: h === 'BudĹĽet/dzieĹ„' ? 'right' : 'left',
+                                            textAlign: h === 'Budżet/dzień' ? 'right' : 'left',
                                             fontSize: 10, fontWeight: 500,
                                             color: 'rgba(255,255,255,0.35)',
                                             textTransform: 'uppercase',
@@ -471,7 +480,7 @@ export default function Dashboard() {
                                 {filteredCampaigns.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
-                                            Brak kampanii dla wybranych filtrĂłw
+                                            Brak kampanii dla wybranych filtrów
                                         </td>
                                     </tr>
                                 ) : filteredCampaigns.map(c => {
@@ -499,7 +508,7 @@ export default function Dashboard() {
                                                 {TYPE_LABELS[c.campaign_type] ?? c.campaign_type}
                                             </td>
                                             <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
-                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zĹ‚` : 'â€”'}
+                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zł` : '—'}
                                             </td>
                                             <td style={{ padding: '11px 16px' }}>
                                                 <div className="flex items-center gap-2">
@@ -508,7 +517,7 @@ export default function Dashboard() {
                                             </td>
                                             <td style={{ padding: '11px 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', maxWidth: 180 }}>
                                                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {c.bidding_strategy ?? 'â€”'}
+                                                    {c.bidding_strategy ?? '—'}
                                                 </span>
                                             </td>
                                         </tr>

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.agent_service import AgentService, check_claude_available
+from app.utils.sse import sse_event as _sse_event
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +44,18 @@ async def agent_chat(
     report_type = req.report_type if req.report_type in VALID_REPORT_TYPES else "freeform"
 
     async def event_stream():
-        # Atomic lock check — both check and acquire in same async context
-        if _generating.locked():
+        acquired = _generating.locked() is False and True
+        try:
+            acquired = await asyncio.wait_for(_generating.acquire(), timeout=0.0)
+        except (asyncio.TimeoutError, Exception):
+            acquired = False
+
+        if not acquired:
             yield _sse_event("error", "Agent jest zajety — poczekaj na zakonczenie poprzedniego raportu.")
             yield _sse_event("done", "")
             return
 
-        async with _generating:
+        try:
             yield _sse_event("status", "Generuje raport z Claude...")
             service = AgentService(db, client_id)
 
@@ -70,6 +76,8 @@ async def agent_chat(
                 yield _sse_event("error", f"Blad generowania raportu: {exc}")
 
             yield _sse_event("done", "")
+        finally:
+            _generating.release()
 
     return StreamingResponse(
         event_stream(),
@@ -82,13 +90,3 @@ async def agent_chat(
     )
 
 
-def _sse_event(event: str, data: str) -> str:
-    """Format a Server-Sent Event."""
-    escaped = data.replace("\n", "\\n")
-    return f"event: {event}\ndata: {escaped}\n\n"
-
-
-async def _error_stream(message: str):
-    """Yield a single error event."""
-    yield _sse_event("error", message)
-    yield _sse_event("done", "")

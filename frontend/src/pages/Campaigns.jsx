@@ -197,27 +197,27 @@ function KpiRow({ kpis, campaignType }) {
     // Core metrics (always shown)
     const coreItems = [
         { label: 'Kliknięcia', key: 'clicks', icon: MousePointerClick, color: '#4F8EF7' },
-        { label: 'Wyświetlenia', key: 'impressions', icon: Eye, color: '#60A5FA' },
+        { label: 'Wyświetlenia', key: 'impressions', icon: Eye, color: '#4F8EF7' },
         { label: 'Koszt', key: 'cost', suffix: ' zł', icon: DollarSign, color: '#7B5CE0' },
         { label: 'Konwersje', key: 'conversions', icon: Target, color: '#4ADE80' },
-        { label: 'Wartość konw.', key: 'conversion_value', suffix: ' zł', icon: Wallet, color: '#34D399' },
+        { label: 'Wartość konw.', key: 'conversion_value', suffix: ' zł', icon: Wallet, color: '#4ADE80' },
         { label: 'CTR', key: 'ctr', suffix: '%', icon: Percent, color: '#FBBF24', tooltip: 'Click-Through Rate' },
-        { label: 'Avg CPC', key: 'avg_cpc', suffix: ' zł', icon: DollarSign, color: '#A78BFA', tooltip: 'Średni koszt kliknięcia' },
-        { label: 'CPA', key: 'cpa', suffix: ' zł', icon: Crosshair, color: '#F472B6', tooltip: 'Koszt za konwersję', invertChange: true },
-        { label: 'CVR', key: 'conversion_rate', suffix: '%', icon: Activity, color: '#2DD4BF', tooltip: 'Conversion Rate' },
-        { label: 'ROAS', key: 'roas', suffix: '×', icon: BarChart3, color: '#F87171', tooltip: 'Return On Ad Spend' },
+        { label: 'Avg CPC', key: 'avg_cpc', suffix: ' zł', icon: DollarSign, color: '#7B5CE0', tooltip: 'Średni koszt kliknięcia' },
+        { label: 'CPA', key: 'cpa', suffix: ' zł', icon: Crosshair, color: '#F87171', tooltip: 'Koszt za konwersję', invertChange: true },
+        { label: 'CVR', key: 'conversion_rate', suffix: '%', icon: Activity, color: '#4ADE80', tooltip: 'Conversion Rate' },
+        { label: 'ROAS', key: 'roas', suffix: '×', icon: BarChart3, color: '#FBBF24', tooltip: 'Return On Ad Spend' },
     ]
 
     // IS metrics (SEARCH only)
     const isItems = campaignType === 'SEARCH' ? [
         { label: 'Impr. Share', key: 'search_impression_share', isPct: true, icon: ArrowUpRight, color: '#4F8EF7', tooltip: 'Udział w wyświetleniach' },
-        { label: 'Top IS', key: 'search_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#818CF8', tooltip: 'Wyśw. na górze strony' },
+        { label: 'Top IS', key: 'search_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#7B5CE0', tooltip: 'Wyśw. na górze strony' },
         { label: 'Abs Top IS', key: 'search_abs_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#7B5CE0', tooltip: 'Wyśw. na samej górze' },
         { label: 'Budget Lost IS', key: 'search_budget_lost_is', isPct: true, icon: Wallet, color: '#F87171', tooltip: 'Utracone — budżet', invertChange: true },
         { label: 'Rank Lost IS', key: 'search_rank_lost_is', isPct: true, icon: TrendingDown, color: '#FBBF24', tooltip: 'Utracone — ranking', invertChange: true },
-        { label: 'Click Share', key: 'search_click_share', isPct: true, icon: MousePointerClick, color: '#2DD4BF', tooltip: 'Udział w kliknięciach' },
-        { label: 'Abs Top %', key: 'abs_top_impression_pct', isPct: true, icon: ArrowUpRight, color: '#60A5FA', tooltip: '% wyśw. na 1. pozycji' },
-        { label: 'Top Impr %', key: 'top_impression_pct', isPct: true, icon: ArrowUpRight, color: '#A78BFA', tooltip: '% wyśw. na górze' },
+        { label: 'Click Share', key: 'search_click_share', isPct: true, icon: MousePointerClick, color: '#4F8EF7', tooltip: 'Udział w kliknięciach' },
+        { label: 'Abs Top %', key: 'abs_top_impression_pct', isPct: true, icon: ArrowUpRight, color: '#4F8EF7', tooltip: '% wyśw. na 1. pozycji' },
+        { label: 'Top Impr %', key: 'top_impression_pct', isPct: true, icon: ArrowUpRight, color: '#7B5CE0', tooltip: '% wyśw. na górze' },
     ] : []
 
     const allItems = [...coreItems, ...isItems]
@@ -840,7 +840,7 @@ export default function Campaigns() {
                                             Protection {selected.protection_level || 'HIGH'}
                                         </span>
                                         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
-                                            Confidence {selected.role_confidence != null ? `${Math.round(selected.role_confidence * 100)}%` : '�'}
+                                            Confidence {selected.role_confidence != null ? `${Math.round(selected.role_confidence * 100)}%` : '�'}
                                         </span>
                                     </div>
                                 </div>

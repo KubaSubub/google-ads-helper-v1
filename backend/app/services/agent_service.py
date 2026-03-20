@@ -535,18 +535,27 @@ class AgentService:
             Campaign.status == "ENABLED",
         ).all()
 
+        # Batch query: sum cost_micros per campaign for the month
+        campaign_ids = [c.id for c in campaigns[:30]]
+        spend_rows = (
+            self.db.query(
+                MetricDaily.campaign_id,
+                func.sum(MetricDaily.cost_micros).label("total_cost"),
+            )
+            .filter(
+                MetricDaily.campaign_id.in_(campaign_ids),
+                MetricDaily.date >= report_month,
+                MetricDaily.date <= month_end,
+            )
+            .group_by(MetricDaily.campaign_id)
+            .all()
+        ) if campaign_ids else []
+        spend_map = {row.campaign_id: row.total_cost or 0 for row in spend_rows}
+
         results = []
         for camp in campaigns[:30]:
             budget_monthly = micros_to_currency(camp.budget_micros) * days_in_month
-            actual_micros = (
-                self.db.query(func.sum(MetricDaily.cost_micros))
-                .filter(
-                    MetricDaily.campaign_id == camp.id,
-                    MetricDaily.date >= report_month,
-                    MetricDaily.date <= month_end,
-                )
-                .scalar()
-            ) or 0
+            actual_micros = spend_map.get(camp.id, 0)
             actual = micros_to_currency(actual_micros)
             expected = budget_monthly * pacing_ratio
 

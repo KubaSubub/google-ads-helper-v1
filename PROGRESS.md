@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-16
+# Updated: 2026-03-20
 
 ## Status
 - Backend: human-centered recommendations milestone completed
@@ -251,6 +251,41 @@
   - latest seeder extension (curated waste patterns/search terms) is committed in code and requires backend process restart/reload to be reflected in live response fields.
 - Environment limitation in this session:
   - Playwright MCP/CLI browser automation failed with process spawn permissions (`EPERM`), so full click-through UI regression could not be executed here.
+
+## Daily Audit + Bulk Search Term Actions (2026-03-16 — commit bb2111c)
+- Added `GET /api/v1/daily-audit/` — single aggregated morning PPC audit view:
+  - budget pacing per enabled campaign (today vs daily budget)
+  - unresolved anomaly alerts from last 24 h
+  - disapproved / approved-limited ads
+  - budget-capped campaigns with below-average CPA
+  - top 50 wasted search terms from last 7 days (≥3 clicks or >$5 spend, 0 conversions)
+  - pending recommendations summary (total + top 5 by priority)
+  - health score + active campaign/keyword counts
+  - today vs yesterday KPI snapshot (spend/clicks/conversions)
+- Added bulk search term actions in `backend/app/routers/search_terms.py`:
+  - `POST /search-terms/bulk-add-negative` — add selected terms as negative keywords (campaign or ad-group level)
+  - `POST /search-terms/bulk-add-keyword` — promote selected terms as positive keywords to a target ad group
+  - `POST /search-terms/bulk-preview` — return enriched preview data for selected terms before a bulk action
+- Bulk actions log to `action_log` (`BULK_ADD_NEGATIVE`, `BULK_ADD_KEYWORD`) and enforce demo write guard.
+- Added frontend `Daily Audit` page wired to `/daily-audit`.
+
+## Negative Keyword Lists + Reports System (2026-03-16 — commit 5482626)
+- Added negative keyword list management in `backend/app/routers/keywords_ads.py`:
+  - `GET/POST /negative-keyword-lists/` — list and create lists
+  - `GET/DELETE /negative-keyword-lists/{list_id}` — detail view and delete
+  - `POST /negative-keyword-lists/{list_id}/items` — add keywords (duplicates skipped)
+  - `DELETE /negative-keyword-lists/{list_id}/items/{item_id}` — remove single item
+  - `POST /negative-keyword-lists/{list_id}/apply` — bulk-apply list items to campaigns/ad groups as `NegativeKeyword` records
+- Added positive/negative keyword CRUD:
+  - `POST /negative-keywords/` — create one or more negative keywords
+  - `DELETE /negative-keywords/{negative_keyword_id}` — soft-delete
+- Added lightweight ad group lookup endpoint: `GET /ad-groups/?client_id=X&campaign_id=`
+- Added reports system in `backend/app/routers/reports.py` backed by `Report` model:
+  - `POST /reports/generate?client_id=X` — SSE stream; phases: data gather per section → AI narrative via Claude CLI → persist to DB
+  - `GET /reports/?client_id=X` — list saved reports (newest first)
+  - `GET /reports/{report_id}?client_id=X` — full report detail (data + AI narrative + token/cost metadata)
+- `AgentService` extended with `MONTHLY_PROMPT`, `REPORT_DATA_MAP`, `_gather_section()`, and `pre_gathered_data` support in `generate_report()`.
+- Frontend `Keywords` page rebuilt with negative keyword list UI.
 
 ## AI Agent (Raport AI) (2026-03-16)
 - Added protected backend router `backend/app/routers/agent.py` with:
