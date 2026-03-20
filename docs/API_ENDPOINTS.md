@@ -66,6 +66,7 @@ Base API URL: `/api/v1`
 ## Campaigns
 - `GET /campaigns/?client_id=X&page=1&page_size=50&campaign_type=&status=`
 - `GET /campaigns/{id}`
+- `PATCH /campaigns/{id}` -> patch campaign role override / reset (`allow_demo_write=true` required for DEMO)
 - `GET /campaigns/{id}/kpis?days=30`
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
@@ -154,6 +155,10 @@ Base API URL: `/api/v1`
 - `GET /analytics/match-type-analysis?client_id=X&days=30`
 - `GET /analytics/landing-pages?client_id=X&days=30`
 - `GET /analytics/wasted-spend?client_id=X&days=30`
+- `GET /analytics/search-term-trends?client_id=X&days=30&min_clicks=5` — search term trend analysis: rising, declining, and new terms (B2)
+- `GET /analytics/close-variants?client_id=X&days=30` — close variant analysis: search terms vs exact keywords (B3)
+- `GET /analytics/conversion-health?client_id=X&days=30` — conversion tracking health audit per campaign (A3)
+- `GET /analytics/keyword-expansion?client_id=X&days=30&min_clicks=3` — keyword expansion suggestions from high-performing search terms (G2)
 
 ## Daily Audit
 - `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
@@ -167,8 +172,8 @@ Base API URL: `/api/v1`
   - `kpi_snapshot`: today vs yesterday spend / clicks / conversions
 
 ## Reports
-- `POST /reports/generate?client_id=X` — generate a monthly report (SSE stream); saves to DB
-  - Body: `{report_type: "monthly", year?: int, month?: int}`
+- `POST /reports/generate?client_id=X` — generate a report (SSE stream); saves to DB
+  - Body: `{report_type: "monthly"|"weekly"|"health", year?: int, month?: int}`
   - SSE events: `progress` (`{pct, label}`), `data_ready` (`{report_id, report_data}`), `delta` (AI narrative chunk), `model`, `usage`, `report_id`, `error`, `done`
 - `GET /reports/?client_id=X&limit=20&offset=0` — list saved reports (newest first)
 - `GET /reports/{report_id}?client_id=X` — get full report (data + AI narrative + token usage)

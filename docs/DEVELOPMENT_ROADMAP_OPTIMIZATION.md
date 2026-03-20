@@ -48,7 +48,8 @@ Zamiast klikania po 5 stronach, specjalista widzi od razu:
 
 **Nakład:** Średni — nowy sync + model + UI widok.
 
-### A3. ❌ Conversion Tracking Health Check
+### A3. ✅ Conversion Tracking Health Check
+> **Wdrożone:** `GET /analytics/conversion-health?client_id=X&days=30` — per-campaign conversion tracking audit (conversion rate, zero-conversion campaigns, tracking gaps).
 **Co:** Automatyczna weryfikacja stanu śledzenia konwersji:
 - Czy tagi konwersji są aktywne (status per conversion action)
 - Czy enhanced conversions jest włączony
@@ -78,7 +79,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — backend `apply_action` już obsługuje ADD_NEGATIVE i ADD_KEYWORD pojedynczo, trzeba bulk + UI.
 
-### B2. ❌ Search Terms Trend Analysis
+### B2. ✅ Search Terms Trend Analysis
+> **Wdrożone:** `GET /analytics/search-term-trends?client_id=X&days=30&min_clicks=5` — analiza trendów search terms: rising, declining, new terms z porównaniem okresów.
 **Co:** Porównanie search terms między okresami:
 - "Nowe search terms, których nie było tydzień temu"
 - "Search terms, które zaczęły kosztować więcej"
@@ -89,7 +91,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — wymaga przechowywania historii search terms (model SearchTermDaily lub timestamped snapshots).
 
-### B3. ❌ Close Variant Analysis
+### B3. ✅ Close Variant Analysis
+> **Wdrożone:** `GET /analytics/close-variants?client_id=X&days=30` — analiza close variants: mapowanie search terms do exact keywords z distance scoring.
 **Co:** Wykrywanie, gdy exact match keywords łapią search terms zbyt odległe od oryginalnego keyword:
 - Mapowanie: keyword → jakie search terms matchuje
 - Scoring odległości (Levenshtein / semantic similarity)
@@ -177,8 +180,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## E. GOTOWE RAPORTY (one-click reports)
 
-### E1. 🟡 Weekly Performance Report
-> **Częściowo:** Framework raportów istnieje (`reports.py` + SSE streaming + AI narrative via Claude). Monthly report DONE. Weekly template do dodania.
+### E1. ✅ Weekly Performance Report
+> **Wdrożone:** `POST /reports/generate` z `report_type: "weekly"` — raport tygodniowy (7-dniowe okno) z SSE streaming + AI narrative via Claude CLI.
 **Co:** Automatycznie generowany raport tygodniowy w formacie gotowym do wysłania klientowi:
 - KPI vs target (CPA, ROAS, spend, conversions)
 - Top 5 zmian w performance (co wzrosło/spadło)
@@ -204,8 +207,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — podobnie jak E1, plus formatowanie.
 
-### E3. 🟡 Account Health Report (Audyt)
-> **Częściowo:** Health score obliczany w Daily Audit (`health_summary`). Brakuje: kompleksowy scoring 0-100, breakdown per kategoria, benchmarki branżowe.
+### E3. ✅ Account Health Report (Audyt)
+> **Wdrożone:** `POST /reports/generate` z `report_type: "health"` — kompleksowy audyt konta z conversion health, quality scores, account structure, SSE streaming + AI narrative.
 **Co:** Kompleksowy audyt konta z scoringiem:
 - Struktura konta (score 0-100)
 - Keyword coverage & match type balance
@@ -273,7 +276,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Duży — nowy sync + model + trending UI.
 
-### G2. ❌ Keyword Expansion Suggestions
+### G2. ✅ Keyword Expansion Suggestions
+> **Wdrożone:** `GET /analytics/keyword-expansion?client_id=X&days=30&min_clicks=3` — sugestie nowych keywords na podstawie konwertujących search terms, gap analysis, deduplication.
 **Co:**
 - Na podstawie converting search terms → sugestie nowych keyword do dodania
 - Keyword grouping (clustering) — propozycja nowych ad groups
@@ -351,7 +355,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | 1 | **A1** Daily Audit Panel | Średni | 🔴 Krytyczny | ✅ DONE |
 | 2 | **B1** Bulk Actions na Search Terms | Średni | 🔴 Krytyczny | ✅ DONE |
 | 3 | **F2** Quick Optimization Scripts | Średni | 🔴 Krytyczny | ✅ DONE |
-| 4 | **E1** Weekly Performance Report | Średni | 🟠 Wysoki | 🟡 PARTIAL |
+| 4 | **E1** Weekly Performance Report | Średni | 🟠 Wysoki | ✅ DONE |
 
 ### Fala 2: "Full Campaign Control"
 | # | Feature | Nakład | Impact | Status |
@@ -359,17 +363,17 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | 5 | **A2** Change History Monitor | Średni | 🟠 Wysoki | ✅ DONE |
 | 6 | **D1** PMax Channel Breakdown | Średni | 🟠 Wysoki | 🟡 PARTIAL |
 | 7 | **D3** PMax vs Search Cannibalization | Średni | 🟠 Wysoki | ❌ |
-| 8 | **B3** Close Variant Analysis | Średni | 🟠 Wysoki | ❌ |
-| 9 | **G2** Keyword Expansion Suggestions | Średni | 🟠 Wysoki | ❌ |
+| 8 | **B3** Close Variant Analysis | Średni | 🟠 Wysoki | ✅ DONE |
+| 9 | **G2** Keyword Expansion Suggestions | Średni | 🟠 Wysoki | ✅ DONE |
 
 ### Fala 3: "Deep Analysis"
 | # | Feature | Nakład | Impact | Status |
 |---|---------|--------|--------|--------|
-| 10 | **A3** Conversion Tracking Health | Średni | 🟠 Wysoki | ❌ |
-| 11 | **E3** Account Health Report | Duży | 🟠 Wysoki | 🟡 PARTIAL |
+| 10 | **A3** Conversion Tracking Health | Średni | 🟠 Wysoki | ✅ DONE |
+| 11 | **E3** Account Health Report | Duży | 🟠 Wysoki | ✅ DONE |
 | 12 | **G1** Auction Insights | Duży | 🟡 Średni | ❌ |
 | 13 | **C1** DSA Targets Analysis | Duży | 🟡 Średni | ❌ |
-| 14 | **B2** Search Terms Trend Analysis | Średni | 🟡 Średni | ❌ |
+| 14 | **B2** Search Terms Trend Analysis | Średni | 🟡 Średni | ✅ DONE |
 
 ### Fala 4: "Automation & Scale"
 | # | Feature | Nakład | Impact | Status |
@@ -395,7 +399,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
-**Stan na 2026-03-20: 6 DONE, 4 PARTIAL, 16 NOT DONE (z 26 feature'ów)**
+**Stan na 2026-03-20: 10 DONE, 2 PARTIAL, 14 NOT DONE (z 26 feature'ów)**
 
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast
@@ -418,12 +422,10 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 ### ❌ Kluczowe luki (pozostałe):
 1. **Brak DSA support** — zero funkcji dla dynamicznych reklam (C1-C3)
 2. **PMax ograniczone** — brak pełnego channel breakdown (D1 partial) i asset analysis (D2)
-3. **Brak conversion tracking audit** — optymalizujemy potencjalnie na złych danych (A3)
-4. **Brak schedulingu** — sync manualny, alerty nie przychodzą proaktywnie (F1)
-5. **Brak auction insights** — nie widać konkurencji (G1)
-6. **Brak ad extensions audit** — rozszerzenia reklam to łatwy win, a nie są monitorowane (G5)
-7. **Brak automated rules engine** — brak automatyzacji beyond scripts (F3)
-8. **Weekly report** — framework istnieje, ale wymaga dokończenia (E1 partial)
+3. **Brak schedulingu** — sync manualny, alerty nie przychodzą proaktywnie (F1)
+4. **Brak auction insights** — nie widać konkurencji (G1)
+5. **Brak ad extensions audit** — rozszerzenia reklam to łatwy win, a nie są monitorowane (G5)
+6. **Brak automated rules engine** — brak automatyzacji beyond scripts (F3)
 
 ---
 

@@ -373,3 +373,18 @@
 - Backend: 275 tests passed (`pytest --tb=short -q`)
 - Playwright E2E: 19 smoke tests (all pages render, no JS errors, Polish encoding verified)
 
+## Roadmap Features — 6 New Endpoints + Reports Expansion (2026-03-20)
+- Implemented 6 roadmap features as new analytics endpoints and report types:
+  - **E1 Weekly Report** — `POST /reports/generate` now supports `report_type: "weekly"` (7-day window)
+  - **E3 Account Health Report** — `POST /reports/generate` now supports `report_type: "health"` (30-day audit with conversion health, quality scores, account structure)
+  - **B2 Search Terms Trend Analysis** — `GET /analytics/search-term-trends?client_id=X&days=30&min_clicks=5` (rising, declining, new terms)
+  - **B3 Close Variant Analysis** — `GET /analytics/close-variants?client_id=X&days=30` (search terms vs exact keywords distance scoring)
+  - **A3 Conversion Tracking Health** — `GET /analytics/conversion-health?client_id=X&days=30` (per-campaign conversion audit)
+  - **G2 Keyword Expansion** — `GET /analytics/keyword-expansion?client_id=X&days=30&min_clicks=3` (high-performing search terms as keyword suggestions)
+- Added 18 new tests: 15 analytics endpoint tests + 3 report type tests
+- Backend test count: 293 tests total
+
+## Validation (roadmap features 2026-03-20)
+- Backend: 293 tests passed
+- Roadmap status updated: 10 DONE, 2 PARTIAL, 14 NOT DONE (was 6/4/16)
+
