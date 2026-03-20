@@ -63,3 +63,6 @@ backend_backup/
 
 # Local automation artifacts
 output/
+
+# Test artifacts
+frontend/test-results/

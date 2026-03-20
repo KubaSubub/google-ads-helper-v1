@@ -29,8 +29,7 @@ def test_kpis_with_campaigns(db):
     """KPIs should aggregate across campaigns."""
     client = _create_client(db)
 
-    # Note: analytics_service currently uses placeholder values (TODO in service)
-    # so we mainly test structure and that it doesn't crash
+    # Test structure and aggregation logic
     for i in range(3):
         db.add(Campaign(
             client_id=client.id,
