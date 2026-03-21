@@ -32,7 +32,7 @@ Base API URL: `/api/v1`
 - `GET /sync/debug/keywords?client_id=X&search=term&search=term2&include_removed=true&limit=50` -> helper debug comparing keyword_view API rows with local positive/negative SQLite rows
 - `GET /sync/debug/keyword-source-of-truth?client_id=X&criterion_id=Y` -> authoritative debug for one criterion across Google Ads `keyword_view`, `ad_group_criterion`, local SQLite, and request context
 - `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase (`allow_demo_write=true` required for DEMO)
-  - Phase D sync phases: `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
+  - Available phases (22 total): `campaigns`, `impression_share`, `ad_groups`, `keywords`, `negative_keywords`, `keyword_daily`, `daily_metrics`, `device_metrics`, `geo_metrics`, `search_terms`, `pmax_terms`, `change_events`, `conversion_actions`, `age_metrics`, `gender_metrics`, `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
 
 ### Keyword source-of-truth debug
 - Returns Google Ads request context: `customer_id_used`, `login_customer_id`, masked OAuth/developer token metadata, and `request_id` values from Google Ads API responses.

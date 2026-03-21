@@ -5,7 +5,7 @@
 - Backend: 385 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke tests)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- GAP Analysis: Phase A (8 rules, 6 endpoints) + Phase B+C (4 rules, 6 endpoints, ConversionAction model, demographics) + Phase D (4 rules, 7 endpoints, 6 new models, PMax/audiences/extensions)
+- GAP Analysis: Phase A (8 rules, 6 endpoints) + Phase B+C (4 rules, 6 endpoints, ConversionAction model, demographics) + Phase D (4 rules, 6 endpoints, 6 new models, PMax/audiences/extensions)
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
 - Sync: 22 total phases (15 prior + 7 new Phase D phases)
 

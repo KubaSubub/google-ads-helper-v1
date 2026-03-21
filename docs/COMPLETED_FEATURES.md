@@ -40,9 +40,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Summable metrics in KeywordDaily; snapshot metrics (quality_score, impression_share, bid) stay on Keyword model
 
 ## SEARCH Optimization Page
-- `SearchOptimization.jsx` — 6 collapsible analysis sections
-- Endpoints: dayparting, rsa-analysis, ngram-analysis, match-type-analysis, landing-pages, wasted-spend
-- Backend: 6 methods in analytics_service.py + 6 routes in analytics.py
+- `SearchOptimization.jsx` — 25 collapsible analysis sections (6 base + 7 Phase A + 6 Phase B+C + 6 Phase D)
+- Endpoints: dayparting, rsa-analysis, ngram-analysis, match-type-analysis, landing-pages, wasted-spend, search-term-trends, close-variants, conversion-health, keyword-expansion, smart-bidding-health, learning-status, target-vs-actual, portfolio-health, pareto-analysis, scaling-opportunities, ad-group-health, bid-strategy-report, demographics, pmax-channels, asset-group-performance, pmax-search-themes, audience-performance, missing-extensions, extension-performance
+- Backend: analytics_service.py methods + analytics.py routes
 - Sidebar nav: "Optymalizacja" (Zap icon) in ANALIZA group
 
 ## Keyword Lifecycle Cleanup + Canonical SQLite
@@ -141,3 +141,10 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - MetricSegmented model extended with age_range and gender columns.
 - Google Ads sync extended with sync_conversion_actions() and sync_demographic_metrics().
 
+## Phase D GAP Analysis (PMax, Audiences, Extensions)
+- 6 new analytics endpoints: pmax-channels, asset-group-performance, pmax-search-themes, audience-performance, missing-extensions, extension-performance.
+- 4 new recommendation rules (R28–R31): PMAX_CHANNEL_IMBALANCE, ASSET_GROUP_AD_STRENGTH, AUDIENCE_PERFORMANCE_ANOMALY, MISSING_EXTENSIONS_ALERT.
+- 6 new models: AssetGroup, AssetGroupDaily, AssetGroupAsset, AssetGroupSignal, CampaignAudienceMetric, CampaignAsset.
+- MetricSegmented model extended with ad_network_type column for channel-level breakdowns.
+- 7 new sync methods (22 total phases): sync_pmax_channel_metrics, sync_asset_groups, sync_asset_group_daily, sync_asset_group_assets, sync_asset_group_signals, sync_campaign_audiences, sync_campaign_assets.
+- Frontend: 6 new analysis sections in SearchOptimization.jsx (25 total tools).
