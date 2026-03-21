@@ -38,6 +38,11 @@ const TYPE_CONFIG = {
     LEARNING_PERIOD_ALERT: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Okres nauki' },
     CONVERSION_QUALITY_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Jakość konwersji' },
     DEMOGRAPHIC_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia demograficzna' },
+    // v2.1 Phase D (R28-R31)
+    PMAX_CHANNEL_IMBALANCE: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Nierównowaga kanałów PMax' },
+    ASSET_GROUP_AD_STRENGTH: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Siła reklam grupy zasobów' },
+    AUDIENCE_PERFORMANCE_ANOMALY: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Anomalia odbiorców' },
+    MISSING_EXTENSIONS_ALERT: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Brakujące rozszerzenia' },
 }
 
 const PRIORITY_CONFIG = {

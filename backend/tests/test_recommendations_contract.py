@@ -69,11 +69,16 @@ def test_recommendation_type_enum_matches_active_ruleset():
         "LEARNING_PERIOD_ALERT",
         "CONVERSION_QUALITY_ALERT",
         "DEMOGRAPHIC_ANOMALY",
+        # v2.1 rules (R28-R31)
+        "PMAX_CHANNEL_IMBALANCE",
+        "ASSET_GROUP_AD_STRENGTH",
+        "AUDIENCE_PERFORMANCE_ANOMALY",
+        "MISSING_EXTENSIONS_ALERT",
     }
     actual = {member.value for member in RecommendationType}
 
     assert expected == actual
-    assert len(actual) == 26
+    assert len(actual) == 30
 
 
 def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
     ChangeEvent, ActionLog, KeywordDaily, NegativeKeyword, ConversionAction,
+    AssetGroup, AssetGroupDaily, AssetGroupAsset, CampaignAsset,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.campaign_roles import apply_role_classification
@@ -3102,6 +3103,725 @@ class GoogleAdsService:
 
         except Exception as e:
             logger.error(f"Error syncing gender metrics: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # PMax Channel (ad_network_type) Segmented Metrics Sync
+    # -----------------------------------------------------------------------
+
+    def sync_pmax_channel_metrics(self, db: Session, customer_id: str,
+                                   date_from: date = None, date_to: date = None) -> int:
+        """Sync PMax channel breakdown (ad_network_type) into MetricSegmented."""
+        if not self.is_connected:
+            return 0
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        campaign_map = {
+            c.google_campaign_id: c.id
+            for c in db.query(Campaign).filter(
+                Campaign.client_id == client_record.id,
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            ).all()
+        }
+        if not campaign_map:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                segments.ad_network_type,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros
+            FROM campaign
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+              AND campaign.status != 'REMOVED'
+        """
+
+        count = 0
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            for row in response:
+                gcid = str(row.campaign.id)
+                local_campaign_id = campaign_map.get(gcid)
+                if not local_campaign_id:
+                    continue
+
+                row_date = row.segments.date
+                network = row.segments.ad_network_type.name if hasattr(row.segments.ad_network_type, 'name') else str(row.segments.ad_network_type)
+
+                existing = db.query(MetricSegmented).filter(
+                    MetricSegmented.campaign_id == local_campaign_id,
+                    MetricSegmented.date == row_date,
+                    MetricSegmented.ad_network_type == network,
+                    MetricSegmented.device.is_(None),
+                    MetricSegmented.geo_city.is_(None),
+                    MetricSegmented.hour_of_day.is_(None),
+                    MetricSegmented.age_range.is_(None),
+                    MetricSegmented.gender.is_(None),
+                ).first()
+
+                metrics_data = {
+                    "clicks": row.metrics.clicks,
+                    "impressions": row.metrics.impressions,
+                    "conversions": float(row.metrics.conversions),
+                    "conversion_value_micros": int(row.metrics.conversions_value * 1_000_000) if row.metrics.conversions_value else 0,
+                    "cost_micros": row.metrics.cost_micros,
+                }
+
+                if existing:
+                    for k, v in metrics_data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(MetricSegmented(
+                        campaign_id=local_campaign_id,
+                        date=row_date,
+                        ad_network_type=network,
+                        **metrics_data,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} PMax channel-segmented metric rows")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing PMax channel metrics: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Asset Group Structure Sync
+    # -----------------------------------------------------------------------
+
+    def sync_asset_groups(self, db: Session, customer_id: str) -> int:
+        """Sync PMax asset group structure into AssetGroup model."""
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        campaign_map = {
+            c.google_campaign_id: c.id
+            for c in db.query(Campaign).filter(
+                Campaign.client_id == client_record.id,
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            ).all()
+        }
+        if not campaign_map:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                asset_group.id,
+                asset_group.name,
+                asset_group.status,
+                asset_group.ad_strength,
+                asset_group.final_urls,
+                asset_group.final_mobile_urls,
+                asset_group.path1,
+                asset_group.path2,
+                campaign.id
+            FROM asset_group
+            WHERE campaign.status != 'REMOVED'
+              AND asset_group.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                gcid = str(row.campaign.id)
+                local_campaign_id = campaign_map.get(gcid)
+                if not local_campaign_id:
+                    continue
+
+                google_ag_id = str(row.asset_group.id)
+                ag_name = row.asset_group.name
+                ag_status = row.asset_group.status.name if hasattr(row.asset_group.status, 'name') else str(row.asset_group.status)
+                ad_strength = row.asset_group.ad_strength.name if hasattr(row.asset_group.ad_strength, 'name') else str(row.asset_group.ad_strength)
+
+                final_url = row.asset_group.final_urls[0] if row.asset_group.final_urls else None
+                final_mobile_url = row.asset_group.final_mobile_urls[0] if row.asset_group.final_mobile_urls else None
+                path1 = row.asset_group.path1 or None
+                path2 = row.asset_group.path2 or None
+
+                existing = db.query(AssetGroup).filter(
+                    AssetGroup.campaign_id == local_campaign_id,
+                    AssetGroup.google_asset_group_id == google_ag_id,
+                ).first()
+
+                data = {
+                    "name": ag_name,
+                    "status": ag_status,
+                    "ad_strength": ad_strength,
+                    "final_url": final_url,
+                    "final_mobile_url": final_mobile_url,
+                    "path1": path1,
+                    "path2": path2,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(AssetGroup(
+                        campaign_id=local_campaign_id,
+                        google_asset_group_id=google_ag_id,
+                        **data,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} asset groups")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing asset groups: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Asset Group Daily Metrics Sync
+    # -----------------------------------------------------------------------
+
+    def sync_asset_group_daily(self, db: Session, customer_id: str,
+                                date_from: date = None, date_to: date = None) -> int:
+        """Sync daily metrics for PMax asset groups into AssetGroupDaily."""
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        # Build asset_group_map: google_asset_group_id -> local id
+        pmax_campaign_ids = [
+            c.id for c in db.query(Campaign).filter(
+                Campaign.client_id == client_record.id,
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            ).all()
+        ]
+        if not pmax_campaign_ids:
+            return 0
+
+        asset_group_map = {
+            ag.google_asset_group_id: ag.id
+            for ag in db.query(AssetGroup).filter(
+                AssetGroup.campaign_id.in_(pmax_campaign_ids),
+            ).all()
+        }
+        if not asset_group_map:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                asset_group.id,
+                campaign.id,
+                segments.date,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros,
+                metrics.average_cpc
+            FROM asset_group
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+              AND asset_group.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                google_ag_id = str(row.asset_group.id)
+                local_ag_id = asset_group_map.get(google_ag_id)
+                if not local_ag_id:
+                    continue
+
+                metric_date = date.fromisoformat(row.segments.date)
+                m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(AssetGroupDaily).filter(
+                    AssetGroupDaily.asset_group_id == local_ag_id,
+                    AssetGroupDaily.date == metric_date,
+                ).first()
+
+                data = {
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "ctr": m.ctr * 100,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "cost_micros": m.cost_micros,
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(AssetGroupDaily(
+                        asset_group_id=local_ag_id,
+                        date=metric_date,
+                        **data,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} asset group daily metric rows")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing asset group daily metrics: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Asset Group Assets Sync
+    # -----------------------------------------------------------------------
+
+    def sync_asset_group_assets(self, db: Session, customer_id: str) -> int:
+        """Sync assets linked to PMax asset groups into AssetGroupAsset."""
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        # Build asset_group_map: google_asset_group_id -> local id
+        pmax_campaign_ids = [
+            c.id for c in db.query(Campaign).filter(
+                Campaign.client_id == client_record.id,
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            ).all()
+        ]
+        if not pmax_campaign_ids:
+            return 0
+
+        asset_group_map = {
+            ag.google_asset_group_id: ag.id
+            for ag in db.query(AssetGroup).filter(
+                AssetGroup.campaign_id.in_(pmax_campaign_ids),
+            ).all()
+        }
+        if not asset_group_map:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                asset_group.id,
+                campaign.id,
+                asset_group_asset.asset,
+                asset_group_asset.field_type,
+                asset_group_asset.performance_label,
+                asset.id,
+                asset.type,
+                asset.text_asset.text
+            FROM asset_group_asset
+            WHERE campaign.status != 'REMOVED'
+              AND asset_group.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                google_ag_id = str(row.asset_group.id)
+                local_ag_id = asset_group_map.get(google_ag_id)
+                if not local_ag_id:
+                    continue
+
+                google_asset_id = str(row.asset.id)
+                asset_type = row.asset.type.name if hasattr(row.asset.type, 'name') else str(row.asset.type)
+                field_type = row.asset_group_asset.field_type.name if hasattr(row.asset_group_asset.field_type, 'name') else str(row.asset_group_asset.field_type)
+                perf_label = row.asset_group_asset.performance_label.name if hasattr(row.asset_group_asset.performance_label, 'name') else str(row.asset_group_asset.performance_label)
+
+                # text_asset.text may not exist for non-text assets
+                text_content = None
+                try:
+                    text_content = row.asset.text_asset.text or None
+                except (AttributeError, TypeError):
+                    pass
+
+                existing = db.query(AssetGroupAsset).filter(
+                    AssetGroupAsset.asset_group_id == local_ag_id,
+                    AssetGroupAsset.google_asset_id == google_asset_id,
+                    AssetGroupAsset.field_type == field_type,
+                ).first()
+
+                data = {
+                    "asset_type": asset_type,
+                    "text_content": text_content,
+                    "performance_label": perf_label,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(AssetGroupAsset(
+                        asset_group_id=local_ag_id,
+                        google_asset_id=google_asset_id,
+                        field_type=field_type,
+                        **data,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} asset group assets")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing asset group assets: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Campaign Assets (Extensions) Sync
+    # -----------------------------------------------------------------------
+
+    def sync_campaign_assets(self, db: Session, customer_id: str) -> int:
+        """Sync campaign-level assets (sitelinks, callouts, etc.) into CampaignAsset."""
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        campaign_map = {
+            c.google_campaign_id: c.id
+            for c in db.query(Campaign).filter(
+                Campaign.client_id == client_record.id,
+            ).all()
+        }
+        if not campaign_map:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                campaign.id,
+                asset.id,
+                asset.type,
+                asset.name,
+                campaign_asset.status,
+                campaign_asset.performance_label,
+                campaign_asset.source,
+                asset.sitelink_asset.link_text,
+                asset.callout_asset.callout_text,
+                asset.structured_snippet_asset.header,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM campaign_asset
+            WHERE campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                gcid = str(row.campaign.id)
+                local_campaign_id = campaign_map.get(gcid)
+                if not local_campaign_id:
+                    continue
+
+                google_asset_id = str(row.asset.id)
+                asset_type = row.asset.type.name if hasattr(row.asset.type, 'name') else str(row.asset.type)
+                asset_status = row.campaign_asset.status.name if hasattr(row.campaign_asset.status, 'name') else str(row.campaign_asset.status)
+                perf_label = row.campaign_asset.performance_label.name if hasattr(row.campaign_asset.performance_label, 'name') else str(row.campaign_asset.performance_label)
+                source = row.campaign_asset.source.name if hasattr(row.campaign_asset.source, 'name') else str(row.campaign_asset.source)
+
+                # Extract asset_name from type-specific fields
+                asset_name = row.asset.name or None
+                try:
+                    if row.asset.sitelink_asset.link_text:
+                        asset_name = row.asset.sitelink_asset.link_text
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if row.asset.callout_asset.callout_text:
+                        asset_name = row.asset.callout_asset.callout_text
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if row.asset.structured_snippet_asset.header:
+                        asset_name = row.asset.structured_snippet_asset.header
+                except (AttributeError, TypeError):
+                    pass
+
+                m = row.metrics
+
+                existing = db.query(CampaignAsset).filter(
+                    CampaignAsset.campaign_id == local_campaign_id,
+                    CampaignAsset.google_asset_id == google_asset_id,
+                    CampaignAsset.asset_type == asset_type,
+                ).first()
+
+                data = {
+                    "asset_name": asset_name,
+                    "status": asset_status,
+                    "performance_label": perf_label,
+                    "source": source,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": float(m.conversions),
+                    "ctr": m.ctr * 100,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(CampaignAsset(
+                        campaign_id=local_campaign_id,
+                        google_asset_id=google_asset_id,
+                        asset_type=asset_type,
+                        **data,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} campaign assets")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing campaign assets: {e}")
+            db.rollback()
+            raise
+
+    # ------------------------------------------------------------------
+    # GAP 3C: Asset Group Signals (search themes + audience signals)
+    # ------------------------------------------------------------------
+    def sync_asset_group_signals(self, db: Session, customer_id: str) -> int:
+        """Sync asset group signals (search themes and audience segments) for PMax campaigns."""
+        from app.models.asset_group_signal import AssetGroupSignal
+        from app.models.asset_group import AssetGroup
+
+        if not self.is_connected:
+            raise RuntimeError("Google Ads API not connected")
+
+        try:
+            query = """
+                SELECT
+                    asset_group.id,
+                    asset_group_signal.resource_name,
+                    asset_group_signal.audience.audience
+            FROM asset_group_signal
+            WHERE asset_group.campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+            """
+
+            response = self._execute_query(customer_id, query)
+
+            ag_ids = {
+                r.asset_group.id for r in response
+            }
+            local_ags = {
+                ag.google_asset_group_id: ag.id
+                for ag in db.query(AssetGroup).filter(
+                    AssetGroup.google_asset_group_id.in_([str(a) for a in ag_ids])
+                ).all()
+            } if ag_ids else {}
+
+            count = 0
+            for row in response:
+                ag_gid = str(row.asset_group.id)
+                local_ag_id = local_ags.get(ag_gid)
+                if not local_ag_id:
+                    continue
+
+                resource_name = row.asset_group_signal.resource_name
+
+                # Parse search themes from audience resource
+                audience_rn = ""
+                audience_name = ""
+                signal_type = "SEARCH_THEME"
+                search_theme_text = ""
+
+                try:
+                    audience_rn = row.asset_group_signal.audience.audience or ""
+                    if "searchThemeInfo" in resource_name or not audience_rn:
+                        signal_type = "SEARCH_THEME"
+                    else:
+                        signal_type = "AUDIENCE"
+                        audience_name = audience_rn.split("/")[-1] if audience_rn else ""
+                except Exception:
+                    pass
+
+                existing = db.query(AssetGroupSignal).filter(
+                    AssetGroupSignal.asset_group_id == local_ag_id,
+                    AssetGroupSignal.signal_type == signal_type,
+                    AssetGroupSignal.search_theme_text == search_theme_text,
+                    AssetGroupSignal.audience_resource_name == audience_rn,
+                ).first()
+
+                if not existing:
+                    db.add(AssetGroupSignal(
+                        asset_group_id=local_ag_id,
+                        signal_type=signal_type,
+                        search_theme_text=search_theme_text,
+                        audience_resource_name=audience_rn,
+                        audience_name=audience_name,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} asset group signals")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing asset group signals: {e}")
+            db.rollback()
+            raise
+
+    # ------------------------------------------------------------------
+    # GAP 4B: Campaign Audience Metrics
+    # ------------------------------------------------------------------
+    def sync_campaign_audiences(self, db: Session, customer_id: str,
+                                date_from: date = None, date_to: date = None) -> int:
+        """Sync campaign audience metrics from campaign_audience_view."""
+        from app.models.campaign_audience import CampaignAudienceMetric
+
+        if not self.is_connected:
+            raise RuntimeError("Google Ads API not connected")
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=90)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        try:
+            query = f"""
+                SELECT
+                    campaign.id,
+                    campaign_criterion.resource_name,
+                    campaign_criterion.type,
+                    campaign_criterion.user_list.user_list,
+                    segments.date,
+                    metrics.clicks,
+                    metrics.impressions,
+                    metrics.ctr,
+                    metrics.conversions,
+                    metrics.conversions_value,
+                    metrics.cost_micros,
+                    metrics.average_cpc
+                FROM campaign_audience_view
+                WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+            """
+
+            response = self._execute_query(customer_id, query)
+
+            campaign_ids = {r.campaign.id for r in response}
+            local_campaigns = {
+                c.google_campaign_id: c.id
+                for c in db.query(Campaign).filter(
+                    Campaign.google_campaign_id.in_([str(cid) for cid in campaign_ids])
+                ).all()
+            } if campaign_ids else {}
+
+            count = 0
+            for row in response:
+                camp_gid = str(row.campaign.id)
+                local_campaign_id = local_campaigns.get(camp_gid)
+                if not local_campaign_id:
+                    continue
+
+                m = row.metrics
+                seg_date = row.segments.date
+                resource_name = row.campaign_criterion.resource_name
+                audience_type_raw = str(row.campaign_criterion.type).split(".")[-1]
+
+                # Map criterion type to audience type
+                audience_type_map = {
+                    "USER_LIST": "REMARKETING",
+                    "USER_INTEREST": "AFFINITY",
+                    "CUSTOM_AFFINITY": "CUSTOM",
+                    "CUSTOM_INTENT": "IN_MARKET",
+                    "CUSTOM_AUDIENCE": "CUSTOM",
+                }
+                audience_type = audience_type_map.get(audience_type_raw, "OTHER")
+
+                # Try to get audience name from user_list
+                audience_name = ""
+                try:
+                    ul = row.campaign_criterion.user_list.user_list
+                    audience_name = ul.split("/")[-1] if ul else resource_name.split("/")[-1]
+                except Exception:
+                    audience_name = resource_name.split("/")[-1] if resource_name else "Unknown"
+
+                existing = db.query(CampaignAudienceMetric).filter(
+                    CampaignAudienceMetric.campaign_id == local_campaign_id,
+                    CampaignAudienceMetric.audience_resource_name == resource_name,
+                    CampaignAudienceMetric.date == seg_date,
+                ).first()
+
+                data = {
+                    "audience_name": audience_name,
+                    "audience_type": audience_type,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "ctr": m.ctr * 100,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(m.conversions_value * 1_000_000),
+                    "cost_micros": m.cost_micros,
+                    "avg_cpc_micros": m.average_cpc,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(CampaignAudienceMetric(
+                        campaign_id=local_campaign_id,
+                        audience_resource_name=resource_name,
+                        date=seg_date,
+                        **data,
+                    ))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} campaign audience metrics")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing campaign audiences: {e}")
             db.rollback()
             raise
 

@@ -28,6 +28,10 @@ from app.models import (
     Keyword, SearchTerm, Ad, AdGroup, Campaign, Client, MetricDaily
 )
 from app.models.metric_segmented import MetricSegmented
+from app.models.asset_group import AssetGroup
+from app.models.asset_group_daily import AssetGroupDaily
+from app.models.campaign_audience import CampaignAudienceMetric
+from app.models.campaign_asset import CampaignAsset
 from app.services.recommendation_contract import (
     ACTION,
     ANALYTICS,
@@ -94,6 +98,11 @@ class RecommendationType(str, Enum):
     LEARNING_PERIOD_ALERT = "LEARNING_PERIOD_ALERT"
     CONVERSION_QUALITY_ALERT = "CONVERSION_QUALITY_ALERT"
     DEMOGRAPHIC_ANOMALY = "DEMOGRAPHIC_ANOMALY"
+    # v2.1 (R28-R31)
+    PMAX_CHANNEL_IMBALANCE = "PMAX_CHANNEL_IMBALANCE"
+    ASSET_GROUP_AD_STRENGTH = "ASSET_GROUP_AD_STRENGTH"
+    AUDIENCE_PERFORMANCE_ANOMALY = "AUDIENCE_PERFORMANCE_ANOMALY"
+    MISSING_EXTENSIONS_ALERT = "MISSING_EXTENSIONS_ALERT"
 
 
 class Priority(str, Enum):
@@ -209,6 +218,14 @@ class RecommendationsEngine:
         "r25_stuck_learning_days": 21,
         "r27_cpa_multiplier": 2.0,
         "r27_min_spend": 50.0,
+        # v2.1 thresholds (R28-R31)
+        "r28_max_cost_share": 0.60,
+        "r28_min_conv_share": 0.30,
+        "r29_min_spend": 50.0,
+        "r30_cpa_multiplier": 2.0,
+        "r30_min_spend": 50.0,
+        "r31_min_sitelinks": 4,
+        "r31_min_callouts": 4,
     }
 
     # Words that indicate irrelevant intent (word boundary matched)
@@ -283,6 +300,12 @@ class RecommendationsEngine:
         recommendations.extend(self._rule_25_learning_period(db, client_id, days))
         recommendations.extend(self._rule_26_conversion_quality(db, client_id, days))
         recommendations.extend(self._rule_27_demographic_anomaly(db, client_id, days))
+
+        # v2.1 rules (R28-R31)
+        recommendations.extend(self._rule_28_pmax_channel_imbalance(db, client_id, days))
+        recommendations.extend(self._rule_29_asset_group_ad_strength(db, client_id, days))
+        recommendations.extend(self._rule_30_audience_performance_anomaly(db, client_id, days))
+        recommendations.extend(self._rule_31_missing_extensions(db, client_id, days))
 
         recommendations.extend(self._analytics_alerts(db, client_id, days, recommendations))
 
@@ -2291,6 +2314,336 @@ class RecommendationsEngine:
                             "cost_usd": seg_cost_usd,
                         },
                     ))
+        return recs
+
+    def _rule_28_pmax_channel_imbalance(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """R28: Flag PMax channels where cost_share is high but conv_share is low."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+
+        pmax_campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            )
+            .all()
+        )
+        if not pmax_campaigns:
+            return recs
+
+        campaign_ids = [c.id for c in pmax_campaigns]
+        campaign_map = {c.id: c for c in pmax_campaigns}
+
+        data = (
+            db.query(
+                MetricSegmented.campaign_id,
+                MetricSegmented.ad_network_type,
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= cutoff,
+                MetricSegmented.ad_network_type.isnot(None),
+            )
+            .group_by(MetricSegmented.campaign_id, MetricSegmented.ad_network_type)
+            .all()
+        )
+
+        # Group by campaign
+        by_campaign: dict[int, list] = defaultdict(list)
+        for row in data:
+            by_campaign[row.campaign_id].append(row)
+
+        for campaign_id, rows in by_campaign.items():
+            total_cost = sum(int(r.cost or 0) for r in rows)
+            total_conv = sum(float(r.conv or 0) for r in rows)
+            if total_cost <= 0:
+                continue
+
+            for row in rows:
+                ch_cost = int(row.cost or 0)
+                ch_conv = float(row.conv or 0)
+                cost_share = ch_cost / total_cost
+                conv_share = ch_conv / total_conv if total_conv > 0 else 0.0
+
+                if cost_share > t["r28_max_cost_share"] and conv_share < t["r28_min_conv_share"]:
+                    campaign = campaign_map[campaign_id]
+                    ch_cost_usd = round(ch_cost / 1_000_000, 2)
+                    recs.append(Recommendation(
+                        type=RecommendationType.PMAX_CHANNEL_IMBALANCE,
+                        priority=Priority.MEDIUM,
+                        entity_type="campaign",
+                        entity_id=campaign_id,
+                        entity_name=campaign.name,
+                        campaign_name=campaign.name,
+                        campaign_id=campaign_id,
+                        category="ALERT",
+                        source=PLAYBOOK_RULES,
+                        reason=(
+                            f"Kanał '{row.ad_network_type}' w PMax '{campaign.name}' "
+                            f"zużywa {cost_share:.0%} budżetu, ale generuje tylko {conv_share:.0%} konwersji."
+                        ),
+                        current_value=f"Koszt: {cost_share:.0%}, Konwersje: {conv_share:.0%}",
+                        recommended_action="Sprawdź skuteczność kanału i rozważ dostosowanie sygnałów grupy zasobów.",
+                        estimated_impact=f"Potencjalna oszczędność: ${ch_cost_usd:.0f}",
+                        metadata={
+                            "channel": row.ad_network_type,
+                            "cost_share": round(cost_share, 3),
+                            "conv_share": round(conv_share, 3),
+                            "cost_usd": ch_cost_usd,
+                            "total_cost_usd": round(total_cost / 1_000_000, 2),
+                            "total_conv": round(total_conv, 2),
+                        },
+                    ))
+        return recs
+
+    def _rule_29_asset_group_ad_strength(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """R29: Flag asset groups with poor/average ad strength that are spending significantly."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+        min_cost_micros = int(t["r29_min_spend"] * 1_000_000)
+
+        campaign_ids = [
+            c.id for c in db.query(Campaign).filter(
+                Campaign.client_id == client_id, Campaign.status == "ENABLED"
+            ).all()
+        ]
+        if not campaign_ids:
+            return recs
+
+        asset_groups = (
+            db.query(AssetGroup)
+            .filter(
+                AssetGroup.campaign_id.in_(campaign_ids),
+                AssetGroup.ad_strength.in_(["POOR", "AVERAGE"]),
+            )
+            .all()
+        )
+        if not asset_groups:
+            return recs
+
+        ag_ids = [ag.id for ag in asset_groups]
+        ag_map = {ag.id: ag for ag in asset_groups}
+
+        # Aggregate spend per asset group in the period
+        spend_data = (
+            db.query(
+                AssetGroupDaily.asset_group_id,
+                func.sum(AssetGroupDaily.cost_micros).label("cost"),
+            )
+            .filter(
+                AssetGroupDaily.asset_group_id.in_(ag_ids),
+                AssetGroupDaily.date >= cutoff,
+            )
+            .group_by(AssetGroupDaily.asset_group_id)
+            .all()
+        )
+
+        for row in spend_data:
+            total_cost = int(row.cost or 0)
+            if total_cost < min_cost_micros:
+                continue
+
+            ag = ag_map.get(row.asset_group_id)
+            if not ag:
+                continue
+
+            cost_usd = round(total_cost / 1_000_000, 2)
+            campaign = db.get(Campaign, ag.campaign_id)
+            campaign_name = campaign.name if campaign else "(nieznana)"
+            priority = Priority.HIGH if ag.ad_strength == "POOR" else Priority.MEDIUM
+
+            recs.append(Recommendation(
+                type=RecommendationType.ASSET_GROUP_AD_STRENGTH,
+                priority=priority,
+                entity_type="ad_group",
+                entity_id=ag.id,
+                entity_name=ag.name,
+                campaign_name=campaign_name,
+                campaign_id=ag.campaign_id,
+                category="ALERT",
+                source=PLAYBOOK_RULES,
+                reason=(
+                    f"Grupa zasobów '{ag.name}' ma siłę reklamy '{ag.ad_strength}' "
+                    f"i wydała ${cost_usd:.2f} w ostatnich {days} dniach."
+                ),
+                current_value=f"Ad Strength: {ag.ad_strength}, Wydatki: ${cost_usd:.2f}",
+                recommended_action="Dodaj więcej zasobów (nagłówki, opisy, obrazy) aby poprawić siłę reklamy.",
+                estimated_impact="Lepsza siła reklamy może zwiększyć zasięg i obniżyć CPA.",
+                metadata={
+                    "asset_group_id": ag.id,
+                    "asset_group_name": ag.name,
+                    "ad_strength": ag.ad_strength,
+                    "cost_usd": cost_usd,
+                    "cost_micros": total_cost,
+                },
+            ))
+        return recs
+
+    def _rule_30_audience_performance_anomaly(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """R30: Flag audiences with CPA significantly above average."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+
+        campaign_ids = [
+            c.id for c in db.query(Campaign).filter(
+                Campaign.client_id == client_id, Campaign.status == "ENABLED"
+            ).all()
+        ]
+        if not campaign_ids:
+            return recs
+
+        # Overall average CPA across all audiences
+        totals = (
+            db.query(
+                func.sum(CampaignAudienceMetric.cost_micros).label("cost"),
+                func.sum(CampaignAudienceMetric.conversions).label("conv"),
+            )
+            .filter(
+                CampaignAudienceMetric.campaign_id.in_(campaign_ids),
+                CampaignAudienceMetric.date >= cutoff,
+            )
+            .first()
+        )
+        total_cost = int(totals.cost or 0)
+        total_conv = float(totals.conv or 0)
+        if total_conv <= 0:
+            return recs
+        avg_cpa = total_cost / total_conv / 1_000_000
+
+        # Per-audience aggregation
+        audience_data = (
+            db.query(
+                CampaignAudienceMetric.audience_resource_name,
+                func.min(CampaignAudienceMetric.audience_name).label("audience_name"),
+                func.sum(CampaignAudienceMetric.cost_micros).label("cost"),
+                func.sum(CampaignAudienceMetric.conversions).label("conv"),
+            )
+            .filter(
+                CampaignAudienceMetric.campaign_id.in_(campaign_ids),
+                CampaignAudienceMetric.date >= cutoff,
+            )
+            .group_by(CampaignAudienceMetric.audience_resource_name)
+            .all()
+        )
+
+        for row in audience_data:
+            aud_cost = int(row.cost or 0)
+            aud_conv = float(row.conv or 0)
+            aud_cost_usd = round(aud_cost / 1_000_000, 2)
+            if aud_conv <= 0 or aud_cost_usd < t["r30_min_spend"]:
+                continue
+            aud_cpa = aud_cost / aud_conv / 1_000_000
+            multiplier = aud_cpa / avg_cpa
+
+            if multiplier >= t["r30_cpa_multiplier"]:
+                aud_name = row.audience_name or row.audience_resource_name
+                recs.append(Recommendation(
+                    type=RecommendationType.AUDIENCE_PERFORMANCE_ANOMALY,
+                    priority=Priority.MEDIUM,
+                    entity_type="segment",
+                    entity_id=client_id,
+                    entity_name=f"Audience: {aud_name}",
+                    campaign_name="(wszystkie)",
+                    category="ALERT",
+                    source=PLAYBOOK_RULES,
+                    reason=(
+                        f"Audience '{aud_name}' ma CPA ${aud_cpa:.2f} "
+                        f"({multiplier:.1f}x średniej ${avg_cpa:.2f})"
+                    ),
+                    current_value=f"CPA: ${aud_cpa:.2f} ({multiplier:.1f}x)",
+                    recommended_action=f"Rozważ wykluczenie lub zmniejszenie stawek dla '{aud_name}'",
+                    estimated_impact=f"Potencjalna oszczędność: ${aud_cost_usd:.0f}",
+                    metadata={
+                        "audience_resource_name": row.audience_resource_name,
+                        "audience_name": aud_name,
+                        "cpa": round(aud_cpa, 2),
+                        "avg_cpa": round(avg_cpa, 2),
+                        "multiplier": round(multiplier, 1),
+                        "cost_usd": aud_cost_usd,
+                    },
+                ))
+        return recs
+
+    def _rule_31_missing_extensions(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """R31: Flag Search campaigns missing minimum sitelinks or callouts."""
+        recs = []
+        t = self.thresholds
+
+        search_campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.campaign_type == "SEARCH",
+            )
+            .all()
+        )
+        if not search_campaigns:
+            return recs
+
+        for campaign in search_campaigns:
+            # Count assets by type for this campaign
+            asset_counts = (
+                db.query(
+                    CampaignAsset.asset_type,
+                    func.count(CampaignAsset.id).label("cnt"),
+                )
+                .filter(CampaignAsset.campaign_id == campaign.id)
+                .group_by(CampaignAsset.asset_type)
+                .all()
+            )
+            counts_map = {row.asset_type: row.cnt for row in asset_counts}
+            sitelink_count = counts_map.get("SITELINK", 0)
+            callout_count = counts_map.get("CALLOUT", 0)
+
+            missing = []
+            if sitelink_count < t["r31_min_sitelinks"]:
+                missing.append(f"sitelinki ({sitelink_count}/{t['r31_min_sitelinks']})")
+            if callout_count < t["r31_min_callouts"]:
+                missing.append(f"objaśnienia ({callout_count}/{t['r31_min_callouts']})")
+
+            if missing:
+                recs.append(Recommendation(
+                    type=RecommendationType.MISSING_EXTENSIONS_ALERT,
+                    priority=Priority.HIGH,
+                    entity_type="campaign",
+                    entity_id=campaign.id,
+                    entity_name=campaign.name,
+                    campaign_name=campaign.name,
+                    campaign_id=campaign.id,
+                    category="RECOMMENDATION",
+                    source=PLAYBOOK_RULES,
+                    executable=False,
+                    reason=(
+                        f"Kampania '{campaign.name}' ma brakujące rozszerzenia: "
+                        f"{', '.join(missing)}."
+                    ),
+                    current_value=f"Sitelinki: {sitelink_count}, Objaśnienia: {callout_count}",
+                    recommended_action="Dodaj brakujące rozszerzenia reklam aby zwiększyć CTR i jakość reklamy.",
+                    estimated_impact="Pełne rozszerzenia mogą zwiększyć CTR o 10-15%.",
+                    metadata={
+                        "sitelink_count": sitelink_count,
+                        "callout_count": callout_count,
+                        "min_sitelinks": t["r31_min_sitelinks"],
+                        "min_callouts": t["r31_min_callouts"],
+                        "missing_types": missing,
+                    },
+                ))
         return recs
 
     def _campaign_metrics_snapshot(self, db: Session, campaign: Campaign, cutoff: date) -> dict | None:

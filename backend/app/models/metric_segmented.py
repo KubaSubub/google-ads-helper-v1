@@ -19,6 +19,7 @@ class MetricSegmented(Base):
     # GAP 4A: Demographic segments
     age_range = Column(String(30), nullable=True)  # AGE_RANGE_18_24, AGE_RANGE_25_34, etc.
     gender = Column(String(20), nullable=True)     # MALE, FEMALE, UNDETERMINED
+    ad_network_type = Column(String(30), nullable=True)
 
     # Core metrics
     clicks = Column(Integer, default=0)
@@ -39,6 +40,7 @@ class MetricSegmented(Base):
         Index("idx_metrics_segmented_geo", "geo_city"),
         Index("idx_metrics_segmented_age", "age_range"),
         Index("idx_metrics_segmented_gender", "gender"),
+        Index("idx_metrics_segmented_network", "ad_network_type"),
     )
 
     # Relationships

@@ -21,6 +21,12 @@ from .change_event import ChangeEvent
 from .sync_log import SyncLog
 from .report import Report
 from .conversion_action import ConversionAction
+from .asset_group import AssetGroup
+from .asset_group_daily import AssetGroupDaily
+from .asset_group_asset import AssetGroupAsset
+from .asset_group_signal import AssetGroupSignal
+from .campaign_audience import CampaignAudienceMetric
+from .campaign_asset import CampaignAsset
 
 __all__ = [
     "Client",
@@ -42,5 +48,11 @@ __all__ = [
     "SyncLog",
     "Report",
     "ConversionAction",
+    "AssetGroup",
+    "AssetGroupDaily",
+    "AssetGroupAsset",
+    "AssetGroupSignal",
+    "CampaignAudienceMetric",
+    "CampaignAsset",
 ]
 

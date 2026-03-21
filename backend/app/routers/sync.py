@@ -247,6 +247,108 @@ def trigger_sync(
     if phases["change_events"]["status"] == "error":
         total_errors += 1
 
+    # Phase B+C enrichment syncs (non-critical)
+    conversion_actions_synced = _run_phase(
+        "conversion_actions",
+        lambda: google_ads_service.sync_conversion_actions(db, cid),
+        phases,
+        critical=False,
+    )
+    total_synced += conversion_actions_synced
+    if phases["conversion_actions"]["status"] == "error":
+        total_errors += 1
+
+    age_metrics_synced = _run_phase(
+        "age_metrics",
+        lambda: google_ads_service.sync_age_metrics(db, cid, date_from, date_to),
+        phases,
+        critical=False,
+    )
+    total_synced += age_metrics_synced
+    if phases["age_metrics"]["status"] == "error":
+        total_errors += 1
+
+    gender_metrics_synced = _run_phase(
+        "gender_metrics",
+        lambda: google_ads_service.sync_gender_metrics(db, cid, date_from, date_to),
+        phases,
+        critical=False,
+    )
+    total_synced += gender_metrics_synced
+    if phases["gender_metrics"]["status"] == "error":
+        total_errors += 1
+
+    # --- Phase D: PMax, Audience, Extensions ---
+    pmax_channels_synced = _run_phase(
+        "pmax_channel_metrics",
+        lambda: google_ads_service.sync_pmax_channel_metrics(db, cid, date_from, date_to),
+        phases,
+        critical=False,
+    )
+    total_synced += pmax_channels_synced
+    if phases["pmax_channel_metrics"]["status"] == "error":
+        total_errors += 1
+
+    asset_groups_synced = _run_phase(
+        "asset_groups",
+        lambda: google_ads_service.sync_asset_groups(db, cid),
+        phases,
+        critical=False,
+    )
+    total_synced += asset_groups_synced
+    if phases["asset_groups"]["status"] == "error":
+        total_errors += 1
+
+    asset_group_daily_synced = _run_phase(
+        "asset_group_daily",
+        lambda: google_ads_service.sync_asset_group_daily(db, cid, date_from, date_to),
+        phases,
+        critical=False,
+    )
+    total_synced += asset_group_daily_synced
+    if phases["asset_group_daily"]["status"] == "error":
+        total_errors += 1
+
+    asset_group_assets_synced = _run_phase(
+        "asset_group_assets",
+        lambda: google_ads_service.sync_asset_group_assets(db, cid),
+        phases,
+        critical=False,
+    )
+    total_synced += asset_group_assets_synced
+    if phases["asset_group_assets"]["status"] == "error":
+        total_errors += 1
+
+    asset_group_signals_synced = _run_phase(
+        "asset_group_signals",
+        lambda: google_ads_service.sync_asset_group_signals(db, cid),
+        phases,
+        critical=False,
+    )
+    total_synced += asset_group_signals_synced
+    if phases["asset_group_signals"]["status"] == "error":
+        total_errors += 1
+
+    campaign_audiences_synced = _run_phase(
+        "campaign_audiences",
+        lambda: google_ads_service.sync_campaign_audiences(db, cid, date_from, date_to),
+        phases,
+        critical=False,
+    )
+    total_synced += campaign_audiences_synced
+    if phases["campaign_audiences"]["status"] == "error":
+        total_errors += 1
+
+    campaign_assets_synced = _run_phase(
+        "campaign_assets",
+        lambda: google_ads_service.sync_campaign_assets(db, cid),
+        phases,
+        critical=False,
+    )
+    total_synced += campaign_assets_synced
+    if phases["campaign_assets"]["status"] == "error":
+        total_errors += 1
+
     if total_errors == 0:
         sync_log.status = "success"
     elif total_errors < len(phases):
@@ -483,7 +585,10 @@ def sync_single_phase(
 ):
     """Run a single sync phase for debugging. Available phases:
     campaigns, impression_share, ad_groups, keywords, keyword_daily,
-    daily_metrics, device_metrics, geo_metrics, search_terms, pmax_terms, change_events
+    daily_metrics, device_metrics, geo_metrics, search_terms, pmax_terms,
+    change_events, conversion_actions, age_metrics, gender_metrics,
+    pmax_channel_metrics, asset_groups, asset_group_daily, asset_group_assets,
+    asset_group_signals, campaign_audiences, campaign_assets
     """
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
@@ -515,6 +620,17 @@ def sync_single_phase(
         "search_terms": lambda: google_ads_service.sync_search_terms(db, cid, date_from, date_to),
         "pmax_terms": lambda: google_ads_service.sync_pmax_search_terms(db, cid, date_from, date_to),
         "change_events": lambda: google_ads_service.sync_change_events(db, cid, client.id, days=days),
+        "conversion_actions": lambda: google_ads_service.sync_conversion_actions(db, cid),
+        "age_metrics": lambda: google_ads_service.sync_age_metrics(db, cid, date_from, date_to),
+        "gender_metrics": lambda: google_ads_service.sync_gender_metrics(db, cid, date_from, date_to),
+        # Phase D
+        "pmax_channel_metrics": lambda: google_ads_service.sync_pmax_channel_metrics(db, cid, date_from, date_to),
+        "asset_groups": lambda: google_ads_service.sync_asset_groups(db, cid),
+        "asset_group_daily": lambda: google_ads_service.sync_asset_group_daily(db, cid, date_from, date_to),
+        "asset_group_assets": lambda: google_ads_service.sync_asset_group_assets(db, cid),
+        "asset_group_signals": lambda: google_ads_service.sync_asset_group_signals(db, cid),
+        "campaign_audiences": lambda: google_ads_service.sync_campaign_audiences(db, cid, date_from, date_to),
+        "campaign_assets": lambda: google_ads_service.sync_campaign_assets(db, cid),
     }
 
     if phase_name not in phase_map:

@@ -13,6 +13,12 @@ from app.models import (
     ActionLog, ChangeEvent, Alert, NegativeKeyword, ConversionAction,
 )
 from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
+from app.models.asset_group import AssetGroup
+from app.models.asset_group_daily import AssetGroupDaily
+from app.models.asset_group_asset import AssetGroupAsset
+from app.models.asset_group_signal import AssetGroupSignal
+from app.models.campaign_audience import CampaignAudienceMetric
+from app.models.campaign_asset import CampaignAsset
 
 
 # Deterministic seed for reproducibility
@@ -1092,6 +1098,304 @@ def _seed_demo_data_impl(db):
                 ))
 
     db.commit()
+
+    # -----------------------------------------------------------------------
+    # Phase D: PMax Channel Breakdown (GAP 3A)
+    # -----------------------------------------------------------------------
+    today = date.today()
+    pmax_campaign = [c for c in campaigns if c.campaign_type == "PERFORMANCE_MAX"][0]
+    NETWORK_TYPES = ["SEARCH", "CONTENT", "YOUTUBE_WATCH", "SHOPPING", "CROSS_NETWORK"]
+    NETWORK_WEIGHTS = [0.40, 0.20, 0.15, 0.20, 0.05]
+
+    for day_offset in range(90):
+        d = today - timedelta(days=day_offset)
+        dow_factor = 0.8 if d.weekday() >= 5 else 1.0
+        for net_type, weight in zip(NETWORK_TYPES, NETWORK_WEIGHTS):
+            base_impr = int(RNG.gauss(1200, 300) * weight * dow_factor)
+            base_impr = max(10, base_impr)
+            base_ctr = RNG.uniform(0.02, 0.08)
+            base_clicks = max(1, int(base_impr * base_ctr))
+            base_cost = base_clicks * RNG.uniform(0.5, 2.5)
+            conv_rate = RNG.uniform(0.02, 0.07)
+            if net_type == "CROSS_NETWORK":
+                conv_rate *= 0.3  # low conversions for cross-network
+            base_conv = round(max(0, base_clicks * conv_rate), 2)
+            base_cv = round(base_conv * RNG.uniform(80, 200), 2)
+
+            db.add(MetricSegmented(
+                campaign_id=pmax_campaign.id,
+                date=d,
+                ad_network_type=net_type,
+                clicks=base_clicks,
+                impressions=base_impr,
+                ctr=round(base_clicks / base_impr * 100, 2) if base_impr else 0,
+                conversions=base_conv,
+                conversion_value_micros=int(base_cv * 1_000_000),
+                cost_micros=int(base_cost * 1_000_000),
+                avg_cpc_micros=int((base_cost / base_clicks) * 1_000_000) if base_clicks else 0,
+            ))
+
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Phase D: Asset Groups + Daily + Assets + Signals (GAP 3B, 3C)
+    # -----------------------------------------------------------------------
+    asset_groups_data = [
+        ("Meble - Ogólne", "GOOD", "https://demo-meble.pl/meble", 5001),
+        ("Kanapy Premium", "EXCELLENT", "https://demo-meble.pl/kanapy-premium", 5002),
+        ("Promocje Sezonowe", "POOR", "https://demo-meble.pl/promocje", 5003),
+    ]
+
+    asset_groups = []
+    for ag_name, ad_strength, url, gid in asset_groups_data:
+        ag = AssetGroup(
+            campaign_id=pmax_campaign.id,
+            google_asset_group_id=str(gid),
+            name=ag_name,
+            status="ENABLED",
+            ad_strength=ad_strength,
+            final_url=url,
+            path1="meble",
+            path2=ag_name.split(" - ")[-1].lower() if " - " in ag_name else "",
+        )
+        db.add(ag)
+        asset_groups.append(ag)
+    db.flush()
+
+    # Daily metrics per asset group (90 days)
+    for ag_idx, ag in enumerate(asset_groups):
+        base_mult = [1.0, 1.3, 0.6][ag_idx]
+        for day_offset in range(90):
+            d = today - timedelta(days=day_offset)
+            dow_factor = 0.75 if d.weekday() >= 5 else 1.0
+            impr = max(10, int(RNG.gauss(800, 200) * base_mult * dow_factor))
+            ctr_val = RNG.uniform(0.03, 0.08)
+            clicks = max(1, int(impr * ctr_val))
+            cost = clicks * RNG.uniform(0.8, 2.0) * base_mult
+            conv = round(max(0, clicks * RNG.uniform(0.03, 0.08)), 2)
+            cv = round(conv * RNG.uniform(100, 250), 2)
+
+            db.add(AssetGroupDaily(
+                asset_group_id=ag.id,
+                date=d,
+                clicks=clicks,
+                impressions=impr,
+                ctr=round(clicks / impr * 100, 2) if impr else 0,
+                conversions=conv,
+                conversion_value_micros=int(cv * 1_000_000),
+                cost_micros=int(cost * 1_000_000),
+                avg_cpc_micros=int((cost / clicks) * 1_000_000) if clicks else 0,
+            ))
+
+    db.flush()
+
+    # Assets per asset group (8-12 each)
+    asset_templates = {
+        "Meble - Ogólne": [
+            ("HEADLINE", "HEADLINE", "Meble najwyższej jakości", "BEST"),
+            ("HEADLINE", "HEADLINE", "Darmowa dostawa od 500 zł", "GOOD"),
+            ("HEADLINE", "HEADLINE", "Sprawdź naszą kolekcję", "LOW"),
+            ("LONG_HEADLINE", "LONG_HEADLINE", "Meble premium z darmową dostawą w 24h", "GOOD"),
+            ("DESCRIPTION", "DESCRIPTION", "Ponad 5000 mebli w ofercie. Gwarancja jakości.", "BEST"),
+            ("DESCRIPTION", "DESCRIPTION", "Wygodne raty 0%. Zamów online.", "GOOD"),
+            ("IMAGE", "MARKETING_IMAGE", None, "GOOD"),
+            ("IMAGE", "SQUARE_MARKETING_IMAGE", None, "LEARNING"),
+            ("YOUTUBE_VIDEO", "YOUTUBE_VIDEO", None, "LOW"),
+        ],
+        "Kanapy Premium": [
+            ("HEADLINE", "HEADLINE", "Kanapy premium od 2999 zł", "BEST"),
+            ("HEADLINE", "HEADLINE", "Skórzane sofy — nowa kolekcja", "BEST"),
+            ("HEADLINE", "HEADLINE", "Komfort na lata", "GOOD"),
+            ("LONG_HEADLINE", "LONG_HEADLINE", "Eleganckie kanapy premium — darmowy transport", "BEST"),
+            ("DESCRIPTION", "DESCRIPTION", "Najlepsza jakość skóry naturalnej. 10 lat gwarancji.", "BEST"),
+            ("DESCRIPTION", "DESCRIPTION", "Kanapy narożne, rozkładane, 2-os i 3-os.", "GOOD"),
+            ("IMAGE", "MARKETING_IMAGE", None, "BEST"),
+            ("IMAGE", "SQUARE_MARKETING_IMAGE", None, "GOOD"),
+            ("IMAGE", "LOGO", None, "GOOD"),
+            ("YOUTUBE_VIDEO", "YOUTUBE_VIDEO", None, "GOOD"),
+        ],
+        "Promocje Sezonowe": [
+            ("HEADLINE", "HEADLINE", "Wyprzedaż do -50%", "LOW"),
+            ("HEADLINE", "HEADLINE", "Ostatnie sztuki", "LEARNING"),
+            ("LONG_HEADLINE", "LONG_HEADLINE", "Wielka wyprzedaż mebli — rabaty do 50%", "LOW"),
+            ("DESCRIPTION", "DESCRIPTION", "Wyprzedaż trwa do końca miesiąca.", "LOW"),
+            ("DESCRIPTION", "DESCRIPTION", "Kup teraz — limitowana oferta.", "LEARNING"),
+            ("IMAGE", "MARKETING_IMAGE", None, "LOW"),
+            ("IMAGE", "SQUARE_MARKETING_IMAGE", None, "LEARNING"),
+            ("YOUTUBE_VIDEO", "YOUTUBE_VIDEO", None, "LEARNING"),
+        ],
+    }
+
+    asset_id_counter = 9000
+    for ag in asset_groups:
+        templates = asset_templates.get(ag.name, [])
+        for at_type, at_field, at_text, at_perf in templates:
+            asset_id_counter += 1
+            db.add(AssetGroupAsset(
+                asset_group_id=ag.id,
+                google_asset_id=str(asset_id_counter),
+                asset_type=at_type,
+                field_type=at_field,
+                text_content=at_text,
+                performance_label=at_perf,
+            ))
+
+    db.flush()
+
+    # Signals per asset group (search themes + audience)
+    signal_data = {
+        "Meble - Ogólne": [
+            ("SEARCH_THEME", "meble do domu", "", ""),
+            ("SEARCH_THEME", "sklep meblowy online", "", ""),
+            ("SEARCH_THEME", "meble pokojowe", "", ""),
+            ("AUDIENCE", "", "customers/123/userLists/1001", "Remarketing - Odwiedzający"),
+            ("AUDIENCE", "", "customers/123/userLists/1002", "Podobni - Kupujący"),
+        ],
+        "Kanapy Premium": [
+            ("SEARCH_THEME", "kanapy skórzane", "", ""),
+            ("SEARCH_THEME", "sofa narożna", "", ""),
+            ("SEARCH_THEME", "meble premium", "", ""),
+            ("SEARCH_THEME", "kanapa rozkładana", "", ""),
+            ("AUDIENCE", "", "customers/123/userLists/1003", "In-Market - Meble"),
+        ],
+        "Promocje Sezonowe": [
+            ("SEARCH_THEME", "wyprzedaż mebli", "", ""),
+            ("SEARCH_THEME", "meble promocja", "", ""),
+            ("SEARCH_THEME", "tanie meble", "", ""),
+            ("AUDIENCE", "", "customers/123/userLists/1001", "Remarketing - Odwiedzający"),
+            ("AUDIENCE", "", "customers/123/userLists/1004", "Custom - Szukający rabatów"),
+        ],
+    }
+
+    for ag in asset_groups:
+        signals = signal_data.get(ag.name, [])
+        for sig_type, theme_text, aud_rn, aud_name in signals:
+            db.add(AssetGroupSignal(
+                asset_group_id=ag.id,
+                signal_type=sig_type,
+                search_theme_text=theme_text,
+                audience_resource_name=aud_rn,
+                audience_name=aud_name,
+            ))
+
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Phase D: Campaign Audience Metrics (GAP 4B)
+    # -----------------------------------------------------------------------
+    search_campaigns_for_audience = [c for c in campaigns if c.campaign_type == "SEARCH" and c.status == "ENABLED"]
+
+    audience_defs = [
+        ("customers/123/userLists/2001", "Remarketing - Kupujący 30d", "REMARKETING", 1.3),
+        ("customers/123/userLists/2002", "In-Market - Meble domowe", "IN_MARKET", 0.9),
+        ("customers/123/userLists/2003", "In-Market - Wyposażenie wnętrz", "IN_MARKET", 0.5),
+        ("customers/123/userLists/2004", "Affinity - Design Lovers", "AFFINITY", 0.7),
+        ("customers/123/userLists/2005", "Custom - Szukający mebli premium", "CUSTOM", 1.1),
+    ]
+
+    for camp in search_campaigns_for_audience[:2]:  # first 2 SEARCH campaigns
+        for aud_rn, aud_name, aud_type, conv_mult in audience_defs:
+            for day_offset in range(90):
+                d = today - timedelta(days=day_offset)
+                dow_factor = 0.75 if d.weekday() >= 5 else 1.0
+                base_impr = max(5, int(RNG.gauss(200, 50) * dow_factor))
+                base_ctr = RNG.uniform(0.02, 0.06)
+                base_clicks = max(0, int(base_impr * base_ctr))
+                if base_clicks == 0:
+                    continue
+                base_cost = base_clicks * RNG.uniform(0.8, 2.5)
+                base_conv = round(max(0, base_clicks * RNG.uniform(0.02, 0.06) * conv_mult), 2)
+                base_cv = round(base_conv * RNG.uniform(100, 300), 2)
+
+                db.add(CampaignAudienceMetric(
+                    campaign_id=camp.id,
+                    audience_resource_name=aud_rn,
+                    audience_name=aud_name,
+                    audience_type=aud_type,
+                    date=d,
+                    clicks=base_clicks,
+                    impressions=base_impr,
+                    ctr=round(base_clicks / base_impr * 100, 2) if base_impr else 0,
+                    conversions=base_conv,
+                    conversion_value_micros=int(base_cv * 1_000_000),
+                    cost_micros=int(base_cost * 1_000_000),
+                    avg_cpc_micros=int((base_cost / base_clicks) * 1_000_000) if base_clicks else 0,
+                    bid_modifier=round(RNG.uniform(0.8, 1.5), 2) if aud_type == "REMARKETING" else None,
+                ))
+
+        if (day_offset + 1) % 30 == 0:
+            db.flush()
+
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Phase D: Campaign Assets / Extensions (GAP 5A + 5B)
+    # -----------------------------------------------------------------------
+    extension_configs = {
+        "Branded Search": {
+            "SITELINK": [
+                ("Kolekcje", "Najnowsze kolekcje mebli", "BEST"),
+                ("Wyprzedaż", "Rabaty do -50%", "GOOD"),
+                ("Kontakt", "Zadzwoń lub napisz", "GOOD"),
+                ("O nas", "Nasza historia", "LOW"),
+            ],
+            "CALLOUT": [
+                ("Darmowa dostawa", None, "GOOD"),
+                ("Raty 0%", None, "BEST"),
+                ("Gwarancja 10 lat", None, "GOOD"),
+                ("Zwrot 30 dni", None, "GOOD"),
+            ],
+            "STRUCTURED_SNIPPET": [
+                ("Typy: Kanapy, Łóżka, Stoły, Krzesła", None, "GOOD"),
+            ],
+        },
+        "Kanapy - Generic": {
+            "SITELINK": [
+                ("Kanapy skórzane", "Premium sofy", "GOOD"),
+                ("Narożniki", "Duży wybór", "LOW"),
+            ],
+            "CALLOUT": [
+                ("Skóra naturalna", None, "GOOD"),
+                ("Transport gratis", None, "LEARNING"),
+            ],
+        },
+        "Meble Biurowe": {
+            "CALLOUT": [
+                ("Ergonomiczne biurka", None, "GOOD"),
+                ("Krzesła obrotowe", None, "LOW"),
+            ],
+        },
+    }
+
+    ext_asset_id = 8000
+    for camp in campaigns:
+        ext_config = extension_configs.get(camp.name, {})
+        for ext_type, items in ext_config.items():
+            for ext_name, ext_detail, ext_perf in items:
+                ext_asset_id += 1
+                base_clicks = RNG.randint(10, 500)
+                base_impr = base_clicks * RNG.randint(8, 20)
+                base_cost = base_clicks * RNG.uniform(0.3, 1.5)
+                base_conv = round(max(0, base_clicks * RNG.uniform(0.01, 0.05)), 2)
+
+                db.add(CampaignAsset(
+                    campaign_id=camp.id,
+                    google_asset_id=str(ext_asset_id),
+                    asset_type=ext_type,
+                    asset_name=ext_name,
+                    asset_detail=ext_detail,
+                    status="ENABLED",
+                    performance_label=ext_perf,
+                    source="ADVERTISER",
+                    clicks=base_clicks,
+                    impressions=base_impr,
+                    cost_micros=int(base_cost * 1_000_000),
+                    conversions=base_conv,
+                    ctr=round(base_clicks / base_impr * 100, 2) if base_impr else 0,
+                ))
+
+    db.flush()
+    db.commit()
     db.close()
 
     print("Done! Demo data seeded successfully!")
@@ -1108,6 +1412,10 @@ def _seed_demo_data_impl(db):
     print(f"   - {len(all_action_logs)} action log entries")
     print(f"   - {len(change_events_data)} change events (external history)")
     print(f"   - {len(alerts_data)} alerts (anomaly detection)")
+    print("   - 90 days PMax channel breakdown (MetricSegmented + ad_network_type)")
+    print(f"   - {len(asset_groups)} PMax asset groups + daily metrics + assets + signals")
+    print("   - Campaign audience metrics (5 segments × 2 campaigns × 90 days)")
+    print("   - Campaign extensions (sitelinks, callouts, snippets)")
 
 
 if __name__ == "__main__":

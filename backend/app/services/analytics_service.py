@@ -18,6 +18,12 @@ from app.models.keyword import Keyword
 from app.models.alert import Alert
 from app.models.metric_daily import MetricDaily
 from app.models.metric_segmented import MetricSegmented
+from app.models.asset_group import AssetGroup
+from app.models.asset_group_daily import AssetGroupDaily
+from app.models.asset_group_asset import AssetGroupAsset
+from app.models.asset_group_signal import AssetGroupSignal
+from app.models.campaign_audience import CampaignAudienceMetric
+from app.models.campaign_asset import CampaignAsset
 from app.utils.formatters import micros_to_currency
 
 
@@ -3208,4 +3214,419 @@ class AnalyticsService:
             "anomalies": anomalies,
             "avg_cpa_usd": age_avg_cpa,
             "period_days": (date_to - date_from).days,
+        }
+
+    # -----------------------------------------------------------------------
+    # PMax Channel Breakdown
+    # -----------------------------------------------------------------------
+
+    def get_pmax_channel_breakdown(
+        self,
+        client_id: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        campaign_type: str | None = None,
+        campaign_status: str | None = None,
+    ) -> dict:
+        """Aggregate MetricSegmented by ad_network_type for PMax campaigns."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(None, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"channels": [], "total_cost_micros": 0, "total_conversions": 0.0}
+
+        rows = (
+            self.db.query(
+                MetricSegmented.ad_network_type,
+                func.sum(MetricSegmented.clicks).label("clicks"),
+                func.sum(MetricSegmented.impressions).label("impressions"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversion_value_micros).label("value"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.ad_network_type.isnot(None),
+            )
+            .group_by(MetricSegmented.ad_network_type)
+            .all()
+        )
+
+        total_cost = sum(int(r.cost or 0) for r in rows)
+        total_conv = sum(float(r.conv or 0) for r in rows)
+
+        channels = []
+        for r in rows:
+            cost = int(r.cost or 0)
+            conv = float(r.conv or 0)
+            channels.append({
+                "network_type": r.ad_network_type,
+                "clicks": int(r.clicks or 0),
+                "impressions": int(r.impressions or 0),
+                "conversions": round(conv, 2),
+                "cost_micros": cost,
+                "cost_share_pct": round(cost / total_cost * 100, 1) if total_cost > 0 else 0,
+                "conv_share_pct": round(conv / total_conv * 100, 1) if total_conv > 0 else 0,
+            })
+
+        return {
+            "channels": sorted(channels, key=lambda x: x["cost_micros"], reverse=True),
+            "total_cost_micros": total_cost,
+            "total_conversions": round(total_conv, 2),
+        }
+
+    # -----------------------------------------------------------------------
+    # Asset Group Performance
+    # -----------------------------------------------------------------------
+
+    def get_asset_group_performance(
+        self,
+        client_id: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> dict:
+        """Query AssetGroup + aggregate AssetGroupDaily metrics, include asset counts and ad_strength."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(None, date_from, date_to)
+
+        # Get PMax campaign IDs for this client
+        pmax_campaign_ids = [
+            c.id for c in self.db.query(Campaign).filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            ).all()
+        ]
+        if not pmax_campaign_ids:
+            return {"asset_groups": []}
+
+        asset_groups = (
+            self.db.query(AssetGroup)
+            .filter(AssetGroup.campaign_id.in_(pmax_campaign_ids))
+            .all()
+        )
+        if not asset_groups:
+            return {"asset_groups": []}
+
+        result = []
+        for ag in asset_groups:
+            # Aggregate daily metrics
+            agg = self.db.query(
+                func.sum(AssetGroupDaily.clicks).label("clicks"),
+                func.sum(AssetGroupDaily.impressions).label("impressions"),
+                func.sum(AssetGroupDaily.cost_micros).label("cost"),
+                func.sum(AssetGroupDaily.conversions).label("conv"),
+                func.sum(AssetGroupDaily.conversion_value_micros).label("value"),
+            ).filter(
+                AssetGroupDaily.asset_group_id == ag.id,
+                AssetGroupDaily.date >= date_from,
+                AssetGroupDaily.date <= date_to,
+            ).first()
+
+            total_clicks = int(agg.clicks or 0)
+            total_cost = int(agg.cost or 0)
+            total_conv = float(agg.conv or 0)
+            total_value = int(agg.value or 0)
+
+            cpa_micros = int(total_cost / total_conv) if total_conv > 0 else 0
+            roas = round(total_value / total_cost, 2) if total_cost > 0 else 0.0
+
+            # Get assets with performance labels
+            assets_list = self.db.query(AssetGroupAsset).filter(
+                AssetGroupAsset.asset_group_id == ag.id,
+            ).all()
+
+            assets_data = [
+                {
+                    "type": a.asset_type,
+                    "text": a.text_content,
+                    "performance_label": a.performance_label,
+                }
+                for a in assets_list
+            ]
+
+            result.append({
+                "id": ag.id,
+                "name": ag.name,
+                "ad_strength": ag.ad_strength,
+                "status": ag.status,
+                "total_clicks": total_clicks,
+                "total_cost_micros": total_cost,
+                "total_conversions": round(total_conv, 2),
+                "cpa_micros": cpa_micros,
+                "roas": roas,
+                "asset_count": len(assets_list),
+                "assets": assets_data,
+            })
+
+        return {"asset_groups": result}
+
+    # -----------------------------------------------------------------------
+    # PMax Search Themes
+    # -----------------------------------------------------------------------
+
+    def get_pmax_search_themes(self, client_id: int) -> dict:
+        """Query AssetGroupSignal grouped by asset_group, cross-reference with performance."""
+        pmax_campaign_ids = [
+            c.id for c in self.db.query(Campaign).filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type == "PERFORMANCE_MAX",
+            ).all()
+        ]
+        if not pmax_campaign_ids:
+            return {"asset_groups": []}
+
+        asset_groups = (
+            self.db.query(AssetGroup)
+            .filter(AssetGroup.campaign_id.in_(pmax_campaign_ids))
+            .all()
+        )
+        if not asset_groups:
+            return {"asset_groups": []}
+
+        result = []
+        for ag in asset_groups:
+            signals = self.db.query(AssetGroupSignal).filter(
+                AssetGroupSignal.asset_group_id == ag.id,
+            ).all()
+
+            search_themes = [
+                s.search_theme_text
+                for s in signals
+                if s.signal_type == "SEARCH_THEME" and s.search_theme_text
+            ]
+            audience_signals = [
+                {"name": s.audience_name or s.audience_resource_name, "type": s.signal_type}
+                for s in signals
+                if s.signal_type != "SEARCH_THEME" and (s.audience_name or s.audience_resource_name)
+            ]
+
+            # Cross-reference performance (last 30 days)
+            perf = self.db.query(
+                func.sum(AssetGroupDaily.cost_micros).label("cost"),
+                func.sum(AssetGroupDaily.conversions).label("conv"),
+            ).filter(
+                AssetGroupDaily.asset_group_id == ag.id,
+                AssetGroupDaily.date >= date.today() - timedelta(days=30),
+            ).first()
+
+            result.append({
+                "name": ag.name,
+                "search_themes": search_themes,
+                "audience_signals": audience_signals,
+                "performance": {
+                    "cost_micros": int(perf.cost or 0) if perf else 0,
+                    "conversions": round(float(perf.conv or 0), 2) if perf else 0.0,
+                },
+            })
+
+        return {"asset_groups": result}
+
+    # -----------------------------------------------------------------------
+    # Audience Performance
+    # -----------------------------------------------------------------------
+
+    def get_audience_performance(
+        self,
+        client_id: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        campaign_type: str | None = None,
+        campaign_status: str | None = None,
+    ) -> dict:
+        """Aggregate CampaignAudienceMetric per audience, compute CPA anomaly flags."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(None, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"audiences": [], "avg_cpa_micros": 0}
+
+        rows = (
+            self.db.query(
+                CampaignAudienceMetric.audience_name,
+                CampaignAudienceMetric.audience_type,
+                func.sum(CampaignAudienceMetric.clicks).label("clicks"),
+                func.sum(CampaignAudienceMetric.impressions).label("impressions"),
+                func.sum(CampaignAudienceMetric.cost_micros).label("cost"),
+                func.sum(CampaignAudienceMetric.conversions).label("conv"),
+                func.sum(CampaignAudienceMetric.conversion_value_micros).label("value"),
+            )
+            .filter(
+                CampaignAudienceMetric.campaign_id.in_(campaign_ids),
+                CampaignAudienceMetric.date >= date_from,
+                CampaignAudienceMetric.date <= date_to,
+            )
+            .group_by(CampaignAudienceMetric.audience_name, CampaignAudienceMetric.audience_type)
+            .all()
+        )
+
+        total_cost = sum(int(r.cost or 0) for r in rows)
+        total_conv = sum(float(r.conv or 0) for r in rows)
+        avg_cpa_micros = int(total_cost / total_conv) if total_conv > 0 else 0
+
+        audiences = []
+        for r in rows:
+            cost = int(r.cost or 0)
+            conv = float(r.conv or 0)
+            value = int(r.value or 0)
+            cpa_micros = int(cost / conv) if conv > 0 else 0
+            roas = round(value / cost, 2) if cost > 0 else 0.0
+            is_anomaly = (cpa_micros > avg_cpa_micros * 2 and cost > 50_000_000) if avg_cpa_micros > 0 else False
+
+            audiences.append({
+                "audience_name": r.audience_name,
+                "audience_type": r.audience_type,
+                "clicks": int(r.clicks or 0),
+                "impressions": int(r.impressions or 0),
+                "cost_micros": cost,
+                "conversions": round(conv, 2),
+                "cpa_micros": cpa_micros,
+                "roas": roas,
+                "is_anomaly": is_anomaly,
+            })
+
+        return {
+            "audiences": sorted(audiences, key=lambda x: x["cost_micros"], reverse=True),
+            "avg_cpa_micros": avg_cpa_micros,
+        }
+
+    # -----------------------------------------------------------------------
+    # Missing Extensions Audit
+    # -----------------------------------------------------------------------
+
+    def get_missing_extensions_audit(
+        self,
+        client_id: int,
+        campaign_type: str | None = None,
+        campaign_status: str | None = None,
+    ) -> dict:
+        """Check CampaignAsset grouped by campaign for min extension counts."""
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"campaigns": [], "overall_score": 0}
+
+        campaigns = self.db.query(Campaign).filter(Campaign.id.in_(campaign_ids)).all()
+        campaign_name_map = {c.id: c.name for c in campaigns}
+
+        MIN_SITELINKS = 4
+        MIN_CALLOUTS = 4
+        MIN_SNIPPETS = 1
+
+        results = []
+        total_score = 0.0
+
+        for cid in campaign_ids:
+            assets = self.db.query(CampaignAsset).filter(
+                CampaignAsset.campaign_id == cid,
+            ).all()
+
+            sitelink_count = sum(1 for a in assets if a.asset_type == "SITELINK")
+            callout_count = sum(1 for a in assets if a.asset_type == "CALLOUT")
+            snippet_count = sum(1 for a in assets if a.asset_type == "STRUCTURED_SNIPPET")
+            has_call = any(a.asset_type == "CALL" for a in assets)
+
+            missing = []
+            if sitelink_count < MIN_SITELINKS:
+                missing.append(f"Need {MIN_SITELINKS - sitelink_count} more sitelinks")
+            if callout_count < MIN_CALLOUTS:
+                missing.append(f"Need {MIN_CALLOUTS - callout_count} more callouts")
+            if snippet_count < MIN_SNIPPETS:
+                missing.append(f"Need {MIN_SNIPPETS - snippet_count} more structured snippets")
+
+            # Extension score: each category max 33.3%, call bonus
+            score = 0.0
+            score += min(sitelink_count / MIN_SITELINKS, 1.0) * 30
+            score += min(callout_count / MIN_CALLOUTS, 1.0) * 30
+            score += min(snippet_count / MIN_SNIPPETS, 1.0) * 30
+            score += 10 if has_call else 0
+            score = round(min(score, 100), 1)
+            total_score += score
+
+            results.append({
+                "campaign_name": campaign_name_map.get(cid, f"Campaign #{cid}"),
+                "sitelink_count": sitelink_count,
+                "callout_count": callout_count,
+                "snippet_count": snippet_count,
+                "has_call": has_call,
+                "extension_score": score,
+                "missing": missing,
+            })
+
+        overall_score = round(total_score / len(campaign_ids), 1) if campaign_ids else 0
+
+        return {
+            "campaigns": sorted(results, key=lambda x: x["extension_score"]),
+            "overall_score": overall_score,
+        }
+
+    # -----------------------------------------------------------------------
+    # Extension Performance
+    # -----------------------------------------------------------------------
+
+    def get_extension_performance(
+        self,
+        client_id: int,
+        campaign_type: str | None = None,
+        campaign_status: str | None = None,
+    ) -> dict:
+        """Query CampaignAsset with metrics, group by asset_type."""
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"by_type": [], "extensions": []}
+
+        assets = (
+            self.db.query(CampaignAsset)
+            .filter(CampaignAsset.campaign_id.in_(campaign_ids))
+            .all()
+        )
+
+        campaign_name_map = {
+            c.id: c.name
+            for c in self.db.query(Campaign).filter(Campaign.id.in_(campaign_ids)).all()
+        }
+
+        # Group by asset_type for summary
+        type_agg: dict[str, dict] = {}
+        extensions = []
+
+        for a in assets:
+            at = a.asset_type
+            if at not in type_agg:
+                type_agg[at] = {
+                    "total_clicks": 0, "total_impressions": 0, "count": 0,
+                    "performance_labels": {"BEST": 0, "GOOD": 0, "LOW": 0},
+                }
+            type_agg[at]["total_clicks"] += a.clicks or 0
+            type_agg[at]["total_impressions"] += a.impressions or 0
+            type_agg[at]["count"] += 1
+            label = (a.performance_label or "").upper()
+            if label in type_agg[at]["performance_labels"]:
+                type_agg[at]["performance_labels"][label] += 1
+
+            extensions.append({
+                "campaign_name": campaign_name_map.get(a.campaign_id, f"Campaign #{a.campaign_id}"),
+                "asset_type": at,
+                "asset_name": a.asset_name,
+                "clicks": a.clicks or 0,
+                "impressions": a.impressions or 0,
+                "ctr": round(a.ctr or 0, 2),
+                "performance_label": a.performance_label,
+            })
+
+        by_type = []
+        for at, agg in sorted(type_agg.items()):
+            avg_ctr = round(agg["total_clicks"] / agg["total_impressions"] * 100, 2) if agg["total_impressions"] > 0 else 0
+            by_type.append({
+                "asset_type": at,
+                "total_clicks": agg["total_clicks"],
+                "total_impressions": agg["total_impressions"],
+                "avg_ctr": avg_ctr,
+                "count": agg["count"],
+                "performance_labels": agg["performance_labels"],
+            })
+
+        return {
+            "by_type": by_type,
+            "extensions": sorted(extensions, key=lambda x: x["clicks"], reverse=True),
         }

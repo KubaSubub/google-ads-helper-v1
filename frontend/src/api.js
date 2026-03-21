@@ -252,6 +252,20 @@ export const getConversionQuality = (clientId, params = {}) =>
 export const getDemographics = (clientId, params = {}) =>
     api.get('/analytics/demographics', { params: { client_id: clientId, ...params } });
 
+// Phase D — PMax, Audience, Extensions
+export const getPmaxChannels = (clientId, params = {}) =>
+    api.get('/analytics/pmax-channels', { params: { client_id: clientId, ...params } });
+export const getAssetGroupPerformance = (clientId, params = {}) =>
+    api.get('/analytics/asset-group-performance', { params: { client_id: clientId, ...params } });
+export const getPmaxSearchThemes = (clientId, params = {}) =>
+    api.get('/analytics/pmax-search-themes', { params: { client_id: clientId, ...params } });
+export const getAudiencePerformance = (clientId, params = {}) =>
+    api.get('/analytics/audience-performance', { params: { client_id: clientId, ...params } });
+export const getMissingExtensions = (clientId, params = {}) =>
+    api.get('/analytics/missing-extensions', { params: { client_id: clientId, ...params } });
+export const getExtensionPerformance = (clientId, params = {}) =>
+    api.get('/analytics/extension-performance', { params: { client_id: clientId, ...params } });
+
 // AI Agent
 export const getAgentStatus = () => api.get('/agent/status');
 

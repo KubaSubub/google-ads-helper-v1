@@ -11,12 +11,15 @@ import {
     getParetoAnalysis, getScalingOpportunities,
     getTargetVsActual, getBidStrategyReport, getLearningStatus,
     getPortfolioHealth, getConversionQuality, getDemographics,
+    getPmaxChannels, getAssetGroupPerformance, getPmaxSearchThemes,
+    getAudiencePerformance, getMissingExtensions, getExtensionPerformance,
 } from '../api'
 import {
     Loader2, CalendarDays, FileText, Hash, Layers, Globe, AlertTriangle,
     ChevronDown, ChevronRight, ExternalLink, TrendingDown, TrendingUp,
     GitBranch, Target, Clock, Users, Zap, BarChart3, Activity,
     Crosshair, GraduationCap, Briefcase, ShieldCheck, PieChart,
+    Radio, Box, Search, Headphones, Link2, Star,
 } from 'lucide-react'
 
 const SECTION_STYLE = { marginBottom: 24 }
@@ -986,6 +989,200 @@ function DemographicsSection({ data }) {
 }
 
 // ─────────────────────────────────────────────────────────
+// 19. PMAX CHANNEL BREAKDOWN (GAP 3A)
+// ─────────────────────────────────────────────────────────
+function PmaxChannelsSection({ data }) {
+    if (!data?.channels?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych o kanalach PMax.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kanal', 'Klikniecia', 'Koszt', 'Konwersje', '% kosztow', '% konwersji'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kanal' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.channels.map((ch, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{ch.network_type}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{ch.clicks?.toLocaleString()}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{(ch.cost_micros / 1e6).toFixed(0)} zl</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{ch.conversions?.toFixed(1)}</td>
+                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{ch.cost_share_pct?.toFixed(1)}%</td>
+                            <td style={{ ...TD_DIM, textAlign: 'right', color: ch.cost_share_pct > 60 && ch.conv_share_pct < 30 ? '#F87171' : undefined }}>{ch.conv_share_pct?.toFixed(1)}%</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 20. ASSET GROUP PERFORMANCE (GAP 3B)
+// ─────────────────────────────────────────────────────────
+const AD_STRENGTH_COLOR = { EXCELLENT: '#4ADE80', GOOD: '#4F8EF7', AVERAGE: '#FBBF24', POOR: '#F87171' }
+function AssetGroupsSection({ data }) {
+    if (!data?.asset_groups?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak grup zasobow PMax.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Grupa zasobow', 'Sila reklamy', 'Koszt', 'Konwersje', 'CPA', 'ROAS', 'Zasoby'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Grupa zasobow' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.asset_groups.map((ag, i) => {
+                        const cost = ag.total_cost_micros / 1e6
+                        const cpa = ag.total_conversions > 0 ? cost / ag.total_conversions : null
+                        const roas = cost > 0 ? (ag.total_conversion_value_micros || 0) / 1e6 / cost : null
+                        return (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{ag.name}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>
+                                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: `${AD_STRENGTH_COLOR[ag.ad_strength] || 'rgba(255,255,255,0.1)'}22`, color: AD_STRENGTH_COLOR[ag.ad_strength] || 'rgba(255,255,255,0.5)' }}>{ag.ad_strength || '—'}</span>
+                                </td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{cost.toFixed(0)} zl</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{ag.total_conversions?.toFixed(1)}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{cpa != null ? `${cpa.toFixed(0)} zl` : '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{roas != null ? `${roas.toFixed(2)}x` : '—'}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{ag.asset_count || 0}</td>
+                            </tr>
+                        )
+                    })}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 21. PMAX SEARCH THEMES (GAP 3C)
+// ─────────────────────────────────────────────────────────
+function SearchThemesSection({ data }) {
+    if (!data?.asset_groups?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak sygnalow PMax.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            {data.asset_groups.map((ag, i) => (
+                <div key={i} style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#F0F0F0', marginBottom: 6 }}>{ag.name}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {ag.search_themes?.map((t, j) => (
+                            <span key={j} style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, background: 'rgba(79,142,247,0.1)', border: '1px solid rgba(79,142,247,0.2)', color: '#4F8EF7' }}>{t}</span>
+                        ))}
+                        {ag.audience_signals?.map((a, j) => (
+                            <span key={`a-${j}`} style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, background: 'rgba(123,92,224,0.1)', border: '1px solid rgba(123,92,224,0.2)', color: '#7B5CE0' }}>{a.name} ({a.type})</span>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 22. AUDIENCE PERFORMANCE (GAP 4B)
+// ─────────────────────────────────────────────────────────
+function AudiencePerfSection({ data }) {
+    if (!data?.audiences?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych o grupach odbiorcow.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Grupa odbiorcow', 'Typ', 'Koszt', 'Konwersje', 'CPA', 'ROAS', 'Anomalia'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Grupa odbiorcow' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.audiences.map((a, i) => {
+                        const cost = a.cost_micros / 1e6
+                        const cpa = a.cpa_micros ? a.cpa_micros / 1e6 : null
+                        return (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{a.audience_name || a.audience_resource_name}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.audience_type || '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{cost.toFixed(0)} zl</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{a.conversions?.toFixed(1)}</td>
+                                <td style={{ ...TD, textAlign: 'right', color: a.is_anomaly ? '#F87171' : undefined }}>{cpa != null ? `${cpa.toFixed(0)} zl` : '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{a.roas != null ? `${a.roas.toFixed(2)}x` : '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{a.is_anomaly ? <span style={{ color: '#F87171', fontWeight: 600 }}>TAK</span> : '—'}</td>
+                            </tr>
+                        )
+                    })}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 23. MISSING EXTENSIONS (GAP 5A)
+// ─────────────────────────────────────────────────────────
+function MissingExtSection({ data }) {
+    if (!data?.campaigns?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych o rozszerzeniach.</div>
+    const Check = ({ ok }) => <span style={{ color: ok ? '#4ADE80' : '#F87171', fontWeight: 700, fontSize: 14 }}>{ok ? '\u2713' : '\u2717'}</span>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kampania', 'Sitelinks', 'Callouts', 'Snippets', 'Call', 'Score'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'center' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.campaigns.map((c, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{c.campaign_name}</td>
+                            <td style={{ ...TD, textAlign: 'center' }}><Check ok={c.sitelink_count >= 4} /> {c.sitelink_count}</td>
+                            <td style={{ ...TD, textAlign: 'center' }}><Check ok={c.callout_count >= 4} /> {c.callout_count}</td>
+                            <td style={{ ...TD, textAlign: 'center' }}><Check ok={c.snippet_count >= 1} /> {c.snippet_count}</td>
+                            <td style={{ ...TD, textAlign: 'center' }}><Check ok={c.has_call} /></td>
+                            <td style={{ ...TD, textAlign: 'center' }}>
+                                <span style={{ padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: c.extension_score >= 80 ? 'rgba(74,222,128,0.1)' : c.extension_score >= 50 ? 'rgba(251,191,36,0.1)' : 'rgba(248,113,113,0.1)', color: c.extension_score >= 80 ? '#4ADE80' : c.extension_score >= 50 ? '#FBBF24' : '#F87171' }}>{c.extension_score}%</span>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 24. EXTENSION PERFORMANCE (GAP 5B)
+// ─────────────────────────────────────────────────────────
+function ExtPerfSection({ data }) {
+    if (!data?.by_type?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych o wydajnosci rozszerzen.</div>
+    const PERF_COLOR = { BEST: '#4ADE80', GOOD: '#4F8EF7', LOW: '#F87171', LEARNING: '#FBBF24' }
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Typ rozszerzenia', 'Ilosc', 'Klikniecia', 'Wyswietlenia', 'CTR', 'BEST', 'GOOD', 'LOW'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Typ rozszerzenia' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.by_type.map((t, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{t.asset_type}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{t.count}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{t.total_clicks?.toLocaleString()}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{t.total_impressions?.toLocaleString()}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{t.avg_ctr?.toFixed(2)}%</td>
+                            <td style={{ ...TD, textAlign: 'right', color: PERF_COLOR.BEST }}>{t.performance_labels?.BEST || 0}</td>
+                            <td style={{ ...TD, textAlign: 'right', color: PERF_COLOR.GOOD }}>{t.performance_labels?.GOOD || 0}</td>
+                            <td style={{ ...TD, textAlign: 'right', color: PERF_COLOR.LOW }}>{t.performance_labels?.LOW || 0}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────
 export default function SearchOptimization() {
@@ -1002,6 +1199,8 @@ export default function SearchOptimization() {
         pareto: false, scaling: false, targetVsActual: false,
         learningStatus: false, portfolioHealth: false,
         convQuality: false, demographics: false,
+        pmaxChannels: false, assetGroups: false, searchThemes: false,
+        audiencePerf: false, missingExt: false, extPerf: false,
     })
     const [ngramSize, setNgramSize] = useState(1)
 
@@ -1024,6 +1223,12 @@ export default function SearchOptimization() {
     const [portfolioHealth, setPortfolioHealth] = useState(null)
     const [convQuality, setConvQuality] = useState(null)
     const [demographics, setDemographics] = useState(null)
+    const [pmaxChannels, setPmaxChannels] = useState(null)
+    const [assetGroups, setAssetGroups] = useState(null)
+    const [searchThemes, setSearchThemes] = useState(null)
+    const [audiencePerf, setAudiencePerf] = useState(null)
+    const [missingExt, setMissingExt] = useState(null)
+    const [extPerf, setExtPerf] = useState(null)
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -1039,7 +1244,8 @@ export default function SearchOptimization() {
         setLoading(true)
         setError(null)
         try {
-            const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo] = await Promise.all([
+            const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
+                   pch, agp, sth, aud, mex, exp] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(() => null),
                 getDayparting(selectedClientId, allParams).catch(() => null),
                 getMatchTypeAnalysis(selectedClientId, allParams).catch(() => null),
@@ -1059,6 +1265,12 @@ export default function SearchOptimization() {
                 getPortfolioHealth(selectedClientId, allParams).catch(() => null),
                 getConversionQuality(selectedClientId).catch(() => null),
                 getDemographics(selectedClientId, allParams).catch(() => null),
+                getPmaxChannels(selectedClientId, allParams).catch(() => null),
+                getAssetGroupPerformance(selectedClientId, allParams).catch(() => null),
+                getPmaxSearchThemes(selectedClientId).catch(() => null),
+                getAudiencePerformance(selectedClientId, allParams).catch(() => null),
+                getMissingExtensions(selectedClientId, allParams).catch(() => null),
+                getExtensionPerformance(selectedClientId, allParams).catch(() => null),
             ])
             setWaste(w)
             setDaypart(dp)
@@ -1079,6 +1291,12 @@ export default function SearchOptimization() {
             setPortfolioHealth(ph)
             setConvQuality(cq)
             setDemographics(demo)
+            setPmaxChannels(pch)
+            setAssetGroups(agp)
+            setSearchThemes(sth)
+            setAudiencePerf(aud)
+            setMissingExt(mex)
+            setExtPerf(exp)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -1113,7 +1331,7 @@ export default function SearchOptimization() {
                     Optymalizacja SEARCH
                 </h1>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                    Analiza {days} dni — 19 narzędzi optymalizacji kampanii wyszukiwania
+                    Analiza {days} dni — 25 narzędzi optymalizacji kampanii
                 </p>
             </div>
 
@@ -1290,6 +1508,54 @@ export default function SearchOptimization() {
                     subtitle={demographics ? `${demographics.anomalies?.length || 0} anomalii CPA` : ''}
                     open={sections.demographics} onToggle={() => toggle('demographics')} />
                 {sections.demographics && <DemographicsSection data={demographics} />}
+            </div>
+
+            {/* 19. PMax Channel Breakdown (GAP 3A) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Radio} title="Rozkład kanałów PMax"
+                    subtitle={pmaxChannels?.channels ? `${pmaxChannels.channels.length} kanałów` : ''}
+                    open={sections.pmaxChannels} onToggle={() => toggle('pmaxChannels')} />
+                {sections.pmaxChannels && <PmaxChannelsSection data={pmaxChannels} />}
+            </div>
+
+            {/* 20. Asset Group Performance (GAP 3B) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Box} title="Grupy zasobów PMax"
+                    subtitle={assetGroups?.groups ? `${assetGroups.groups.length} grup` : ''}
+                    open={sections.assetGroups} onToggle={() => toggle('assetGroups')} />
+                {sections.assetGroups && <AssetGroupsSection data={assetGroups} />}
+            </div>
+
+            {/* 21. Search Themes (GAP 3C) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Search} title="Sygnały i tematy PMax"
+                    subtitle="tematy wyszukiwania i odbiorcy"
+                    open={sections.searchThemes} onToggle={() => toggle('searchThemes')} />
+                {sections.searchThemes && <SearchThemesSection data={searchThemes} />}
+            </div>
+
+            {/* 22. Audience Performance (GAP 4B) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Headphones} title="Wydajność grup odbiorców"
+                    subtitle={audiencePerf?.audiences ? `${audiencePerf.audiences.length} segmentów` : ''}
+                    open={sections.audiencePerf} onToggle={() => toggle('audiencePerf')} />
+                {sections.audiencePerf && <AudiencePerfSection data={audiencePerf} />}
+            </div>
+
+            {/* 23. Missing Extensions (GAP 5A) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Link2} title="Brakujące rozszerzenia"
+                    subtitle={missingExt?.campaigns ? `${missingExt.campaigns.length} kampanii` : ''}
+                    open={sections.missingExt} onToggle={() => toggle('missingExt')} />
+                {sections.missingExt && <MissingExtSection data={missingExt} />}
+            </div>
+
+            {/* 24. Extension Performance (GAP 5B) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Star} title="Wydajność rozszerzeń"
+                    subtitle={extPerf?.types ? `${extPerf.types.length} typów` : ''}
+                    open={sections.extPerf} onToggle={() => toggle('extPerf')} />
+                {sections.extPerf && <ExtPerfSection data={extPerf} />}
             </div>
         </div>
     )

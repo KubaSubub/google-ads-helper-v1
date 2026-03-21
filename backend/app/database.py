@@ -138,6 +138,9 @@ def _ensure_sqlite_columns():
         "keywords": {
             "criterion_kind": "TEXT DEFAULT 'POSITIVE'",
         },
+        "metrics_segmented": {
+            "ad_network_type": "TEXT",
+        },
         "negative_keywords": {
             "ad_group_id": "INTEGER",
             "google_criterion_id": "TEXT",
@@ -195,7 +198,8 @@ def _ensure_sqlite_columns():
                 "COALESCE(geo_city, '__NONE__'), "
                 "COALESCE(hour_of_day, -1), "
                 "COALESCE(age_range, '__NONE__'), "
-                "COALESCE(gender, '__NONE__'))"
+                "COALESCE(gender, '__NONE__'), "
+                "COALESCE(ad_network_type, '__NONE__'))"
             ))
 
 
