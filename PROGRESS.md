@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-20 (fc0cc91)
+# Updated: 2026-03-21 (189934d)
 
 ## Status
 - Backend: 355 tests passing (`pytest --tb=short -q`)
@@ -416,6 +416,11 @@
 ## Validation (unified filtering 2026-03-20)
 - Backend: 293 tests passed
 - All changes additive — no breaking changes to existing API contracts
+
+## Polish Diacritics Fix + Analytics Alerts i18n (2026-03-21 — commit 189934d)
+- Fixed missing/incorrect Polish diacritics (ą, ę, ó, ś, ź, ż, ć, ń, ł) across ~20 frontend files
+- Translated 4 analytics alerts (InsightsFeed) from English to Polish in `recommendations.py`
+- Synced frontend tests and E2E smoke tests with corrected labels
 
 ## Test Coverage Expansion — resolve_dates + Unified Filtering + CRUD (2026-03-20 — commit a814b01)
 - Added 62 new backend tests covering previously untested utilities and endpoints:
