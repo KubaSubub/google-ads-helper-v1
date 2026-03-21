@@ -133,3 +133,11 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Sidebar nav: "Prognoza" in navigation.
 - Category B page (independent filters, no GlobalFilterBar).
 
+## Phase B+C GAP Analysis (Smart Bidding, Account Structure, Conversions)
+- 12 new analytics endpoints covering playbook gaps: smart-bidding-health, learning-status, target-vs-actual, portfolio-health, conversion-quality, demographics, change-impact, bid-strategy-impact, pareto-analysis, scaling-opportunities, ad-group-health, bid-strategy-report.
+- 9 new recommendation rules (R19–R27): AD_GROUP_HEALTH, DISAPPROVED_AD_ALERT, SMART_BIDDING_CONV_ALERT, ECPC_DEPRECATION, SCALING_OPPORTUNITY, TARGET_DEVIATION_ALERT, LEARNING_PERIOD_ALERT, CONVERSION_QUALITY_ALERT, DEMOGRAPHIC_ANOMALY.
+- `ConversionAction` model for conversion tracking metadata.
+- Campaign model extended with bidding strategy fields (bidding_strategy_type, target_cpa_micros, target_roas, bidding_status, learning_status, performance_label, portfolio_strategy_id).
+- MetricSegmented model extended with age_range and gender columns.
+- Google Ads sync extended with sync_conversion_actions() and sync_demographic_metrics().
+

@@ -1,12 +1,13 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-21 (e627d82)
+# Updated: 2026-03-22
 
 ## Status
-- Backend: 355 tests passing (`pytest --tb=short -q`)
+- Backend: 385 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke tests)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- GAP Analysis: Phase A (8 rules, 6 endpoints) + Phase B+C (4 rules, 6 endpoints, ConversionAction model, demographics)
+- GAP Analysis: Phase A (8 rules, 6 endpoints) + Phase B+C (4 rules, 6 endpoints, ConversionAction model, demographics) + Phase D (4 rules, 7 endpoints, 6 new models, PMax/audiences/extensions)
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
+- Sync: 22 total phases (15 prior + 7 new Phase D phases)
 
 ## Frontend Filtering Iteration 1
 - Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`
@@ -468,8 +469,49 @@
 - Seed: 8 campaigns (was 7), 6 ConversionAction records with intentional quality issues, 90 days age/gender demographic data
 - DB schema: deleted + reseeded (no Alembic — new columns + new table require fresh DB)
 
-## Validation (GAP Analysis 2026-03-21)
+## Validation (GAP Analysis Phase A+B+C 2026-03-21)
 - Backend: 355 tests passed (`pytest --tb=short -q`)
 - Recommendations contract test: 26 enum values verified
 - Seed: all new data visible after reseed (ConversionAction, demographics, campaign extensions)
+
+## GAP Analysis — Phase D: PMax, Audiences, Extensions (2026-03-22)
+- Added 6 new models:
+  - `AssetGroup` — PMax asset group metadata (ad_strength, status, final_urls)
+  - `AssetGroupDaily` — daily metrics per asset group (clicks, impressions, cost, conversions)
+  - `AssetGroupAsset` — assets linked to asset groups (type, performance_label, policy_summary)
+  - `AssetGroupSignal` — audience signals attached to asset groups (signal_type, signal_value)
+  - `CampaignAudienceMetric` — audience segment performance per campaign (audience_name, segment_type)
+  - `CampaignAsset` — campaign-level assets/extensions (sitelinks, callouts, structured snippets, etc.)
+- Extended `MetricSegmented` model with `ad_network_type` column for channel-level breakdowns
+- Added 7 new analytics endpoints:
+  - `GET /analytics/pmax-channels` — PMax channel breakdown (Search, Display, YouTube, etc.) via ad_network_type
+  - `GET /analytics/asset-group-performance` — asset group metrics with ad_strength and asset counts
+  - `GET /analytics/pmax-search-themes` — PMax search themes from asset group signals
+  - `GET /analytics/audience-performance` — audience segment performance across campaigns
+  - `GET /analytics/missing-extensions` — detect campaigns missing recommended extensions
+  - `GET /analytics/extension-performance` — extension type performance metrics
+  - (plus 1 internal helper endpoint)
+- Added 7 new sync methods (total 22 sync phases):
+  - `sync_pmax_channel_metrics` — PMax ad_network_type segmented metrics
+  - `sync_asset_groups` — asset group metadata from Google Ads
+  - `sync_asset_group_daily` — daily asset group performance
+  - `sync_asset_group_assets` — asset-to-asset-group mappings
+  - `sync_asset_group_signals` — audience signals per asset group
+  - `sync_campaign_audiences` — audience segment metrics per campaign
+  - `sync_campaign_assets` — campaign-level extensions/assets
+- Wired 3 previously orphaned sync phases into the sync pipeline
+- Added 4 new recommendation rules (R28–R31, total 30 enum values):
+  - R28: `PMAX_CHANNEL_IMBALANCE` — PMax channel distribution anomalies
+  - R29: `ASSET_GROUP_AD_STRENGTH` — weak ad strength in asset groups
+  - R30: `AUDIENCE_PERFORMANCE_ANOMALY` — underperforming audience segments
+  - R31: `MISSING_EXTENSIONS_ALERT` — campaigns missing recommended extensions
+- Frontend: added 6 new analysis sections in `SearchOptimization.jsx` (25 total tools)
+- Frontend: added 4 new TYPE_CONFIG entries in `Recommendations.jsx` for Phase D rules
+- Seed data extended with Phase D data (asset groups, signals, audience metrics, campaign assets, PMax channel metrics)
+- DB schema: deleted + reseeded (no Alembic — new models + new columns require fresh DB)
+
+## Validation (GAP Analysis Phase D 2026-03-22)
+- Backend: 385 tests passed (`pytest --tb=short -q` — 30 new Phase D tests)
+- Recommendations contract test: 30 enum values verified (was 26)
+- Seed: all Phase D data visible after reseed (AssetGroup, AssetGroupDaily, AssetGroupAsset, AssetGroupSignal, CampaignAudienceMetric, CampaignAsset, PMax channel metrics)
 

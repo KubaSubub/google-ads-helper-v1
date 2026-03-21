@@ -13,7 +13,7 @@ Base API URL: `/api/v1`
 - `POST /auth/logout` -> clear credentials/session
 
 ## Clients
-- `GET /clients/?page=1&page_size=20` -> paginated list
+- `GET /clients/?page=1&page_size=20&search=` -> paginated list (optional `search` filters by name)
 - `GET /clients/{id}` -> client detail
 - `POST /clients/` -> create client
 - `PATCH /clients/{id}` -> update client (`allow_demo_write=true` required for DEMO)
@@ -22,7 +22,7 @@ Base API URL: `/api/v1`
 - `POST /clients/{id}/seed-demo-showcase?days=30` -> wygeneruj lokalne dane pokazowe DEMO (keywords_daily, ads, helper actions, dodatkowe search_terms i kontrolowane wzorce waste) (`allow_demo_write=true` required, endpoint tylko dla DEMO)
 - `POST /clients/{id}/clone-runtime?source_client_id=Y` -> skopiuj lokalne dane runtime z klienta Y do klienta id (bez wywolan write do Google Ads API, `allow_demo_write=true` required for DEMO)
 - `POST /clients/{id}/restore-runtime-from-legacy` -> odtworz lokalne dane runtime klienta z legacy bazy `backend/data/google_ads_app.db` (domyslnie po `google_customer_id`, opcjonalnie `source_client_id`, `allow_demo_write=true` required for DEMO)
-- `POST /clients/discover` -> auto-discover from MCC
+- `POST /clients/discover?customer_ids=` -> auto-discover from MCC (optional `customer_ids` comma-separated override)
 
 ## Sync
 - `POST /sync/trigger?client_id=X&days=30` -> full sync (`allow_demo_write=true` required for DEMO)
@@ -32,6 +32,7 @@ Base API URL: `/api/v1`
 - `GET /sync/debug/keywords?client_id=X&search=term&search=term2&include_removed=true&limit=50` -> helper debug comparing keyword_view API rows with local positive/negative SQLite rows
 - `GET /sync/debug/keyword-source-of-truth?client_id=X&criterion_id=Y` -> authoritative debug for one criterion across Google Ads `keyword_view`, `ad_group_criterion`, local SQLite, and request context
 - `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase (`allow_demo_write=true` required for DEMO)
+  - Phase D sync phases: `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
 
 ### Keyword source-of-truth debug
 - Returns Google Ads request context: `customer_id_used`, `login_customer_id`, masked OAuth/developer token metadata, and `request_id` values from Google Ads API responses.
@@ -175,6 +176,14 @@ Base API URL: `/api/v1`
 - `GET /analytics/ad-group-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — ad group structural health: ad count, keyword count, zero-conv groups (GAP 8)
 - `GET /analytics/conversion-quality?client_id=X` — conversion action configuration audit for data quality issues (GAP 2A-2D)
 - `GET /analytics/demographics?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — aggregate metrics by age/gender, flag CPA anomalies (GAP 4A)
+
+## Analytics - PMax, Audiences & Extensions (Phase D)
+- `GET /analytics/pmax-channels?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — PMax channel breakdown (Search, Display, YouTube, etc.) via ad_network_type segmented metrics
+- `GET /analytics/asset-group-performance?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — asset group metrics with ad_strength, asset counts, and daily aggregates
+- `GET /analytics/pmax-search-themes?client_id=X` — PMax search themes extracted from asset group audience signals
+- `GET /analytics/audience-performance?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — audience segment performance across campaigns (segment_type, audience_name, metrics)
+- `GET /analytics/missing-extensions?client_id=X&campaign_type=&campaign_status=` — detect campaigns missing recommended extensions (sitelinks, callouts, structured snippets, etc.)
+- `GET /analytics/extension-performance?client_id=X&campaign_type=&campaign_status=` — extension type performance metrics (clicks, impressions, cost aggregated by extension type)
 
 ## Daily Audit
 - `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
