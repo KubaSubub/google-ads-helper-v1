@@ -7,11 +7,11 @@ import { useApp } from '../contexts/AppContext'
 
 const SAFETY_FIELDS = [
     { key: 'MAX_BID_CHANGE_PCT', label: 'Max zmiana stawki (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana stawki CPC w procentach' },
-    { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budzetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budzetu kampanii' },
+    { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budżetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budżetu kampanii' },
     { key: 'MIN_BID_USD', label: 'Min stawka (USD)', unit: '$', multiply: 1, tooltip: 'Minimalna dopuszczalna stawka CPC' },
     { key: 'MAX_BID_USD', label: 'Max stawka (USD)', unit: '$', multiply: 1, tooltip: 'Maksymalna dopuszczalna stawka CPC' },
-    { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzien (%)', unit: '%', multiply: 100, tooltip: 'Max procent slow kluczowych wstrzymanych w jednym dniu na kampanie' },
-    { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywow/dzien', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie' },
+    { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzień (%)', unit: '%', multiply: 100, tooltip: 'Max procent słów kluczowych wstrzymanych w jednym dniu na kampanię' },
+    { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywów/dzień', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie' },
 ]
 
 const GLOBAL_DEFAULTS = {
@@ -58,7 +58,7 @@ export default function Settings() {
             await updateClient(formData.id, formData)
             showToast('Ustawienia zapisane', 'success')
         } catch (err) {
-            showToast('Blad zapisu: ' + err.message, 'error')
+            showToast('Błąd zapisu: ' + err.message, 'error')
         } finally {
             setSaving(false)
         }
@@ -323,11 +323,11 @@ export default function Settings() {
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div>
-                                <label style={labelStyle} title="ROAS = przychod / koszt. Minimalna wartosc ponizej ktorej system alarmuje">Minimalny ROAS</label>
+                                <label style={labelStyle} title="ROAS = przychód / koszt. Minimalna wartość poniżej której system alarmuje">Minimalny ROAS</label>
                                 <input style={inputStyle} type="number" step="0.1" value={formData.business_rules?.min_roas ?? ''} onChange={e => handleBusinessRule('min_roas', e.target.value)} placeholder="np. 2.0" />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max budzet dzienny (USD)</label>
+                                <label style={labelStyle}>Max budżet dzienny (USD)</label>
                                 <input style={inputStyle} type="number" step="1" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
                             </div>
                         </div>
@@ -337,10 +337,10 @@ export default function Settings() {
                 <section>
                     <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 4 }}>
                         <ShieldAlert size={16} style={{ color: '#F87171' }} />
-                        Limity bezpieczenstwa
+                        Limity bezpieczeństwa
                     </h3>
                     <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
-                        Nadpisz domyslne limity dla tego klienta. Puste pole = wartosc globalna.
+                        Nadpisz domyślne limity dla tego klienta. Puste pole = wartość globalna.
                     </p>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
@@ -387,7 +387,7 @@ export default function Settings() {
                         Twardy reset danych klienta
                     </h3>
                     <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
-                        Usuwa lokalne dane tego klienta: kampanie, grupy reklam, slowa kluczowe, search terms, rekomendacje, alerty, historie i logi sync. Nie usuwa profilu klienta ani credentials Google Ads.
+                        Usuwa lokalne dane tego klienta: kampanie, grupy reklam, słowa kluczowe, search terms, rekomendacje, alerty, historię i logi sync. Nie usuwa profilu klienta ani credentials Google Ads.
                     </p>
                     <div className="v2-card" style={{ padding: '18px 20px', border: '1px solid rgba(248,113,113,0.22)', background: 'rgba(248,113,113,0.05)' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1.6fr auto', gap: 16, alignItems: 'end' }}>

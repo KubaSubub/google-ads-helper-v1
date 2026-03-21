@@ -10,7 +10,7 @@ export const CAMPAIGN_STATUS_OPTIONS = [
     { value: 'ALL', label: 'Wszystkie' },
     { value: 'ENABLED', label: 'Aktywne' },
     { value: 'PAUSED', label: 'Wstrzymane' },
-    { value: 'REMOVED', label: 'Usuniete' },
+    { value: 'REMOVED', label: 'Usunięte' },
 ]
 
 export const DATE_RANGE_PRESETS = [

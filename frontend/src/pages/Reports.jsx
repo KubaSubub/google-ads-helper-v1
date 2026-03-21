@@ -106,7 +106,7 @@ function CampaignDetailSection({ data }) {
     if (!data || !Array.isArray(data) || data.length === 0) return null;
     const hasPrev = data.some(c => c.cost_delta_pct !== undefined);
     const cellStyle = { padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', textAlign: 'right' };
-    const headers = ['Kampania', 'Status', 'Budzet/d', 'Wydatki', ...(hasPrev ? ['m/m'] : []), 'Konw.', ...(hasPrev ? ['m/m'] : []), 'CPA', 'ROAS', 'IS%'];
+    const headers = ['Kampania', 'Status', 'Budżet/d', 'Wydatki', ...(hasPrev ? ['m/m'] : []), 'Konw.', ...(hasPrev ? ['m/m'] : []), 'CPA', 'ROAS', 'IS%'];
     return (
         <div className="v2-card" style={{ padding: 16, marginBottom: 20, overflowX: 'auto' }}>
             <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#fff', marginBottom: 12 }}>
@@ -263,7 +263,7 @@ function BudgetPacingSection({ data }) {
     return (
         <div className="v2-card" style={{ padding: 16, marginBottom: 20 }}>
             <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#fff', marginBottom: 12 }}>
-                Realizacja budzetow
+                Realizacja budżetów
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {data.campaigns.map((c, i) => {

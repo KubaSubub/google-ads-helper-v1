@@ -21,7 +21,7 @@ const PRIORITY_CONFIG = {
         color: '#FBBF24',
         bg: 'rgba(251,191,36,0.08)',
         border: 'rgba(251,191,36,0.2)',
-        label: 'Sredni',
+        label: 'Średni',
     },
     LOW: {
         icon: TrendingUp,
@@ -92,7 +92,7 @@ export default function InsightsFeed({ recommendations }) {
                         </span>
                     ) : (
                         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                            - wszystko wyglada dobrze
+                            - wszystko wygląda dobrze
                         </span>
                     )}
                 </div>
@@ -156,7 +156,7 @@ export default function InsightsFeed({ recommendations }) {
                         color: 'rgba(255,255,255,0.3)',
                     }}
                 >
-                    Brak aktywnych insightow backendowych.
+                    Brak aktywnych insightów backendowych.
                 </div>
             )}
         </div>

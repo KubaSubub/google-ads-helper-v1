@@ -117,7 +117,7 @@ export default function DataTable({
                             disabled={!table.getCanNextPage()}
                             className="px-3 py-1 rounded border border-white/10 disabled:opacity-30"
                         >
-                            Nastepna
+                            Następna
                         </button>
                     </div>
                 </div>

@@ -10,20 +10,20 @@ function getSyncToast(result) {
     if (result?.success) {
         return {
             type: 'success',
-            message: result.message || 'Synchronizacja zakonczona pomyslnie.',
+            message: result.message || 'Synchronizacja zakończona pomyślnie.',
         };
     }
 
     if (result?.status === 'partial') {
         return {
             type: 'info',
-            message: result.message || 'Synchronizacja zakonczona czesciowo.',
+            message: result.message || 'Synchronizacja zakończona częściowo.',
         };
     }
 
     return {
         type: 'error',
-        message: result?.message || 'Synchronizacja nie powiodla sie.',
+        message: result?.message || 'Synchronizacja nie powiodła się.',
     };
 }
 

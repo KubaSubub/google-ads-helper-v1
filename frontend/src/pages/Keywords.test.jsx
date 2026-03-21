@@ -125,7 +125,7 @@ describe('Keywords page', () => {
         renderPage()
 
         expect(await screen.findByText('active keyword')).toBeInTheDocument()
-        fireEvent.click(screen.getByRole('checkbox', { name: /Pokaz usuniete/i }))
+        fireEvent.click(screen.getByRole('checkbox', { name: /Pokaż usunięte/i }))
 
         expect(await screen.findByText('removed keyword')).toBeInTheDocument()
         await waitFor(() => {

@@ -2125,8 +2125,8 @@ class RecommendationsEngine:
                 campaign_name="; ".join(above_avg_no_conv[:3]),
                 category="ALERT",
                 source=ANALYTICS,
-                reason=f"{len(above_avg_no_conv)} campaigns are above average spend with zero conversions.",
-                recommended_action="Review spend distribution and targeting.",
+                reason=f"{len(above_avg_no_conv)} kampanii wydaje powyżej średniej bez konwersji.",
+                recommended_action="Sprawdź dystrybucję wydatków i targetowanie.",
                 metadata={
                     "insight_type": "ABOVE_AVG_NO_CONV",
                     "campaigns": above_avg_no_conv,
@@ -2156,8 +2156,8 @@ class RecommendationsEngine:
                 campaign_name="; ".join(divergent[:3]),
                 category="ALERT",
                 source=ANALYTICS,
-                reason=f"CTR is rising while conversions are falling in {len(divergent)} campaigns.",
-                recommended_action="Check landing pages and message match.",
+                reason=f"CTR rośnie, a konwersje spadają w {len(divergent)} kampaniach.",
+                recommended_action="Sprawdź landing page'e i dopasowanie przekazu.",
                 metadata={"insight_type": "CTR_CONV_DIVERGENCE", "campaigns": divergent},
             ))
 
@@ -2168,12 +2168,12 @@ class RecommendationsEngine:
                 priority=Priority.LOW,
                 entity_type="campaign",
                 entity_id=0,
-                entity_name="High priority queue",
-                campaign_name="Recommendations",
+                entity_name="Kolejka priorytetowa",
+                campaign_name="Rekomendacje",
                 category="ALERT",
                 source=ANALYTICS,
-                reason=f"{len(high_recs)} high-priority recommendations are pending review.",
-                recommended_action="Review the highest-impact recommendations first.",
+                reason=f"{len(high_recs)} rekomendacji o wysokim priorytecie czeka na przegląd.",
+                recommended_action="Zacznij od rekomendacji o największym wpływie.",
                 metadata={"insight_type": "HIGH_RECOMMENDATION_QUEUE", "count": len(high_recs)},
             ))
 
@@ -2197,8 +2197,8 @@ class RecommendationsEngine:
                 campaign_name="; ".join(standout[:3]),
                 category="ALERT",
                 source=ANALYTICS,
-                reason=f"{len(standout)} campaigns have ROAS above 2x the account average.",
-                recommended_action="Consider scaling budget after manual review.",
+                reason=f"{len(standout)} kampanii ma ROAS powyżej 2x średniej konta.",
+                recommended_action="Rozważ skalowanie budżetu po ręcznym przeglądzie.",
                 metadata={"insight_type": "ROAS_OUTLIER", "campaigns": standout},
             ))
 

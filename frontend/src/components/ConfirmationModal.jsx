@@ -4,7 +4,7 @@ export default function ConfirmationModal({
     isOpen,
     onClose,
     onConfirm,
-    title = 'Potwierdz akcje',
+    title = 'Potwierdź akcję',
     actionType,
     entity,
     beforeState,
@@ -73,7 +73,7 @@ export default function ConfirmationModal({
                 {/* Reason */}
                 {reason && (
                     <p className="text-sm text-app-muted mb-6">
-                        Powod: {reason}
+                        Powód: {reason}
                     </p>
                 )}
 
@@ -91,7 +91,7 @@ export default function ConfirmationModal({
                         className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
                         disabled={isLoading}
                     >
-                        {isLoading ? 'Wykonuje...' : 'Potwierdz'}
+                        {isLoading ? 'Wykonuję...' : 'Potwierdź'}
                     </button>
                 </div>
             </div>

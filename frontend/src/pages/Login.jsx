@@ -240,8 +240,8 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                         type="button"
                         onClick={() => toggleSetupFieldVisibility(field)}
                         disabled={isDisabled}
-                        aria-label={isVisible ? `Ukryj ${label}` : `Pokaz ${label}`}
-                        title={isVisible ? 'Ukryj wartosc' : 'Pokaz wartosc'}
+                        aria-label={isVisible ? `Ukryj ${label}` : `Pokaż ${label}`}
+                        title={isVisible ? 'Ukryj wartość' : 'Pokaż wartość'}
                         style={{
                             ...eyeButtonStyle,
                             cursor: isDisabled ? 'default' : 'pointer',
@@ -405,9 +405,9 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontWeight: 600 }}>
                             <AlertTriangle size={14} />
-                            OAuth zakonczony, ale aplikacja nadal nie jest gotowa
+                            OAuth zakończony, ale aplikacja nadal nie jest gotowa
                         </div>
-                        <div>{authStatus.reason || 'Sprawdz zapisane credentials i sproboj ponownie.'}</div>
+                        <div>{authStatus.reason || 'Sprawdź zapisane credentials i spróbuj ponownie.'}</div>
                     </div>
                 )}
 
@@ -437,7 +437,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                         </p>
 
                         <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 20, textAlign: 'center' }}>
-                            Dane sa zapisane lokalnie w Windows Credential Manager. Kliknij ikonke oka, aby sprawdzic wartosc.
+                            Dane są zapisane lokalnie w Windows Credential Manager. Kliknij ikonkę oka, aby sprawdzić wartość.
                         </p>
 
                         {renderMaskedSetupField(

@@ -11,7 +11,7 @@ const CAMPAIGN_TYPES = [
 const STATUSES = [
     { value: 'ENABLED', label: 'Aktywne' },
     { value: 'PAUSED', label: 'Wstrzymane' },
-    { value: 'REMOVED', label: 'Usuniete' },
+    { value: 'REMOVED', label: 'Usunięte' },
     { value: 'ALL', label: 'Wszystkie' },
 ]
 

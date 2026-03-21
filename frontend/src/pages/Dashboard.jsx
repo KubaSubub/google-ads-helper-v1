@@ -160,7 +160,7 @@ function Sparkline({ data, direction }) {
 // â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Dashboard() {
     const { selectedClientId } = useApp()
-    const { filters, allParams, campaignParams } = useFilter()
+    const { filters, allParams, campaignParams, days } = useFilter()
 
     const [kpis, setKpis]                   = useState(null)
     const [campaigns, setCampaigns]         = useState([])

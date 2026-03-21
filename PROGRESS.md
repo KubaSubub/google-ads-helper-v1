@@ -1,8 +1,8 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-20 (ec1d22c)
+# Updated: 2026-03-20 (fc0cc91)
 
 ## Status
-- Backend: 293 tests passing (`pytest --tb=short -q`)
+- Backend: 355 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke tests)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~20 analytics endpoints
@@ -416,6 +416,13 @@
 ## Validation (unified filtering 2026-03-20)
 - Backend: 293 tests passed
 - All changes additive — no breaking changes to existing API contracts
+
+## Test Coverage Expansion — resolve_dates + Unified Filtering + CRUD (2026-03-20 — commit a814b01)
+- Added 62 new backend tests covering previously untested utilities and endpoints:
+  - `test_resolve_dates.py`: 15 unit tests for `resolve_dates()` helper and `_filter_campaigns()` in AnalyticsService
+  - `test_unified_filtering.py`: 27 integration tests for `date_from`/`date_to` + `campaign_type`/`campaign_status` params across analytics endpoints
+  - `test_campaigns_clients_crud.py`: 20 tests for campaigns list/detail/patch/kpis, clients list/detail/create/patch/delete, ad-groups, ads, recommendations summary, and bulk-preview
+- Total test count: 293 → 355
 
 ## Forecast Sidebar + Anomalies Cleanup (2026-03-20 — commit ec1d22c)
 - Added `Forecast` entry to Sidebar navigation (`frontend/src/components/Sidebar.jsx`) — the `Forecast.jsx` page existed but was not linked.

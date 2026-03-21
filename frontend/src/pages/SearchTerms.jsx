@@ -87,7 +87,7 @@ function BulkActionBar({ selectedCount, onAddNegative, onAddKeyword, onClear, lo
                 color: '#4ADE80', cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
             }}>
                 {bulkLoading ? <Loader2 size={11} className="animate-spin" /> : <PlusCircle size={11} />}
-                Dodaj jako slowa kluczowe
+                Dodaj jako słowa kluczowe
             </button>
             <button onClick={onClear} style={{
                 padding: '5px 10px', borderRadius: 7, fontSize: 11,
@@ -160,15 +160,15 @@ export default function SearchTerms() {
                 match_type: 'EXACT',
                 client_id: selectedClientId,
             })
-            showToast(`Dodano ${res.added} negatywow, pominito ${res.skipped_duplicates} duplikatow`, 'success')
+            showToast(`Dodano ${res.added} negatywów, pominięto ${res.skipped_duplicates} duplikatów`, 'success')
             setSelectedIds(new Set())
-        } catch (err) { showToast(`Blad: ${err.message}`, 'error') }
+        } catch (err) { showToast(`Błąd: ${err.message}`, 'error') }
         finally { setBulkLoading(false) }
     }
 
     const handleBulkAddKeyword = async () => {
         if (selectedIds.size === 0) return
-        showToast('Wybierz grupe reklam w oknie dialogowym aby dodac slowa kluczowe', 'info')
+        showToast('Wybierz grupę reklam w oknie dialogowym aby dodać słowa kluczowe', 'info')
     }
 
     useEffect(() => {

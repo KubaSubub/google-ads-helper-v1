@@ -56,7 +56,7 @@ export default function GlobalFilterBar() {
                         Filtry kampanii
                     </div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)', marginTop: 2 }}>
-                        Wspolne filtrowanie widokow bez dublowania klienta i dat.
+                        Wspólne filtrowanie widoków bez dublowania klienta i dat.
                     </div>
                 </div>
             </div>

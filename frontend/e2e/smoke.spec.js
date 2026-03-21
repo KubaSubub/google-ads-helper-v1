@@ -33,11 +33,11 @@ test('sidebar navigation links are present', async ({ page }) => {
 
     const expectedLabels = [
         'Pulpit', 'Codzienny audyt', 'Klienci',
-        'Kampanie', 'Slowa kluczowe', 'Wyszukiwane frazy',
+        'Kampanie', 'Słowa kluczowe', 'Wyszukiwane frazy',
         'Rekomendacje', 'Historia akcji',
         'Monitoring',
         'Raport AI', 'Raporty',
-        'Optymalizacja', 'Inteligencja', 'Wynik jakosci',
+        'Optymalizacja', 'Inteligencja', 'Wynik jakości',
         'Ustawienia',
     ];
 

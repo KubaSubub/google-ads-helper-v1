@@ -29,7 +29,7 @@ import { logout } from '../api'
 
 const NAV_GROUPS = [
     {
-        label: 'PRZEGLAD',
+        label: 'PRZEGLĄD',
         items: [
             { to: '/', label: 'Pulpit', icon: LayoutDashboard },
             { to: '/daily-audit', label: 'Codzienny audyt', icon: ClipboardCheck },
@@ -40,12 +40,12 @@ const NAV_GROUPS = [
         label: 'DANE KAMPANII',
         items: [
             { to: '/campaigns', label: 'Kampanie', icon: Megaphone },
-            { to: '/keywords', label: 'Slowa kluczowe', icon: KeyRound },
+            { to: '/keywords', label: 'Słowa kluczowe', icon: KeyRound },
             { to: '/search-terms', label: 'Wyszukiwane frazy', icon: Search },
         ],
     },
     {
-        label: 'DZIALANIA',
+        label: 'DZIAŁANIA',
         items: [
             { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb },
             { to: '/action-history', label: 'Historia akcji', icon: History },
@@ -70,7 +70,7 @@ const NAV_GROUPS = [
             { to: '/search-optimization', label: 'Optymalizacja', icon: Zap },
             { to: '/forecast', label: 'Prognoza', icon: Calendar },
             { to: '/semantic', label: 'Inteligencja', icon: Brain },
-            { to: '/quality-score', label: 'Wynik jakosci', icon: Award },
+            { to: '/quality-score', label: 'Wynik jakości', icon: Award },
         ],
     },
 ]
@@ -170,7 +170,7 @@ function DateRangePicker() {
                     })}
                     <button
                         onClick={() => setShowCustom((current) => !current)}
-                        title="Wlasny zakres"
+                        title="Własny zakres"
                         style={{
                             padding: '4px 6px',
                             borderRadius: 6,
@@ -384,7 +384,7 @@ function SidebarContent({ onNavigate }) {
                         GA
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>Uzytkownik</div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>Użytkownik</div>
                         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Admin</div>
                     </div>
                     <button

@@ -179,7 +179,7 @@ export default function DailyAudit() {
                         Codzienny Audyt
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Wszystko co musisz sprawdzic kazdego ranka
+                        Wszystko co musisz sprawdzić każdego ranka
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -216,7 +216,7 @@ export default function DailyAudit() {
                     <div>
                         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Health Score</div>
                         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
-                            {health.total_active_campaigns || 0} kampanii | {health.total_enabled_keywords || 0} slow kluczowych
+                            {health.total_active_campaigns || 0} kampanii | {health.total_enabled_keywords || 0} słów kluczowych
                         </div>
                     </div>
                 </div>
@@ -290,13 +290,13 @@ export default function DailyAudit() {
             <div style={{ marginBottom: 16 }}>
                 <div style={SECTION_TITLE}>Szybkie skrypty optymalizacji</div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <QuickScript icon={XCircle} label="Wyczysc smieci" description="Dodaj negatywy dla nieistotnych fraz wyszukiwania"
+                    <QuickScript icon={XCircle} label="Wyczyść śmieci" description="Dodaj negatywy dla nieistotnych fraz wyszukiwania"
                         color="#F87171" count={scriptCounts.clean_waste || 0}
                         loading={scriptLoading.clean_waste} onClick={() => runScript('clean_waste')} />
-                    <QuickScript icon={Pause} label="Pauzuj spalajace" description="Wstrzymaj slowa kluczowe bez konwersji z wysokim kosztem"
+                    <QuickScript icon={Pause} label="Pauzuj spalające" description="Wstrzymaj słowa kluczowe bez konwersji z wysokim kosztem"
                         color="#FBBF24" count={scriptCounts.pause_burning || 0}
                         loading={scriptLoading.pause_burning} onClick={() => runScript('pause_burning')} />
-                    <QuickScript icon={TrendingUp} label="Boost winnerow" description="Zwieksz budzet kampanii z dobrym CPA i niskim IS"
+                    <QuickScript icon={TrendingUp} label="Boost winnerów" description="Zwiększ budżet kampanii z dobrym CPA i niskim IS"
                         color="#4ADE80" count={scriptCounts.boost_winners || 0}
                         loading={scriptLoading.boost_winners} onClick={() => runScript('boost_winners')} />
                     <QuickScript icon={Shield} label="Hamulec awaryjny" description="Obniż stawki i pauzuj przy ekstremalnym CPA"
@@ -400,7 +400,7 @@ export default function DailyAudit() {
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                        {['Kampania', 'Budzet dzienny', 'Wydane dzis', 'Pacing', 'Status'].map(h => (
+                                        {['Kampania', 'Budżet dzienny', 'Wydane dziś', 'Pacing', 'Status'].map(h => (
                                             <th key={h} style={{
                                                 padding: '8px 12px', fontSize: 10, fontWeight: 500,
                                                 color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',

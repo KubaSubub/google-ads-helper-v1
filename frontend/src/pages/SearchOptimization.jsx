@@ -621,7 +621,7 @@ function BiddingAdvisorSection({ data }) {
 // ─────────────────────────────────────────────────────────
 export default function SearchOptimization() {
     const { selectedClientId } = useApp()
-    const { allParams } = useFilter()
+    const { allParams, days } = useFilter()
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)

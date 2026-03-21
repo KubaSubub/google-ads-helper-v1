@@ -250,7 +250,7 @@ function PositiveKeywordsTab({ selectedClientId, showToast, filters, searchParam
         <>
             <div className="flex items-center justify-between flex-wrap gap-3" style={{ marginBottom: 14 }}>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
-                    {data.total} slow kluczowych
+                    {data.total} słów kluczowych
                     {campaignName && (
                         <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, fontSize: 11, background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.25)', color: '#4F8EF7', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             {decodeURIComponent(campaignName)}
@@ -269,7 +269,7 @@ function PositiveKeywordsTab({ selectedClientId, showToast, filters, searchParam
                     </div>
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.1)', background: includeRemoved ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.03)', color: includeRemoved ? '#FCA5A5' : 'rgba(255,255,255,0.55)', fontSize: 11, cursor: 'pointer' }}>
                         <input type="checkbox" checked={includeRemoved} onChange={e => setIncludeRemoved(e.target.checked)} />
-                        Pokaz usuniete
+                        Pokaż usunięte
                     </label>
                     <div className="flex items-center gap-1">
                         <button onClick={() => handleExport('csv')} title="Eksportuj CSV" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>
@@ -323,7 +323,7 @@ function PositiveKeywordsTab({ selectedClientId, showToast, filters, searchParam
                                 </thead>
                                 <tbody>
                                     {data.items.length === 0 && (
-                                        <tr><td colSpan={14} style={{ padding: '32px 12px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Brak slow kluczowych dla wybranych filtrow.</td></tr>
+                                        <tr><td colSpan={14} style={{ padding: '32px 12px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Brak słów kluczowych dla wybranych filtrów.</td></tr>
                                     )}
                                     {data.items.map((keyword, index) => {
                                         const hint = getKeywordHint(keyword)
@@ -394,9 +394,9 @@ function NegativeKeywordsTab({ selectedClientId, showToast }) {
     async function handleDelete(id) {
         try {
             await removeNegativeKeyword(id)
-            showToast('Wykluczenie usuniete', 'success')
+            showToast('Wykluczenie usunięte', 'success')
             loadData()
-        } catch { showToast('Blad usuwania', 'error') }
+        } catch { showToast('Błąd usuwania', 'error') }
     }
 
     const totalPages = Math.max(1, data.total_pages || 1)
@@ -424,7 +424,7 @@ function NegativeKeywordsTab({ selectedClientId, showToast }) {
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Szukaj..."
                         style={{ ...INPUT_STYLE, width: 160, padding: '5px 10px', fontSize: 11 }} />
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.1)', background: includeRemoved ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.03)', color: includeRemoved ? '#FCA5A5' : 'rgba(255,255,255,0.55)', fontSize: 11, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={includeRemoved} onChange={e => setIncludeRemoved(e.target.checked)} /> Usuniete
+                        <input type="checkbox" checked={includeRemoved} onChange={e => setIncludeRemoved(e.target.checked)} /> Usunięte
                     </label>
                     <button onClick={() => setShowAddModal(true)} style={{ ...BTN_PRIMARY, display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '6px 14px' }}>
                         <Plus size={12} /> Dodaj wykluczenie
@@ -631,17 +631,17 @@ function NegativeKeywordListsTab({ selectedClientId, showToast }) {
             showToast('Lista usunieta', 'success')
             if (expandedListId === listId) { setExpandedListId(null); setExpandedData(null) }
             loadLists()
-        } catch { showToast('Blad usuwania', 'error') }
+        } catch { showToast('Błąd usuwania', 'error') }
     }
 
     async function handleDeleteItem(listId, itemId) {
         try {
             await removeFromNegativeKeywordList(listId, itemId)
-            showToast('Slowo usuniete z listy', 'success')
+            showToast('Słowo usunięte z listy', 'success')
             const res = await getNegativeKeywordListDetail(listId)
             setExpandedData(res)
             loadLists()
-        } catch { showToast('Blad usuwania', 'error') }
+        } catch { showToast('Błąd usuwania', 'error') }
     }
 
     return (
@@ -677,9 +677,9 @@ function NegativeKeywordListsTab({ selectedClientId, showToast }) {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', padding: '3px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.08)' }}>
-                                            {list.item_count} slow
+                                            {list.item_count} słów
                                         </span>
-                                        <button onClick={e => { e.stopPropagation(); setShowAddItemsModal(list.id) }} title="Dodaj slowa" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.2)', color: '#4F8EF7', cursor: 'pointer' }}>
+                                        <button onClick={e => { e.stopPropagation(); setShowAddItemsModal(list.id) }} title="Dodaj słowa" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.2)', color: '#4F8EF7', cursor: 'pointer' }}>
                                             <Plus size={12} />
                                         </button>
                                         <button onClick={e => { e.stopPropagation(); setShowApplyModal(list.id) }} title="Zastosuj" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer' }}>
@@ -796,10 +796,10 @@ function AddItemsModal({ listId, onClose, onDone, showToast }) {
     return (
         <div style={MODAL_OVERLAY} onClick={onClose}>
             <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 16 }}>Dodaj slowa do listy</h3>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 16 }}>Dodaj słowa do listy</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
-                        <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Slowa (po jednym na linie)</label>
+                        <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Słowa (po jednym na linię)</label>
                         <textarea value={texts} onChange={e => setTexts(e.target.value)} rows={6} style={{ ...INPUT_STYLE, resize: 'vertical' }} placeholder="darmowe&#10;za darmo&#10;tanie" />
                     </div>
                     <div>
@@ -969,11 +969,11 @@ export default function Keywords() {
         <div style={{ maxWidth: 1480 }}>
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
-                    Slowa kluczowe
+                    Słowa kluczowe
                 </h1>
                 <div className="flex items-center gap-2">
                     <button onClick={() => setActiveTab('positive')} style={TAB_STYLE(activeTab === 'positive')}>
-                        Slowa kluczowe
+                        Słowa kluczowe
                     </button>
                     <button onClick={() => setActiveTab('negative')} style={TAB_STYLE(activeTab === 'negative')}>
                         <Shield size={13} /> Wykluczenia

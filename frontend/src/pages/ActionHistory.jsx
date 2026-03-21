@@ -415,7 +415,7 @@ export default function ActionHistory() {
                     Historia zmian
                 </h1>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                    Rejestr wszystkich zmian na koncie Google Ads — z Helpera i zewnÄ™trznych
+                    Rejestr wszystkich zmian na koncie Google Ads — z Helpera i zewnętrznych
                 </p>
             </div>
 
