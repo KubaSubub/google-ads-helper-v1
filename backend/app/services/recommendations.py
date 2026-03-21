@@ -84,6 +84,16 @@ class RecommendationType(str, Enum):
     BUDGET_PACING = "BUDGET_PACING"
     NGRAM_NEGATIVE = "NGRAM_NEGATIVE"
     ANALYTICS_ALERT = "ANALYTICS_ALERT"
+    # v2.0 GAP rules (R19+)
+    AD_GROUP_HEALTH = "AD_GROUP_HEALTH"
+    DISAPPROVED_AD_ALERT = "DISAPPROVED_AD_ALERT"
+    SMART_BIDDING_CONV_ALERT = "SMART_BIDDING_CONV_ALERT"
+    ECPC_DEPRECATION = "ECPC_DEPRECATION"
+    SCALING_OPPORTUNITY = "SCALING_OPPORTUNITY"
+    TARGET_DEVIATION_ALERT = "TARGET_DEVIATION_ALERT"
+    LEARNING_PERIOD_ALERT = "LEARNING_PERIOD_ALERT"
+    CONVERSION_QUALITY_ALERT = "CONVERSION_QUALITY_ALERT"
+    DEMOGRAPHIC_ANOMALY = "DEMOGRAPHIC_ANOMALY"
 
 
 class Priority(str, Enum):
@@ -183,6 +193,22 @@ class RecommendationsEngine:
         "r17_min_month_pct": 0.3,       # Rule 17: min % of month elapsed for underspend
         "r18_min_cost": 100.0,          # Rule 18: min n-gram total cost in USD
         "r18_min_terms": 3,             # Rule 18: min search terms containing n-gram
+        # v2.0 GAP thresholds (R19+)
+        "r19_min_ads": 2,               # Rule 19: min ads per ad group for A/B
+        "r19_max_keywords": 30,         # Rule 19: max keywords per ad group
+        "r19_min_keywords": 2,          # Rule 19: min keywords per ad group
+        "r19_zero_conv_min_cost": 50.0, # Rule 19: min spend (USD) for zero-conv flag
+        "r20_min_approval_status": 1,   # Rule 20: any disapproved ad triggers
+        "r21_min_conv_tcpa": 30,        # Rule 21: min conv/30d for tCPA
+        "r21_min_conv_troas": 50,       # Rule 21: min conv/30d for tROAS
+        "r23_min_lost_is": 0.10,        # Rule 23: min lost IS for scaling opportunity
+        "r23_min_pareto_pct": 0.80,     # Rule 23: top % of value for hero campaigns
+        "r24_cpa_deviation_pct": 30,
+        "r24_roas_deviation_pct": 30,
+        "r25_max_learning_days": 14,
+        "r25_stuck_learning_days": 21,
+        "r27_cpa_multiplier": 2.0,
+        "r27_min_spend": 50.0,
     }
 
     # Words that indicate irrelevant intent (word boundary matched)
@@ -246,6 +272,18 @@ class RecommendationsEngine:
         recommendations.extend(self._rule_16_geo_anomaly(db, client_id, days))
         recommendations.extend(self._rule_17_budget_pacing(db, client_id, days))
         recommendations.extend(self._rule_18_ngram_negative(db, client_id, days))
+
+        # v2.0 GAP rules (R19+)
+        recommendations.extend(self._rule_19_ad_group_health(db, client_id, days))
+        recommendations.extend(self._rule_20_disapproved_ads(db, client_id, days))
+        recommendations.extend(self._rule_21_smart_bidding_conv_threshold(db, client_id, days))
+        recommendations.extend(self._rule_22_ecpc_deprecation(db, client_id, days))
+        recommendations.extend(self._rule_23_scaling_opportunity(db, client_id, days))
+        recommendations.extend(self._rule_24_target_vs_actual(db, client_id, days))
+        recommendations.extend(self._rule_25_learning_period(db, client_id, days))
+        recommendations.extend(self._rule_26_conversion_quality(db, client_id, days))
+        recommendations.extend(self._rule_27_demographic_anomaly(db, client_id, days))
+
         recommendations.extend(self._analytics_alerts(db, client_id, days, recommendations))
 
         enriched = [self._finalize_recommendation(db, client_id, days, rec) for rec in recommendations]
@@ -1657,6 +1695,602 @@ class RecommendationsEngine:
                     },
                 ))
 
+        return recs
+
+    # ───────────────────────────────────────────────────────
+    # v2.0 GAP rules (R19–R23)
+    # ───────────────────────────────────────────────────────
+
+    def _rule_19_ad_group_health(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 8: Flag ad groups with structural issues (single ad, keyword count, zero conv)."""
+        from app.models.keyword_daily import KeywordDaily
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+
+        ad_groups = (
+            db.query(AdGroup, Campaign.name.label("campaign_name"))
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED", AdGroup.status == "ENABLED")
+            .all()
+        )
+        if not ad_groups:
+            return recs
+
+        ag_ids = [ag.AdGroup.id for ag in ad_groups]
+
+        ad_counts = dict(
+            db.query(Ad.ad_group_id, func.count(Ad.id))
+            .filter(Ad.ad_group_id.in_(ag_ids), Ad.status == "ENABLED")
+            .group_by(Ad.ad_group_id).all()
+        )
+        kw_counts = dict(
+            db.query(Keyword.ad_group_id, func.count(Keyword.id))
+            .filter(Keyword.ad_group_id.in_(ag_ids), Keyword.status == "ENABLED", Keyword.criterion_kind == "POSITIVE")
+            .group_by(Keyword.ad_group_id).all()
+        )
+        ag_cost_conv = dict(
+            db.query(
+                Keyword.ad_group_id,
+                func.coalesce(func.sum(KeywordDaily.cost_micros), 0),
+                func.coalesce(func.sum(KeywordDaily.conversions), 0.0),
+            )
+            .join(Keyword, KeywordDaily.keyword_id == Keyword.id)
+            .filter(Keyword.ad_group_id.in_(ag_ids), KeywordDaily.date >= cutoff)
+            .group_by(Keyword.ad_group_id).all()
+        )
+
+        for row in ad_groups:
+            ag = row.AdGroup
+            campaign_name = row.campaign_name
+            ads = ad_counts.get(ag.id, 0)
+            kws = kw_counts.get(ag.id, 0)
+            cost_conv = ag_cost_conv.get(ag.id)
+            cost_usd = _micros_to_usd(cost_conv[0]) if cost_conv else 0.0
+            conv = (cost_conv[1] if cost_conv else 0.0) or 0.0
+
+            issues = []
+            if ads == 0:
+                issues.append("Brak reklam")
+            elif ads < t["r19_min_ads"]:
+                issues.append(f"Tylko {ads} reklama (brak A/B)")
+            if kws < t["r19_min_keywords"]:
+                issues.append(f"Za mało słów kluczowych ({kws})")
+            if kws > t["r19_max_keywords"]:
+                issues.append(f"Za dużo słów kluczowych ({kws})")
+            if cost_usd >= t["r19_zero_conv_min_cost"] and conv == 0:
+                issues.append(f"Brak konwersji przy ${cost_usd:.0f} wydatków")
+
+            if not issues:
+                continue
+
+            severity = Priority.HIGH if (ads == 0 or (cost_usd >= t["r19_zero_conv_min_cost"] and conv == 0)) else Priority.MEDIUM
+            recs.append(Recommendation(
+                type=RecommendationType.AD_GROUP_HEALTH,
+                priority=severity,
+                entity_type="ad_group",
+                entity_id=ag.id,
+                entity_name=ag.name,
+                campaign_name=campaign_name,
+                campaign_id=ag.campaign_id,
+                ad_group_id=ag.id,
+                category="ALERT",
+                reason="; ".join(issues),
+                current_value=f"Reklamy: {ads}, Słowa: {kws}, Koszt: ${cost_usd:.2f}, Konw.: {conv:.1f}",
+                recommended_action="Dodaj brakujące reklamy lub słowa kluczowe",
+                metadata={
+                    "ads_count": ads,
+                    "keywords_count": kws,
+                    "cost_usd": round(cost_usd, 2),
+                    "conversions": round(conv, 2),
+                    "issues": issues,
+                },
+            ))
+
+        return recs
+
+    def _rule_20_disapproved_ads(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 9: Flag disapproved or limited ads as recommendations."""
+        recs = []
+        ads = (
+            db.query(Ad, AdGroup.name.label("ag_name"), Campaign.name.label("c_name"), Campaign.id.label("c_id"))
+            .join(AdGroup, Ad.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                Ad.status == "ENABLED",
+                Ad.approval_status.in_(["DISAPPROVED", "APPROVED_LIMITED"]),
+            )
+            .all()
+        )
+        for row in ads:
+            ad = row.Ad
+            is_disapproved = ad.approval_status == "DISAPPROVED"
+            recs.append(Recommendation(
+                type=RecommendationType.DISAPPROVED_AD_ALERT,
+                priority=Priority.HIGH if is_disapproved else Priority.MEDIUM,
+                entity_type="ad",
+                entity_id=ad.id,
+                entity_name=f"Ad #{ad.google_ad_id}",
+                campaign_name=row.c_name,
+                campaign_id=row.c_id,
+                ad_group_id=ad.ad_group_id,
+                category="ALERT",
+                reason=f"Reklama {'odrzucona' if is_disapproved else 'ograniczona'} przez Google: {ad.approval_status}",
+                current_value=f"Status: {ad.approval_status}, Typ: {ad.ad_type}",
+                recommended_action="Popraw treść reklamy lub odwołaj się od decyzji Google",
+                metadata={
+                    "approval_status": ad.approval_status,
+                    "ad_type": ad.ad_type,
+                    "ad_strength": ad.ad_strength,
+                },
+            ))
+        return recs
+
+    def _rule_21_smart_bidding_conv_threshold(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 1B: Alert when Smart Bidding campaigns have too few conversions."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=30)
+
+        smart_strategies = {"TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"}
+        campaigns = (
+            db.query(Campaign)
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .all()
+        )
+        smart_campaigns = [c for c in campaigns if (c.bidding_strategy or "").upper() in smart_strategies]
+        if not smart_campaigns:
+            return recs
+
+        for campaign in smart_campaigns:
+            conv_sum = (
+                db.query(func.coalesce(func.sum(MetricDaily.conversions), 0.0))
+                .filter(MetricDaily.campaign_id == campaign.id, MetricDaily.date >= cutoff)
+                .scalar()
+            ) or 0.0
+
+            strategy = (campaign.bidding_strategy or "").upper()
+            min_conv = t["r21_min_conv_troas"] if "ROAS" in strategy else t["r21_min_conv_tcpa"]
+
+            if conv_sum >= min_conv:
+                continue
+
+            severity = Priority.HIGH if conv_sum < min_conv * 0.5 else Priority.MEDIUM
+            recs.append(Recommendation(
+                type=RecommendationType.SMART_BIDDING_CONV_ALERT,
+                priority=severity,
+                entity_type="campaign",
+                entity_id=campaign.id,
+                entity_name=campaign.name,
+                campaign_name=campaign.name,
+                campaign_id=campaign.id,
+                category="ALERT",
+                reason=(
+                    f"Kampania {campaign.name} ma {conv_sum:.1f} konwersji/30 dni "
+                    f"przy strategii {strategy} (min. {min_conv}). "
+                    f"Algorytm nie ma wystarczających danych do optymalizacji."
+                ),
+                current_value=f"Konwersje: {conv_sum:.1f}/30d, Min: {min_conv}, Strategia: {strategy}",
+                recommended_action="Rozważ obniżenie tCPA, połączenie kampanii, lub zmianę strategii na Maximize Clicks",
+                metadata={
+                    "conversions_30d": round(conv_sum, 2),
+                    "min_recommended": min_conv,
+                    "bidding_strategy": strategy,
+                    "deficit_pct": round((1 - conv_sum / min_conv) * 100, 1) if min_conv > 0 else 100,
+                },
+            ))
+        return recs
+
+    def _rule_22_ecpc_deprecation(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 1C: Flag campaigns still using deprecated ECPC bidding strategy."""
+        recs = []
+        campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.bidding_strategy == "ENHANCED_CPC",
+            )
+            .all()
+        )
+        for campaign in campaigns:
+            recs.append(Recommendation(
+                type=RecommendationType.ECPC_DEPRECATION,
+                priority=Priority.HIGH,
+                entity_type="campaign",
+                entity_id=campaign.id,
+                entity_name=campaign.name,
+                campaign_name=campaign.name,
+                campaign_id=campaign.id,
+                category="ALERT",
+                reason=(
+                    f"Kampania '{campaign.name}' używa wycofanej strategii Enhanced CPC. "
+                    f"Google wycofało ECPC z Search/Display w marcu 2025 — "
+                    f"kampania mogła zostać automatycznie zmieniona na Manual CPC."
+                ),
+                current_value=f"Strategia: ENHANCED_CPC",
+                recommended_action="Zmigruj na Target CPA lub Maximize Conversions",
+                metadata={"bidding_strategy": "ENHANCED_CPC"},
+            ))
+        return recs
+
+    def _rule_23_scaling_opportunity(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 7B: Flag hero campaigns with headroom to scale (high value + lost IS)."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+
+        campaigns = (
+            db.query(Campaign)
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .all()
+        )
+        if not campaigns:
+            return recs
+
+        # Compute value per campaign
+        campaign_values = []
+        for c in campaigns:
+            metrics = (
+                db.query(
+                    func.sum(MetricDaily.conversions).label("conv"),
+                    func.sum(MetricDaily.conversion_value_micros).label("value"),
+                    func.sum(MetricDaily.cost_micros).label("cost"),
+                )
+                .filter(MetricDaily.campaign_id == c.id, MetricDaily.date >= cutoff)
+                .first()
+            )
+            value = _micros_to_usd(metrics.value or 0) if metrics else 0
+            cost = _micros_to_usd(metrics.cost or 0) if metrics else 0
+            conv = float(metrics.conv or 0) if metrics else 0
+            campaign_values.append({"campaign": c, "value": value, "cost": cost, "conv": conv})
+
+        total_value = sum(cv["value"] for cv in campaign_values)
+        if total_value <= 0:
+            return recs
+
+        # Sort and find Pareto cutoff
+        campaign_values.sort(key=lambda x: x["value"], reverse=True)
+        cumulative = 0
+        for cv in campaign_values:
+            cumulative += cv["value"]
+            cv["cumulative_pct"] = cumulative / total_value
+            cv["is_hero"] = cv["cumulative_pct"] <= t["r23_min_pareto_pct"] or cv["value"] / total_value > 0.1
+
+        heroes = [cv for cv in campaign_values if cv["is_hero"]]
+        for cv in heroes:
+            c = cv["campaign"]
+            lost_budget = c.search_budget_lost_is or 0
+            lost_rank = c.search_rank_lost_is or 0
+            if lost_budget < t["r23_min_lost_is"] and lost_rank < t["r23_min_lost_is"]:
+                continue
+
+            value_pct = cv["value"] / total_value * 100
+            incremental_est = round(cv["value"] * max(lost_budget, lost_rank), 2)
+            recs.append(Recommendation(
+                type=RecommendationType.SCALING_OPPORTUNITY,
+                priority=Priority.HIGH if incremental_est > 500 else Priority.MEDIUM,
+                entity_type="campaign",
+                entity_id=c.id,
+                entity_name=c.name,
+                campaign_name=c.name,
+                campaign_id=c.id,
+                category="RECOMMENDATION",
+                reason=(
+                    f"Kampania '{c.name}' generuje {value_pct:.0f}% wartości konta, "
+                    f"ale traci IS: budget {lost_budget*100:.0f}%, rank {lost_rank*100:.0f}%. "
+                    f"Potencjalna dodatkowa wartość: ~${incremental_est:.0f}."
+                ),
+                current_value=f"Wartość: ${cv['value']:.0f} ({value_pct:.0f}%), Lost IS: {max(lost_budget, lost_rank)*100:.0f}%",
+                recommended_action="Zwiększ budżet lub popraw Ad Rank dla tej kampanii",
+                estimated_impact=f"~${incremental_est:.0f} dodatkowej wartości",
+                metadata={
+                    "value_usd": round(cv["value"], 2),
+                    "value_pct": round(value_pct, 1),
+                    "lost_budget_is": round(lost_budget * 100, 1),
+                    "lost_rank_is": round(lost_rank * 100, 1),
+                    "incremental_value_est": incremental_est,
+                    "conversions": round(cv["conv"], 2),
+                },
+            ))
+        return recs
+
+    def _rule_24_target_vs_actual(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 1D: Flag campaigns where actual CPA/ROAS deviates significantly from target."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+
+        campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.bidding_strategy.in_(["TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"]),
+            )
+            .all()
+        )
+
+        for c in campaigns:
+            metrics = (
+                db.query(
+                    func.sum(MetricDaily.cost_micros).label("cost"),
+                    func.sum(MetricDaily.conversions).label("conv"),
+                    func.sum(MetricDaily.conversion_value_micros).label("value"),
+                )
+                .filter(MetricDaily.campaign_id == c.id, MetricDaily.date >= cutoff)
+                .first()
+            )
+            cost = int(metrics.cost or 0)
+            conv = float(metrics.conv or 0)
+            value = int(metrics.value or 0)
+
+            if c.bidding_strategy in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS") and c.target_cpa_micros and conv > 0:
+                actual_cpa = cost / conv
+                target_cpa = c.target_cpa_micros
+                deviation = (actual_cpa - target_cpa) / target_cpa * 100
+                if abs(deviation) >= t["r24_cpa_deviation_pct"]:
+                    actual_usd = round(actual_cpa / 1_000_000, 2)
+                    target_usd = round(target_cpa / 1_000_000, 2)
+                    recs.append(Recommendation(
+                        type=RecommendationType.TARGET_DEVIATION_ALERT,
+                        priority=Priority.HIGH if abs(deviation) > 50 else Priority.MEDIUM,
+                        entity_type="campaign",
+                        entity_id=c.id,
+                        entity_name=c.name,
+                        campaign_name=c.name,
+                        campaign_id=c.id,
+                        reason=(
+                            f"CPA kampanii '{c.name}' odbiega o {deviation:+.0f}% od celu. "
+                            f"Aktualne: ${actual_usd}, Cel: ${target_usd}."
+                        ),
+                        current_value=f"CPA: ${actual_usd} vs cel ${target_usd}",
+                        recommended_action="Sprawdź konwersje i dostosuj cel tCPA" if deviation > 0 else "Rozważ zwiększenie celu tCPA",
+                        estimated_impact=f"Odchylenie {abs(deviation):.0f}%",
+                        metadata={"actual_cpa": actual_usd, "target_cpa": target_usd, "deviation_pct": round(deviation, 1)},
+                    ))
+
+            elif c.bidding_strategy in ("TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE") and c.target_roas and cost > 0:
+                actual_roas = value / cost
+                target_roas = c.target_roas
+                deviation = (actual_roas - target_roas) / target_roas * 100
+                if abs(deviation) >= t["r24_roas_deviation_pct"]:
+                    recs.append(Recommendation(
+                        type=RecommendationType.TARGET_DEVIATION_ALERT,
+                        priority=Priority.HIGH if abs(deviation) > 50 else Priority.MEDIUM,
+                        entity_type="campaign",
+                        entity_id=c.id,
+                        entity_name=c.name,
+                        campaign_name=c.name,
+                        campaign_id=c.id,
+                        reason=(
+                            f"ROAS kampanii '{c.name}' odbiega o {deviation:+.0f}% od celu. "
+                            f"Aktualne: {actual_roas:.2f}x, Cel: {target_roas:.2f}x."
+                        ),
+                        current_value=f"ROAS: {actual_roas:.2f}x vs cel {target_roas:.2f}x",
+                        recommended_action="Zoptymalizuj kampanię lub dostosuj cel tROAS",
+                        estimated_impact=f"Odchylenie {abs(deviation):.0f}%",
+                        metadata={"actual_roas": round(actual_roas, 2), "target_roas": target_roas, "deviation_pct": round(deviation, 1)},
+                    ))
+        return recs
+
+    def _rule_25_learning_period(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 1A: Alert for campaigns stuck in learning period."""
+        recs = []
+        t = self.thresholds
+        from app.models.change_event import ChangeEvent
+
+        campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.bidding_strategy.in_(["TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"]),
+            )
+            .all()
+        )
+
+        for c in campaigns:
+            if not c.primary_status_reasons:
+                continue
+            import json
+            try:
+                reasons = json.loads(c.primary_status_reasons) if isinstance(c.primary_status_reasons, str) else c.primary_status_reasons
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not any("LEARNING" in str(r).upper() for r in reasons):
+                continue
+
+            # Estimate days in learning
+            last_change = (
+                db.query(ChangeEvent)
+                .filter(
+                    ChangeEvent.client_id == client_id,
+                    ChangeEvent.change_resource_type == "CAMPAIGN",
+                    ChangeEvent.campaign_name == c.name,
+                )
+                .order_by(ChangeEvent.change_date_time.desc())
+                .first()
+            )
+            learning_days = (date.today() - last_change.change_date_time.date()).days if last_change and last_change.change_date_time else None
+
+            if learning_days and learning_days > t["r25_stuck_learning_days"]:
+                priority = Priority.HIGH
+                status = "STUCK"
+            elif learning_days and learning_days > t["r25_max_learning_days"]:
+                priority = Priority.MEDIUM
+                status = "EXTENDED"
+            else:
+                priority = Priority.LOW
+                status = "LEARNING"
+
+            recs.append(Recommendation(
+                type=RecommendationType.LEARNING_PERIOD_ALERT,
+                priority=priority,
+                entity_type="campaign",
+                entity_id=c.id,
+                entity_name=c.name,
+                campaign_name=c.name,
+                campaign_id=c.id,
+                reason=(
+                    f"Kampania '{c.name}' jest w trybie uczenia ({status}). "
+                    + (f"Już {learning_days} dni." if learning_days else "Czas nieokreślony.")
+                ),
+                current_value=f"Status: {status}, dni: {learning_days or '?'}",
+                recommended_action="Nie wprowadzaj zmian podczas nauki" if status == "LEARNING" else "Rozważ reset strategii licytacji",
+                metadata={"learning_days": learning_days, "status": status},
+            ))
+        return recs
+
+    def _rule_26_conversion_quality(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 2A-2D: Flag conversion action configuration issues."""
+        recs = []
+        from app.models.conversion_action import ConversionAction
+
+        actions = db.query(ConversionAction).filter(ConversionAction.client_id == client_id).all()
+        if not actions:
+            return recs
+
+        # 2A: Secondary conversions included in metric
+        secondary_in_metric = [a for a in actions if not a.primary_for_goal and a.include_in_conversions_metric]
+        if secondary_in_metric:
+            names = ", ".join(a.name for a in secondary_in_metric[:3])
+            recs.append(Recommendation(
+                type=RecommendationType.CONVERSION_QUALITY_ALERT,
+                priority=Priority.HIGH,
+                entity_type="client",
+                entity_id=client_id,
+                entity_name=f"Konwersje drugorzędne ({len(secondary_in_metric)})",
+                campaign_name="(konto)",
+                reason=f"{len(secondary_in_metric)} konwersji drugorzędnych wliczanych do 'Konwersje': {names}",
+                current_value=f"{len(secondary_in_metric)} secondary in metric",
+                recommended_action="Wyłącz drugorzędne konwersje z metryki 'Konwersje'",
+                metadata={"issue_type": "SECONDARY_IN_METRIC", "count": len(secondary_in_metric)},
+            ))
+
+        # 2B: Zero-value + tROAS
+        troas = db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.bidding_strategy.in_(["TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE"]),
+        ).count()
+        zero_val = [a for a in actions if a.primary_for_goal and (a.value_settings_default_value or 0) == 0]
+        if zero_val and troas > 0:
+            recs.append(Recommendation(
+                type=RecommendationType.CONVERSION_QUALITY_ALERT,
+                priority=Priority.HIGH,
+                entity_type="client",
+                entity_id=client_id,
+                entity_name=f"Brak wartości konwersji ({len(zero_val)})",
+                campaign_name="(konto)",
+                reason=f"{len(zero_val)} primary konwersji bez wartości przy {troas} kampaniach tROAS",
+                current_value=f"{len(zero_val)} zero-value primary",
+                recommended_action="Ustaw wartości konwersji lub przejdź na tCPA",
+                metadata={"issue_type": "ZERO_VALUE_TROAS", "count": len(zero_val)},
+            ))
+
+        return recs
+
+    def _rule_27_demographic_anomaly(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """GAP 4A: Flag age/gender segments with CPA > 2x average."""
+        recs = []
+        t = self.thresholds
+        cutoff = date.today() - timedelta(days=days)
+
+        campaign_ids = [
+            c.id for c in db.query(Campaign).filter(
+                Campaign.client_id == client_id, Campaign.status == "ENABLED"
+            ).all()
+        ]
+        if not campaign_ids:
+            return recs
+
+        # Overall average CPA
+        totals = (
+            db.query(
+                func.sum(MetricDaily.cost_micros).label("cost"),
+                func.sum(MetricDaily.conversions).label("conv"),
+            )
+            .filter(MetricDaily.campaign_id.in_(campaign_ids), MetricDaily.date >= cutoff)
+            .first()
+        )
+        total_cost = int(totals.cost or 0)
+        total_conv = float(totals.conv or 0)
+        if total_conv <= 0:
+            return recs
+        avg_cpa = total_cost / total_conv / 1_000_000
+
+        # Check age segments
+        for segment_col, segment_name in [
+            (MetricSegmented.age_range, "Wiek"),
+            (MetricSegmented.gender, "Płeć"),
+        ]:
+            data = (
+                db.query(
+                    segment_col,
+                    func.sum(MetricSegmented.cost_micros).label("cost"),
+                    func.sum(MetricSegmented.conversions).label("conv"),
+                )
+                .filter(
+                    MetricSegmented.campaign_id.in_(campaign_ids),
+                    MetricSegmented.date >= cutoff,
+                    segment_col.isnot(None),
+                )
+                .group_by(segment_col)
+                .all()
+            )
+
+            for row in data:
+                seg_cost = int(row.cost or 0)
+                seg_conv = float(row.conv or 0)
+                seg_cost_usd = round(seg_cost / 1_000_000, 2)
+                if seg_conv <= 0 or seg_cost_usd < t["r27_min_spend"]:
+                    continue
+                seg_cpa = seg_cost / seg_conv / 1_000_000
+                multiplier = seg_cpa / avg_cpa
+
+                if multiplier >= t["r27_cpa_multiplier"]:
+                    recs.append(Recommendation(
+                        type=RecommendationType.DEMOGRAPHIC_ANOMALY,
+                        priority=Priority.HIGH if multiplier >= 3.0 else Priority.MEDIUM,
+                        entity_type="segment",
+                        entity_id=client_id,
+                        entity_name=f"{segment_name}: {row[0]}",
+                        campaign_name="(wszystkie)",
+                        reason=(
+                            f"{segment_name} '{row[0]}' ma CPA ${seg_cpa:.2f} "
+                            f"({multiplier:.1f}x średniej ${avg_cpa:.2f})"
+                        ),
+                        current_value=f"CPA: ${seg_cpa:.2f} ({multiplier:.1f}x)",
+                        recommended_action=f"Rozważ wykluczenie lub zmniejszenie stawek dla {row[0]}",
+                        estimated_impact=f"Potencjalna oszczędność: ${seg_cost_usd:.0f}",
+                        metadata={
+                            "segment": row[0],
+                            "segment_type": segment_name,
+                            "cpa": round(seg_cpa, 2),
+                            "avg_cpa": round(avg_cpa, 2),
+                            "multiplier": round(multiplier, 1),
+                            "cost_usd": seg_cost_usd,
+                        },
+                    ))
         return recs
 
     def _campaign_metrics_snapshot(self, db: Session, campaign: Campaign, cutoff: date) -> dict | None:

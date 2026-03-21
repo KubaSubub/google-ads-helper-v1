@@ -1015,3 +1015,236 @@ def get_keyword_expansion(
         campaign_type=campaign_type, campaign_status=campaign_status,
     )
 
+
+# ---------------------------------------------------------------------------
+# GAP 1B: Smart Bidding Health
+# ---------------------------------------------------------------------------
+
+@router.get("/smart-bidding-health")
+def get_smart_bidding_health(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    campaign_type: str = Query(None, description="Campaign type filter"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    db: Session = Depends(get_db),
+):
+    """Smart Bidding campaigns conversion volume health check."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_smart_bidding_health(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 7A: Pareto 80/20 Analysis
+# ---------------------------------------------------------------------------
+
+@router.get("/pareto-analysis")
+def get_pareto_analysis(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    campaign_type: str = Query(None, description="Campaign type filter"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    db: Session = Depends(get_db),
+):
+    """Pareto 80/20 analysis of campaign value contribution."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_pareto_analysis(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 7B: Scaling Opportunities
+# ---------------------------------------------------------------------------
+
+@router.get("/scaling-opportunities")
+def get_scaling_opportunities(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    campaign_type: str = Query(None, description="Campaign type filter"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    db: Session = Depends(get_db),
+):
+    """Find hero campaigns with IS headroom to scale."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_scaling_opportunities(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 6A: Post-Change Performance Delta
+# ---------------------------------------------------------------------------
+
+@router.get("/change-impact")
+def get_change_impact(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(60, ge=14, le=180, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Post-change performance delta analysis — 7-day before/after comparison."""
+    service = AnalyticsService(db)
+    return service.get_change_impact_analysis(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# GAP 6B: Bid Strategy Change Impact
+# ---------------------------------------------------------------------------
+
+@router.get("/bid-strategy-impact")
+def get_bid_strategy_impact(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(90, ge=30, le=180, description="Lookback period"),
+    db: Session = Depends(get_db),
+):
+    """Bid strategy change impact — 14-day before/after comparison."""
+    service = AnalyticsService(db)
+    return service.get_bid_strategy_change_impact(client_id=client_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# GAP 8: Ad Group Health Checks
+# ---------------------------------------------------------------------------
+
+@router.get("/ad-group-health")
+def get_ad_group_health(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    campaign_type: str = Query(None, description="Campaign type filter"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    db: Session = Depends(get_db),
+):
+    """Ad group structural health: ad count, keyword count, zero-conv groups."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_ad_group_health(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 1D: Target CPA/ROAS vs. Actual
+# ---------------------------------------------------------------------------
+
+@router.get("/target-vs-actual")
+def get_target_vs_actual(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    campaign_type: str = Query(None, description="Campaign type filter"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    db: Session = Depends(get_db),
+):
+    """Compare Smart Bidding targets with actual CPA/ROAS."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_target_vs_actual(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 10: Bid Strategy Performance Report (time series)
+# ---------------------------------------------------------------------------
+
+@router.get("/bid-strategy-report")
+def get_bid_strategy_report(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    campaign_id: int = Query(None, description="Filter to specific campaign"),
+    db: Session = Depends(get_db),
+):
+    """Daily time series of target vs actual CPA/ROAS per campaign."""
+    service = AnalyticsService(db)
+    return service.get_bid_strategy_performance_report(
+        client_id=client_id, days=days, campaign_id=campaign_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 1A: Learning Period Detection
+# ---------------------------------------------------------------------------
+
+@router.get("/learning-status")
+def get_learning_status(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """Detect campaigns in Smart Bidding learning period."""
+    service = AnalyticsService(db)
+    return service.get_learning_status(client_id=client_id)
+
+
+# ---------------------------------------------------------------------------
+# GAP 1E: Portfolio Bid Strategy Health
+# ---------------------------------------------------------------------------
+
+@router.get("/portfolio-health")
+def get_portfolio_health(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    db: Session = Depends(get_db),
+):
+    """Analyze health of portfolio bid strategies."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_portfolio_strategy_health(
+        client_id=client_id, date_from=start, date_to=end,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 2A-2D: Conversion Data Quality Audit
+# ---------------------------------------------------------------------------
+
+@router.get("/conversion-quality")
+def get_conversion_quality(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """Audit conversion action configuration for data quality issues."""
+    service = AnalyticsService(db)
+    return service.get_conversion_quality_audit(client_id=client_id)
+
+
+# ---------------------------------------------------------------------------
+# GAP 4A: Demographic Breakdown (Age/Gender)
+# ---------------------------------------------------------------------------
+
+@router.get("/demographics")
+def get_demographics(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    campaign_type: str = Query(None, description="Campaign type filter"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
+    db: Session = Depends(get_db),
+):
+    """Aggregate metrics by age range and gender, flag CPA anomalies."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_demographic_breakdown(
+        client_id=client_id, date_from=start, date_to=end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )

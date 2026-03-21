@@ -27,3 +27,4 @@ class Client(Base):
 
     # Relationships
     campaigns = relationship("Campaign", back_populates="client", cascade="all, delete-orphan")
+    conversion_actions = relationship("ConversionAction", back_populates="client", cascade="all, delete-orphan")

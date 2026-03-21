@@ -2020,6 +2020,627 @@ class AnalyticsService:
             "period_days": period_days,
         }
 
+    # ───────────────────────────────────────────────────────
+    # GAP 1B: Smart Bidding Health Monitoring
+    # ───────────────────────────────────────────────────────
+
+    def get_smart_bidding_health(self, client_id: int, days: int = 30,
+                                  date_from: date | None = None, date_to: date | None = None,
+                                  campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
+        """Check Smart Bidding campaigns for sufficient conversion volume."""
+        from app.utils.date_utils import resolve_dates as _rd
+
+        date_from, date_to = _rd(days, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"campaigns": [], "summary": {"healthy": 0, "low_volume": 0, "critical": 0}}
+
+        smart_strategies = {"TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"}
+        campaigns = (
+            self.db.query(Campaign)
+            .filter(Campaign.id.in_(campaign_ids), Campaign.status == "ENABLED")
+            .all()
+        )
+        smart_campaigns = [c for c in campaigns if (c.bidding_strategy or "").upper() in smart_strategies]
+
+        results = []
+        summary = {"healthy": 0, "low_volume": 0, "critical": 0}
+
+        for c in smart_campaigns:
+            conv_sum = (
+                self.db.query(func.coalesce(func.sum(MetricDaily.conversions), 0.0))
+                .filter(MetricDaily.campaign_id == c.id, MetricDaily.date >= date_from, MetricDaily.date <= date_to)
+                .scalar()
+            ) or 0.0
+
+            strategy = (c.bidding_strategy or "").upper()
+            min_conv = 50 if "ROAS" in strategy else 30
+
+            if conv_sum >= min_conv:
+                status = "HEALTHY"
+                summary["healthy"] += 1
+            elif conv_sum >= min_conv * 0.5:
+                status = "LOW_VOLUME"
+                summary["low_volume"] += 1
+            else:
+                status = "CRITICAL"
+                summary["critical"] += 1
+
+            results.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "bidding_strategy": strategy,
+                "conversions_30d": round(conv_sum, 2),
+                "min_recommended": min_conv,
+                "status": status,
+            })
+
+        results.sort(key=lambda x: x["conversions_30d"])
+        return {"campaigns": results, "summary": summary}
+
+    # ───────────────────────────────────────────────────────
+    # GAP 7A: Pareto 80/20 Analysis
+    # ───────────────────────────────────────────────────────
+
+    def get_pareto_analysis(self, client_id: int, days: int = 30,
+                            date_from: date | None = None, date_to: date | None = None,
+                            campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
+        """Pareto 80/20 analysis — which campaigns/keywords generate 80% of value."""
+        from app.models.keyword_daily import KeywordDaily
+        from app.models.ad_group import AdGroup
+        from app.utils.date_utils import resolve_dates as _rd
+
+        date_from, date_to = _rd(days, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"campaign_pareto": {"total_campaigns": 0, "top_campaigns_for_80pct": 0, "items": []}, "summary": {}}
+
+        # Campaign-level Pareto
+        campaign_metrics = (
+            self.db.query(
+                MetricDaily.campaign_id,
+                func.sum(MetricDaily.cost_micros).label("cost"),
+                func.sum(MetricDaily.conversions).label("conv"),
+                func.sum(MetricDaily.conversion_value_micros).label("value"),
+            )
+            .filter(MetricDaily.campaign_id.in_(campaign_ids), MetricDaily.date >= date_from, MetricDaily.date <= date_to)
+            .group_by(MetricDaily.campaign_id)
+            .all()
+        )
+
+        campaign_map = {c.id: c.name for c in self.db.query(Campaign).filter(Campaign.id.in_(campaign_ids)).all()}
+        items = []
+        for row in campaign_metrics:
+            items.append({
+                "campaign_id": row.campaign_id,
+                "name": campaign_map.get(row.campaign_id, "?"),
+                "cost_usd": round((row.cost or 0) / 1_000_000, 2),
+                "conversions": round(float(row.conv or 0), 2),
+                "conv_value_usd": round((row.value or 0) / 1_000_000, 2),
+            })
+
+        total_value = sum(i["conv_value_usd"] for i in items)
+        items.sort(key=lambda x: x["conv_value_usd"], reverse=True)
+
+        cumulative = 0
+        top_count = 0
+        for item in items:
+            pct = (item["conv_value_usd"] / total_value * 100) if total_value > 0 else 0
+            cumulative += pct
+            item["pct_of_total"] = round(pct, 2)
+            item["cumulative_pct"] = round(cumulative, 2)
+            if cumulative <= 80 or pct > 10:
+                item["tag"] = "HERO"
+                top_count += 1
+            else:
+                item["tag"] = "TAIL"
+
+        summary = {}
+        if items:
+            summary["campaign_concentration"] = (
+                f"{top_count} z {len(items)} kampanii ({round(top_count/len(items)*100)}%) generuje 80% wartości"
+            )
+
+        return {
+            "campaign_pareto": {
+                "total_campaigns": len(items),
+                "top_campaigns_for_80pct": top_count,
+                "items": items,
+            },
+            "summary": summary,
+            "period_days": (date_to - date_from).days,
+        }
+
+    # ───────────────────────────────────────────────────────
+    # GAP 7B: Scaling Opportunities
+    # ───────────────────────────────────────────────────────
+
+    def get_scaling_opportunities(self, client_id: int, days: int = 30,
+                                   date_from: date | None = None, date_to: date | None = None,
+                                   campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
+        """Find hero campaigns with impression share headroom to scale."""
+        from app.utils.date_utils import resolve_dates as _rd
+
+        date_from, date_to = _rd(days, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"opportunities": [], "summary": {}}
+
+        campaigns = self.db.query(Campaign).filter(Campaign.id.in_(campaign_ids), Campaign.status == "ENABLED").all()
+
+        campaign_values = []
+        for c in campaigns:
+            metrics = (
+                self.db.query(
+                    func.sum(MetricDaily.conversions).label("conv"),
+                    func.sum(MetricDaily.conversion_value_micros).label("value"),
+                    func.sum(MetricDaily.cost_micros).label("cost"),
+                )
+                .filter(MetricDaily.campaign_id == c.id, MetricDaily.date >= date_from, MetricDaily.date <= date_to)
+                .first()
+            )
+            value = round((metrics.value or 0) / 1_000_000, 2) if metrics else 0
+            cost = round((metrics.cost or 0) / 1_000_000, 2) if metrics else 0
+            conv = round(float(metrics.conv or 0), 2) if metrics else 0
+            campaign_values.append({"campaign": c, "value": value, "cost": cost, "conv": conv})
+
+        total_value = sum(cv["value"] for cv in campaign_values)
+        if total_value <= 0:
+            return {"opportunities": [], "summary": {"total_value": 0}}
+
+        campaign_values.sort(key=lambda x: x["value"], reverse=True)
+        cumulative = 0
+        opportunities = []
+
+        for cv in campaign_values:
+            cumulative += cv["value"]
+            is_hero = (cumulative / total_value <= 0.80) or (cv["value"] / total_value > 0.10)
+            if not is_hero:
+                continue
+
+            c = cv["campaign"]
+            lost_budget = c.search_budget_lost_is or 0
+            lost_rank = c.search_rank_lost_is or 0
+            if lost_budget < 0.10 and lost_rank < 0.10:
+                continue
+
+            value_pct = cv["value"] / total_value * 100
+            incremental = round(cv["value"] * max(lost_budget, lost_rank), 2)
+            opportunities.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "value_usd": cv["value"],
+                "value_pct": round(value_pct, 1),
+                "cost_usd": cv["cost"],
+                "conversions": cv["conv"],
+                "lost_budget_is": round(lost_budget * 100, 1),
+                "lost_rank_is": round(lost_rank * 100, 1),
+                "incremental_value_est": incremental,
+            })
+
+        return {
+            "opportunities": opportunities,
+            "summary": {"total_value": round(total_value, 2), "opportunities_count": len(opportunities)},
+        }
+
+    # ───────────────────────────────────────────────────────
+    # GAP 6A: Post-Change Performance Delta
+    # ───────────────────────────────────────────────────────
+
+    def get_change_impact_analysis(self, client_id: int, days: int = 60) -> dict:
+        """Compute pre/post performance delta for each logged action."""
+        from app.models.action_log import ActionLog
+        from app.models.keyword_daily import KeywordDaily
+        from app.models.ad_group import AdGroup
+
+        cutoff = date.today() - timedelta(days=days)
+
+        actions = (
+            self.db.query(ActionLog)
+            .filter(
+                ActionLog.client_id == client_id,
+                ActionLog.status == "SUCCESS",
+                ActionLog.executed_at >= cutoff,
+            )
+            .order_by(ActionLog.executed_at.desc())
+            .limit(50)
+            .all()
+        )
+
+        if not actions:
+            return {"changes": [], "summary": {"positive": 0, "neutral": 0, "negative": 0, "total": 0}}
+
+        changes = []
+        summary = {"positive": 0, "neutral": 0, "negative": 0, "total": 0}
+
+        for action in actions:
+            action_date = action.executed_at.date() if action.executed_at else date.today()
+            pre_start = action_date - timedelta(days=7)
+            pre_end = action_date - timedelta(days=1)
+            post_start = action_date + timedelta(days=1)
+            post_end = action_date + timedelta(days=7)
+
+            # Skip if post window extends beyond today
+            if post_end > date.today():
+                post_end = date.today()
+                if post_start > post_end:
+                    continue
+
+            pre_metrics = None
+            post_metrics = None
+
+            if action.entity_type == "campaign":
+                try:
+                    campaign_id = int(action.entity_id)
+                except (ValueError, TypeError):
+                    continue
+                pre_metrics = self._aggregate_metric_daily(campaign_id, pre_start, pre_end)
+                post_metrics = self._aggregate_metric_daily(campaign_id, post_start, post_end)
+            elif action.entity_type == "keyword":
+                try:
+                    keyword_id = int(action.entity_id)
+                except (ValueError, TypeError):
+                    continue
+                # Get campaign_id from keyword for campaign-level metrics
+                kw = self.db.query(Keyword).filter(Keyword.id == keyword_id).first()
+                if kw and kw.ad_group_id:
+                    ag = self.db.query(AdGroup).filter(AdGroup.id == kw.ad_group_id).first()
+                    if ag:
+                        pre_metrics = self._aggregate_metric_daily(ag.campaign_id, pre_start, pre_end)
+                        post_metrics = self._aggregate_metric_daily(ag.campaign_id, post_start, post_end)
+
+            if not pre_metrics or not post_metrics:
+                continue
+
+            delta = {}
+            for metric in ["cost_usd", "conversions", "cpa_usd", "ctr", "roas"]:
+                pre_val = pre_metrics.get(metric, 0)
+                post_val = post_metrics.get(metric, 0)
+                if pre_val and pre_val != 0:
+                    delta[f"{metric}_pct"] = round((post_val - pre_val) / abs(pre_val) * 100, 1)
+                else:
+                    delta[f"{metric}_pct"] = 0
+
+            # Determine impact
+            cpa_improved = delta.get("cpa_usd_pct", 0) < -10
+            conv_improved = delta.get("conversions_pct", 0) > 10
+            cpa_worsened = delta.get("cpa_usd_pct", 0) > 10
+            conv_worsened = delta.get("conversions_pct", 0) < -10
+
+            if cpa_improved or conv_improved:
+                impact = "POSITIVE"
+                summary["positive"] += 1
+            elif cpa_worsened or conv_worsened:
+                impact = "NEGATIVE"
+                summary["negative"] += 1
+            else:
+                impact = "NEUTRAL"
+                summary["neutral"] += 1
+
+            summary["total"] += 1
+
+            # Get entity name from action payload or context
+            entity_name = ""
+            if action.action_payload and isinstance(action.action_payload, dict):
+                entity_name = action.action_payload.get("entity_name", "")
+            if not entity_name and action.context_json and isinstance(action.context_json, dict):
+                entity_name = action.context_json.get("entity_name", "")
+
+            changes.append({
+                "action_log_id": action.id,
+                "action_type": action.action_type,
+                "entity_type": action.entity_type,
+                "entity_id": action.entity_id,
+                "entity_name": entity_name,
+                "executed_at": str(action.executed_at),
+                "pre_metrics": pre_metrics,
+                "post_metrics": post_metrics,
+                "delta": delta,
+                "impact": impact,
+            })
+
+        return {"changes": changes, "summary": summary}
+
+    def _aggregate_metric_daily(self, campaign_id: int, start: date, end: date) -> dict | None:
+        """Helper: aggregate MetricDaily for a campaign over a date range."""
+        result = (
+            self.db.query(
+                func.sum(MetricDaily.cost_micros).label("cost"),
+                func.sum(MetricDaily.conversions).label("conv"),
+                func.sum(MetricDaily.clicks).label("clicks"),
+                func.sum(MetricDaily.impressions).label("impr"),
+                func.sum(MetricDaily.conversion_value_micros).label("value"),
+            )
+            .filter(
+                MetricDaily.campaign_id == campaign_id,
+                MetricDaily.date >= start,
+                MetricDaily.date <= end,
+            )
+            .first()
+        )
+        if not result or not result.clicks:
+            return None
+
+        cost = (result.cost or 0) / 1_000_000
+        conv = float(result.conv or 0)
+        clicks = result.clicks or 0
+        impr = result.impr or 0
+        value = (result.value or 0) / 1_000_000
+
+        return {
+            "cost_usd": round(cost, 2),
+            "conversions": round(conv, 2),
+            "cpa_usd": round(cost / conv, 2) if conv > 0 else 0,
+            "ctr": round(clicks / impr * 100, 2) if impr > 0 else 0,
+            "roas": round(value / cost, 2) if cost > 0 else 0,
+            "clicks": clicks,
+            "impressions": impr,
+        }
+
+    # ───────────────────────────────────────────────────────
+    # GAP 6B: Bid Strategy Change Impact
+    # ───────────────────────────────────────────────────────
+
+    def get_bid_strategy_change_impact(self, client_id: int, days: int = 90) -> dict:
+        """Analyze performance impact of bid strategy changes from change events."""
+        from app.models.change_event import ChangeEvent
+        import json
+
+        cutoff = date.today() - timedelta(days=days)
+
+        events = (
+            self.db.query(ChangeEvent)
+            .filter(
+                ChangeEvent.client_id == client_id,
+                ChangeEvent.change_resource_type == "CAMPAIGN",
+                ChangeEvent.change_date_time >= cutoff,
+            )
+            .order_by(ChangeEvent.change_date_time.desc())
+            .all()
+        )
+
+        # Filter to strategy changes
+        strategy_changes = []
+        for ev in events:
+            changed = ev.changed_fields
+            if not changed:
+                continue
+            if isinstance(changed, str):
+                try:
+                    changed = json.loads(changed)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            if not isinstance(changed, list):
+                continue
+            has_strategy = any("bidding_strategy" in str(f).lower() for f in changed)
+            if not has_strategy:
+                continue
+
+            # Parse old/new strategy
+            old_strategy = None
+            new_strategy = None
+            if ev.old_resource_json:
+                old_data = ev.old_resource_json if isinstance(ev.old_resource_json, dict) else {}
+                if isinstance(ev.old_resource_json, str):
+                    try:
+                        old_data = json.loads(ev.old_resource_json)
+                    except (json.JSONDecodeError, TypeError):
+                        old_data = {}
+                old_strategy = old_data.get("bidding_strategy_type") or old_data.get("bidding_strategy")
+            if ev.new_resource_json:
+                new_data = ev.new_resource_json if isinstance(ev.new_resource_json, dict) else {}
+                if isinstance(ev.new_resource_json, str):
+                    try:
+                        new_data = json.loads(ev.new_resource_json)
+                    except (json.JSONDecodeError, TypeError):
+                        new_data = {}
+                new_strategy = new_data.get("bidding_strategy_type") or new_data.get("bidding_strategy")
+
+            change_date = ev.change_date_time.date() if ev.change_date_time else None
+            if not change_date:
+                continue
+
+            # Get campaign_id from entity_id
+            campaign = (
+                self.db.query(Campaign)
+                .filter(Campaign.client_id == client_id)
+                .filter(Campaign.name == ev.campaign_name)
+                .first()
+            ) if ev.campaign_name else None
+
+            if not campaign:
+                continue
+
+            pre_metrics = self._aggregate_metric_daily(campaign.id, change_date - timedelta(days=14), change_date - timedelta(days=1))
+            post_metrics = self._aggregate_metric_daily(campaign.id, change_date + timedelta(days=1), min(change_date + timedelta(days=14), date.today()))
+
+            if not pre_metrics or not post_metrics:
+                continue
+
+            # Compute delta
+            delta = {}
+            for metric in ["cost_usd", "conversions", "cpa_usd", "ctr", "roas"]:
+                pre_val = pre_metrics.get(metric, 0)
+                post_val = post_metrics.get(metric, 0)
+                if pre_val and pre_val != 0:
+                    delta[f"{metric}_pct"] = round((post_val - pre_val) / abs(pre_val) * 100, 1)
+                else:
+                    delta[f"{metric}_pct"] = 0
+
+            impact = "NEUTRAL"
+            if delta.get("conversions_pct", 0) > 10 or delta.get("cpa_usd_pct", 0) < -10:
+                impact = "POSITIVE"
+            elif delta.get("conversions_pct", 0) < -10 or delta.get("cpa_usd_pct", 0) > 10:
+                impact = "NEGATIVE"
+
+            strategy_changes.append({
+                "campaign_id": campaign.id,
+                "campaign_name": campaign.name,
+                "change_date": str(change_date),
+                "old_strategy": old_strategy,
+                "new_strategy": new_strategy,
+                "pre_metrics": pre_metrics,
+                "post_metrics": post_metrics,
+                "delta": delta,
+                "impact": impact,
+                "user_email": ev.user_email,
+            })
+
+        return {
+            "strategy_changes": strategy_changes,
+            "summary": {
+                "total": len(strategy_changes),
+                "positive": sum(1 for s in strategy_changes if s["impact"] == "POSITIVE"),
+                "neutral": sum(1 for s in strategy_changes if s["impact"] == "NEUTRAL"),
+                "negative": sum(1 for s in strategy_changes if s["impact"] == "NEGATIVE"),
+            },
+        }
+
+    # ───────────────────────────────────────────────────────
+    # GAP 8: Ad Group Health Checks
+    # ───────────────────────────────────────────────────────
+
+    def get_ad_group_health(self, client_id: int, days: int = 30,
+                            date_from: date | None = None, date_to: date | None = None,
+                            campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
+        """Check ad group structural health: ad count, keyword count, zero-conv groups."""
+        from app.models.ad_group import AdGroup
+        from app.models.ad import Ad
+        from app.models.keyword_daily import KeywordDaily
+        from app.utils.date_utils import resolve_dates as _rd
+
+        date_from, date_to = _rd(days, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"total_ad_groups": 0, "issues": [], "details": []}
+
+        # All active ad groups
+        ad_groups = (
+            self.db.query(AdGroup, Campaign.name.label("campaign_name"))
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids), AdGroup.status == "ENABLED")
+            .all()
+        )
+        if not ad_groups:
+            return {"total_ad_groups": 0, "issues": [], "details": []}
+
+        ag_ids = [ag.AdGroup.id for ag in ad_groups]
+        ag_map = {ag.AdGroup.id: {"name": ag.AdGroup.name, "campaign": ag.campaign_name, "campaign_id": ag.AdGroup.campaign_id} for ag in ad_groups}
+
+        # Count enabled ads per ad group
+        from app.models.ad import Ad
+        ad_counts = dict(
+            self.db.query(Ad.ad_group_id, func.count(Ad.id))
+            .filter(Ad.ad_group_id.in_(ag_ids), Ad.status == "ENABLED")
+            .group_by(Ad.ad_group_id)
+            .all()
+        )
+
+        # Count positive keywords per ad group
+        kw_counts = dict(
+            self.db.query(Keyword.ad_group_id, func.count(Keyword.id))
+            .filter(
+                Keyword.ad_group_id.in_(ag_ids),
+                Keyword.status == "ENABLED",
+                Keyword.criterion_kind == "POSITIVE",
+            )
+            .group_by(Keyword.ad_group_id)
+            .all()
+        )
+
+        # Aggregate cost/conversions per ad group from KeywordDaily
+        kw_to_ag = dict(
+            self.db.query(Keyword.id, Keyword.ad_group_id)
+            .filter(Keyword.ad_group_id.in_(ag_ids))
+            .all()
+        )
+        ag_metrics_raw = (
+            self.db.query(
+                Keyword.ad_group_id,
+                func.coalesce(func.sum(KeywordDaily.cost_micros), 0).label("cost"),
+                func.coalesce(func.sum(KeywordDaily.conversions), 0.0).label("conv"),
+            )
+            .join(Keyword, KeywordDaily.keyword_id == Keyword.id)
+            .filter(
+                Keyword.ad_group_id.in_(ag_ids),
+                KeywordDaily.date >= date_from,
+                KeywordDaily.date <= date_to,
+            )
+            .group_by(Keyword.ad_group_id)
+            .all()
+        )
+        ag_metrics = {r[0]: {"cost_micros": r[1], "conversions": r[2]} for r in ag_metrics_raw}
+
+        # Build details + detect issues
+        details = []
+        single_ad = []
+        no_ads = []
+        too_few_kw = []
+        too_many_kw = []
+        zero_conv = []
+
+        for ag_id in ag_ids:
+            info = ag_map[ag_id]
+            ads = ad_counts.get(ag_id, 0)
+            kws = kw_counts.get(ag_id, 0)
+            metrics = ag_metrics.get(ag_id, {"cost_micros": 0, "conversions": 0.0})
+            cost_usd = round(metrics["cost_micros"] / 1_000_000, 2)
+            conv = round(metrics["conversions"], 2)
+            issues_list = []
+
+            if ads == 0:
+                issues_list.append("Brak reklam")
+                no_ads.append(info["name"])
+            elif ads == 1:
+                issues_list.append("Tylko 1 reklama (brak A/B)")
+                single_ad.append(info["name"])
+
+            if kws == 0:
+                issues_list.append("Brak słów kluczowych")
+                too_few_kw.append(info["name"])
+            elif kws < 2:
+                issues_list.append(f"Za mało słów ({kws})")
+                too_few_kw.append(info["name"])
+            elif kws > 30:
+                issues_list.append(f"Za dużo słów ({kws})")
+                too_many_kw.append(info["name"])
+
+            if cost_usd >= 50.0 and conv == 0:
+                issues_list.append(f"Brak konwersji przy ${cost_usd}")
+                zero_conv.append(info["name"])
+
+            if issues_list:
+                details.append({
+                    "ad_group_id": ag_id,
+                    "ad_group_name": info["name"],
+                    "campaign_name": info["campaign"],
+                    "campaign_id": info["campaign_id"],
+                    "ads_count": ads,
+                    "keywords_count": kws,
+                    "cost_usd": cost_usd,
+                    "conversions": conv,
+                    "issues": issues_list,
+                })
+
+        issues_summary = []
+        if no_ads:
+            issues_summary.append({"type": "no_ads", "count": len(no_ads), "severity": "HIGH"})
+        if single_ad:
+            issues_summary.append({"type": "single_ad", "count": len(single_ad), "severity": "MEDIUM"})
+        if too_few_kw:
+            issues_summary.append({"type": "too_few_keywords", "count": len(too_few_kw), "severity": "LOW"})
+        if too_many_kw:
+            issues_summary.append({"type": "too_many_keywords", "count": len(too_many_kw), "severity": "MEDIUM"})
+        if zero_conv:
+            issues_summary.append({"type": "zero_conversions_high_spend", "count": len(zero_conv), "severity": "HIGH"})
+
+        return {
+            "total_ad_groups": len(ag_ids),
+            "issues": issues_summary,
+            "details": sorted(details, key=lambda d: len(d["issues"]), reverse=True),
+            "period_days": (date_to - date_from).days,
+        }
+
     def _create_alert(self, **kwargs) -> Alert | None:
         """Create alert if not already exists (deduplicate).
 
@@ -2043,3 +2664,548 @@ class AnalyticsService:
         alert = Alert(**kwargs)
         self.db.add(alert)
         return alert
+
+    # -------------------------------------------------------------------
+    # GAP 1D: Target CPA/ROAS vs. Actual
+    # -------------------------------------------------------------------
+    def get_target_vs_actual(self, client_id: int, days: int = 30,
+                             date_from: date | None = None, date_to: date | None = None,
+                             campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
+        """Compare Smart Bidding targets (tCPA/tROAS) with actual performance."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"items": [], "period_days": 0}
+
+        smart_campaigns = (
+            self.db.query(Campaign)
+            .filter(
+                Campaign.id.in_(campaign_ids),
+                Campaign.bidding_strategy.in_(["TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"]),
+            )
+            .all()
+        )
+
+        items = []
+        for c in smart_campaigns:
+            metrics = (
+                self.db.query(
+                    func.sum(MetricDaily.cost_micros).label("cost"),
+                    func.sum(MetricDaily.conversions).label("conv"),
+                    func.sum(MetricDaily.conversion_value_micros).label("value"),
+                )
+                .filter(
+                    MetricDaily.campaign_id == c.id,
+                    MetricDaily.date >= date_from,
+                    MetricDaily.date <= date_to,
+                )
+                .first()
+            )
+            cost = int(metrics.cost or 0)
+            conv = float(metrics.conv or 0)
+            value = int(metrics.value or 0)
+
+            actual_cpa = round(cost / conv / 1_000_000, 2) if conv > 0 else None
+            actual_roas = round(value / cost, 2) if cost > 0 else None
+
+            target_cpa = round(c.target_cpa_micros / 1_000_000, 2) if c.target_cpa_micros else None
+            target_roas = c.target_roas
+
+            # Determine deviation
+            if c.bidding_strategy in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS") and target_cpa and actual_cpa:
+                deviation_pct = round((actual_cpa - target_cpa) / target_cpa * 100, 1)
+                if abs(deviation_pct) < 30:
+                    status = "ON_TARGET"
+                elif deviation_pct > 0:
+                    status = "OVER_TARGET"
+                else:
+                    status = "UNDER_TARGET"
+            elif c.bidding_strategy in ("TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE") and target_roas and actual_roas:
+                deviation_pct = round((actual_roas - target_roas) / target_roas * 100, 1)
+                if abs(deviation_pct) < 30:
+                    status = "ON_TARGET"
+                elif deviation_pct > 0:
+                    status = "OVER_TARGET"
+                else:
+                    status = "UNDER_TARGET"
+            else:
+                deviation_pct = None
+                status = "NO_TARGET"
+
+            items.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "bidding_strategy": c.bidding_strategy,
+                "target_cpa_usd": target_cpa,
+                "target_roas": target_roas,
+                "actual_cpa_usd": actual_cpa,
+                "actual_roas": actual_roas,
+                "cost_usd": round(cost / 1_000_000, 2),
+                "conversions": round(conv, 2),
+                "value_usd": round(value / 1_000_000, 2),
+                "deviation_pct": deviation_pct,
+                "status": status,
+            })
+
+        return {
+            "items": sorted(items, key=lambda x: abs(x["deviation_pct"] or 0), reverse=True),
+            "period_days": (date_to - date_from).days,
+        }
+
+    # -------------------------------------------------------------------
+    # GAP 10: Bid Strategy Performance Report (time series)
+    # -------------------------------------------------------------------
+    def get_bid_strategy_performance_report(self, client_id: int, days: int = 30,
+                                             campaign_id: int | None = None) -> dict:
+        """Daily time series of target vs actual CPA/ROAS per campaign."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, None, None)
+
+        q = self.db.query(Campaign).filter(
+            Campaign.client_id == client_id,
+            Campaign.bidding_strategy.in_(["TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"]),
+        )
+        if campaign_id:
+            q = q.filter(Campaign.id == campaign_id)
+        campaigns = q.all()
+
+        result = []
+        for c in campaigns:
+            daily = (
+                self.db.query(
+                    MetricDaily.date,
+                    MetricDaily.cost_micros,
+                    MetricDaily.conversions,
+                    MetricDaily.conversion_value_micros,
+                )
+                .filter(
+                    MetricDaily.campaign_id == c.id,
+                    MetricDaily.date >= date_from,
+                    MetricDaily.date <= date_to,
+                )
+                .order_by(MetricDaily.date)
+                .all()
+            )
+
+            series = []
+            values_for_rolling = []
+            for row in daily:
+                cost = int(row.cost_micros or 0)
+                conv = float(row.conversions or 0)
+                value = int(row.conversion_value_micros or 0)
+                actual_cpa = round(cost / conv / 1_000_000, 2) if conv > 0 else None
+                actual_roas = round(value / cost, 2) if cost > 0 else None
+
+                metric_val = actual_cpa if c.bidding_strategy in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS") else actual_roas
+                values_for_rolling.append(metric_val)
+
+                # 7-day rolling average
+                recent = [v for v in values_for_rolling[-7:] if v is not None]
+                rolling_7d = round(sum(recent) / len(recent), 2) if recent else None
+
+                series.append({
+                    "date": str(row.date),
+                    "actual_cpa_usd": actual_cpa,
+                    "actual_roas": actual_roas,
+                    "rolling_7d": rolling_7d,
+                    "cost_usd": round(cost / 1_000_000, 2),
+                    "conversions": round(conv, 2),
+                })
+
+            target_line = None
+            if c.bidding_strategy in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS") and c.target_cpa_micros:
+                target_line = round(c.target_cpa_micros / 1_000_000, 2)
+            elif c.bidding_strategy in ("TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE") and c.target_roas:
+                target_line = c.target_roas
+
+            result.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "bidding_strategy": c.bidding_strategy,
+                "metric_type": "CPA" if c.bidding_strategy in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS") else "ROAS",
+                "target_value": target_line,
+                "series": series,
+            })
+
+        return {"campaigns": result, "period_days": (date_to - date_from).days}
+
+    # -------------------------------------------------------------------
+    # GAP 1A: Learning Period Detection
+    # -------------------------------------------------------------------
+    def get_learning_status(self, client_id: int) -> dict:
+        """Detect campaigns in Smart Bidding learning period."""
+        from app.models.change_event import ChangeEvent
+
+        campaigns = (
+            self.db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.bidding_strategy.in_(["TARGET_CPA", "TARGET_ROAS", "MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE"]),
+            )
+            .all()
+        )
+
+        items = []
+        for c in campaigns:
+            is_learning = False
+            learning_reason = None
+            days_in_learning = None
+
+            # Check primary_status_reasons for BIDDING_STRATEGY_LEARNING
+            if c.primary_status_reasons:
+                import json
+                try:
+                    reasons = json.loads(c.primary_status_reasons) if isinstance(c.primary_status_reasons, str) else c.primary_status_reasons
+                except (json.JSONDecodeError, TypeError):
+                    reasons = []
+                if any("LEARNING" in str(r).upper() for r in reasons):
+                    is_learning = True
+                    learning_reason = "primary_status_reasons contains LEARNING"
+
+            # Estimate days in learning from last bidding strategy change
+            if is_learning:
+                last_change = (
+                    self.db.query(ChangeEvent)
+                    .filter(
+                        ChangeEvent.client_id == client_id,
+                        ChangeEvent.change_resource_type == "CAMPAIGN",
+                        ChangeEvent.campaign_name == c.name,
+                    )
+                    .order_by(ChangeEvent.change_date_time.desc())
+                    .first()
+                )
+                if last_change and last_change.change_date_time:
+                    days_in_learning = (date.today() - last_change.change_date_time.date()).days
+
+            status = "LEARNING" if is_learning else "STABLE"
+            if is_learning and days_in_learning and days_in_learning > 21:
+                status = "STUCK_LEARNING"
+            elif is_learning and days_in_learning and days_in_learning > 14:
+                status = "EXTENDED_LEARNING"
+
+            items.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "bidding_strategy": c.bidding_strategy,
+                "primary_status": c.primary_status,
+                "status": status,
+                "is_learning": is_learning,
+                "days_in_learning": days_in_learning,
+                "learning_reason": learning_reason,
+            })
+
+        learning_count = sum(1 for i in items if i["is_learning"])
+        return {
+            "total_smart_bidding": len(items),
+            "learning_count": learning_count,
+            "stuck_count": sum(1 for i in items if i["status"] == "STUCK_LEARNING"),
+            "items": items,
+        }
+
+    # -------------------------------------------------------------------
+    # GAP 1E: Portfolio Bid Strategy Health
+    # -------------------------------------------------------------------
+    def get_portfolio_strategy_health(self, client_id: int, days: int = 30,
+                                       date_from: date | None = None, date_to: date | None = None) -> dict:
+        """Analyze health of portfolio bid strategies (grouped campaigns)."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+
+        # Find campaigns with portfolio bid strategies
+        portfolio_campaigns = (
+            self.db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.portfolio_bid_strategy_id.isnot(None),
+            )
+            .all()
+        )
+
+        if not portfolio_campaigns:
+            return {"portfolios": [], "total_portfolios": 0}
+
+        # Group by portfolio
+        from collections import defaultdict
+        portfolios = defaultdict(list)
+        for c in portfolio_campaigns:
+            portfolios[c.portfolio_bid_strategy_id].append(c)
+
+        result = []
+        for portfolio_id, campaigns in portfolios.items():
+            campaign_data = []
+            total_cost = 0
+            total_conv = 0.0
+            total_value = 0
+
+            for c in campaigns:
+                metrics = (
+                    self.db.query(
+                        func.sum(MetricDaily.cost_micros).label("cost"),
+                        func.sum(MetricDaily.conversions).label("conv"),
+                        func.sum(MetricDaily.conversion_value_micros).label("value"),
+                    )
+                    .filter(
+                        MetricDaily.campaign_id == c.id,
+                        MetricDaily.date >= date_from,
+                        MetricDaily.date <= date_to,
+                    )
+                    .first()
+                )
+                cost = int(metrics.cost or 0)
+                conv = float(metrics.conv or 0)
+                value = int(metrics.value or 0)
+                total_cost += cost
+                total_conv += conv
+                total_value += value
+
+                campaign_data.append({
+                    "campaign_id": c.id,
+                    "campaign_name": c.name,
+                    "cost_usd": round(cost / 1_000_000, 2),
+                    "conversions": round(conv, 2),
+                    "value_usd": round(value / 1_000_000, 2),
+                    "spend_share_pct": 0,  # computed below
+                })
+
+            # Compute spend share
+            for cd in campaign_data:
+                cd["spend_share_pct"] = round(cd["cost_usd"] / (total_cost / 1_000_000) * 100, 1) if total_cost > 0 else 0
+
+            # Health checks
+            issues = []
+            if total_conv < 50:
+                issues.append({"type": "LOW_VOLUME", "detail": f"Tylko {total_conv:.0f} konwersji (min. 50)", "severity": "HIGH"})
+            max_share = max((cd["spend_share_pct"] for cd in campaign_data), default=0)
+            if max_share > 70 and len(campaign_data) > 1:
+                dominant = next(cd for cd in campaign_data if cd["spend_share_pct"] == max_share)
+                issues.append({"type": "IMBALANCE", "detail": f"{dominant['campaign_name']} to {max_share:.0f}% wydatkow", "severity": "MEDIUM"})
+
+            result.append({
+                "portfolio_id": portfolio_id,
+                "bidding_strategy": campaigns[0].bidding_strategy,
+                "resource_name": campaigns[0].bidding_strategy_resource_name,
+                "campaign_count": len(campaigns),
+                "total_cost_usd": round(total_cost / 1_000_000, 2),
+                "total_conversions": round(total_conv, 2),
+                "total_value_usd": round(total_value / 1_000_000, 2),
+                "campaigns": campaign_data,
+                "issues": issues,
+            })
+
+        return {
+            "portfolios": result,
+            "total_portfolios": len(result),
+            "period_days": (date_to - date_from).days,
+        }
+
+    # -------------------------------------------------------------------
+    # GAP 2A-2D: Conversion Data Quality Audit
+    # -------------------------------------------------------------------
+    def get_conversion_quality_audit(self, client_id: int) -> dict:
+        """Audit conversion action configuration for data quality issues."""
+        from app.models.conversion_action import ConversionAction
+
+        actions = (
+            self.db.query(ConversionAction)
+            .filter(ConversionAction.client_id == client_id)
+            .all()
+        )
+        if not actions:
+            return {"total_actions": 0, "issues": [], "actions": [], "quality_score": 100}
+
+        issues = []
+        action_data = []
+
+        primary_count = sum(1 for a in actions if a.primary_for_goal)
+        secondary_in_metric = [a for a in actions if not a.primary_for_goal and a.include_in_conversions_metric]
+
+        # 2A: Primary vs secondary confusion
+        if secondary_in_metric:
+            issues.append({
+                "type": "SECONDARY_IN_METRIC",
+                "severity": "HIGH",
+                "detail": f"{len(secondary_in_metric)} drugorzedne konwersje wliczane do metryki 'Konwersje'",
+                "affected": [a.name for a in secondary_in_metric],
+            })
+
+        # Get tROAS campaigns
+        troas_campaigns = (
+            self.db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.bidding_strategy.in_(["TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE"]),
+            )
+            .all()
+        )
+
+        # 2B: Zero-value conversions sabotaging tROAS
+        zero_value_primary = [a for a in actions if a.primary_for_goal and (a.value_settings_default_value or 0) == 0 and not a.value_settings_always_use_default]
+        if zero_value_primary and troas_campaigns:
+            issues.append({
+                "type": "ZERO_VALUE_TROAS",
+                "severity": "HIGH",
+                "detail": f"{len(zero_value_primary)} konwersji primary bez wartosci przy kampaniach tROAS",
+                "affected": [a.name for a in zero_value_primary],
+            })
+
+        # 2C: MANY_PER_CLICK for PURCHASE (double counting risk)
+        purchase_many = [a for a in actions if a.category == "PURCHASE" and a.counting_type == "MANY_PER_CLICK"]
+        if purchase_many:
+            issues.append({
+                "type": "DOUBLE_COUNTING_RISK",
+                "severity": "MEDIUM",
+                "detail": f"{len(purchase_many)} konwersji PURCHASE z 'MANY_PER_CLICK' (ryzyko podwojnego liczenia)",
+                "affected": [a.name for a in purchase_many],
+            })
+
+        # 2D: Lookback window mismatch
+        short_lookback = [a for a in actions if a.click_through_lookback_window_days and a.click_through_lookback_window_days < 7]
+        long_lookback = [a for a in actions if a.click_through_lookback_window_days and a.click_through_lookback_window_days > 30]
+        if short_lookback:
+            issues.append({
+                "type": "SHORT_LOOKBACK",
+                "severity": "MEDIUM",
+                "detail": f"{len(short_lookback)} konwersji z oknem < 7 dni",
+                "affected": [a.name for a in short_lookback],
+            })
+        if long_lookback:
+            issues.append({
+                "type": "LONG_LOOKBACK",
+                "severity": "LOW",
+                "detail": f"{len(long_lookback)} konwersji z oknem > 30 dni",
+                "affected": [a.name for a in long_lookback],
+            })
+
+        for a in actions:
+            action_data.append({
+                "id": a.id,
+                "name": a.name,
+                "category": a.category,
+                "primary_for_goal": a.primary_for_goal,
+                "counting_type": a.counting_type,
+                "value_default": a.value_settings_default_value,
+                "always_use_default": a.value_settings_always_use_default,
+                "attribution_model": a.attribution_model,
+                "lookback_days": a.click_through_lookback_window_days,
+                "include_in_metric": a.include_in_conversions_metric,
+                "conversions": a.conversions or 0,
+            })
+
+        # Quality score: 100 minus penalty per issue
+        penalty = sum(30 if i["severity"] == "HIGH" else 15 if i["severity"] == "MEDIUM" else 5 for i in issues)
+        quality_score = max(0, 100 - penalty)
+
+        return {
+            "total_actions": len(actions),
+            "primary_count": primary_count,
+            "issues": issues,
+            "actions": action_data,
+            "quality_score": quality_score,
+        }
+
+    # -------------------------------------------------------------------
+    # GAP 4A: Age/Gender CPA Anomaly
+    # -------------------------------------------------------------------
+    def get_demographic_breakdown(self, client_id: int, days: int = 30,
+                                   date_from: date | None = None, date_to: date | None = None,
+                                   campaign_type: str | None = None, campaign_status: str | None = None) -> dict:
+        """Aggregate metrics by age range and gender, flag CPA anomalies."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"age_breakdown": [], "gender_breakdown": [], "anomalies": []}
+
+        # Age breakdown
+        age_data = (
+            self.db.query(
+                MetricSegmented.age_range,
+                func.sum(MetricSegmented.clicks).label("clicks"),
+                func.sum(MetricSegmented.impressions).label("impressions"),
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+                func.sum(MetricSegmented.conversion_value_micros).label("value"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.age_range.isnot(None),
+            )
+            .group_by(MetricSegmented.age_range)
+            .all()
+        )
+
+        # Gender breakdown
+        gender_data = (
+            self.db.query(
+                MetricSegmented.gender,
+                func.sum(MetricSegmented.clicks).label("clicks"),
+                func.sum(MetricSegmented.impressions).label("impressions"),
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+                func.sum(MetricSegmented.conversion_value_micros).label("value"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.gender.isnot(None),
+            )
+            .group_by(MetricSegmented.gender)
+            .all()
+        )
+
+        def _build_breakdown(data):
+            items = []
+            total_cost = sum(int(r.cost or 0) for r in data)
+            total_conv = sum(float(r.conv or 0) for r in data)
+            avg_cpa = round(total_cost / total_conv / 1_000_000, 2) if total_conv > 0 else None
+
+            for r in data:
+                cost = int(r.cost or 0)
+                conv = float(r.conv or 0)
+                value = int(r.value or 0)
+                cpa = round(cost / conv / 1_000_000, 2) if conv > 0 else None
+                roas = round(value / cost, 2) if cost > 0 else None
+
+                items.append({
+                    "segment": r[0],  # age_range or gender
+                    "clicks": int(r.clicks or 0),
+                    "impressions": int(r.impressions or 0),
+                    "cost_usd": round(cost / 1_000_000, 2),
+                    "conversions": round(conv, 2),
+                    "value_usd": round(value / 1_000_000, 2),
+                    "cpa_usd": cpa,
+                    "roas": roas,
+                    "cost_share_pct": round(cost / total_cost * 100, 1) if total_cost > 0 else 0,
+                })
+            return items, avg_cpa
+
+        age_items, age_avg_cpa = _build_breakdown(age_data)
+        gender_items, gender_avg_cpa = _build_breakdown(gender_data)
+
+        # Detect anomalies: CPA > 2x average
+        anomalies = []
+        for item in age_items + gender_items:
+            avg = age_avg_cpa if item in age_items else gender_avg_cpa
+            if avg and item["cpa_usd"] and item["cpa_usd"] > avg * 2 and item["cost_usd"] >= 50:
+                anomalies.append({
+                    "segment": item["segment"],
+                    "cpa_usd": item["cpa_usd"],
+                    "avg_cpa_usd": avg,
+                    "multiplier": round(item["cpa_usd"] / avg, 1),
+                    "cost_usd": item["cost_usd"],
+                    "conversions": item["conversions"],
+                })
+
+        return {
+            "age_breakdown": sorted(age_items, key=lambda x: x["cost_usd"], reverse=True),
+            "gender_breakdown": sorted(gender_items, key=lambda x: x["cost_usd"], reverse=True),
+            "anomalies": anomalies,
+            "avg_cpa_usd": age_avg_cpa,
+            "period_days": (date_to - date_from).days,
+        }

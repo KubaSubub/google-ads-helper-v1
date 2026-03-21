@@ -16,6 +16,9 @@ class MetricSegmented(Base):
     device = Column(String(20), nullable=True)    # MOBILE, DESKTOP, TABLET, OTHER
     geo_city = Column(String(200), nullable=True)  # City name (resolved from resource name)
     hour_of_day = Column(Integer, nullable=True)  # 0-23 for hourly dayparting
+    # GAP 4A: Demographic segments
+    age_range = Column(String(30), nullable=True)  # AGE_RANGE_18_24, AGE_RANGE_25_34, etc.
+    gender = Column(String(20), nullable=True)     # MALE, FEMALE, UNDETERMINED
 
     # Core metrics
     clicks = Column(Integer, default=0)
@@ -30,10 +33,12 @@ class MetricSegmented(Base):
     search_impression_share = Column(Float, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("campaign_id", "date", "device", "geo_city", "hour_of_day", name="uq_metric_segmented"),
+        UniqueConstraint("campaign_id", "date", "device", "geo_city", "hour_of_day", "age_range", "gender", name="uq_metric_segmented"),
         Index("idx_metrics_segmented_date", "date"),
         Index("idx_metrics_segmented_device", "device"),
         Index("idx_metrics_segmented_geo", "geo_city"),
+        Index("idx_metrics_segmented_age", "age_range"),
+        Index("idx_metrics_segmented_gender", "gender"),
     )
 
     # Relationships

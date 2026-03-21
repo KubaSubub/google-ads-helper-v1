@@ -44,17 +44,12 @@ async def agent_chat(
     report_type = req.report_type if req.report_type in VALID_REPORT_TYPES else "freeform"
 
     async def event_stream():
-        acquired = _generating.locked() is False and True
-        try:
-            acquired = await asyncio.wait_for(_generating.acquire(), timeout=0.0)
-        except (asyncio.TimeoutError, Exception):
-            acquired = False
-
-        if not acquired:
+        if _generating.locked():
             yield _sse_event("error", "Agent jest zajety — poczekaj na zakonczenie poprzedniego raportu.")
             yield _sse_event("done", "")
             return
 
+        await _generating.acquire()
         try:
             yield _sse_event("status", "Generuje raport z Claude...")
             service = AgentService(db, client_id)

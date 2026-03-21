@@ -185,13 +185,17 @@ def _ensure_sqlite_columns():
         # BUG-H1 fix: SQLite NULL != NULL in UNIQUE constraints allows duplicate rows.
         # Add a functional unique index using COALESCE to treat NULLs as sentinel values.
         if inspector.has_table("metrics_segmented"):
+            # Drop old index that doesn't include age_range/gender
+            conn.execute(text("DROP INDEX IF EXISTS uq_metric_segmented_coalesced"))
             conn.execute(text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_metric_segmented_coalesced "
                 "ON metrics_segmented("
                 "campaign_id, date, "
                 "COALESCE(device, '__NONE__'), "
                 "COALESCE(geo_city, '__NONE__'), "
-                "COALESCE(hour_of_day, -1))"
+                "COALESCE(hour_of_day, -1), "
+                "COALESCE(age_range, '__NONE__'), "
+                "COALESCE(gender, '__NONE__'))"
             ))
 
 

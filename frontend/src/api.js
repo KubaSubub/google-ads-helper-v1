@@ -226,6 +226,32 @@ export const getConversionHealth = (clientId, params = {}) =>
 export const getKeywordExpansion = (clientId, params = {}) =>
     api.get('/analytics/keyword-expansion', { params: { client_id: clientId, ...params } });
 
+// GAP Analysis endpoints
+export const getAdGroupHealth = (clientId, params = {}) =>
+    api.get('/analytics/ad-group-health', { params: { client_id: clientId, ...params } });
+export const getSmartBiddingHealth = (clientId, params = {}) =>
+    api.get('/analytics/smart-bidding-health', { params: { client_id: clientId, ...params } });
+export const getParetoAnalysis = (clientId, params = {}) =>
+    api.get('/analytics/pareto-analysis', { params: { client_id: clientId, ...params } });
+export const getScalingOpportunities = (clientId, params = {}) =>
+    api.get('/analytics/scaling-opportunities', { params: { client_id: clientId, ...params } });
+export const getChangeImpact = (clientId, params = {}) =>
+    api.get('/analytics/change-impact', { params: { client_id: clientId, ...params } });
+export const getBidStrategyImpact = (clientId, params = {}) =>
+    api.get('/analytics/bid-strategy-impact', { params: { client_id: clientId, ...params } });
+export const getTargetVsActual = (clientId, params = {}) =>
+    api.get('/analytics/target-vs-actual', { params: { client_id: clientId, ...params } });
+export const getBidStrategyReport = (clientId, params = {}) =>
+    api.get('/analytics/bid-strategy-report', { params: { client_id: clientId, ...params } });
+export const getLearningStatus = (clientId, params = {}) =>
+    api.get('/analytics/learning-status', { params: { client_id: clientId, ...params } });
+export const getPortfolioHealth = (clientId, params = {}) =>
+    api.get('/analytics/portfolio-health', { params: { client_id: clientId, ...params } });
+export const getConversionQuality = (clientId, params = {}) =>
+    api.get('/analytics/conversion-quality', { params: { client_id: clientId, ...params } });
+export const getDemographics = (clientId, params = {}) =>
+    api.get('/analytics/demographics', { params: { client_id: clientId, ...params } });
+
 // AI Agent
 export const getAgentStatus = () => api.get('/agent/status');
 

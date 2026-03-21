@@ -58,11 +58,22 @@ def test_recommendation_type_enum_matches_active_ruleset():
         "BUDGET_PACING",
         "NGRAM_NEGATIVE",
         "ANALYTICS_ALERT",
+        # v2.0 GAP rules (Phase A)
+        "AD_GROUP_HEALTH",
+        "DISAPPROVED_AD_ALERT",
+        "SMART_BIDDING_CONV_ALERT",
+        "ECPC_DEPRECATION",
+        "SCALING_OPPORTUNITY",
+        # v2.0 GAP rules (Phase B+C)
+        "TARGET_DEVIATION_ALERT",
+        "LEARNING_PERIOD_ALERT",
+        "CONVERSION_QUALITY_ALERT",
+        "DEMOGRAPHIC_ANOMALY",
     }
     actual = {member.value for member in RecommendationType}
 
     assert expected == actual
-    assert len(actual) == 17
+    assert len(actual) == 26
 
 
 def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):

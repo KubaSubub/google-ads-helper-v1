@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { getActionHistory, revertAction, getChangeHistory, getUnifiedTimeline, getHistoryFilters } from '../api';
+import { getActionHistory, revertAction, getChangeHistory, getUnifiedTimeline, getHistoryFilters, getChangeImpact, getBidStrategyImpact } from '../api';
 import ConfirmationModal from '../components/ConfirmationModal';
 import DataTable from '../components/DataTable';
 import DiffView from '../components/DiffView';
@@ -14,6 +14,8 @@ const TABS = [
     { key: 'helper', label: 'Helper' },
     { key: 'external', label: 'Zewnętrzne' },
     { key: 'unified', label: 'Wszystko' },
+    { key: 'impact', label: 'Wpływ zmian' },
+    { key: 'strategy', label: 'Wpływ strategii' },
 ];
 
 const RESOURCE_ICONS = {
@@ -244,6 +246,121 @@ function TimelineGroup({ title, entries, expandedId, onToggle, onRevert }) {
 }
 
 // â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const IMPACT_COLORS = {
+    POSITIVE: { bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)', text: '#4ADE80', label: 'Poprawa' },
+    NEGATIVE: { bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)', text: '#F87171', label: 'Pogorszenie' },
+    NEUTRAL: { bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', text: 'rgba(255,255,255,0.5)', label: 'Neutralny' },
+};
+
+const TD_IMPACT = { padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' };
+const TH_IMPACT = { padding: '8px 12px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', textAlign: 'left' };
+
+function DeltaPill({ value, inverse }) {
+    if (value === 0 || value === undefined) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
+    const positive = inverse ? value < 0 : value > 0;
+    return (
+        <span style={{ color: positive ? '#4ADE80' : '#F87171', fontWeight: 600 }}>
+            {value > 0 ? '+' : ''}{value}%
+        </span>
+    );
+}
+
+function ChangeImpactView({ data }) {
+    if (!data?.changes?.length) return <EmptyState message="Brak danych — wykonaj akcje i poczekaj 7 dni na pomiar wpływu" />;
+    const { summary } = data;
+    return (
+        <div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                {[{ label: 'Poprawa', value: summary.positive, color: '#4ADE80' },
+                  { label: 'Neutralny', value: summary.neutral, color: 'rgba(255,255,255,0.5)' },
+                  { label: 'Pogorszenie', value: summary.negative, color: '#F87171' },
+                ].map(s => (
+                    <div key={s.label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</span>
+                        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: s.color }}>{s.value}</span>
+                    </div>
+                ))}
+            </div>
+            <div className="v2-card" style={{ overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Data', 'Akcja', 'Encja', 'Wpływ', 'Koszt Δ', 'Konw. Δ', 'CPA Δ', 'CTR Δ', 'ROAS Δ'].map(h =>
+                            <th key={h} style={{ ...TH_IMPACT, textAlign: h === 'Data' || h === 'Akcja' || h === 'Encja' ? 'left' : 'right' }}>{h}</th>
+                        )}
+                    </tr></thead>
+                    <tbody>
+                        {data.changes.map((c, i) => {
+                            const ic = IMPACT_COLORS[c.impact] || IMPACT_COLORS.NEUTRAL;
+                            return (
+                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: ic.bg }}>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{new Date(c.executed_at).toLocaleDateString('pl-PL')}</td>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit' }}>{OP_LABELS[c.action_type] || c.action_type}</td>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', color: '#F0F0F0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.entity_name || `${c.entity_type} #${c.entity_id}`}</td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right', fontFamily: 'inherit' }}>
+                                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: ic.bg, color: ic.text, border: `1px solid ${ic.border}` }}>{ic.label}</span>
+                                    </td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={c.delta?.cost_usd_pct} /></td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={c.delta?.conversions_pct} /></td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={c.delta?.cpa_usd_pct} inverse /></td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={c.delta?.ctr_pct} /></td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={c.delta?.roas_pct} /></td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+function StrategyImpactView({ data }) {
+    if (!data?.strategy_changes?.length) return <EmptyState message="Brak zmian strategii licytacji w ostatnich 90 dniach" />;
+    return (
+        <div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                {[{ label: 'Poprawa', value: data.summary.positive, color: '#4ADE80' },
+                  { label: 'Neutralny', value: data.summary.neutral, color: 'rgba(255,255,255,0.5)' },
+                  { label: 'Pogorszenie', value: data.summary.negative, color: '#F87171' },
+                ].map(s => (
+                    <div key={s.label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</span>
+                        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: s.color }}>{s.value}</span>
+                    </div>
+                ))}
+            </div>
+            <div className="v2-card" style={{ overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Data', 'Kampania', 'Stara strategia', 'Nowa strategia', 'Wpływ', 'Konw. Δ', 'CPA Δ', 'ROAS Δ'].map(h =>
+                            <th key={h} style={{ ...TH_IMPACT, textAlign: h === 'Data' || h === 'Kampania' || h === 'Stara strategia' || h === 'Nowa strategia' ? 'left' : 'right' }}>{h}</th>
+                        )}
+                    </tr></thead>
+                    <tbody>
+                        {data.strategy_changes.map((s, i) => {
+                            const ic = IMPACT_COLORS[s.impact] || IMPACT_COLORS.NEUTRAL;
+                            return (
+                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: ic.bg }}>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{new Date(s.change_date).toLocaleDateString('pl-PL')}</td>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.campaign_name}</td>
+                                    <td style={{ ...TD_IMPACT, color: 'rgba(255,255,255,0.5)' }}>{s.old_strategy || '—'}</td>
+                                    <td style={{ ...TD_IMPACT, color: '#4F8EF7' }}>{s.new_strategy || '—'}</td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right', fontFamily: 'inherit' }}>
+                                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: ic.bg, color: ic.text, border: `1px solid ${ic.border}` }}>{ic.label}</span>
+                                    </td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={s.delta?.conversions_pct} /></td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={s.delta?.cpa_usd_pct} inverse /></td>
+                                    <td style={{ ...TD_IMPACT, textAlign: 'right' }}><DeltaPill value={s.delta?.roas_pct} /></td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 export default function ActionHistory() {
     const { selectedClientId, showToast } = useApp();
 
@@ -261,6 +378,10 @@ export default function ActionHistory() {
     const [filters, setFilters] = useState({
         dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '',
     });
+
+    // Impact data (GAP 6A/6B)
+    const [impactData, setImpactData] = useState(null);
+    const [strategyData, setStrategyData] = useState(null);
 
     // UI
     const [expandedId, setExpandedId] = useState(null);
@@ -296,6 +417,12 @@ export default function ActionHistory() {
                 if (filters.clientType) params.client_type = filters.clientType;
                 const data = await getChangeHistory(selectedClientId, { limit: 200, ...params });
                 setExternalEvents(data.events || []);
+            } else if (activeTab === 'impact') {
+                const data = await getChangeImpact(selectedClientId, { days: 60 });
+                setImpactData(data);
+            } else if (activeTab === 'strategy') {
+                const data = await getBidStrategyImpact(selectedClientId, { days: 90 });
+                setStrategyData(data);
             } else {
                 const data = await getUnifiedTimeline(selectedClientId, { limit: 200, ...params });
                 setUnifiedEntries(data.entries || []);
@@ -446,7 +573,7 @@ export default function ActionHistory() {
             </div>
 
             {/* Filter bar (external / unified tabs) */}
-            {activeTab !== 'helper' && (
+            {activeTab !== 'helper' && activeTab !== 'impact' && activeTab !== 'strategy' && (
                 <div style={{
                     display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16,
                     padding: '10px 14px',
@@ -533,8 +660,18 @@ export default function ActionHistory() {
                 />
             )}
 
+            {/* Impact tab (GAP 6A) */}
+            {!loading && activeTab === 'impact' && impactData && (
+                <ChangeImpactView data={impactData} />
+            )}
+
+            {/* Strategy impact tab (GAP 6B) */}
+            {!loading && activeTab === 'strategy' && strategyData && (
+                <StrategyImpactView data={strategyData} />
+            )}
+
             {/* External / Unified tabs — Timeline */}
-            {!loading && activeTab !== 'helper' && timelineData && (
+            {!loading && activeTab !== 'helper' && activeTab !== 'impact' && activeTab !== 'strategy' && timelineData && (
                 <>
                     <TimelineGroup
                         title="Dzisiaj"

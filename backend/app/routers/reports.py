@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -84,16 +84,12 @@ async def generate_report(
         period_label = f"{year}-{month:02d}"
 
     async def event_stream():
-        try:
-            acquired = await asyncio.wait_for(_reports_lock.acquire(), timeout=0.0)
-        except (asyncio.TimeoutError, Exception):
-            acquired = False
-
-        if not acquired:
+        if _reports_lock.locked():
             yield _sse_event("error", "Generowanie raportu jest juz w toku — poczekaj na zakonczenie.")
             yield _sse_event("done", "")
             return
 
+        await _reports_lock.acquire()
         try:
             # Create report row
             report = Report(

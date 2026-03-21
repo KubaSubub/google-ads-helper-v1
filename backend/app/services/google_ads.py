@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
-    ChangeEvent, ActionLog, KeywordDaily, NegativeKeyword,
+    ChangeEvent, ActionLog, KeywordDaily, NegativeKeyword, ConversionAction,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.campaign_roles import apply_role_classification
@@ -608,7 +608,12 @@ class GoogleAdsService:
                 campaign.status,
                 campaign.advertising_channel_type,
                 campaign_budget.amount_micros,
-                campaign.bidding_strategy_type
+                campaign.bidding_strategy_type,
+                campaign.target_cpa.target_cpa_micros,
+                campaign.target_roas.target_roas,
+                campaign.primary_status,
+                campaign.primary_status_reasons,
+                campaign.bidding_strategy
             FROM campaign
             WHERE campaign.status != 'REMOVED'
             ORDER BY campaign.name
@@ -675,6 +680,30 @@ class GoogleAdsService:
                     "budget_micros": budget.amount_micros if budget.amount_micros else 0,
                     "bidding_strategy": bidding_strategy,
                 }
+
+                # Extended fields (GAP 1A, 1D, 1E)
+                if selected_query == "extended":
+                    # GAP 1D: Smart Bidding targets
+                    target_cpa = getattr(campaign, 'target_cpa', None)
+                    if target_cpa:
+                        data["target_cpa_micros"] = getattr(target_cpa, 'target_cpa_micros', None) or None
+                    target_roas_obj = getattr(campaign, 'target_roas', None)
+                    if target_roas_obj:
+                        data["target_roas"] = getattr(target_roas_obj, 'target_roas', None) or None
+                    # GAP 1A: Learning period
+                    ps = getattr(campaign, 'primary_status', None)
+                    data["primary_status"] = ps.name if hasattr(ps, 'name') else (str(ps) if ps else None)
+                    psr = getattr(campaign, 'primary_status_reasons', None)
+                    if psr:
+                        import json as _json
+                        data["primary_status_reasons"] = _json.dumps([r.name if hasattr(r, 'name') else str(r) for r in psr])
+                    # GAP 1E: Portfolio bid strategy
+                    bs_resource = getattr(campaign, 'bidding_strategy', None)
+                    if bs_resource and isinstance(bs_resource, str) and 'biddingStrategies' in bs_resource:
+                        data["bidding_strategy_resource_name"] = bs_resource
+                        # Extract portfolio ID from resource name
+                        parts = bs_resource.split('/')
+                        data["portfolio_bid_strategy_id"] = parts[-1] if parts else None
 
                 if existing:
                     for key, value in data.items():
@@ -2806,6 +2835,273 @@ class GoogleAdsService:
 
         except Exception as e:
             logger.error(f"Error syncing change events for client {client_id}: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Conversion Actions Sync (GAP 2A-2D)
+    # -----------------------------------------------------------------------
+
+    def sync_conversion_actions(self, db: Session, customer_id: str) -> int:
+        """Fetch conversion actions for data quality audit."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                conversion_action.id,
+                conversion_action.name,
+                conversion_action.category,
+                conversion_action.status,
+                conversion_action.type,
+                conversion_action.primary_for_goal,
+                conversion_action.counting_type,
+                conversion_action.value_settings.default_value,
+                conversion_action.value_settings.always_use_default_value,
+                conversion_action.attribution_model_settings.attribution_model,
+                conversion_action.click_through_lookback_window_days,
+                conversion_action.view_through_lookback_window_days,
+                conversion_action.include_in_conversions_metric
+            FROM conversion_action
+            WHERE conversion_action.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            for row in response:
+                ca = row.conversion_action
+                google_id = str(ca.id)
+
+                existing = db.query(ConversionAction).filter(
+                    ConversionAction.client_id == client_record.id,
+                    ConversionAction.google_conversion_action_id == google_id,
+                ).first()
+
+                data = {
+                    "client_id": client_record.id,
+                    "google_conversion_action_id": google_id,
+                    "name": ca.name,
+                    "category": ca.category.name if hasattr(ca.category, 'name') else str(ca.category),
+                    "status": ca.status.name if hasattr(ca.status, 'name') else str(ca.status),
+                    "type": ca.type.name if hasattr(ca.type, 'name') else str(ca.type) if ca.type else None,
+                    "primary_for_goal": bool(ca.primary_for_goal),
+                    "counting_type": ca.counting_type.name if hasattr(ca.counting_type, 'name') else str(ca.counting_type) if ca.counting_type else None,
+                    "value_settings_default_value": float(ca.value_settings.default_value) if ca.value_settings and ca.value_settings.default_value else None,
+                    "value_settings_always_use_default": bool(ca.value_settings.always_use_default_value) if ca.value_settings else None,
+                    "attribution_model": ca.attribution_model_settings.attribution_model.name if ca.attribution_model_settings and hasattr(ca.attribution_model_settings.attribution_model, 'name') else None,
+                    "click_through_lookback_window_days": int(ca.click_through_lookback_window_days) if ca.click_through_lookback_window_days else None,
+                    "view_through_lookback_window_days": int(ca.view_through_lookback_window_days) if ca.view_through_lookback_window_days else None,
+                    "include_in_conversions_metric": bool(ca.include_in_conversions_metric),
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(ConversionAction(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} conversion actions for customer {normalized_customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing conversion actions: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Demographic Metrics Sync (GAP 4A)
+    # -----------------------------------------------------------------------
+
+    def sync_age_metrics(
+        self, db: Session, customer_id: str,
+        date_from: date = None, date_to: date = None
+    ) -> int:
+        """Fetch age-segmented daily campaign metrics via age_range_view."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                ad_group_criterion.age_range.type,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros,
+                metrics.average_cpc
+            FROM age_range_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+                age_range = row.ad_group_criterion.age_range.type.name
+                m = row.metrics
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(MetricSegmented).filter(
+                    MetricSegmented.campaign_id == campaign.id,
+                    MetricSegmented.date == metric_date,
+                    MetricSegmented.age_range == age_range,
+                    MetricSegmented.device.is_(None),
+                    MetricSegmented.geo_city.is_(None),
+                    MetricSegmented.gender.is_(None),
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "date": metric_date,
+                    "age_range": age_range,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "ctr": m.ctr * 100,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "cost_micros": m.cost_micros,
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(MetricSegmented(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} age-segmented metric rows")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing age metrics: {e}")
+            db.rollback()
+            raise
+
+    def sync_gender_metrics(
+        self, db: Session, customer_id: str,
+        date_from: date = None, date_to: date = None
+    ) -> int:
+        """Fetch gender-segmented daily campaign metrics via gender_view."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                ad_group_criterion.gender.type,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros,
+                metrics.average_cpc
+            FROM gender_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+                gender = row.ad_group_criterion.gender.type.name
+                m = row.metrics
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(MetricSegmented).filter(
+                    MetricSegmented.campaign_id == campaign.id,
+                    MetricSegmented.date == metric_date,
+                    MetricSegmented.gender == gender,
+                    MetricSegmented.device.is_(None),
+                    MetricSegmented.geo_city.is_(None),
+                    MetricSegmented.age_range.is_(None),
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "date": metric_date,
+                    "gender": gender,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "ctr": m.ctr * 100,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "cost_micros": m.cost_micros,
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(MetricSegmented(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} gender-segmented metric rows")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing gender metrics: {e}")
             db.rollback()
             raise
 

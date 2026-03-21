@@ -27,6 +27,17 @@ const TYPE_CONFIG = {
     PAUSE_AD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Wstrzymaj reklamę' },
     INCREASE_BUDGET: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zwiększ budżet' },
     REALLOCATE_BUDGET: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Przesuń budżet' },
+    // v2.0 GAP rules
+    AD_GROUP_HEALTH: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Zdrowie grupy reklam' },
+    DISAPPROVED_AD_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Odrzucona reklama' },
+    SMART_BIDDING_CONV_ALERT: { icon: Zap, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Smart Bidding — niski wolumen' },
+    ECPC_DEPRECATION: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'ECPC wycofane' },
+    SCALING_OPPORTUNITY: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Okazja do skalowania' },
+    // v2.0 GAP rules (Phase B+C)
+    TARGET_DEVIATION_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Odchylenie od celu' },
+    LEARNING_PERIOD_ALERT: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Okres nauki' },
+    CONVERSION_QUALITY_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Jakość konwersji' },
+    DEMOGRAPHIC_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia demograficzna' },
 }
 
 const PRIORITY_CONFIG = {
@@ -46,7 +57,10 @@ const ENTITY_TYPE_LABELS = {
     keyword: 'Keyword',
     search_term: 'Search term',
     ad: 'Ad',
+    ad_group: 'Ad Group',
     campaign: 'Campaign',
+    segment: 'Segment',
+    client: 'Konto',
 }
 
 const CAMPAIGN_ROLE_LABELS = {

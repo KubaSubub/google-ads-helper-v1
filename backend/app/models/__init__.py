@@ -20,6 +20,7 @@ from .alert import Alert
 from .change_event import ChangeEvent
 from .sync_log import SyncLog
 from .report import Report
+from .conversion_action import ConversionAction
 
 __all__ = [
     "Client",
@@ -40,5 +41,6 @@ __all__ = [
     "ChangeEvent",
     "SyncLog",
     "Report",
+    "ConversionAction",
 ]
 

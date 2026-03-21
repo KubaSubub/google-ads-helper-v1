@@ -7,12 +7,16 @@ import {
     getDayparting, getRsaAnalysis, getNgramAnalysis,
     getMatchTypeAnalysis, getLandingPages, getWastedSpend,
     getAccountStructure, getBiddingAdvisor, getHourlyDayparting,
-    getConversionHealth,
+    getConversionHealth, getAdGroupHealth, getSmartBiddingHealth,
+    getParetoAnalysis, getScalingOpportunities,
+    getTargetVsActual, getBidStrategyReport, getLearningStatus,
+    getPortfolioHealth, getConversionQuality, getDemographics,
 } from '../api'
 import {
     Loader2, CalendarDays, FileText, Hash, Layers, Globe, AlertTriangle,
     ChevronDown, ChevronRight, ExternalLink, TrendingDown, TrendingUp,
-    GitBranch, Target, Clock,
+    GitBranch, Target, Clock, Users, Zap, BarChart3, Activity,
+    Crosshair, GraduationCap, Briefcase, ShieldCheck, PieChart,
 } from 'lucide-react'
 
 const SECTION_STYLE = { marginBottom: 24 }
@@ -617,6 +621,371 @@ function BiddingAdvisorSection({ data }) {
 }
 
 // ─────────────────────────────────────────────────────────
+// 10. AD GROUP HEALTH (GAP 8)
+// ─────────────────────────────────────────────────────────
+function AdGroupHealthSection({ data }) {
+    if (!data?.details?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Wszystkie grupy reklam wyglądają dobrze.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                {data.issues.map((iss, i) => (
+                    <MetricPill key={i} label={iss.type === 'no_ads' ? 'Brak reklam' : iss.type === 'single_ad' ? '1 reklama' : iss.type === 'too_many_keywords' ? 'Za dużo KW' : iss.type === 'too_few_keywords' ? 'Za mało KW' : 'Brak konw.'}
+                        value={iss.count} color={iss.severity === 'HIGH' ? '#F87171' : iss.severity === 'MEDIUM' ? '#FBBF24' : '#4F8EF7'} />
+                ))}
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Grupa reklam', 'Kampania', 'Reklamy', 'Słowa', 'Koszt', 'Konw.', 'Problemy'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Grupa reklam' || h === 'Kampania' || h === 'Problemy' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.details.map((d, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: d.issues.length >= 2 ? 'rgba(248,113,113,0.04)' : 'transparent' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.ad_group_name}</td>
+                            <td style={{ ...TD_DIM, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.campaign_name}</td>
+                            <td style={{ ...TD, textAlign: 'right', color: d.ads_count < 2 ? '#F87171' : '#4ADE80' }}>{d.ads_count}</td>
+                            <td style={{ ...TD, textAlign: 'right', color: d.keywords_count > 30 || d.keywords_count < 2 ? '#FBBF24' : 'rgba(255,255,255,0.8)' }}>{d.keywords_count}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>${d.cost_usd}</td>
+                            <td style={{ ...TD, textAlign: 'right', color: d.conversions === 0 && d.cost_usd >= 50 ? '#F87171' : 'rgba(255,255,255,0.8)' }}>{d.conversions}</td>
+                            <td style={{ ...TD_DIM, textAlign: 'left', fontSize: 11 }}>{d.issues.join(', ')}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 11. SMART BIDDING HEALTH (GAP 1B)
+// ─────────────────────────────────────────────────────────
+function SmartBiddingHealthSection({ data }) {
+    if (!data?.campaigns?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak kampanii Smart Bidding lub wszystkie zdrowe.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                <MetricPill label="Zdrowe" value={data.summary?.healthy || 0} color="#4ADE80" />
+                <MetricPill label="Niski wolumen" value={data.summary?.low_volume || 0} color="#FBBF24" />
+                <MetricPill label="Krytyczne" value={data.summary?.critical || 0} color="#F87171" />
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kampania', 'Strategia', 'Konw. / 30d', 'Min.', 'Status'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.campaigns.map((c, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: c.status === 'CRITICAL' ? 'rgba(248,113,113,0.04)' : 'transparent' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.campaign_name}</td>
+                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.bidding_strategy}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: c.status === 'HEALTHY' ? '#4ADE80' : c.status === 'CRITICAL' ? '#F87171' : '#FBBF24' }}>{c.conversions_30d?.toFixed(1)}</td>
+                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.min_recommended}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontFamily: 'inherit' }}>
+                                <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
+                                    background: c.status === 'HEALTHY' ? 'rgba(74,222,128,0.1)' : c.status === 'CRITICAL' ? 'rgba(248,113,113,0.1)' : 'rgba(251,191,36,0.1)',
+                                    color: c.status === 'HEALTHY' ? '#4ADE80' : c.status === 'CRITICAL' ? '#F87171' : '#FBBF24',
+                                    border: `1px solid ${c.status === 'HEALTHY' ? 'rgba(74,222,128,0.2)' : c.status === 'CRITICAL' ? 'rgba(248,113,113,0.2)' : 'rgba(251,191,36,0.2)'}`,
+                                }}>{c.status === 'HEALTHY' ? 'Zdrowa' : c.status === 'CRITICAL' ? 'Krytyczna' : 'Niski wolumen'}</span>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 12. PARETO 80/20 (GAP 7A)
+// ─────────────────────────────────────────────────────────
+function ParetoSection({ data }) {
+    if (!data?.campaign_pareto?.items?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych do analizy Pareto.</div>
+    const { campaign_pareto, summary } = data
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            {summary?.campaign_concentration && (
+                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.15)', marginBottom: 16, fontSize: 12, color: '#4F8EF7' }}>
+                    {summary.campaign_concentration}
+                </div>
+            )}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kampania', 'Wartość', '% total', 'Kumulat.', 'Koszt', 'Konw.', 'Typ'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {campaign_pareto.items.map((item, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: item.tag === 'HERO' ? 'rgba(74,222,128,0.03)' : 'transparent' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>${item.conv_value_usd?.toFixed(0)}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: item.tag === 'HERO' ? '#4ADE80' : 'rgba(255,255,255,0.5)' }}>{item.pct_of_total?.toFixed(1)}%</td>
+                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{item.cumulative_pct?.toFixed(1)}%</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>${item.cost_usd?.toFixed(0)}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{item.conversions?.toFixed(1)}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontFamily: 'inherit' }}>
+                                <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
+                                    background: item.tag === 'HERO' ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.05)',
+                                    color: item.tag === 'HERO' ? '#4ADE80' : 'rgba(255,255,255,0.4)',
+                                    border: `1px solid ${item.tag === 'HERO' ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                                }}>{item.tag === 'HERO' ? 'Hero' : 'Tail'}</span>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 13. SCALING OPPORTUNITIES (GAP 7B)
+// ─────────────────────────────────────────────────────────
+function ScalingSection({ data }) {
+    if (!data?.opportunities?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak okazji do skalowania.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kampania', 'Wartość', '% konta', 'Lost IS (budget)', 'Lost IS (rank)', 'Potencjał'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.opportunities.map((o, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.campaign_name}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>${o.value_usd?.toFixed(0)}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{o.value_pct?.toFixed(1)}%</td>
+                            <td style={{ ...TD, textAlign: 'right', color: o.lost_budget_is > 20 ? '#F87171' : 'rgba(255,255,255,0.8)' }}>{o.lost_budget_is?.toFixed(0)}%</td>
+                            <td style={{ ...TD, textAlign: 'right', color: o.lost_rank_is > 20 ? '#FBBF24' : 'rgba(255,255,255,0.8)' }}>{o.lost_rank_is?.toFixed(0)}%</td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: '#4ADE80' }}>~${o.incremental_value_est?.toFixed(0)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 14. TARGET VS ACTUAL (GAP 1D)
+// ─────────────────────────────────────────────────────────
+function TargetVsActualSection({ data }) {
+    if (!data?.items?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak kampanii Smart Bidding z celami.</div>
+    const statusColor = { ON_TARGET: '#4ADE80', OVER_TARGET: '#F87171', UNDER_TARGET: '#FBBF24', NO_TARGET: 'rgba(255,255,255,0.4)' }
+    const statusLabel = { ON_TARGET: 'W celu', OVER_TARGET: 'Powyżej', UNDER_TARGET: 'Poniżej', NO_TARGET: 'Brak celu' }
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kampania', 'Strategia', 'Cel', 'Aktualny', 'Odchylenie', 'Status'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.items.map((item, i) => {
+                        const isCpa = item.bidding_strategy?.includes('CPA') || item.bidding_strategy === 'MAXIMIZE_CONVERSIONS'
+                        const target = isCpa ? (item.target_cpa_usd ? `$${item.target_cpa_usd}` : '—') : (item.target_roas ? `${item.target_roas}x` : '—')
+                        const actual = isCpa ? (item.actual_cpa_usd ? `$${item.actual_cpa_usd}` : '—') : (item.actual_roas ? `${item.actual_roas}x` : '—')
+                        return (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.campaign_name}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{item.bidding_strategy}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{target}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{actual}</td>
+                                <td style={{ ...TD, textAlign: 'right', color: statusColor[item.status], fontWeight: 600 }}>{item.deviation_pct != null ? `${item.deviation_pct > 0 ? '+' : ''}${item.deviation_pct}%` : '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}><span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, color: statusColor[item.status], background: `${statusColor[item.status]}15` }}>{statusLabel[item.status]}</span></td>
+                            </tr>
+                        )
+                    })}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 15. LEARNING STATUS (GAP 1A)
+// ─────────────────────────────────────────────────────────
+function LearningStatusSection({ data }) {
+    if (!data?.items?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak kampanii Smart Bidding.</div>
+    const statusColor = { STABLE: '#4ADE80', LEARNING: '#FBBF24', EXTENDED_LEARNING: '#F87171', STUCK_LEARNING: '#F87171' }
+    const statusLabel = { STABLE: 'Stabilna', LEARNING: 'Nauka', EXTENDED_LEARNING: 'Przedłużona', STUCK_LEARNING: 'Zablokowana' }
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                <MetricPill label="Smart Bidding" value={data.total_smart_bidding} />
+                <MetricPill label="W nauce" value={data.learning_count} color={data.learning_count > 0 ? '#FBBF24' : '#4ADE80'} />
+                <MetricPill label="Zablokowane" value={data.stuck_count} color={data.stuck_count > 0 ? '#F87171' : '#4ADE80'} />
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {['Kampania', 'Strategia', 'Status', 'Dni w nauce'].map(h =>
+                        <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
+                    )}
+                </tr></thead>
+                <tbody>
+                    {data.items.map((item, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.campaign_name}</td>
+                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{item.bidding_strategy}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}><span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, color: statusColor[item.status], background: `${statusColor[item.status]}15` }}>{statusLabel[item.status]}</span></td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{item.days_in_learning ?? '—'}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 16. PORTFOLIO HEALTH (GAP 1E)
+// ─────────────────────────────────────────────────────────
+function PortfolioHealthSection({ data }) {
+    if (!data?.portfolios?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak portfelowych strategii.</div>
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            {data.portfolios.map((p, pi) => (
+                <div key={pi} style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 8 }}>Portfolio {p.portfolio_id} — {p.bidding_strategy} ({p.campaign_count} kampanii)</div>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                        <MetricPill label="Koszt" value={`$${p.total_cost_usd}`} />
+                        <MetricPill label="Konwersje" value={p.total_conversions} />
+                        <MetricPill label="Wartość" value={`$${p.total_value_usd}`} />
+                    </div>
+                    {p.issues?.length > 0 && p.issues.map((iss, ii) => (
+                        <div key={ii} style={{ fontSize: 11, color: iss.severity === 'HIGH' ? '#F87171' : '#FBBF24', marginBottom: 4 }}>⚠ {iss.detail}</div>
+                    ))}
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            {['Kampania', 'Koszt', 'Konwersje', 'Wartość', '% wydatków'].map(h =>
+                                <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
+                            )}
+                        </tr></thead>
+                        <tbody>
+                            {p.campaigns.map((c, ci) => (
+                                <tr key={ci} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{c.campaign_name}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>${c.cost_usd}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>{c.conversions}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>${c.value_usd}</td>
+                                    <td style={{ ...TD, textAlign: 'right', color: c.spend_share_pct > 70 ? '#F87171' : 'rgba(255,255,255,0.8)' }}>{c.spend_share_pct}%</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 17. CONVERSION QUALITY AUDIT (GAP 2A-2D)
+// ─────────────────────────────────────────────────────────
+function ConversionQualitySection({ data }) {
+    if (!data) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych konwersji.</div>
+    const scoreColor = data.quality_score >= 80 ? '#4ADE80' : data.quality_score >= 50 ? '#FBBF24' : '#F87171'
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                <MetricPill label="Quality Score" value={data.quality_score} color={scoreColor} />
+                <MetricPill label="Akcji konwersji" value={data.total_actions} />
+                <MetricPill label="Primary" value={data.primary_count} />
+            </div>
+            {data.issues?.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                    {data.issues.map((iss, i) => (
+                        <div key={i} style={{ padding: '8px 12px', marginBottom: 6, borderRadius: 8, background: iss.severity === 'HIGH' ? 'rgba(248,113,113,0.08)' : iss.severity === 'MEDIUM' ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${iss.severity === 'HIGH' ? 'rgba(248,113,113,0.2)' : iss.severity === 'MEDIUM' ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.07)'}` }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: iss.severity === 'HIGH' ? '#F87171' : iss.severity === 'MEDIUM' ? '#FBBF24' : '#F0F0F0' }}>{iss.type}</div>
+                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{iss.detail}</div>
+                            {iss.affected?.length > 0 && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{iss.affected.join(', ')}</div>}
+                        </div>
+                    ))}
+                </div>
+            )}
+            {data.actions?.length > 0 && (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Nazwa', 'Kategoria', 'Primary', 'Counting', 'Wartość dom.', 'Atrybucja', 'Lookback'].map(h =>
+                            <th key={h} style={{ ...TH, textAlign: h === 'Nazwa' ? 'left' : 'right' }}>{h}</th>
+                        )}
+                    </tr></thead>
+                    <tbody>
+                        {data.actions.map((a, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.category}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{a.primary_for_goal ? '✓' : '—'}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.counting_type || '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{a.value_default != null ? `$${a.value_default}` : '—'}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right', fontSize: 10 }}>{a.attribution_model || '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{a.lookback_days ?? '—'}d</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
+// 18. DEMOGRAPHICS (GAP 4A)
+// ─────────────────────────────────────────────────────────
+function DemographicsSection({ data }) {
+    if (!data) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych demograficznych.</div>
+    const BreakdownTable = ({ items, title }) => {
+        if (!items?.length) return null
+        return (
+            <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Segment', 'Kliknięcia', 'Koszt', 'Konwersje', 'CPA', 'ROAS', '% kosztów'].map(h =>
+                            <th key={h} style={{ ...TH, textAlign: h === 'Segment' ? 'left' : 'right' }}>{h}</th>
+                        )}
+                    </tr></thead>
+                    <tbody>
+                        {items.map((item, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{item.segment}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{item.clicks?.toLocaleString()}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>${item.cost_usd}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{item.conversions}</td>
+                                <td style={{ ...TD, textAlign: 'right', color: item.cpa_usd && data.avg_cpa_usd && item.cpa_usd > data.avg_cpa_usd * 2 ? '#F87171' : 'rgba(255,255,255,0.8)' }}>{item.cpa_usd != null ? `$${item.cpa_usd}` : '—'}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{item.roas != null ? `${item.roas}x` : '—'}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{item.cost_share_pct}%</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        )
+    }
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            {data.anomalies?.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                    {data.anomalies.map((a, i) => (
+                        <div key={i} style={{ padding: '8px 12px', marginBottom: 6, borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#F87171' }}>Anomalia: </span>
+                            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>{a.segment} — CPA ${a.cpa_usd} ({a.multiplier}x średniej ${a.avg_cpa_usd})</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <BreakdownTable items={data.age_breakdown} title="Przedziały wiekowe" />
+            <BreakdownTable items={data.gender_breakdown} title="Płeć" />
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────
 export default function SearchOptimization() {
@@ -629,7 +998,10 @@ export default function SearchOptimization() {
         waste: true, dayparting: true, matchType: true,
         ngram: false, rsa: false, landing: false,
         hourly: false, structure: false, bidding: false,
-        convHealth: false,
+        convHealth: false, adGroupHealth: false, smartBidding: false,
+        pareto: false, scaling: false, targetVsActual: false,
+        learningStatus: false, portfolioHealth: false,
+        convQuality: false, demographics: false,
     })
     const [ngramSize, setNgramSize] = useState(1)
 
@@ -643,6 +1015,15 @@ export default function SearchOptimization() {
     const [structure, setStructure] = useState(null)
     const [bidding, setBidding] = useState(null)
     const [convHealth, setConvHealth] = useState(null)
+    const [adGroupHealth, setAdGroupHealth] = useState(null)
+    const [smartBidding, setSmartBidding] = useState(null)
+    const [pareto, setPareto] = useState(null)
+    const [scaling, setScaling] = useState(null)
+    const [targetVsActual, setTargetVsActual] = useState(null)
+    const [learningStatus, setLearningStatus] = useState(null)
+    const [portfolioHealth, setPortfolioHealth] = useState(null)
+    const [convQuality, setConvQuality] = useState(null)
+    const [demographics, setDemographics] = useState(null)
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -658,7 +1039,7 @@ export default function SearchOptimization() {
         setLoading(true)
         setError(null)
         try {
-            const [w, dp, mt, ng, r, lp, hr, st, bd, ch] = await Promise.all([
+            const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(() => null),
                 getDayparting(selectedClientId, allParams).catch(() => null),
                 getMatchTypeAnalysis(selectedClientId, allParams).catch(() => null),
@@ -669,6 +1050,15 @@ export default function SearchOptimization() {
                 getAccountStructure(selectedClientId).catch(() => null),
                 getBiddingAdvisor(selectedClientId, allParams).catch(() => null),
                 getConversionHealth(selectedClientId, allParams).catch(() => null),
+                getAdGroupHealth(selectedClientId, allParams).catch(() => null),
+                getSmartBiddingHealth(selectedClientId, allParams).catch(() => null),
+                getParetoAnalysis(selectedClientId, allParams).catch(() => null),
+                getScalingOpportunities(selectedClientId, allParams).catch(() => null),
+                getTargetVsActual(selectedClientId, allParams).catch(() => null),
+                getLearningStatus(selectedClientId).catch(() => null),
+                getPortfolioHealth(selectedClientId, allParams).catch(() => null),
+                getConversionQuality(selectedClientId).catch(() => null),
+                getDemographics(selectedClientId, allParams).catch(() => null),
             ])
             setWaste(w)
             setDaypart(dp)
@@ -680,6 +1070,15 @@ export default function SearchOptimization() {
             setStructure(st)
             setBidding(bd)
             setConvHealth(ch)
+            setAdGroupHealth(agh)
+            setSmartBidding(sb)
+            setPareto(pa)
+            setScaling(sc)
+            setTargetVsActual(tva)
+            setLearningStatus(ls)
+            setPortfolioHealth(ph)
+            setConvQuality(cq)
+            setDemographics(demo)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -714,7 +1113,7 @@ export default function SearchOptimization() {
                     Optymalizacja SEARCH
                 </h1>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                    Analiza {days} dni — 9 narzędzi optymalizacji kampanii wyszukiwania
+                    Analiza {days} dni — 19 narzędzi optymalizacji kampanii wyszukiwania
                 </p>
             </div>
 
@@ -819,6 +1218,78 @@ export default function SearchOptimization() {
                         )}
                     </div>
                 )}
+            </div>
+
+            {/* 10. Ad Group Health (GAP 8) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Users} title="Zdrowie grup reklam"
+                    subtitle={adGroupHealth ? `${adGroupHealth.details?.length || 0} problemów z ${adGroupHealth.total_ad_groups} grup` : ''}
+                    open={sections.adGroupHealth} onToggle={() => toggle('adGroupHealth')} />
+                {sections.adGroupHealth && <AdGroupHealthSection data={adGroupHealth} />}
+            </div>
+
+            {/* 11. Smart Bidding Health (GAP 1B) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Zap} title="Zdrowie Smart Bidding"
+                    subtitle={smartBidding ? `${smartBidding.summary?.critical || 0} krytycznych, ${smartBidding.summary?.low_volume || 0} niski wolumen` : ''}
+                    open={sections.smartBidding} onToggle={() => toggle('smartBidding')} />
+                {sections.smartBidding && <SmartBiddingHealthSection data={smartBidding} />}
+            </div>
+
+            {/* 12. Pareto 80/20 (GAP 7A) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={BarChart3} title="Analiza Pareto 80/20"
+                    subtitle={pareto ? `${pareto.campaign_pareto?.top_campaigns_for_80pct || '?'} kampanii = 80% wartości` : ''}
+                    open={sections.pareto} onToggle={() => toggle('pareto')} />
+                {sections.pareto && <ParetoSection data={pareto} />}
+            </div>
+
+            {/* 13. Scaling Opportunities (GAP 7B) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Activity} title="Okazje do skalowania"
+                    subtitle={scaling ? `${scaling.opportunities?.length || 0} kampanii z potencjałem` : ''}
+                    open={sections.scaling} onToggle={() => toggle('scaling')} />
+                {sections.scaling && <ScalingSection data={scaling} />}
+            </div>
+
+            {/* 14. Target vs Actual (GAP 1D) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Crosshair} title="Target vs Rzeczywistość"
+                    subtitle={targetVsActual ? `${targetVsActual.items?.length || 0} kampanii Smart Bidding` : ''}
+                    open={sections.targetVsActual} onToggle={() => toggle('targetVsActual')} />
+                {sections.targetVsActual && <TargetVsActualSection data={targetVsActual} />}
+            </div>
+
+            {/* 15. Learning Status (GAP 1A) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={GraduationCap} title="Status nauki Smart Bidding"
+                    subtitle={learningStatus ? `${learningStatus.learning_count || 0} w nauce z ${learningStatus.total_smart_bidding || 0}` : ''}
+                    open={sections.learningStatus} onToggle={() => toggle('learningStatus')} />
+                {sections.learningStatus && <LearningStatusSection data={learningStatus} />}
+            </div>
+
+            {/* 16. Portfolio Health (GAP 1E) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Briefcase} title="Portfelowe strategie"
+                    subtitle={portfolioHealth ? `${portfolioHealth.total_portfolios || 0} portfeli` : ''}
+                    open={sections.portfolioHealth} onToggle={() => toggle('portfolioHealth')} />
+                {sections.portfolioHealth && <PortfolioHealthSection data={portfolioHealth} />}
+            </div>
+
+            {/* 17. Conversion Quality Audit (GAP 2A-2D) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={ShieldCheck} title="Audyt jakości konwersji"
+                    subtitle={convQuality ? `Score: ${convQuality.quality_score}/100, ${convQuality.issues?.length || 0} problemów` : ''}
+                    open={sections.convQuality} onToggle={() => toggle('convQuality')} />
+                {sections.convQuality && <ConversionQualitySection data={convQuality} />}
+            </div>
+
+            {/* 18. Demographics (GAP 4A) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={PieChart} title="Demografia"
+                    subtitle={demographics ? `${demographics.anomalies?.length || 0} anomalii CPA` : ''}
+                    open={sections.demographics} onToggle={() => toggle('demographics')} />
+                {sections.demographics && <DemographicsSection data={demographics} />}
             </div>
         </div>
     )

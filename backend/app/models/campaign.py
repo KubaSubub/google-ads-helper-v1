@@ -21,6 +21,15 @@ class Campaign(Base):
     budget_micros = Column(BigInteger, default=0)  # 1 USD = 1_000_000 micros
     budget_type = Column(String(20))  # DAILY, TOTAL
     bidding_strategy = Column(String(50))
+    # GAP 1D: Smart Bidding targets
+    target_cpa_micros = Column(BigInteger, nullable=True)     # campaign.target_cpa.target_cpa_micros
+    target_roas = Column(Float, nullable=True)                # campaign.target_roas.target_roas (e.g. 3.5)
+    # GAP 1A: Learning period
+    primary_status = Column(String(50), nullable=True)        # campaign.primary_status
+    primary_status_reasons = Column(String(500), nullable=True)  # JSON array as string
+    # GAP 1E: Portfolio bid strategy
+    bidding_strategy_resource_name = Column(String(500), nullable=True)
+    portfolio_bid_strategy_id = Column(String(50), nullable=True)
     start_date = Column(Date)
     end_date = Column(Date)
 

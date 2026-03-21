@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
 from app.models import (
     Client, Campaign, AdGroup, Keyword, KeywordDaily, SearchTerm, Ad, MetricDaily, MetricSegmented,
-    ActionLog, ChangeEvent, Alert, NegativeKeyword,
+    ActionLog, ChangeEvent, Alert, NegativeKeyword, ConversionAction,
 )
 from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
 
@@ -51,10 +51,10 @@ def _seed_demo_data_impl(db):
 
     # Check if data already exists
     if db.query(Client).count() > 0:
-        print("⚠️  Database already contains data. Skipping seed.")
+        print("[!] Database already contains data. Skipping seed.")
         return
 
-    print("🌱 Seeding demo data...")
+    print("[*] Seeding demo data...")
 
     # -----------------------------------------------------------------------
     # Client
@@ -85,19 +85,43 @@ def _seed_demo_data_impl(db):
     # -----------------------------------------------------------------------
     # Campaigns (with impression share + top impression %)
     # -----------------------------------------------------------------------
+    # GAP 1D: Smart Bidding targets per strategy
+    # GAP 1A: primary_status + reasons
+    # GAP 1C: one ECPC campaign for deprecation testing
     campaigns_data = [
-        ("Branded Search", "SEARCH", 150, "ENABLED"),
-        ("Łóżka - Generic", "SEARCH", 300, "ENABLED"),
-        ("Kanapy - Generic", "SEARCH", 250, "ENABLED"),
-        ("Meble Biurowe", "SEARCH", 100, "ENABLED"),
-        ("Shopping - Łóżka", "SHOPPING", 200, "ENABLED"),
-        ("Display - Remarketing", "DISPLAY", 80, "PAUSED"),
-        ("PMax - Meble Ogólne", "PERFORMANCE_MAX", 350, "ENABLED"),
+        ("Branded Search", "SEARCH", 150, "ENABLED", "TARGET_CPA"),
+        ("Łóżka - Generic", "SEARCH", 300, "ENABLED", "TARGET_ROAS"),
+        ("Kanapy - Generic", "SEARCH", 250, "ENABLED", "TARGET_CPA"),
+        ("Meble Biurowe", "SEARCH", 100, "ENABLED", "ENHANCED_CPC"),
+        ("Shopping - Łóżka", "SHOPPING", 200, "ENABLED", "TARGET_ROAS"),
+        ("Display - Remarketing", "DISPLAY", 80, "PAUSED", "MAXIMIZE_CONVERSIONS"),
+        ("PMax - Meble Ogólne", "PERFORMANCE_MAX", 350, "ENABLED", "MAXIMIZE_CONVERSION_VALUE"),
+        ("Kanapy - Retarget", "SEARCH", 120, "ENABLED", "TARGET_CPA"),  # portfolio member
     ]
 
     campaigns = []
-    for i, (name, ctype, budget, status) in enumerate(campaigns_data, start=1):
+    for i, (name, ctype, budget, status, bid_strat) in enumerate(campaigns_data, start=1):
         is_search = ctype == "SEARCH"
+
+        # GAP 1D: targets
+        tcpa = int(budget * 0.15 * 1_000_000) if bid_strat in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS") else None
+        troas = round(RNG.uniform(2.5, 5.0), 2) if bid_strat in ("TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE") else None
+
+        # GAP 1A: learning status — make "Kanapy - Generic" stuck in learning
+        p_status = "ELIGIBLE" if name != "Kanapy - Generic" else "ELIGIBLE"
+        p_reasons = None
+        if name == "Kanapy - Generic":
+            import json as _json
+            p_reasons = _json.dumps(["BIDDING_STRATEGY_LEARNING"])
+            p_status = "LEARNING"
+
+        # GAP 1E: portfolio strategy — last two TARGET_CPA campaigns share a portfolio
+        portfolio_id = None
+        portfolio_resource = None
+        if name in ("Kanapy - Generic", "Kanapy - Retarget"):
+            portfolio_id = "777"
+            portfolio_resource = "customers/1234567890/biddingStrategies/777"
+
         c = Campaign(
             client_id=client.id,
             google_campaign_id=str(1000 + i),
@@ -106,7 +130,13 @@ def _seed_demo_data_impl(db):
             campaign_type=ctype,
             budget_micros=int(budget * 1_000_000),
             budget_type="DAILY",
-            bidding_strategy="TARGET_CPA" if is_search else "TARGET_ROAS",
+            bidding_strategy=bid_strat,
+            target_cpa_micros=tcpa,
+            target_roas=troas,
+            primary_status=p_status,
+            primary_status_reasons=p_reasons,
+            bidding_strategy_resource_name=portfolio_resource,
+            portfolio_bid_strategy_id=portfolio_id,
             start_date=date(2025, 1, 1),
             # Impression share (only for SEARCH)
             search_impression_share=_rand_is(RNG, 0.30, 0.85) if is_search else None,
@@ -183,6 +213,12 @@ def _seed_demo_data_impl(db):
                 ("meble retargeting", "BROAD"),
                 ("remarketing sofa", "BROAD"),
                 ("display meble", "BROAD"),
+            ]),
+        ],
+        "Kanapy - Retarget": [
+            ("Kanapy Retarget AG", [
+                ("kanapa retarget", "BROAD"),
+                ("sofa retargeting", "BROAD"),
             ]),
         ],
     }
@@ -922,18 +958,153 @@ def _seed_demo_data_impl(db):
     for text in brand_items:
         db.add(NegativeKeywordListItem(list_id=nkl_brand.id, text=text, match_type="EXACT"))
 
+    # -----------------------------------------------------------------------
+    # ConversionAction (GAP 2A-2D: Conversion Data Quality Audit)
+    # -----------------------------------------------------------------------
+    conv_actions_data = [
+        # Primary, well-configured
+        ConversionAction(
+            client_id=client.id, google_conversion_action_id="9001",
+            name="Zakup online", category="PURCHASE", status="ENABLED", type="WEBPAGE",
+            primary_for_goal=True, counting_type="ONE_PER_CLICK",
+            value_settings_default_value=150.0, value_settings_always_use_default=False,
+            attribution_model="DATA_DRIVEN", click_through_lookback_window_days=30,
+            view_through_lookback_window_days=1, include_in_conversions_metric=True,
+            conversions=124.0, all_conversions=140.0, conversion_value_micros=18_600_000_000,
+        ),
+        # Primary but zero-value (sabotages tROAS) — GAP 2B
+        ConversionAction(
+            client_id=client.id, google_conversion_action_id="9002",
+            name="Formularz kontaktowy", category="LEAD", status="ENABLED", type="WEBPAGE",
+            primary_for_goal=True, counting_type="ONE_PER_CLICK",
+            value_settings_default_value=0.0, value_settings_always_use_default=False,
+            attribution_model="DATA_DRIVEN", click_through_lookback_window_days=30,
+            view_through_lookback_window_days=1, include_in_conversions_metric=True,
+            conversions=45.0, all_conversions=52.0, conversion_value_micros=0,
+        ),
+        # Secondary but included in metric — GAP 2A
+        ConversionAction(
+            client_id=client.id, google_conversion_action_id="9003",
+            name="Zapis do newslettera", category="SIGNUP", status="ENABLED", type="WEBPAGE",
+            primary_for_goal=False, counting_type="ONE_PER_CLICK",
+            value_settings_default_value=5.0, value_settings_always_use_default=True,
+            attribution_model="GOOGLE_ADS_LAST_CLICK", click_through_lookback_window_days=30,
+            view_through_lookback_window_days=1, include_in_conversions_metric=True,
+            conversions=210.0, all_conversions=220.0, conversion_value_micros=1_050_000_000,
+        ),
+        # MANY_PER_CLICK for PURCHASE — GAP 2C (double counting risk)
+        ConversionAction(
+            client_id=client.id, google_conversion_action_id="9004",
+            name="Transakcja e-commerce", category="PURCHASE", status="ENABLED", type="WEBPAGE",
+            primary_for_goal=True, counting_type="MANY_PER_CLICK",
+            value_settings_default_value=0.0, value_settings_always_use_default=False,
+            attribution_model="DATA_DRIVEN", click_through_lookback_window_days=90,
+            view_through_lookback_window_days=30, include_in_conversions_metric=True,
+            conversions=89.0, all_conversions=95.0, conversion_value_micros=13_350_000_000,
+        ),
+        # Short lookback — GAP 2D
+        ConversionAction(
+            client_id=client.id, google_conversion_action_id="9005",
+            name="Kliknięcie telefonu", category="LEAD", status="ENABLED", type="WEBPAGE",
+            primary_for_goal=False, counting_type="ONE_PER_CLICK",
+            value_settings_default_value=10.0, value_settings_always_use_default=True,
+            attribution_model="GOOGLE_ADS_LAST_CLICK", click_through_lookback_window_days=3,
+            view_through_lookback_window_days=1, include_in_conversions_metric=False,
+            conversions=18.0, all_conversions=22.0, conversion_value_micros=180_000_000,
+        ),
+        # Normal secondary
+        ConversionAction(
+            client_id=client.id, google_conversion_action_id="9006",
+            name="Wyświetlenie strony produktu", category="PAGE_VIEW", status="ENABLED", type="WEBPAGE",
+            primary_for_goal=False, counting_type="ONE_PER_CLICK",
+            value_settings_default_value=0.0, value_settings_always_use_default=False,
+            attribution_model="GOOGLE_ADS_LAST_CLICK", click_through_lookback_window_days=30,
+            view_through_lookback_window_days=1, include_in_conversions_metric=False,
+            conversions=890.0, all_conversions=920.0, conversion_value_micros=0,
+        ),
+    ]
+    for ca in conv_actions_data:
+        db.add(ca)
+
+    # -----------------------------------------------------------------------
+    # MetricSegmented — age range breakdown (GAP 4A, last 90 days)
+    # -----------------------------------------------------------------------
+    AGE_RANGES = ["AGE_RANGE_18_24", "AGE_RANGE_25_34", "AGE_RANGE_35_44", "AGE_RANGE_45_54", "AGE_RANGE_55_64", "AGE_RANGE_65_UP", "AGE_RANGE_UNDETERMINED"]
+    AGE_WEIGHTS = {"AGE_RANGE_18_24": 0.12, "AGE_RANGE_25_34": 0.28, "AGE_RANGE_35_44": 0.25, "AGE_RANGE_45_54": 0.15, "AGE_RANGE_55_64": 0.10, "AGE_RANGE_65_UP": 0.05, "AGE_RANGE_UNDETERMINED": 0.05}
+    # Make 18-24 have very high CPA (anomaly) and 65+ very low conv rate
+    AGE_CONV_MULT = {"AGE_RANGE_18_24": 0.15, "AGE_RANGE_25_34": 1.2, "AGE_RANGE_35_44": 1.0, "AGE_RANGE_45_54": 0.8, "AGE_RANGE_55_64": 0.5, "AGE_RANGE_65_UP": 0.2, "AGE_RANGE_UNDETERMINED": 0.3}
+
+    for campaign in search_campaigns:
+        for day_offset in range(90):
+            d = date.today() - timedelta(days=day_offset)
+            dow_factor = 0.7 if d.weekday() >= 5 else 1.0
+            total_clicks = int(RNG.randint(40, 180) * dow_factor)
+
+            for age in AGE_RANGES:
+                w = AGE_WEIGHTS[age]
+                a_clicks = max(1, int(total_clicks * w * RNG.uniform(0.6, 1.4)))
+                a_impr = int(a_clicks * RNG.uniform(8, 22))
+                a_cost = round(a_clicks * RNG.uniform(0.8, 3.5), 2)
+                conv_mult = AGE_CONV_MULT[age]
+                a_conv = round(max(0.0, a_clicks * RNG.uniform(0.01, 0.06) * conv_mult), 2)
+                a_cv = round(a_conv * RNG.uniform(100, 250), 2)
+
+                db.add(MetricSegmented(
+                    campaign_id=campaign.id, date=d, age_range=age,
+                    clicks=a_clicks, impressions=a_impr,
+                    ctr=round(a_clicks / a_impr * 100 if a_impr else 0, 2),
+                    conversions=a_conv,
+                    conversion_value_micros=int(a_cv * 1_000_000),
+                    cost_micros=int(a_cost * 1_000_000),
+                    avg_cpc_micros=int((a_cost / a_clicks) * 1_000_000) if a_clicks else 0,
+                ))
+
+    # -----------------------------------------------------------------------
+    # MetricSegmented — gender breakdown (GAP 4A, last 90 days)
+    # -----------------------------------------------------------------------
+    GENDERS = ["MALE", "FEMALE", "UNDETERMINED"]
+    GENDER_WEIGHTS = {"MALE": 0.42, "FEMALE": 0.48, "UNDETERMINED": 0.10}
+    GENDER_CONV_MULT = {"MALE": 0.9, "FEMALE": 1.1, "UNDETERMINED": 0.4}
+
+    for campaign in search_campaigns:
+        for day_offset in range(90):
+            d = date.today() - timedelta(days=day_offset)
+            dow_factor = 0.7 if d.weekday() >= 5 else 1.0
+            total_clicks = int(RNG.randint(40, 180) * dow_factor)
+
+            for gender in GENDERS:
+                w = GENDER_WEIGHTS[gender]
+                g_clicks = max(1, int(total_clicks * w * RNG.uniform(0.6, 1.4)))
+                g_impr = int(g_clicks * RNG.uniform(8, 22))
+                g_cost = round(g_clicks * RNG.uniform(0.8, 3.5), 2)
+                conv_mult = GENDER_CONV_MULT[gender]
+                g_conv = round(max(0.0, g_clicks * RNG.uniform(0.01, 0.06) * conv_mult), 2)
+                g_cv = round(g_conv * RNG.uniform(100, 250), 2)
+
+                db.add(MetricSegmented(
+                    campaign_id=campaign.id, date=d, gender=gender,
+                    clicks=g_clicks, impressions=g_impr,
+                    ctr=round(g_clicks / g_impr * 100 if g_impr else 0, 2),
+                    conversions=g_conv,
+                    conversion_value_micros=int(g_cv * 1_000_000),
+                    cost_micros=int(g_cost * 1_000_000),
+                    avg_cpc_micros=int((g_cost / g_clicks) * 1_000_000) if g_clicks else 0,
+                ))
+
     db.commit()
     db.close()
 
     print("Done! Demo data seeded successfully!")
     print("   - 1 client (Demo Meble)")
-    print(f"   - {len(campaigns)} campaigns (with IS + top impression %, incl. PMax)")
+    print(f"   - {len(campaigns)} campaigns (with IS + Smart Bidding targets + learning status)")
     print(f"   - {len(all_ad_groups)} ad groups")
     print("   - Keywords (with IS, QS historical, extended conv, top impression %)")
     print(f"   - Search terms (with extended conversions + {len(pmax_terms)} PMax terms)")
     print("   - 90 days of daily metrics (with IS, extended conv, top impression %)")
     print("   - 90 days of device breakdown (MetricSegmented)")
     print("   - 90 days of geo breakdown (MetricSegmented)")
+    print("   - 90 days of age/gender breakdown (MetricSegmented)")
+    print(f"   - {len(conv_actions_data)} conversion actions (quality audit data)")
     print(f"   - {len(all_action_logs)} action log entries")
     print(f"   - {len(change_events_data)} change events (external history)")
     print(f"   - {len(alerts_data)} alerts (anomaly detection)")
