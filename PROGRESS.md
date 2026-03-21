@@ -1,11 +1,12 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-21 (189934d)
+# Updated: 2026-03-21 (e627d82)
 
 ## Status
 - Backend: 355 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke tests)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~20 analytics endpoints
+- GAP Analysis: Phase A (8 rules, 6 endpoints) + Phase B+C (4 rules, 6 endpoints, ConversionAction model, demographics)
+- Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
 
 ## Frontend Filtering Iteration 1
 - Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`
@@ -433,4 +434,42 @@
 - Added `Forecast` entry to Sidebar navigation (`frontend/src/components/Sidebar.jsx`) — the `Forecast.jsx` page existed but was not linked.
 - Removed orphaned `Anomalies` frontend page (was disconnected from navigation; anomaly management remains via `Alerts.jsx` and `/analytics/anomalies` backend endpoints).
 - Added `/frontend/e2e/` to `.gitignore` to exclude Playwright test artifacts from repo.
+
+## GAP Analysis — Phase A + B + C (2026-03-21 — commit e627d82)
+- Implemented 12 new analytics endpoints covering Smart Bidding, account structure, conversion quality, and demographics:
+  - **GAP 1A** `GET /analytics/learning-status` — detect campaigns in Smart Bidding learning period
+  - **GAP 1C** `GET /analytics/smart-bidding-health` — Smart Bidding conversion volume health check
+  - **GAP 1D** `GET /analytics/target-vs-actual` — compare targets with actual CPA/ROAS
+  - **GAP 1E** `GET /analytics/portfolio-health` — portfolio bid strategy health analysis
+  - **GAP 2A-2D** `GET /analytics/conversion-quality` — conversion action configuration audit
+  - **GAP 4A** `GET /analytics/demographics` — age/gender breakdown with CPA anomaly flags
+  - **GAP 6A** `GET /analytics/change-impact` — post-change performance delta (7d before/after)
+  - **GAP 6B** `GET /analytics/bid-strategy-impact` — bid strategy change impact (14d before/after)
+  - **GAP 7A** `GET /analytics/pareto-analysis` — Pareto 80/20 campaign value contribution
+  - **GAP 7B** `GET /analytics/scaling-opportunities` — hero campaigns with IS headroom
+  - **GAP 8** `GET /analytics/ad-group-health` — ad group structural health checks
+  - **GAP 10** `GET /analytics/bid-strategy-report` — daily target vs actual time series
+- Added `ConversionAction` model (`backend/app/models/conversion_action.py`) for conversion tracking metadata
+- Added 9 new recommendation rules (R19–R27):
+  - R19: `AD_GROUP_HEALTH` — ad count, keyword count, zero-conv groups
+  - R20: `DISAPPROVED_AD_ALERT` — disapproved/approved-limited ads
+  - R21: `SMART_BIDDING_CONV_ALERT` — insufficient conversion volume for Smart Bidding
+  - R22: `ECPC_DEPRECATION` — eCPC deprecation warning
+  - R23: `SCALING_OPPORTUNITY` — hero campaigns with IS headroom to scale
+  - R24: `TARGET_DEVIATION_ALERT` — CPA/ROAS significantly off target
+  - R25: `LEARNING_PERIOD_ALERT` — stuck in learning period
+  - R26: `CONVERSION_QUALITY_ALERT` — conversion configuration issues
+  - R27: `DEMOGRAPHIC_ANOMALY` — age/gender CPA anomalies
+- Extended Campaign model with `target_cpa_micros`, `target_roas`, `primary_status`, `primary_status_reasons`, `bidding_strategy_resource_name`, `portfolio_bid_strategy_id`
+- Extended MetricSegmented model with `age_range`, `gender` columns
+- Extended Google Ads sync with `sync_conversion_actions()`, `sync_age_metrics()`, `sync_gender_metrics()`
+- Extended seed data for new models (conversion actions, demographic metrics)
+- Frontend: expanded SearchOptimization.jsx with 5 new analysis sections (19 tools total), updated ActionHistory.jsx and Recommendations.jsx
+- Seed: 8 campaigns (was 7), 6 ConversionAction records with intentional quality issues, 90 days age/gender demographic data
+- DB schema: deleted + reseeded (no Alembic — new columns + new table require fresh DB)
+
+## Validation (GAP Analysis 2026-03-21)
+- Backend: 355 tests passed (`pytest --tb=short -q`)
+- Recommendations contract test: 26 enum values verified
+- Seed: all new data visible after reseed (ConversionAction, demographics, campaign extensions)
 

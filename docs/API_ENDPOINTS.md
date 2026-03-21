@@ -160,6 +160,22 @@ Base API URL: `/api/v1`
 - `GET /analytics/conversion-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — conversion tracking health audit (A3)
 - `GET /analytics/keyword-expansion?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&min_clicks=3&campaign_type=&campaign_status=` — keyword expansion suggestions (G2)
 
+## Analytics - Smart Bidding & Strategy
+- `GET /analytics/smart-bidding-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — Smart Bidding conversion volume health check (GAP 1C)
+- `GET /analytics/learning-status?client_id=X` — detect campaigns in Smart Bidding learning period (GAP 1A)
+- `GET /analytics/target-vs-actual?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — compare Smart Bidding targets with actual CPA/ROAS (GAP 1D)
+- `GET /analytics/portfolio-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — portfolio bid strategy health analysis (GAP 1E)
+- `GET /analytics/bid-strategy-report?client_id=X&days=30&campaign_id=` — daily time series of target vs actual CPA/ROAS per campaign (GAP 10)
+- `GET /analytics/bid-strategy-impact?client_id=X&days=90` — bid strategy change impact, 14-day before/after comparison (GAP 6B)
+
+## Analytics - Account & Campaign Analysis
+- `GET /analytics/pareto-analysis?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — Pareto 80/20 campaign value contribution (GAP 7A)
+- `GET /analytics/scaling-opportunities?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — hero campaigns with IS headroom to scale (GAP 7B)
+- `GET /analytics/change-impact?client_id=X&days=60` — post-change performance delta, 7-day before/after comparison (GAP 6A)
+- `GET /analytics/ad-group-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — ad group structural health: ad count, keyword count, zero-conv groups (GAP 8)
+- `GET /analytics/conversion-quality?client_id=X` — conversion action configuration audit for data quality issues (GAP 2A-2D)
+- `GET /analytics/demographics?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — aggregate metrics by age/gender, flag CPA anomalies (GAP 4A)
+
 ## Daily Audit
 - `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
   - `budget_pacing`: enabled campaigns with daily budget, today's spend, pacing %, budget-limited flag
@@ -185,11 +201,11 @@ Base API URL: `/api/v1`
 - `GET /export/recommendations?client_id=X&format=xlsx&days=30`
 
 ## Semantic
-- `GET /semantic/clusters?client_id=X&min_cluster_size=3&max_features=500`
+- `GET /semantic/clusters?client_id=X&days=30&top_n=1000&threshold=1.0`
 
 ## History (Change Events)
-- `GET /history/?client_id=X&date_from=&date_to=&resource_type=&user_email=&page=1&page_size=50`
-- `GET /history/unified?client_id=X&days=30&source=all|helper|external&page=1&page_size=50`
+- `GET /history/?client_id=X&date_from=&date_to=&resource_type=&user_email=&client_type=&operation=&limit=50&offset=0`
+- `GET /history/unified?client_id=X&date_from=&date_to=&resource_type=&limit=50&offset=0`
 - `GET /history/filters?client_id=X`
 
 ## AI Agent
