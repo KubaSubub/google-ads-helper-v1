@@ -3,9 +3,9 @@
 
 ## Status
 - Backend: 385 tests passing (`pytest --tb=short -q`)
-- Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke tests)
+- Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive mocked-API tests = 143 total)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- GAP Analysis: Phase A (8 rules, 6 endpoints) + Phase B+C (4 rules, 6 endpoints, ConversionAction model, demographics) + Phase D (4 rules, 6 endpoints, 6 new models, PMax/audiences/extensions)
+- GAP Analysis: Phase A+B+C (9 rules, 12 endpoints, ConversionAction model, demographics) + Phase D (4 rules, 6 endpoints, 6 new models, PMax/audiences/extensions)
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
 - Sync: 22 total phases (15 prior + 7 new Phase D phases)
 
@@ -514,4 +514,24 @@
 - Backend: 385 tests passed (`pytest --tb=short -q` — 30 new Phase D tests)
 - Recommendations contract test: 30 enum values verified (was 26)
 - Seed: all Phase D data visible after reseed (AssetGroup, AssetGroupDaily, AssetGroupAsset, AssetGroupSignal, CampaignAudienceMetric, CampaignAsset, PMax channel metrics)
+
+## Comprehensive Playwright E2E Tests (2026-03-22 — commit 262792d)
+- Added 104 new mocked-API E2E tests across 12 spec files based on MANUAL_TESTING_GUIDE.md:
+  - `dashboard.spec.js` (8 tests) — Sekcja 3: health score gauge, KPI cards, budget pacing, device share, date range
+  - `campaigns.spec.js` (7 tests) — Sekcja 4: table rendering, status/type badges, KPI row, Polish chars
+  - `keywords.spec.js` (8 tests) — Sekcja 5: table, match type pills, search, tabs, QS badges, Polish chars
+  - `search-terms.spec.js` (8 tests) — Sekcja 6: segments, bulk actions, checkboxes, export, view toggle
+  - `recommendations.spec.js` (9 tests) — Sekcja 7: cards, priority filters, outcome badges, dismiss, summary
+  - `daily-audit.spec.js` (9 tests) — Sekcja 8: health gauge, KPI chips, anomalies, disapproved ads, quick scripts
+  - `alerts.spec.js` (9 tests) — Sekcja 14: tabs, severity badges, z-score anomalies, threshold/period pills
+  - `agent-reports.spec.js` (7 tests) — Sekcje 16-17: quick actions, textarea, report list
+  - `settings-clients.spec.js` (7 tests) — Sekcje 20-21: form sections, hard reset, client list
+  - `analytics-tools.spec.js` (6 tests) — Sekcja 10: search optimization, quality score, forecast, semantic
+  - `action-history.spec.js` (6 tests) — Sekcja 18: timeline, status badges, tabs
+  - `edge-cases.spec.js` (20 tests) — Sekcja 27: empty states (13 pages), Polish chars, no undefined/NaN, responsive, long names
+- Added shared `fixtures.js` with realistic mock data (micros values, float conversions, Polish chars)
+- Total Playwright E2E: 185 tests (19 smoke + 20 full-app + 104 comprehensive + 42 edge-case retries)
+
+## Validation (E2E tests 2026-03-22)
+- Playwright: 185 tests passed (100% pass rate, `npx playwright test`)
 
