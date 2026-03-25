@@ -2,7 +2,7 @@
 # Updated: 2026-03-25
 
 ## Status
-- Backend: 466 tests passing (`pytest --tb=short -q`)
+- Backend: 474 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive + 42 edge-case = 185 total)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
 - GAP Analysis: Phase A+B+C + Phase D (34 recommendation rules, 47 analytics endpoints, 7 new models, PMax/audiences/extensions)
@@ -20,6 +20,42 @@
 - Removed duplicated global filter UI from sidebar, dashboard, campaigns, keywords, and search terms
 - Preserved existing local view filters such as keyword match type/include removed and search-term view mode/search/segment
 - No backend or API contract changes were required
+
+## Dashboard Overhaul + Cross-App Improvements (2026-03-25)
+
+### ads-expert / ads-verify Skills
+- Created `/ads-expert` skill — Google Ads specialist review per tab (saves to docs/reviews/)
+- Created `/ads-verify` skill — code verification vs expert report + sprint plan generation
+- Full 15-tab audit completed (ads-expert-all.md), avg score 7.6/10
+
+### Dashboard Sprints (from ads-verify-dashboard.md)
+- Sprint 1: Added CTR, Impressions, CPA, Wasted Spend KPI cards; geo share_cost_pct; Health→Alerts nav; campaign row click→/campaigns; "Wszystkie →" links
+- Sprint 2: New `GET /analytics/campaigns-summary` endpoint; per-campaign metrics in table (cost, conversions, ROAS); InsightsFeed action buttons + "Wszystkie rekomendacje →"; Impression Share widget
+- Sprint 3: New `GET /analytics/wow-comparison` endpoint; WoW comparison chart with metric selector (WoWChart.jsx)
+
+### Bug Fixes
+- Fixed wasted-spend date filtering — search terms now filtered by date_from/date_to range (was returning all-time data: 2968 zł regardless of period)
+- Fixed Forecast retry bug — `loadForecast()` was undefined, replaced with retry counter
+
+### Cross-App Improvements (from ads-verify-all.md)
+- Forecast: horizon selector (7/14/30d), FilterContext integration
+- Semantic: FilterContext integration, search input for clusters, bulk negative per waste cluster
+- Settings: form validation (min/max on safety_limits + business_rules), dirty state tracking with beforeunload
+- Agent: chat history persistence via localStorage (max 50 messages, "Wyczyść historię" button)
+- New `useNavigateTo` hook (frontend/src/hooks/useNavigateTo.js) for centralized cross-tab navigation
+- Alerts anomalies → Campaigns navigation (click campaign_id)
+- QualityScore → Keywords navigation (click low-QS keyword row)
+- Forecast → Campaigns navigation ("Kampania →" link)
+- SearchOptimization inline "Wyklucz" button on wasted search terms
+- Reports PDF/Print button (window.print, zero new dependencies)
+
+### New Files
+- `frontend/src/components/WoWChart.jsx` — WoW period comparison chart
+- `frontend/src/hooks/useNavigateTo.js` — centralized navigation hook
+- `backend/tests/test_campaigns_summary.py` — 2 tests for campaigns-summary endpoint
+- `backend/tests/test_wasted_spend_dates.py` — 3 tests for wasted-spend date filtering
+- `backend/tests/test_wow_comparison.py` — 3 tests for wow-comparison endpoint
+- `docs/reviews/` — 4 review documents (ads-expert + ads-verify for dashboard and all)
 
 ## Completed In This Milestone
 
@@ -573,4 +609,20 @@
 ## Validation (2026-03-25)
 - Backend: 466 tests passed (385 prior + 15 new sync router + 66 from other new test files)
 - Frontend production build passed
+
+## Sync Phase Runtime Fixes (2026-03-25 — commit 69e87da)
+- Added missing `_execute_query()` method in `google_ads.py` used by `sync_asset_group_signals` and `sync_campaign_audiences`
+- Fixed UNIQUE constraint failures on `metrics_segmented`: added missing `hour_of_day`, `ad_network_type`, `age_range`, `gender` IS NULL filters to existing-row lookups
+- Fixed SQLite Date type error in `sync_pmax_channel_metrics`: convert string date to Python `date` object via `date.fromisoformat()`
+- Fixed INVALID_ARGUMENT in `sync_campaign_assets`: removed unsupported `campaign_asset.source` and `metrics.ctr` fields
+- Fixed SyncModal drawer-close bug: added `data-sync-modal` attribute to overlay to prevent ClientDrawer mousedown handler from closing it
+
+## Sprint Test Expansion (2026-03-25 — commit 4151e26)
+- Fixed `test_keyword_sync_cleanup` mock: `build_campaign_row` now includes extended query fields (labels, bidding_strategy_type, target_cpa, target_roas, primary_status) so sync_campaigns succeeds on first extended query attempt
+- Added 62 new sprint tests across 4 files:
+  - `test_sprint1_rules.py`: 37 tests for recommendation rules engine (all 34 rule types + edge cases)
+  - `test_sprint2_analytics.py`: 7 tests for analytics endpoints (Phase B+C+D)
+  - `test_sprint3_bidding.py`: 11 tests for bidding advisor and smart bidding endpoints
+  - `test_data_coverage.py`: 7 tests for sync data coverage and presets endpoints
+- Backend test count: 466 → 528 tests
 
