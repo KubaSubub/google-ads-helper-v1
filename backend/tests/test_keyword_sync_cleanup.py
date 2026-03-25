@@ -86,6 +86,13 @@ def build_campaign_row(campaign_id="camp-fresh", name="Fresh Campaign", status="
             name=name,
             status=FakeEnum(status),
             advertising_channel_type=FakeEnum("SEARCH"),
+            bidding_strategy_type=FakeEnum("MANUAL_CPC"),
+            target_cpa=None,
+            target_roas=None,
+            primary_status=FakeEnum("ELIGIBLE"),
+            primary_status_reasons=[],
+            bidding_strategy=None,
+            labels=[],
         ),
         campaign_budget=SimpleNamespace(amount_micros=2_500_000),
     )
@@ -479,6 +486,7 @@ def test_reset_and_resync_do_not_restore_negative_into_positive_keywords(api_cli
         QueueSearchService(
             responses=[
                 [build_campaign_row(campaign_id="camp-live", name="Brand Search")],
+                [],  # label query (extended campaign sync fetches labels)
                 [build_ad_group_row(campaign_id="camp-live", ad_group_id="ag-live", name="Core Group")],
                 [build_positive_keyword_row(keyword_id="kw-fresh", text="fresh keyword")],
                 [build_negative_ad_group_row(criterion_id="neg-ag-1", text="negative keyword")],

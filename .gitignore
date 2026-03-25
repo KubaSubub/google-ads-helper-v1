@@ -66,3 +66,4 @@ output/
 
 # Test artifacts
 frontend/test-results/
+frontend/e2e-sync-*.png

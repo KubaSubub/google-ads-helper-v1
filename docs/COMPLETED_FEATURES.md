@@ -149,6 +149,26 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - 7 new sync methods (22 total phases): sync_pmax_channel_metrics, sync_asset_groups, sync_asset_group_daily, sync_asset_group_assets, sync_asset_group_signals, sync_campaign_audiences, sync_campaign_assets.
 - Frontend: 6 new analysis sections in SearchOptimization.jsx (25 total tools).
 
+## Campaign Roles + Context-Aware Budget Guardrails + Explanation Layer
+- Deterministic campaign role service (`campaign_roles.py`) with `campaign_role_auto`, `campaign_role_final`, `role_confidence`, `protection_level`, `role_source`.
+- `PATCH /campaigns/{id}` for manual role override / reset (never overwritten by sync/classifier).
+- Recommendation model extended with `context_outcome`, `blocked_reasons`, `downgrade_reasons`.
+- Fixed reason-code contract in `recommendation_contract.py`.
+- Explanation blocks in recommendation evidence: `why_allowed`, `why_blocked`, `tradeoffs`, `risk_note`, `next_best_action`.
+- Frontend: context outcome badges, role/protection/headroom chips, explanation sections, disabled apply for non-executable cards.
+
+## DEMO Write Lock
+- Backend DEMO guard (`demo_guard.py`) with protected identity based on `demo_google_customer_id` / `demo_client_id`.
+- Enforced on all write paths (sync, recommendations, actions, analytics writes, campaign overrides, client mutations).
+- Override is explicit and per-request only: `allow_demo_write=true`.
+
+## Recommendation Rules Refactoring (34 types)
+- Split monolithic `AD_GROUP_HEALTH` into 3 granular rules: `SINGLE_AD_ALERT`, `OVERSIZED_AD_GROUP`, `ZERO_CONV_AD_GROUP`.
+- Renamed `SMART_BIDDING_CONV_ALERT` → `SMART_BIDDING_DATA_STARVATION`.
+- Added `LOW_CTR_KEYWORD` rule.
+- Changed `WASTED_SPEND_ALERT` from per-campaign to account-level aggregation with $50 minimum spend threshold.
+- Total recommendation types: 34.
+
 ## SSE Sync Streaming Modal
 - `SyncModal.jsx` + `useSyncStream.js` — real-time sync progress with per-phase SSE updates.
 - Backend: `POST /sync/trigger-stream` SSE endpoint with preset/phase/date selection.
