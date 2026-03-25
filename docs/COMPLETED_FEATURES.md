@@ -148,3 +148,14 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - MetricSegmented model extended with ad_network_type column for channel-level breakdowns.
 - 7 new sync methods (22 total phases): sync_pmax_channel_metrics, sync_asset_groups, sync_asset_group_daily, sync_asset_group_assets, sync_asset_group_signals, sync_campaign_audiences, sync_campaign_assets.
 - Frontend: 6 new analysis sections in SearchOptimization.jsx (25 total tools).
+
+## SSE Sync Streaming Modal
+- `SyncModal.jsx` + `useSyncStream.js` — real-time sync progress with per-phase SSE updates.
+- Backend: `POST /sync/trigger-stream` SSE endpoint with preset/phase/date selection.
+- Sync presets: `GET /sync/presets` — phase registry with groups, max_days, and preset patterns.
+- Per-resource coverage: `GET /sync/coverage` — sync coverage tracking per client.
+- `sync_config.py` + `sync_coverage.py` backend modules.
+- `DarkSelect` and `GlobalDatePicker` reusable components.
+
+## Schema Auto-Migration
+- `database.py` auto-migration adds missing columns (labels, target_cpa_micros, target_roas, primary_status, bidding_strategy_resource_name, portfolio_bid_strategy_id, age_range, gender) without requiring DB delete + reseed.

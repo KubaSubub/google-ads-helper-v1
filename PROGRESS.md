@@ -2,12 +2,12 @@
 # Updated: 2026-03-25
 
 ## Status
-- Backend: 385 tests passing (`pytest --tb=short -q`)
-- Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive mocked-API tests = 143 total)
+- Backend: 466 tests passing (`pytest --tb=short -q`)
+- Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive + 42 edge-case = 185 total)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
 - GAP Analysis: Phase A+B+C + Phase D (34 recommendation rules, 47 analytics endpoints, 7 new models, PMax/audiences/extensions)
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
-- Sync: 22 total phases (15 prior + 7 new Phase D phases)
+- Sync: 22 total phases (15 prior + 7 new Phase D phases), SSE streaming sync modal with presets and per-resource coverage
 
 ## Frontend Filtering Iteration 1
 - Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`
@@ -545,4 +545,32 @@
 - Changed `WASTED_SPEND_ALERT` from per-campaign to account-level aggregation with $50 minimum spend threshold
 - Total recommendation types: 30 → 34
 - Frontend: added TYPE_CONFIG entries for all previously missing v1.1/v1.2 rule types + added category filter (Rekomendacje/Alerty)
+
+## Full Audit Fixes + SSE Sync Modal (2026-03-25 — commit b139228)
+- Backend fixes:
+  - Fixed batch apply contradictory failed/applied logic in action_executor.py
+  - Added int() guards on GAQL query interpolation (google_ads.py)
+  - Added ImportError guard for numpy/pandas/scipy (analytics.py)
+  - Moved deferred imports to top-level (daily_audit.py, recommendations.py)
+  - Return HTTPException(400) instead of 200+error dict for forecast (analytics.py)
+  - Fixed schema default conversions: float = 0 → 0.0 (campaign.py)
+  - Added auto-migration for new columns (labels, target_cpa_micros, target_roas, primary_status, bidding_strategy_resource_name, portfolio_bid_strategy_id, age_range, gender)
+- Frontend fixes:
+  - Fixed SyncModal drawer-close bug (mousedown handler was closing drawer when clicking inside overlay)
+  - Replaced 8 silent `.catch(() => {})` with console.error logging
+  - Added `_catch(label)` helper for 25 SearchOptimization silent catches
+  - Fixed off-palette colors: #EF4444 → #F87171, #14171D → #111318
+  - Fixed Forecast.jsx infinite spinner on error (added error state + cancelled guard)
+  - Added AbortController to Reports SSE fetch + cleanup on unmount
+  - Fixed Polish diacritics in Reports.jsx
+  - Removed unused FilterBar.jsx, Clients.jsx, exportSearchTerms/exportKeywords
+- New features:
+  - SSE sync streaming modal (`SyncModal.jsx`, `useSyncStream.js`)
+  - Sync configuration with presets (`sync_config.py`, 4 new sync endpoints)
+  - Per-resource sync coverage tracking (`sync_coverage.py`)
+  - `DarkSelect`, `GlobalDatePicker` components
+
+## Validation (2026-03-25)
+- Backend: 466 tests passed (385 prior + 15 new sync router + 66 from other new test files)
+- Frontend production build passed
 
