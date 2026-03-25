@@ -1391,7 +1391,10 @@ class AnalyticsService:
                         "cost_usd": round(cost, 2),
                     })
 
-        # 2. Search terms: 0 conversions + clicks >= 3
+        # 2. Search terms: 0 conversions + clicks >= 3 (filtered by date bucket)
+        # Search terms have cumulative metrics for their entire date_from..date_to range.
+        # We filter by date_from >= requested start so only terms whose reporting
+        # period begins within the selected window are included.
         st_waste = 0.0
         st_waste_count = 0
         st_waste_items = []
@@ -1404,6 +1407,8 @@ class AnalyticsService:
                     SearchTerm.campaign_id.in_(campaign_ids),
                     AdGroup.campaign_id.in_(campaign_ids),
                 ),
+                SearchTerm.date_from >= date_from,
+                SearchTerm.date_to <= date_to,
             )
             .all()
         )
@@ -1419,12 +1424,19 @@ class AnalyticsService:
                 })
 
         # 3. Ads: 0 conversions + cost >= $20
+        # NOTE: Ad model is a snapshot without date range fields — metrics are
+        # cumulative from last sync, not filterable by period.  We approximate
+        # by only including ads whose updated_at falls within the selected range.
         ad_waste = 0.0
         ad_waste_items = []
         ads = (
             self.db.query(Ad)
             .join(AdGroup, Ad.ad_group_id == AdGroup.id)
-            .filter(AdGroup.campaign_id.in_(campaign_ids), Ad.status == "ENABLED")
+            .filter(
+                AdGroup.campaign_id.in_(campaign_ids),
+                Ad.status == "ENABLED",
+                Ad.updated_at >= datetime.combine(date_from, datetime.min.time()),
+            )
             .all()
         )
         for ad in ads:

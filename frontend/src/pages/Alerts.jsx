@@ -3,6 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import api from '../api';
 import { getAnomalies, resolveAnomaly } from '../api';
 import EmptyState from '../components/EmptyState';
+import { useNavigateTo } from '../hooks/useNavigateTo';
 import { Bell, CheckCircle, Loader2, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 
 const SEVERITY_COLORS = {
@@ -180,7 +181,7 @@ function AlertsTab({ selectedClientId, setAlertCount, showToast }) {
 }
 
 /* ─── Z-Score Anomaly Detection Tab ─── */
-function AnomaliesTab({ selectedClientId }) {
+function AnomaliesTab({ selectedClientId, navigateTo }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -300,7 +301,7 @@ function AnomaliesTab({ selectedClientId }) {
                                         {data.anomalies.map((a, i) => (
                                             <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                                 <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{a.date}</td>
-                                                <td style={{ padding: '10px 16px', color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>ID: {a.campaign_id}</td>
+                                                <td style={{ padding: '10px 16px', color: '#4F8EF7', fontSize: 12, cursor: 'pointer' }} onClick={() => navigateTo && navigateTo('campaigns')}>ID: {a.campaign_id}</td>
                                                 <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', color: 'white', fontWeight: 500, fontSize: 12 }}>{a.value}</td>
                                                 <td style={{ padding: '10px 16px', textAlign: 'right' }}>
                                                     <span style={{ fontFamily: 'monospace', fontWeight: 500, fontSize: 12, color: a.z_score > 3 ? '#F87171' : '#FBBF24' }}>
@@ -335,6 +336,7 @@ function AnomaliesTab({ selectedClientId }) {
 /* ─── Main Page ─── */
 export default function Alerts() {
     const { selectedClientId, setAlertCount, showToast } = useApp();
+    const navigateTo = useNavigateTo();
     const [mainTab, setMainTab] = useState('alerts');
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta" />;
@@ -374,7 +376,7 @@ export default function Alerts() {
                     showToast={showToast}
                 />
             ) : (
-                <AnomaliesTab selectedClientId={selectedClientId} />
+                <AnomaliesTab selectedClientId={selectedClientId} navigateTo={navigateTo} />
             )}
         </div>
     );

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useState, useRef } from 'react'
 import { BarChart3, Building2, Loader2, Plus, Save, ShieldAlert, Target, X } from 'lucide-react'
 
 import api, { getClient, updateClient } from '../api'
@@ -6,12 +6,12 @@ import EmptyState from '../components/EmptyState'
 import { useApp } from '../contexts/AppContext'
 
 const SAFETY_FIELDS = [
-    { key: 'MAX_BID_CHANGE_PCT', label: 'Max zmiana stawki (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana stawki CPC w procentach' },
-    { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budżetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budżetu kampanii' },
-    { key: 'MIN_BID_USD', label: 'Min stawka (USD)', unit: '$', multiply: 1, tooltip: 'Minimalna dopuszczalna stawka CPC' },
-    { key: 'MAX_BID_USD', label: 'Max stawka (USD)', unit: '$', multiply: 1, tooltip: 'Maksymalna dopuszczalna stawka CPC' },
-    { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzień (%)', unit: '%', multiply: 100, tooltip: 'Max procent słów kluczowych wstrzymanych w jednym dniu na kampanię' },
-    { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywów/dzień', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie' },
+    { key: 'MAX_BID_CHANGE_PCT', label: 'Max zmiana stawki (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana stawki CPC w procentach', min: 1, max: 100 },
+    { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budżetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budżetu kampanii', min: 1, max: 100 },
+    { key: 'MIN_BID_USD', label: 'Min stawka (USD)', unit: '$', multiply: 1, tooltip: 'Minimalna dopuszczalna stawka CPC', min: 0.01, max: 100 },
+    { key: 'MAX_BID_USD', label: 'Max stawka (USD)', unit: '$', multiply: 1, tooltip: 'Maksymalna dopuszczalna stawka CPC', min: 0.01, max: 1000 },
+    { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzień (%)', unit: '%', multiply: 100, tooltip: 'Max procent słów kluczowych wstrzymanych w jednym dniu na kampanię', min: 1, max: 50 },
+    { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywów/dzień', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie', min: 1, max: 500 },
 ]
 
 const GLOBAL_DEFAULTS = {
@@ -26,6 +26,7 @@ const GLOBAL_DEFAULTS = {
 export default function Settings() {
     const { selectedClientId, showToast, refreshClients } = useApp()
     const [formData, setFormData] = useState(null)
+    const [originalData, setOriginalData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [resetting, setResetting] = useState(false)
@@ -44,6 +45,7 @@ export default function Settings() {
         try {
             const data = await getClient(selectedClientId)
             setFormData(data)
+            setOriginalData(JSON.parse(JSON.stringify(data)))
             setResetConfirmation('')
         } catch (err) {
             setError(err.message)
@@ -52,10 +54,20 @@ export default function Settings() {
         }
     }
 
+    const isDirty = formData && originalData && JSON.stringify(formData) !== JSON.stringify(originalData)
+
+    useEffect(() => {
+        if (!isDirty) return
+        const handler = (e) => { e.preventDefault(); e.returnValue = '' }
+        window.addEventListener('beforeunload', handler)
+        return () => window.removeEventListener('beforeunload', handler)
+    }, [isDirty])
+
     async function handleSave() {
         setSaving(true)
         try {
             await updateClient(formData.id, formData)
+            setOriginalData(JSON.parse(JSON.stringify(formData)))
             showToast('Ustawienia zapisane', 'success')
         } catch (err) {
             showToast('Błąd zapisu: ' + err.message, 'error')
@@ -221,7 +233,7 @@ export default function Settings() {
                     }}
                 >
                     <Save size={14} />
-                    {saving ? 'Zapisywanie...' : 'Zapisz'}
+                    {saving ? 'Zapisywanie...' : isDirty ? 'Zapisz *' : 'Zapisz'}
                 </button>
             </div>
 
@@ -324,11 +336,11 @@ export default function Settings() {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div>
                                 <label style={labelStyle} title="ROAS = przychód / koszt. Minimalna wartość poniżej której system alarmuje">Minimalny ROAS</label>
-                                <input style={inputStyle} type="number" step="0.1" value={formData.business_rules?.min_roas ?? ''} onChange={e => handleBusinessRule('min_roas', e.target.value)} placeholder="np. 2.0" />
+                                <input style={inputStyle} type="number" step="0.1" min="0" max="100" value={formData.business_rules?.min_roas ?? ''} onChange={e => handleBusinessRule('min_roas', e.target.value)} placeholder="np. 2.0" />
                             </div>
                             <div>
                                 <label style={labelStyle}>Max budżet dzienny (USD)</label>
-                                <input style={inputStyle} type="number" step="1" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
+                                <input style={inputStyle} type="number" step="1" min="0" max="100000" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
                             </div>
                         </div>
                     </div>
@@ -344,7 +356,7 @@ export default function Settings() {
                     </p>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                            {SAFETY_FIELDS.map(({ key, label, unit, multiply, tooltip }) => {
+                            {SAFETY_FIELDS.map(({ key, label, unit, multiply, tooltip, min, max }) => {
                                 const clientValue = safetyLimits[key]
                                 const displayValue = clientValue != null ? (clientValue * multiply).toFixed(multiply > 1 ? 0 : 2) : ''
                                 const defaultValue = (GLOBAL_DEFAULTS[key] * multiply).toFixed(multiply > 1 ? 0 : 2)
@@ -356,6 +368,8 @@ export default function Settings() {
                                                 style={inputStyle}
                                                 type="number"
                                                 step={multiply > 1 ? '1' : '0.01'}
+                                                min={min}
+                                                max={max}
                                                 value={displayValue}
                                                 onChange={e => handleSafetyLimit(key, e.target.value, multiply)}
                                                 placeholder={`domyslnie: ${defaultValue}${unit}`}

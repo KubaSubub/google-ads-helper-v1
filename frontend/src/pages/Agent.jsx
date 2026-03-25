@@ -59,7 +59,12 @@ import { markdownComponents } from '../components/MarkdownComponents';
 
 export default function Agent() {
     const { selectedClientId } = useApp();
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState(() => {
+        try {
+            const saved = localStorage.getItem('agent_chat');
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState(''); // status text during generation
@@ -74,6 +79,13 @@ export default function Agent() {
             .then((data) => setAgentAvailable(data.available))
             .catch(() => setAgentAvailable(false));
     }, []);
+
+    useEffect(() => {
+        if (messages.length > 0) {
+            const toSave = messages.slice(-50);
+            try { localStorage.setItem('agent_chat', JSON.stringify(toSave)); } catch {}
+        }
+    }, [messages]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -221,6 +233,18 @@ export default function Agent() {
                     >
                         {agentAvailable ? 'Claude dostepny' : 'Claude niedostepny'}
                     </span>
+                )}
+                {messages.length > 0 && (
+                    <button
+                        onClick={() => { setMessages([]); localStorage.removeItem('agent_chat') }}
+                        style={{
+                            fontSize: 11, padding: '2px 10px', borderRadius: 999,
+                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                            color: 'rgba(255,255,255,0.4)', cursor: 'pointer', marginLeft: 'auto',
+                        }}
+                    >
+                        Wyczyść historię
+                    </button>
                 )}
             </div>
 

@@ -1,27 +1,51 @@
 import { useState, useEffect } from 'react'
 import { LoadingSpinner, ErrorMessage, PageHeader, Badge } from '../components/UI'
-import { getSemanticClusters } from '../api'
+import { getSemanticClusters, addNegativeKeyword } from '../api'
 import { useApp } from '../contexts/AppContext'
-import { Brain, ChevronDown, ChevronUp, AlertCircle, TrendingUp, MousePointer2, DollarSign, Layers } from 'lucide-react'
+import { useFilter } from '../contexts/FilterContext'
+import { Brain, ChevronDown, ChevronUp, AlertCircle, TrendingUp, MousePointer2, DollarSign, Layers, Search, Ban, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function Semantic() {
     const { selectedClientId } = useApp()
+    const { days } = useFilter()
     const [clusters, setClusters] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [expandedId, setExpandedId] = useState(null)
     const [minCost, setMinCost] = useState(0)
+    const [searchTerm, setSearchTerm] = useState('')
+    const [addingNegatives, setAddingNegatives] = useState(null)
+
+    async function handleBulkNegative(cluster) {
+        if (!confirm(`Dodać ${cluster.items.length} fraz z klastra "${cluster.name}" jako negatywy EXACT?`)) return
+        setAddingNegatives(cluster.id)
+        let added = 0
+        let failed = 0
+        for (const item of cluster.items) {
+            try {
+                await addNegativeKeyword({
+                    client_id: selectedClientId,
+                    text: item.text,
+                    match_type: 'EXACT',
+                    scope: 'CAMPAIGN',
+                })
+                added++
+            } catch { failed++ }
+        }
+        setAddingNegatives(null)
+        alert(`Dodano ${added} negatywów${failed > 0 ? `, ${failed} błędów` : ''}`)
+    }
 
     useEffect(() => {
         if (selectedClientId) loadData()
-    }, [selectedClientId])
+    }, [selectedClientId, days])
 
     async function loadData() {
         setLoading(true)
         try {
             // Default to client 1, last 30 days
-            const data = await getSemanticClusters({ client_id: selectedClientId, days: 30, top_n: 500 })
+            const data = await getSemanticClusters({ client_id: selectedClientId, days: days || 30, top_n: 500 })
             setClusters(data)
         } catch (err) {
             setError(err.message)
@@ -68,11 +92,23 @@ export default function Semantic() {
                         </button>
                     ))}
                 </div>
+
+                <div className="flex items-center gap-2 bg-surface-700/40 p-1 rounded-lg">
+                    <Search size={14} className="text-surface-200/40 ml-2" />
+                    <input
+                        type="text"
+                        placeholder="Szukaj w klastrach..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="bg-transparent border-none text-xs text-white placeholder-surface-200/40 outline-none w-40"
+                    />
+                </div>
             </PageHeader>
 
             <div className="grid gap-4">
                 {clusters
                     .filter(c => c.metrics.cost >= minCost)
+                    .filter(c => !searchTerm || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.items.some(item => item.text.toLowerCase().includes(searchTerm.toLowerCase())))
                     .map((cluster) => (
                         <div
                             key={cluster.id}
@@ -110,7 +146,18 @@ export default function Semantic() {
 
                                 <div className="flex items-center gap-6">
                                     {cluster.is_waste && (
-                                        <Badge variant="danger" className="hidden sm:flex">Potencjalna strata</Badge>
+                                        <>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleBulkNegative(cluster) }}
+                                                disabled={addingNegatives === cluster.id}
+                                                className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+                                                style={{ cursor: addingNegatives === cluster.id ? 'wait' : 'pointer', opacity: addingNegatives === cluster.id ? 0.5 : 1 }}
+                                            >
+                                                {addingNegatives === cluster.id ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                                                Dodaj jako negatywy
+                                            </button>
+                                            <Badge variant="danger" className="hidden sm:flex">Potencjalna strata</Badge>
+                                        </>
                                     )}
 
                                     <div className="text-right">

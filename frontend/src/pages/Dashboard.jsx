@@ -2,20 +2,23 @@
 import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
     MousePointerClick, DollarSign, Target, BarChart3,
-    TrendingUp, TrendingDown, ChevronRight,
+    TrendingUp, TrendingDown, ChevronRight, Eye, Percent, ShoppingCart, Trash2,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import {
-    getDashboardKPIs, getCampaigns,
+    getDashboardKPIs, getCampaigns, getCampaignsSummary,
     getHealthScore, getCampaignTrends, getRecommendations,
     getBudgetPacing, getDeviceBreakdown, getGeoBreakdown,
+    getWastedSpend, getImpressionShare,
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import InsightsFeed from '../components/InsightsFeed'
 import TrendExplorer from '../components/TrendExplorer'
+import WoWChart from '../components/WoWChart'
 import EmptyState from '../components/EmptyState'
 
-// â”€â”€â”€ Campaign type labels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Campaign type labels â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const TYPE_LABELS = {
     SEARCH: 'Search',
     PERFORMANCE_MAX: 'PMax',
@@ -25,15 +28,15 @@ const TYPE_LABELS = {
     SMART: 'Smart',
 }
 
-// â”€â”€â”€ Status helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Status helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const STATUS_CONFIG = {
     ENABLED:  { dot: '#4ADE80', label: 'Aktywna'     },
     PAUSED:   { dot: '#FBBF24', label: 'Wstrzymana'  },
     REMOVED:  { dot: '#F87171', label: 'Usunięta'    },
 }
 
-// â”€â”€â”€ Health Score card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function HealthScoreCard({ score, issues, loading, dataAvailable }) {
+// â"€â"€â"€ Health Score card â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+function HealthScoreCard({ score, issues, loading, dataAvailable, onClick }) {
     const radius = 34
     const circumference = 2 * Math.PI * radius
     const safeScore = typeof score === 'number' ? score : 0
@@ -41,7 +44,7 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
     const color = safeScore > 70 ? '#4ADE80' : safeScore > 40 ? '#FBBF24' : '#F87171'
 
     return (
-        <div className="v2-card" style={{ padding: '20px 24px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div className="v2-card" style={{ padding: '20px 24px', height: '100%', display: 'flex', flexDirection: 'column', cursor: onClick ? 'pointer' : 'default' }} onClick={onClick}>
             <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14 }}>
                 Health Score
             </div>
@@ -110,10 +113,13 @@ function HealthScoreCard({ score, issues, loading, dataAvailable }) {
     )
 }
 
-// â”€â”€â”€ Mini KPI card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon: Icon, iconColor = '#4F8EF7' }) {
+// â"€â"€â"€ Mini KPI card â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon: Icon, iconColor = '#4F8EF7', invertChange = false }) {
     const isUp = change > 0
     const isDown = change < 0
+    const changeColor = invertChange
+        ? (isUp ? '#F87171' : isDown ? '#4ADE80' : 'rgba(255,255,255,0.3)')
+        : (isUp ? '#4ADE80' : isDown ? '#F87171' : 'rgba(255,255,255,0.3)')
     const display = typeof value === 'number'
         ? value.toLocaleString('pl-PL', { maximumFractionDigits: 2 })
         : (value ?? '—')
@@ -134,7 +140,7 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
                 {prefix}{display}{suffix}
             </div>
             {change !== undefined && change !== null && (
-                <div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: isUp ? '#4ADE80' : isDown ? '#F87171' : 'rgba(255,255,255,0.3)' }}>
+                <div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: changeColor }}>
                     {isUp ? <TrendingUp size={11} /> : isDown ? <TrendingDown size={11} /> : null}
                     <span>{Math.abs(change).toFixed(1)}%</span>
                     <span style={{ color: 'rgba(255,255,255,0.25)' }}>vs poprz.</span>
@@ -144,7 +150,7 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
     )
 }
 
-// â”€â”€â”€ Sparkline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Sparkline â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function Sparkline({ data, direction }) {
     if (!data || data.length < 2) {
         return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>—</span>
@@ -162,10 +168,11 @@ function Sparkline({ data, direction }) {
     )
 }
 
-// â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Main Dashboard â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 export default function Dashboard() {
     const { selectedClientId } = useApp()
     const { filters, allParams, campaignParams, days } = useFilter()
+    const navigate = useNavigate()
 
     const [kpis, setKpis]                   = useState(null)
     const [campaigns, setCampaigns]         = useState([])
@@ -175,6 +182,9 @@ export default function Dashboard() {
     const [budgetPacing, setBudgetPacing]   = useState(null)
     const [deviceData, setDeviceData]       = useState(null)
     const [geoData, setGeoData]             = useState(null)
+    const [wastedSpend, setWastedSpend]     = useState(null)
+    const [campaignMetrics, setCampaignMetrics] = useState(null)
+    const [impressionShare, setImpressionShare] = useState(null)
 
     const [expandedDevice, setExpandedDevice] = useState(null)
 
@@ -210,6 +220,9 @@ export default function Dashboard() {
             _catch(getBudgetPacing(selectedClientId, campaignParams)),
             _catch(getDeviceBreakdown(selectedClientId, allParams)),
             _catch(getGeoBreakdown(selectedClientId, allParams)),
+            _catch(getWastedSpend(selectedClientId, allParams)),
+            _catch(getCampaignsSummary(selectedClientId, allParams)),
+            _catch(getImpressionShare(selectedClientId, allParams)),
         ])
     }, [selectedClientId, allParams, campaignParams])
 
@@ -219,13 +232,16 @@ export default function Dashboard() {
         if (promise) {
             promise.then(results => {
                 if (cancelled || !results) return
-                const [hs, ct, recs, bp, dev, geo] = results
+                const [hs, ct, recs, bp, dev, geo, ws, cm, is_] = results
                 setHealthScore(hs)
                 setCampaignTrends(ct)
                 setRecs(recs?.recommendations || recs?.items || [])
                 setBudgetPacing(bp)
                 setDeviceData(dev)
                 setGeoData(geo)
+                setWastedSpend(ws)
+                setCampaignMetrics(cm?.campaigns || null)
+                setImpressionShare(is_)
                 setHealthLoading(false)
             })
         }
@@ -260,7 +276,7 @@ export default function Dashboard() {
     return (
         <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 4px' }}>
 
-            {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* â"€â"€ Header â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
@@ -281,7 +297,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* â”€â”€ Health Score + KPI row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* â"€â"€ Health Score + KPI row â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 16 }}>
                 {/* Health score */}
                 <HealthScoreCard
@@ -289,45 +305,87 @@ export default function Dashboard() {
                     issues={healthScore?.issues}
                     loading={healthLoading}
                     dataAvailable={healthScore?.data_available}
+                    onClick={() => navigate('/alerts')}
                 />
 
-                {/* 4 KPI mini cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                    <MiniKPI
-                        title="Kliknięcia"
-                        value={current?.clicks}
-                        change={change_pct?.clicks}
-                        icon={MousePointerClick}
-                        iconColor="#4F8EF7"
-                    />
-                    <MiniKPI
-                        title="Koszt"
-                        value={current?.cost_usd}
-                        change={change_pct?.cost_usd}
-                        suffix=" zł"
-                        icon={DollarSign}
-                        iconColor="#7B5CE0"
-                    />
-                    <MiniKPI
-                        title="Konwersje"
-                        value={current?.conversions}
-                        change={change_pct?.conversions}
-                        icon={Target}
-                        iconColor="#4ADE80"
-                    />
-                    <MiniKPI
-                        title="ROAS"
-                        tooltip="Return On Ad Spend — przychód na każdą wydaną złotówkę"
-                        value={current?.roas}
-                        change={change_pct?.roas}
-                        suffix="×"
-                        icon={BarChart3}
-                        iconColor="#FBBF24"
-                    />
+                {/* KPI mini cards — 2 rows */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                        <MiniKPI
+                            title="Kliknięcia"
+                            value={current?.clicks}
+                            change={change_pct?.clicks}
+                            icon={MousePointerClick}
+                            iconColor="#4F8EF7"
+                        />
+                        <MiniKPI
+                            title="Koszt"
+                            value={current?.cost_usd}
+                            change={change_pct?.cost_usd}
+                            suffix=" zł"
+                            icon={DollarSign}
+                            iconColor="#7B5CE0"
+                            invertChange
+                        />
+                        <MiniKPI
+                            title="Konwersje"
+                            value={current?.conversions}
+                            change={change_pct?.conversions}
+                            icon={Target}
+                            iconColor="#4ADE80"
+                        />
+                        <MiniKPI
+                            title="ROAS"
+                            tooltip="Return On Ad Spend — przychód na każdą wydaną złotówkę"
+                            value={current?.roas}
+                            change={change_pct?.roas}
+                            suffix="×"
+                            icon={BarChart3}
+                            iconColor="#FBBF24"
+                        />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                        <MiniKPI
+                            title="Wyświetlenia"
+                            value={current?.impressions}
+                            change={change_pct?.impressions}
+                            icon={Eye}
+                            iconColor="#7B5CE0"
+                        />
+                        <MiniKPI
+                            title="CTR"
+                            tooltip="Click-Through Rate — stosunek kliknięć do wyświetleń"
+                            value={current?.ctr}
+                            change={change_pct?.ctr}
+                            suffix="%"
+                            icon={Percent}
+                            iconColor="#4F8EF7"
+                        />
+                        <MiniKPI
+                            title="CPA"
+                            tooltip="Cost Per Acquisition — koszt pozyskania konwersji"
+                            value={current?.cpa}
+                            change={change_pct?.cpa}
+                            suffix=" zł"
+                            icon={ShoppingCart}
+                            iconColor="#F87171"
+                            invertChange
+                        />
+                        {wastedSpend && (
+                            <MiniKPI
+                                title="Wasted Spend"
+                                tooltip="Wydatki bez konwersji"
+                                value={wastedSpend.total_waste_usd}
+                                suffix=" zł"
+                                icon={Trash2}
+                                iconColor={wastedSpend.waste_pct > 25 ? '#F87171' : wastedSpend.waste_pct > 15 ? '#FBBF24' : '#4ADE80'}
+                            />
+                        )}
+                    </div>
                 </div>
             </div>
 
-            {/* â”€â”€ Insights Feed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* â"€â"€ Insights Feed â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             <div style={{ marginBottom: 16 }}>
                 <InsightsFeed
                     kpis={kpis}
@@ -336,16 +394,129 @@ export default function Dashboard() {
                 />
             </div>
 
-            {/* â”€â”€ Trend Explorer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* â"€â"€ Trend Explorer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             <div style={{ marginBottom: 16 }}>
                 <TrendExplorer campaignIds={filteredCampaignIds} />
             </div>
 
-            {/* â”€â”€ Budget Pacing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* —— WoW Comparison —— */}
+            <WoWChart />
+
+            {/* â"€â"€ Campaign Table â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
+            <div className="v2-card" style={{ overflow: 'hidden', marginBottom: 16 }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        Kampanie
+                    </span>
+                    <div className="flex items-center gap-3">
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                            {filteredCampaigns.length} z {campaigns.length}
+                        </span>
+                        <span onClick={() => navigate('/campaigns')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                            Wszystkie →
+                        </span>
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                        Ładowanie kampanii…
+                    </div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', 'Koszt', 'Konwersje', 'ROAS', `Trend (${days}d)`, 'Strategia'].map(h => {
+                                        const rightAligned = ['Budżet/dzień', 'Koszt', 'Konwersje', 'ROAS'].includes(h)
+                                        return (
+                                            <th key={h} style={{
+                                                padding: '10px 16px',
+                                                textAlign: rightAligned ? 'right' : 'left',
+                                                fontSize: 10, fontWeight: 500,
+                                                color: 'rgba(255,255,255,0.35)',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.08em',
+                                                whiteSpace: 'nowrap',
+                                            }}>{h}</th>
+                                        )
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredCampaigns.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                                            Brak kampanii dla wybranych filtrów
+                                        </td>
+                                    </tr>
+                                ) : filteredCampaigns.map(c => {
+                                    const statusCfg = STATUS_CONFIG[c.status] || { dot: '#666', label: c.status }
+                                    const trendData = campaignTrends?.campaigns?.[String(c.id)]
+                                    const metrics = campaignMetrics?.[String(c.id)]
+                                    return (
+                                        <tr
+                                            key={c.id}
+                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s', cursor: 'pointer' }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                            onClick={() => navigate('/campaigns')}
+                                        >
+                                            <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 260 }}>
+                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {c.name}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
+                                                <span className="flex items-center gap-1.5" style={{ fontSize: 12 }}>
+                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusCfg.dot, flexShrink: 0 }} />
+                                                    <span style={{ color: statusCfg.dot }}>{statusCfg.label}</span>
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '11px 16px', fontSize: 12, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>
+                                                {TYPE_LABELS[c.campaign_type] ?? c.campaign_type}
+                                            </td>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
+                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zł` : '—'}
+                                            </td>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>
+                                                {metrics ? `${metrics.cost_usd.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł` : '—'}
+                                            </td>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>
+                                                {metrics ? metrics.conversions.toFixed(1) : '—'}
+                                            </td>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics ? ((metrics.roas >= 3) ? '#4ADE80' : (metrics.roas >= 1) ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
+                                                {metrics ? `${metrics.roas.toFixed(2)}×` : '—'}
+                                            </td>
+                                            <td style={{ padding: '11px 16px' }}>
+                                                <div className="flex items-center gap-2">
+                                                    <Sparkline data={trendData?.cost_trend} direction={trendData?.direction} />
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '11px 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', maxWidth: 180 }}>
+                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {c.bidding_strategy ?? '—'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* â"€â"€ Budget Pacing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             {budgetPacing?.campaigns?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 8, fontFamily: 'Syne' }}>
-                        Pacing budżetu ({budgetPacing.month})
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                            Pacing budżetu ({budgetPacing.month})
+                        </span>
+                        <span onClick={() => navigate('/campaigns')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                            Wszystkie →
+                        </span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
                         {budgetPacing.campaigns.map(c => {
@@ -378,7 +549,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* â”€â”€ Device + Geo Breakdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            {/* â"€â"€ Device + Geo Breakdown â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                     {/* Device breakdown */}
@@ -486,13 +657,15 @@ export default function Dashboard() {
                     {/* Geo breakdown */}
                     {geoData?.cities?.length > 0 && (
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 12, fontFamily: 'Syne' }}>
-                                Top miasta
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                                    Top miasta
+                                </span>
                             </div>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
-                                        {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
+                                        {['Miasto', 'Kliknięcia', 'Koszt', '% kosztu', 'ROAS'].map(h => (
                                             <th key={h} style={{
                                                 padding: '4px 6px', fontSize: 10, fontWeight: 500,
                                                 color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
@@ -507,6 +680,7 @@ export default function Dashboard() {
                                             <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? '—'} zł</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>{c.share_cost_pct != null ? `${c.share_cost_pct}%` : '—'}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? '—'}×</td>
                                         </tr>
                                     ))}
@@ -517,91 +691,50 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* â”€â”€ Campaign Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-            <div className="v2-card" style={{ overflow: 'hidden' }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
-                        Kampanie
-                    </span>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                        {filteredCampaigns.length} z {campaigns.length}
-                    </span>
+            {/* —— Impression Share (Search campaigns) —— */}
+            {impressionShare?.summary && Object.keys(impressionShare.summary).length > 0 && (
+                <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                            Udział w wyświetleniach (Search)
+                        </span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>
+                            Avg. za okres
+                        </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                        {[
+                            { label: 'Impr. Share', key: 'impression_share', good: 0.5 },
+                            { label: 'Lost (Budget)', key: 'budget_lost_is', invert: true, bad: 0.2 },
+                            { label: 'Lost (Rank)', key: 'rank_lost_is', invert: true, bad: 0.3 },
+                        ].map(m => {
+                            const val = impressionShare.summary[m.key]
+                            if (val == null) return null
+                            const pct = (val * 100).toFixed(1)
+                            const color = m.invert
+                                ? (val > (m.bad || 0.3) ? '#F87171' : val > 0.1 ? '#FBBF24' : '#4ADE80')
+                                : (val > (m.good || 0.5) ? '#4ADE80' : val > 0.3 ? '#FBBF24' : '#F87171')
+                            return (
+                                <div key={m.key}>
+                                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                        {m.label}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
+                                        <span style={{ fontSize: 20, fontWeight: 700, color, fontFamily: 'Syne' }}>
+                                            {pct}
+                                        </span>
+                                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>%</span>
+                                    </div>
+                                    <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                        <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(parseFloat(pct), 100)}%`, transition: 'width 0.3s' }} />
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
                 </div>
+            )}
 
-                {loading ? (
-                    <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
-                        Ładowanie kampanii…
-                    </div>
-                ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', `Trend (${days}d)`, 'Strategia'].map(h => (
-                                        <th key={h} style={{
-                                            padding: '10px 16px',
-                                            textAlign: h === 'Budżet/dzień' ? 'right' : 'left',
-                                            fontSize: 10, fontWeight: 500,
-                                            color: 'rgba(255,255,255,0.35)',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.08em',
-                                            whiteSpace: 'nowrap',
-                                        }}>{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredCampaigns.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
-                                            Brak kampanii dla wybranych filtrów
-                                        </td>
-                                    </tr>
-                                ) : filteredCampaigns.map(c => {
-                                    const statusCfg = STATUS_CONFIG[c.status] || { dot: '#666', label: c.status }
-                                    const trendData = campaignTrends?.campaigns?.[String(c.id)]
-                                    return (
-                                        <tr
-                                            key={c.id}
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s' }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 260 }}>
-                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {c.name}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
-                                                <span className="flex items-center gap-1.5" style={{ fontSize: 12 }}>
-                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusCfg.dot, flexShrink: 0 }} />
-                                                    <span style={{ color: statusCfg.dot }}>{statusCfg.label}</span>
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '11px 16px', fontSize: 12, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>
-                                                {TYPE_LABELS[c.campaign_type] ?? c.campaign_type}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
-                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zł` : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px' }}>
-                                                <div className="flex items-center gap-2">
-                                                    <Sparkline data={trendData?.cost_trend} direction={trendData?.direction} />
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: '11px 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', maxWidth: 180 }}>
-                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {c.bidding_strategy ?? '—'}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
         </div>
     )
 }

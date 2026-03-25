@@ -5,8 +5,12 @@ import {
 import { TrendingUp, TrendingDown, Activity, AlertCircle, Calendar, Loader2 } from 'lucide-react'
 import { getForecast, getCampaigns } from '../api'
 import { useApp } from '../contexts/AppContext'
+import { useFilter } from '../contexts/FilterContext'
+import { useNavigateTo } from '../hooks/useNavigateTo'
 import EmptyState from '../components/EmptyState'
 import DarkSelect from '../components/DarkSelect'
+
+const HORIZON_OPTIONS = [7, 14, 30]
 
 function PillButton({ active, onClick, children }) {
     return (
@@ -38,12 +42,16 @@ const METRIC_OPTIONS = [
 
 export default function Forecast() {
     const { selectedClientId } = useApp()
+    const { days } = useFilter()
+    const navigateTo = useNavigateTo()
     const [campaigns, setCampaigns] = useState([])
     const [selectedCampaign, setSelectedCampaign] = useState(null)
     const [metric, setMetric] = useState('cost')
+    const [forecastDays, setForecastDays] = useState(7)
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
+    const [retryCount, setRetryCount] = useState(0)
 
     useEffect(() => {
         if (!selectedClientId) return
@@ -70,7 +78,7 @@ export default function Forecast() {
             setLoading(true)
             setError(null)
             try {
-                const res = await getForecast(selectedCampaign, metric, 7)
+                const res = await getForecast(selectedCampaign, metric, forecastDays)
                 if (cancelled) return
                 setData(res)
             } catch (err) {
@@ -81,7 +89,7 @@ export default function Forecast() {
         }
         load()
         return () => { cancelled = true }
-    }, [selectedCampaign, metric])
+    }, [selectedCampaign, metric, forecastDays, retryCount])
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta" />
 
@@ -114,10 +122,17 @@ export default function Forecast() {
                         Prognozowanie
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Predykcja wyników na najbliższe 7 dni (model liniowy)
+                        Predykcja wyników na najbliższe {forecastDays} dni (model liniowy)
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                        {HORIZON_OPTIONS.map(d => (
+                            <PillButton key={d} active={forecastDays === d} onClick={() => setForecastDays(d)}>
+                                {d}d
+                            </PillButton>
+                        ))}
+                    </div>
                     <DarkSelect
                         value={selectedCampaign}
                         onChange={(v) => setSelectedCampaign(Number(v))}
@@ -125,6 +140,11 @@ export default function Forecast() {
                         placeholder="Kampania..."
                         style={{ minWidth: 200 }}
                     />
+                    {selectedCampaign && (
+                        <span onClick={() => navigateTo('campaigns')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            Kampania →
+                        </span>
+                    )}
 
                     <div className="flex gap-1.5">
                         {METRIC_OPTIONS.map(m => (
@@ -145,7 +165,7 @@ export default function Forecast() {
             {error && (
                 <div className="v2-card" style={{ padding: 24, textAlign: 'center' }}>
                     <p style={{ color: '#F87171', fontSize: 13, marginBottom: 8 }}>{error}</p>
-                    <button onClick={loadForecast} style={{
+                    <button onClick={() => { setError(null); setRetryCount(c => c + 1) }} style={{
                         padding: '5px 14px', borderRadius: 7, fontSize: 12,
                         background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
                         color: '#4F8EF7', cursor: 'pointer',

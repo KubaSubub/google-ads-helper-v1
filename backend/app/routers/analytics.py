@@ -1,6 +1,7 @@
 """Analytics endpoints — KPIs, anomaly detection, correlation, forecasting."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import date, timedelta, datetime, timezone
 
@@ -305,7 +306,7 @@ def dashboard_kpis(
             .all()
         )
         if not rows:
-            return {"clicks": 0, "impressions": 0, "cost_usd": 0, "conversions": 0, "ctr": 0, "roas": 0}
+            return {"clicks": 0, "impressions": 0, "cost_usd": 0, "conversions": 0, "ctr": 0, "roas": 0, "cpa": 0}
 
         total_clicks = sum(r.clicks or 0 for r in rows)
         total_impressions = sum(r.impressions or 0 for r in rows)
@@ -317,6 +318,8 @@ def dashboard_kpis(
         total_conv_value_usd = micros_to_currency(total_conv_value_micros)
         roas = round((total_conv_value_usd / total_cost_usd) if total_cost_usd else 0, 2)
 
+        cpa = round((total_cost_usd / total_conversions) if total_conversions else 0, 2)
+
         return {
             "clicks": total_clicks,
             "impressions": total_impressions,
@@ -324,6 +327,7 @@ def dashboard_kpis(
             "conversions": total_conversions,
             "ctr": round((total_clicks / total_impressions * 100) if total_impressions else 0, 2),
             "roas": roas,
+            "cpa": cpa,
         }
 
     current = _agg(current_start, today)
@@ -600,6 +604,162 @@ def get_campaign_trends(
         client_id=client_id, date_from=start, date_to=end,
         campaign_type=campaign_type, campaign_status=effective_status,
     )
+
+
+# ---------------------------------------------------------------------------
+# WoW Comparison — current vs previous period, aligned by day-of-week
+# ---------------------------------------------------------------------------
+
+
+@router.get("/wow-comparison")
+def wow_comparison(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(7, ge=7, le=30, description="Period length (default 7 = week)"),
+    date_from: date = Query(None, description="End of current period (overrides days)"),
+    date_to: date = Query(None, description="End of current period"),
+    metric: str = Query("cost", description="Metric: cost,clicks,impressions,conversions,ctr,cpc,roas,cpa"),
+    campaign_type: str = Query("ALL"),
+    campaign_status: str = Query(None),
+    status: str = Query("ALL"),
+    db: Session = Depends(get_db),
+):
+    """Current period vs previous period with day-of-week alignment for overlay chart."""
+    effective_status = campaign_status or status
+    current_end = date_to or date.today()
+    current_start = date_from or (current_end - timedelta(days=days - 1))
+    period_len = (current_end - current_start).days + 1
+
+    previous_end = current_start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=period_len - 1)
+
+    svc = AnalyticsService(db)
+    campaign_ids = svc._filter_campaign_ids(client_id, campaign_type, effective_status)
+    if not campaign_ids:
+        return {"current": [], "previous": [], "metric": metric}
+
+    allowed = {"cost", "clicks", "impressions", "conversions", "ctr", "cpc", "roas", "cpa"}
+    if metric not in allowed:
+        metric = "cost"
+
+    def _aggregate(start: date, end: date) -> list[dict]:
+        rows = (
+            db.query(MetricDaily)
+            .filter(
+                MetricDaily.campaign_id.in_(campaign_ids),
+                MetricDaily.date >= start,
+                MetricDaily.date <= end,
+            )
+            .all()
+        )
+        day_map: dict[date, dict] = {}
+        for r in rows:
+            d = r.date
+            if d not in day_map:
+                day_map[d] = {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                              "conversions": 0.0, "conv_value_micros": 0}
+            day_map[d]["clicks"] += r.clicks or 0
+            day_map[d]["impressions"] += r.impressions or 0
+            day_map[d]["cost_micros"] += r.cost_micros or 0
+            day_map[d]["conversions"] += r.conversions or 0
+            day_map[d]["conv_value_micros"] += r.conversion_value_micros or 0
+
+        result = []
+        for d in sorted(day_map.keys()):
+            agg = day_map[d]
+            clicks = agg["clicks"]
+            impressions = agg["impressions"]
+            cost_usd = agg["cost_micros"] / 1_000_000
+            conversions = agg["conversions"]
+            conv_value_usd = agg["conv_value_micros"] / 1_000_000
+
+            values = {
+                "cost": round(cost_usd, 2),
+                "clicks": clicks,
+                "impressions": impressions,
+                "conversions": round(conversions, 1),
+                "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+                "cpc": round(cost_usd / clicks, 2) if clicks else 0,
+                "roas": round(conv_value_usd / cost_usd, 2) if cost_usd else 0,
+                "cpa": round(cost_usd / conversions, 2) if conversions else 0,
+            }
+            DOW_LABELS = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Ndz"]
+            result.append({
+                "date": str(d),
+                "dow": DOW_LABELS[d.weekday()],
+                "day_index": (d - start).days,
+                "value": values.get(metric, 0),
+            })
+        return result
+
+    return {
+        "metric": metric,
+        "period_days": period_len,
+        "current_range": [str(current_start), str(current_end)],
+        "previous_range": [str(previous_start), str(previous_end)],
+        "current": _aggregate(current_start, current_end),
+        "previous": _aggregate(previous_start, previous_end),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Campaigns Summary — per-campaign aggregated metrics for dashboard table
+# ---------------------------------------------------------------------------
+
+
+@router.get("/campaigns-summary")
+def campaigns_summary(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=1, le=365),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    campaign_type: str = Query("ALL"),
+    campaign_status: str = Query(None),
+    status: str = Query("ALL", description="Alias for campaign_status"),
+    db: Session = Depends(get_db),
+):
+    """Per-campaign aggregated metrics (clicks, cost, conversions, roas) for a period."""
+    effective_status = campaign_status or status
+    start, end = resolve_dates(days, date_from, date_to)
+    svc = AnalyticsService(db)
+    campaign_ids = svc._filter_campaign_ids(client_id, campaign_type, effective_status)
+    if not campaign_ids:
+        return {"campaigns": {}}
+
+    rows = (
+        db.query(
+            MetricDaily.campaign_id,
+            func.sum(MetricDaily.clicks).label("clicks"),
+            func.sum(MetricDaily.impressions).label("impressions"),
+            func.sum(MetricDaily.cost_micros).label("cost_micros"),
+            func.sum(MetricDaily.conversions).label("conversions"),
+            func.sum(MetricDaily.conversion_value_micros).label("conv_value_micros"),
+        )
+        .filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= start,
+            MetricDaily.date <= end,
+        )
+        .group_by(MetricDaily.campaign_id)
+        .all()
+    )
+
+    result = {}
+    for r in rows:
+        cost_usd = micros_to_currency(r.cost_micros or 0)
+        conv_value_usd = micros_to_currency(r.conv_value_micros or 0)
+        clicks = r.clicks or 0
+        impressions = r.impressions or 0
+        conversions = r.conversions or 0
+        result[str(r.campaign_id)] = {
+            "clicks": clicks,
+            "impressions": impressions,
+            "cost_usd": round(cost_usd, 2),
+            "conversions": round(conversions, 1),
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+            "roas": round(conv_value_usd / cost_usd, 2) if cost_usd else 0,
+        }
+
+    return {"campaigns": result}
 
 
 # ---------------------------------------------------------------------------

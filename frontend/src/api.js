@@ -132,6 +132,10 @@ export const revertAction = (actionLogId, clientId) =>
 // Analytics
 export const getDashboardKPIs = (clientId, params = {}) =>
     api.get('/analytics/dashboard-kpis', { params: { client_id: clientId, ...params } });
+export const getCampaignsSummary = (clientId, params = {}) =>
+    api.get('/analytics/campaigns-summary', { params: { client_id: clientId, ...params } });
+export const getWoWComparison = (clientId, params = {}) =>
+    api.get('/analytics/wow-comparison', { params: { client_id: clientId, ...params } });
 export const getKPIs = (clientId) =>
     api.get('/analytics/kpis', { params: { client_id: clientId } });
 export const getQualityScoreAudit = (clientId) =>

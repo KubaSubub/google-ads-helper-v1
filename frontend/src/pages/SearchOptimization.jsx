@@ -13,6 +13,7 @@ import {
     getPortfolioHealth, getConversionQuality, getDemographics,
     getPmaxChannels, getAssetGroupPerformance, getPmaxSearchThemes,
     getAudiencePerformance, getMissingExtensions, getExtensionPerformance,
+    addNegativeKeyword,
 } from '../api'
 import {
     Loader2, CalendarDays, FileText, Hash, Layers, Globe, AlertTriangle,
@@ -82,7 +83,7 @@ function MatchBadge({ type }) {
 // ─────────────────────────────────────────────────────────
 // 1. WASTED SPEND
 // ─────────────────────────────────────────────────────────
-function WastedSpendSection({ data }) {
+function WastedSpendSection({ data, clientId, showToast }) {
     if (!data) return null
     const { total_waste_usd, total_spend_usd, waste_pct, categories } = data
     return (
@@ -107,8 +108,22 @@ function WastedSpendSection({ data }) {
                                 padding: '4px 8px', borderRadius: 6,
                                 background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
                             }}>
-                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</span>
-                                <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#F87171' }}>{item.cost_usd.toFixed(2)} zł</span>
+                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</span>
+                                <div className="flex items-center gap-2">
+                                    <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#F87171' }}>{item.cost_usd.toFixed(2)} zł</span>
+                                    {cat === 'search_terms' && clientId && (
+                                        <button
+                                            onClick={() => {
+                                                addNegativeKeyword({ client_id: clientId, text: item.text, match_type: 'EXACT', scope: 'CAMPAIGN' })
+                                                    .then(() => showToast?.(`Dodano negatyw: ${item.text}`, 'success'))
+                                                    .catch(() => showToast?.(`Błąd dodawania: ${item.text}`, 'error'))
+                                            }}
+                                            style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', cursor: 'pointer' }}
+                                        >
+                                            Wyklucz
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -1186,7 +1201,7 @@ function ExtPerfSection({ data }) {
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────
 export default function SearchOptimization() {
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
     const { allParams, days } = useFilter()
 
     const [loading, setLoading] = useState(true)
@@ -1339,7 +1354,7 @@ export default function SearchOptimization() {
             {/* 1. Wasted Spend */}
             <div className={CARD} style={SECTION_STYLE}>
                 <SectionHeader icon={AlertTriangle} title="Zmarnowany budżet" subtitle={waste ? `${waste.waste_pct}% spend` : ''} open={sections.waste} onToggle={() => toggle('waste')} />
-                {sections.waste && <WastedSpendSection data={waste} />}
+                {sections.waste && <WastedSpendSection data={waste} clientId={selectedClientId} showToast={showToast} />}
             </div>
 
             {/* 2. Dayparting */}

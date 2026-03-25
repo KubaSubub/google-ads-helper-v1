@@ -12,6 +12,7 @@ import {
     Sparkles,
     ChevronRight,
     RefreshCw,
+    Printer,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -623,6 +624,19 @@ export default function Reports() {
                             <><Sparkles size={14} /> Generuj</>
                         )}
                     </button>
+                    {selectedReport && !generating && (
+                        <button
+                            onClick={() => window.print()}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.6)',
+                                fontSize: 12, cursor: 'pointer',
+                            }}
+                        >
+                            <Printer size={13} /> PDF / Drukuj
+                        </button>
+                    )}
                 </div>
             </div>
 

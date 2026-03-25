@@ -86,6 +86,8 @@ Project command prompts are stored in `.claude/commands/`:
 - `docs-sync.md` — synchronizacja dokumentacji z kodem
 - `pm-check.md` — PM review (kod jako zrodlo prawdy)
 - `done.md` — zamkniecie zadania: testy → commit → docs-sync → push (z PM gate)
+- `ads-expert.md` — ocena zakladki przez specjaliste Google Ads (potrzebnosc, kompletnosc, wartosc vs Google Ads UI)
+- `ads-verify.md` — weryfikacja co z raportu ads-expert juz istnieje w kodzie + plan implementacji
 
 Use them as workflow helpers, but keep behavior aligned with `AGENTS.md`.
 

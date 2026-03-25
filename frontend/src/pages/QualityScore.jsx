@@ -5,6 +5,7 @@ import {
 import { AlertTriangle, CheckCircle, HelpCircle, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
 import { getQualityScoreAudit } from '../api'
 import { useApp } from '../contexts/AppContext'
+import { useNavigateTo } from '../hooks/useNavigateTo'
 import EmptyState from '../components/EmptyState'
 
 const QS_COLORS = { low: '#F87171', mid: '#FBBF24', high: '#4ADE80' }
@@ -17,6 +18,7 @@ function getQSColor(score) {
 
 export default function QualityScore() {
     const { selectedClientId } = useApp()
+    const navigateTo = useNavigateTo()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -205,9 +207,10 @@ export default function QualityScore() {
                                 <tbody>
                                     {data.low_qs_keywords.map((item, i) => (
                                         <tr key={i}
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s' }}
+                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s', cursor: 'pointer' }}
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                            onClick={() => navigateTo('keywords')}
                                         >
                                             <td style={{ padding: '12px 14px' }}>
                                                 <div style={{ fontSize: 13, fontWeight: 500, color: '#F0F0F0' }}>{item.keyword}</div>

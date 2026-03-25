@@ -1,5 +1,6 @@
 ﻿import { useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronUp, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, ChevronDown, ChevronUp, ChevronRight, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react'
 
 const SOURCE_LABELS = {
     ANALYTICS: 'Insight backendu',
@@ -54,6 +55,7 @@ export default function InsightsFeed({ recommendations }) {
     const insights = useMemo(() => mapInsights(recommendations), [recommendations])
     const [expanded, setExpanded] = useState(insights.length > 0)
     const hasInsights = insights.length > 0
+    const navigate = useNavigate()
 
     return (
         <div className="v2-card" style={{ overflow: 'hidden' }}>
@@ -140,9 +142,41 @@ export default function InsightsFeed({ recommendations }) {
                                         {insight.expiresAt ? ` • wygasa ${new Date(insight.expiresAt).toLocaleString('pl-PL')}` : ''}
                                     </div>
                                 </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); navigate('/recommendations') }}
+                                    style={{
+                                        background: 'rgba(79,142,247,0.1)',
+                                        border: '1px solid rgba(79,142,247,0.25)',
+                                        borderRadius: 6,
+                                        padding: '4px 10px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        color: '#4F8EF7',
+                                        fontSize: 11,
+                                        fontWeight: 500,
+                                        whiteSpace: 'nowrap',
+                                        flexShrink: 0,
+                                        alignSelf: 'center',
+                                    }}
+                                >
+                                    Przejdź <ChevronRight size={12} />
+                                </button>
                             </div>
                         )
                     })}
+                </div>
+            )}
+
+            {expanded && hasInsights && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 16px', textAlign: 'right' }}>
+                    <span
+                        onClick={() => navigate('/recommendations')}
+                        style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}
+                    >
+                        Wszystkie rekomendacje →
+                    </span>
                 </div>
             )}
 
