@@ -196,6 +196,12 @@ class GoogleAdsService:
 
         return str(exc)
 
+    def _execute_query(self, customer_id: str, query: str):
+        """Execute a GAQL query and return the response rows as a list."""
+        ga_service = self.client.get_service("GoogleAdsService")
+        normalized = self.normalize_customer_id(customer_id)
+        return list(ga_service.search(customer_id=normalized, query=query))
+
     def _find_client_record(self, db: Session, customer_id: str) -> Client | None:
         normalized_customer_id = self.normalize_customer_id(customer_id)
         return db.query(Client).filter(
@@ -2040,6 +2046,10 @@ class GoogleAdsService:
                     MetricSegmented.date == metric_date,
                     MetricSegmented.device.is_(None),
                     MetricSegmented.geo_city.in_([geo_city, geo_city_raw]),
+                    MetricSegmented.hour_of_day.is_(None),
+                    MetricSegmented.age_range.is_(None),
+                    MetricSegmented.gender.is_(None),
+                    MetricSegmented.ad_network_type.is_(None),
                 ).first()
 
                 data = {
@@ -3088,6 +3098,8 @@ class GoogleAdsService:
                     MetricSegmented.device.is_(None),
                     MetricSegmented.geo_city.is_(None),
                     MetricSegmented.gender.is_(None),
+                    MetricSegmented.hour_of_day.is_(None),
+                    MetricSegmented.ad_network_type.is_(None),
                 ).first()
 
                 data = {
@@ -3180,6 +3192,8 @@ class GoogleAdsService:
                     MetricSegmented.device.is_(None),
                     MetricSegmented.geo_city.is_(None),
                     MetricSegmented.age_range.is_(None),
+                    MetricSegmented.hour_of_day.is_(None),
+                    MetricSegmented.ad_network_type.is_(None),
                 ).first()
 
                 data = {
@@ -3266,7 +3280,7 @@ class GoogleAdsService:
                 if not local_campaign_id:
                     continue
 
-                row_date = row.segments.date
+                row_date = date.fromisoformat(row.segments.date) if isinstance(row.segments.date, str) else row.segments.date
                 network = row.segments.ad_network_type.name if hasattr(row.segments.ad_network_type, 'name') else str(row.segments.ad_network_type)
 
                 existing = db.query(MetricSegmented).filter(
@@ -3645,15 +3659,13 @@ class GoogleAdsService:
                 asset.name,
                 campaign_asset.status,
                 campaign_asset.performance_label,
-                campaign_asset.source,
                 asset.sitelink_asset.link_text,
                 asset.callout_asset.callout_text,
                 asset.structured_snippet_asset.header,
                 metrics.clicks,
                 metrics.impressions,
                 metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr
+                metrics.conversions
             FROM campaign_asset
             WHERE campaign.status != 'REMOVED'
         """
@@ -3671,7 +3683,7 @@ class GoogleAdsService:
                 asset_type = row.asset.type.name if hasattr(row.asset.type, 'name') else str(row.asset.type)
                 asset_status = row.campaign_asset.status.name if hasattr(row.campaign_asset.status, 'name') else str(row.campaign_asset.status)
                 perf_label = row.campaign_asset.performance_label.name if hasattr(row.campaign_asset.performance_label, 'name') else str(row.campaign_asset.performance_label)
-                source = row.campaign_asset.source.name if hasattr(row.campaign_asset.source, 'name') else str(row.campaign_asset.source)
+                source = None
 
                 # Extract asset_name from type-specific fields
                 asset_name = row.asset.name or None
