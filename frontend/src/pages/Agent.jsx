@@ -306,10 +306,10 @@ export default function Agent() {
                                         border: '1px solid rgba(123,92,224,0.25)',
                                     }}>{modelName}</span>
                                 )}
-                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>in:</span> {(tokenUsage.input_tokens || 0).toLocaleString()}</span>
-                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>out:</span> {(tokenUsage.output_tokens || 0).toLocaleString()}</span>
+                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>in:</span> {(tokenUsage.input_tokens || 0).toLocaleString('pl-PL')}</span>
+                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>out:</span> {(tokenUsage.output_tokens || 0).toLocaleString('pl-PL')}</span>
                                 {tokenUsage.cache_read_tokens > 0 && (
-                                    <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>cache:</span> <span style={{ color: '#4F8EF7' }}>{tokenUsage.cache_read_tokens.toLocaleString()}</span></span>
+                                    <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>cache:</span> <span style={{ color: '#4F8EF7' }}>{tokenUsage.cache_read_tokens.toLocaleString('pl-PL')}</span></span>
                                 )}
                                 {tokenUsage.duration_ms > 0 && (
                                     <span style={{ color: 'rgba(255,255,255,0.3)' }}>{(tokenUsage.duration_ms / 1000).toFixed(1)}s</span>

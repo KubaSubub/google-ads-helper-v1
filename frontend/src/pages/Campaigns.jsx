@@ -18,6 +18,7 @@ import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
 import { LoadingSpinner, ErrorMessage } from '../components/UI'
+import DarkSelect from '../components/DarkSelect'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -715,8 +716,14 @@ export default function Campaigns() {
         }
     }
 
-    // Campaigns already filtered by backend via campaignParams
-    const filteredCampaigns = campaigns
+    // Campaigns filtered by backend (type/status) + in-memory name/label filter
+    const filteredCampaigns = useMemo(() => {
+        return campaigns.filter(c => {
+            if (filters.campaignName && !c.name?.toLowerCase().includes(filters.campaignName.toLowerCase())) return false
+            if (filters.campaignLabel !== 'ALL' && !(c.labels || []).includes(filters.campaignLabel)) return false
+            return true
+        })
+    }, [campaigns, filters.campaignName, filters.campaignLabel])
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (loading) return <LoadingSpinner />
@@ -849,25 +856,17 @@ export default function Campaigns() {
                                             Final: <span style={{ color: '#F0F0F0' }}>{ROLE_LABELS[selected.campaign_role_final] || selected.campaign_role_final || 'Unknown'}</span>
                                         </div>
                                     </div>
-                                    <select
+                                    <DarkSelect
                                         value={roleDraft}
-                                        onChange={e => setRoleDraft(e.target.value)}
+                                        onChange={(v) => setRoleDraft(v)}
                                         disabled={savingRole}
-                                        style={{
-                                            height: 36,
-                                            borderRadius: 8,
-                                            background: 'rgba(255,255,255,0.04)',
-                                            color: '#F0F0F0',
-                                            border: '1px solid rgba(255,255,255,0.12)',
-                                            padding: '0 10px',
-                                            fontSize: 12,
-                                        }}
-                                    >
-                                        <option value="">Use auto classification</option>
-                                        {ROLE_OPTIONS.map(role => (
-                                            <option key={role} value={role}>{ROLE_LABELS[role]}</option>
-                                        ))}
-                                    </select>
+                                        options={[
+                                            { value: '', label: 'Use auto classification' },
+                                            ...ROLE_OPTIONS.map(role => ({ value: role, label: ROLE_LABELS[role] })),
+                                        ]}
+                                        placeholder="Use auto classification"
+                                        style={{ minWidth: 200 }}
+                                    />
                                     <button
                                         onClick={handleRoleSave}
                                         disabled={savingRole || !roleDraft}

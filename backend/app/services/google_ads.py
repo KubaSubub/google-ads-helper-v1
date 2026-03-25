@@ -614,7 +614,8 @@ class GoogleAdsService:
                 campaign.target_roas.target_roas,
                 campaign.primary_status,
                 campaign.primary_status_reasons,
-                campaign.bidding_strategy
+                campaign.bidding_strategy,
+                campaign.labels
             FROM campaign
             WHERE campaign.status != 'REMOVED'
             ORDER BY campaign.name
@@ -655,6 +656,17 @@ class GoogleAdsService:
             if response is None:
                 raise RuntimeError(self._format_google_ads_error(last_error)) from last_error
 
+            # Pre-fetch label names if extended query succeeded
+            label_name_map: dict[str, str] = {}
+            if selected_query == "extended":
+                try:
+                    label_query = "SELECT label.id, label.name FROM label"
+                    label_response = ga_service.search(customer_id=normalized_customer_id, query=label_query)
+                    for lr in label_response:
+                        label_name_map[lr.label.resource_name] = lr.label.name
+                except Exception as label_exc:
+                    logger.warning(f"Label fetch failed for {normalized_customer_id}: {self._format_google_ads_error(label_exc)}")
+
             count = 0
             seen_google_campaign_ids: set[str] = set()
             for row in response:
@@ -684,6 +696,7 @@ class GoogleAdsService:
 
                 # Extended fields (GAP 1A, 1D, 1E)
                 if selected_query == "extended":
+                    import json as _json
                     # GAP 1D: Smart Bidding targets
                     target_cpa = getattr(campaign, 'target_cpa', None)
                     if target_cpa:
@@ -696,8 +709,14 @@ class GoogleAdsService:
                     data["primary_status"] = ps.name if hasattr(ps, 'name') else (str(ps) if ps else None)
                     psr = getattr(campaign, 'primary_status_reasons', None)
                     if psr:
-                        import json as _json
                         data["primary_status_reasons"] = _json.dumps([r.name if hasattr(r, 'name') else str(r) for r in psr])
+                    # Labels
+                    raw_labels = getattr(campaign, 'labels', None)
+                    if raw_labels:
+                        label_names = [label_name_map.get(r, r.split('/')[-1]) for r in raw_labels]
+                        data["labels"] = _json.dumps(label_names)
+                    else:
+                        data["labels"] = None
                     # GAP 1E: Portfolio bid strategy
                     bs_resource = getattr(campaign, 'bidding_strategy', None)
                     if bs_resource and isinstance(bs_resource, str) and 'biddingStrategies' in bs_resource:
@@ -1920,7 +1939,7 @@ class GoogleAdsService:
         ga_service = self.client.get_service("GoogleAdsService")
         mcc_id = self.get_login_customer_id() or customer_id
 
-        ids_str = ",".join(criterion_ids)
+        ids_str = ",".join(str(int(cid)) for cid in criterion_ids)
         query = f"""
             SELECT
                 geo_target_constant.id,
@@ -2590,6 +2609,91 @@ class GoogleAdsService:
             negative.google_resource_name = resource_name
             negative.google_criterion_id = resource_name.split("~")[-1]
 
+    # ------------------------------------------------------------------
+    # Batch mutation helpers (single API call for multiple operations)
+    # ------------------------------------------------------------------
+
+    def batch_add_campaign_negatives(
+        self,
+        db: Session,
+        campaign: "Campaign",
+        negatives: list["NegativeKeyword"],
+    ) -> None:
+        """Add multiple campaign-level negative keywords in a single API call."""
+        if not self.client or not negatives:
+            return
+        client_record = db.get(Client, campaign.client_id)
+        if not client_record:
+            raise RuntimeError("Client not found for batch negative keyword mutation")
+
+        customer_id = client_record.google_customer_id.replace("-", "")
+        service = self.client.get_service("CampaignCriterionService")
+        campaign_path = self.client.get_service("CampaignService").campaign_path(
+            customer_id, str(campaign.google_campaign_id),
+        )
+
+        operations = []
+        for neg in negatives:
+            op = self.client.get_type("CampaignCriterionOperation")
+            criterion = op.create
+            criterion.campaign = campaign_path
+            criterion.negative = True
+            criterion.keyword.text = neg.text
+            criterion.keyword.match_type = getattr(
+                self.client.enums.KeywordMatchTypeEnum, neg.match_type,
+            )
+            operations.append(op)
+
+        response = service.mutate_campaign_criteria(
+            customer_id=customer_id, operations=operations,
+        )
+        for i, result in enumerate(response.results):
+            resource_name = result.resource_name
+            negatives[i].google_resource_name = resource_name
+            negatives[i].google_criterion_id = resource_name.split("~")[-1]
+
+    def batch_add_ad_group_negatives(
+        self,
+        db: Session,
+        ad_group: "AdGroup",
+        negatives: list["NegativeKeyword"],
+    ) -> None:
+        """Add multiple ad-group-level negative keywords in a single API call."""
+        if not self.client or not negatives:
+            return
+        campaign = db.get(Campaign, ad_group.campaign_id)
+        if not campaign:
+            raise RuntimeError("Campaign not found for batch ad-group negative mutation")
+        client_record = db.get(Client, campaign.client_id)
+        if not client_record:
+            raise RuntimeError("Client not found for batch ad-group negative mutation")
+
+        customer_id = client_record.google_customer_id.replace("-", "")
+        service = self.client.get_service("AdGroupCriterionService")
+        ad_group_path = self.client.get_service("AdGroupService").ad_group_path(
+            customer_id, str(ad_group.google_ad_group_id),
+        )
+
+        operations = []
+        for neg in negatives:
+            op = self.client.get_type("AdGroupCriterionOperation")
+            criterion = op.create
+            criterion.ad_group = ad_group_path
+            criterion.negative = True
+            criterion.keyword.text = neg.text
+            criterion.keyword.match_type = getattr(
+                self.client.enums.KeywordMatchTypeEnum, neg.match_type,
+            )
+            operations.append(op)
+
+        response = service.mutate_ad_group_criteria(
+            customer_id=customer_id, operations=operations,
+        )
+        for i, result in enumerate(response.results):
+            resource_name = result.resource_name
+            negatives[i].google_resource_name = resource_name
+            negatives[i].google_criterion_id = resource_name.split("~")[-1]
+
     def _mutate_campaign_budget(self, campaign, db: Session):
         """Update campaign budget amount in Google Ads."""
         if not self.client:
@@ -2600,11 +2704,12 @@ class GoogleAdsService:
 
         customer_id = client_record.google_customer_id.replace("-", "")
         ga_service = self.client.get_service("GoogleAdsService")
+        campaign_id_int = int(campaign.google_campaign_id)
         query = f"""
             SELECT
                 campaign.campaign_budget
             FROM campaign
-            WHERE campaign.id = {campaign.google_campaign_id}
+            WHERE campaign.id = {campaign_id_int}
         """
         response = list(ga_service.search(customer_id=customer_id, query=query))
         if not response:

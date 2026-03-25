@@ -245,6 +245,107 @@ class TestHealthScore:
         assert "score" in data
         assert 0 <= data["score"] <= 100
 
+    def test_health_score_has_breakdown(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}")
+        data = resp.json()
+        assert "breakdown" in data
+        bd = data["breakdown"]
+        assert bd["base"] == 100
+        assert "alert_penalty" in bd
+        assert "zero_conv_penalty" in bd
+        assert "roas_penalty" in bd
+        assert "ctr_penalty" in bd
+        assert "pacing_penalty" in bd
+
+    def test_many_high_alerts_score_not_negative(self, api_client, db):
+        """FIX 1: 10 HIGH alerts should cap at -30, score stays >= 0."""
+        client, _, _ = _seed_full(db)
+        for i in range(10):
+            db.add(Alert(
+                client_id=client.id,
+                alert_type="SPEND_SPIKE",
+                severity="HIGH",
+                title=f"Alert {i}",
+                description=f"High alert {i}",
+            ))
+        db.commit()
+        resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}")
+        data = resp.json()
+        assert data["score"] >= 0
+        # Alert penalty capped at 30 (not 10*10=100)
+        assert data["breakdown"]["alert_penalty"] <= 50  # 30 HIGH cap + 20 MED cap max
+
+    def test_pmax_no_ctr_penalty(self, api_client, db):
+        """FIX 3: PMax campaign with CTR drop should NOT trigger CTR penalty."""
+        client = Client(name="PMax Test", google_customer_id="pm1")
+        db.add(client)
+        db.flush()
+        pmax = Campaign(
+            client_id=client.id,
+            google_campaign_id="pmax1",
+            name="PMax Campaign",
+            status="ENABLED",
+            campaign_type="PERFORMANCE_MAX",
+            budget_micros=50_000_000,
+        )
+        db.add(pmax)
+        db.flush()
+        # Create CTR drop: first half high CTR, second half very low
+        today = date.today()
+        for i in range(30):
+            d = today - timedelta(days=29 - i)
+            clicks = 100 if i < 15 else 10  # big drop in second half
+            db.add(MetricDaily(
+                campaign_id=pmax.id,
+                date=d,
+                clicks=clicks,
+                impressions=1000,
+                ctr=clicks / 1000,
+                conversions=5.0,
+                conversion_value_micros=50_000_000,
+                cost_micros=10_000_000,
+                roas=5.0,
+            ))
+        db.commit()
+        resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}&days=30")
+        data = resp.json()
+        assert data["breakdown"]["ctr_penalty"] == 0
+
+    def test_brand_campaign_no_roas_penalty(self, api_client, db):
+        """FIX 4: Brand campaign with ROAS < 1 should NOT trigger ROAS penalty."""
+        client = Client(name="Brand Test", google_customer_id="br1")
+        db.add(client)
+        db.flush()
+        brand = Campaign(
+            client_id=client.id,
+            google_campaign_id="brand1",
+            name="[GSN] - Brand",
+            status="ENABLED",
+            campaign_type="SEARCH",
+            campaign_role_final="BRAND",
+            budget_micros=50_000_000,
+        )
+        db.add(brand)
+        db.flush()
+        today = date.today()
+        for i in range(7):
+            db.add(MetricDaily(
+                campaign_id=brand.id,
+                date=today - timedelta(days=i),
+                clicks=50,
+                impressions=1000,
+                ctr=0.05,
+                conversions=1.0,
+                conversion_value_micros=5_000_000,  # low ROAS
+                cost_micros=20_000_000,  # high cost → ROAS < 1
+                roas=0.25,
+            ))
+        db.commit()
+        resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}&days=7")
+        data = resp.json()
+        assert data["breakdown"]["roas_penalty"] == 0
+
 
 class TestCampaignTrends:
     def test_campaign_trends_returns_200(self, api_client, db):

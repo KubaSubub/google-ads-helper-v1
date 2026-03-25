@@ -1,21 +1,11 @@
-import { ChevronDown } from 'lucide-react'
+import { useMemo } from 'react'
 import { useFilter } from '../contexts/FilterContext'
+import { useApp } from '../contexts/AppContext'
 import { CAMPAIGN_STATUS_OPTIONS, CAMPAIGN_TYPE_OPTIONS } from '../constants/globalFilters'
-
-const CONTROL_STYLE = {
-    width: '100%',
-    height: 40,
-    borderRadius: 10,
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: '#F0F0F0',
-    fontSize: 13,
-    padding: '0 38px 0 12px',
-    outline: 'none',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-    MozAppearance: 'none',
-}
+import DarkSelect from './DarkSelect'
+import { Search } from 'lucide-react'
+import { getCampaigns } from '../api'
+import { useState, useEffect } from 'react'
 
 function FilterField({ label, children }) {
     return (
@@ -28,52 +18,99 @@ function FilterField({ label, children }) {
     )
 }
 
-function SelectField({ label, value, onChange, options }) {
-    return (
-        <FilterField label={label}>
-            <div style={{ position: 'relative' }}>
-                <select value={value} onChange={onChange} style={CONTROL_STYLE}>
-                    {options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                            {option.label}
-                        </option>
-                    ))}
-                </select>
-                <ChevronDown size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.35)', pointerEvents: 'none' }} />
-            </div>
-        </FilterField>
-    )
-}
-
 export default function GlobalFilterBar() {
     const { filters, setFilter } = useFilter()
+    const { selectedClientId } = useApp()
+    const [allLabels, setAllLabels] = useState([])
+
+    useEffect(() => {
+        if (!selectedClientId) return
+        getCampaigns(selectedClientId)
+            .then((data) => {
+                const items = Array.isArray(data) ? data : data.items || []
+                const labelSet = new Set()
+                items.forEach((c) => {
+                    if (Array.isArray(c.labels)) {
+                        c.labels.forEach((l) => labelSet.add(l))
+                    }
+                })
+                setAllLabels([...labelSet].sort())
+            })
+            .catch(() => setAllLabels([]))
+    }, [selectedClientId])
+
+    const labelOptions = useMemo(() => [
+        { value: 'ALL', label: 'Wszystkie' },
+        ...allLabels.map((l) => ({ value: l, label: l })),
+    ], [allLabels])
+
+    const hasLabels = allLabels.length > 0
 
     return (
-        <div className="v2-card" style={{ padding: '16px 18px', marginBottom: 24 }}>
-            <div className="flex items-center justify-between flex-wrap gap-3" style={{ marginBottom: 14 }}>
-                <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
-                        Filtry kampanii
-                    </div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)', marginTop: 2 }}>
-                        Wspólne filtrowanie widoków bez dublowania klienta i dat.
-                    </div>
-                </div>
+        <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 24 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 12 }}>
+                Filtry kampanii
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2" style={{ alignItems: 'start' }}>
-                <SelectField
-                    label="Typ kampanii"
-                    value={filters.campaignType}
-                    onChange={(event) => setFilter('campaignType', event.target.value)}
-                    options={CAMPAIGN_TYPE_OPTIONS}
-                />
-                <SelectField
-                    label="Status kampanii"
-                    value={filters.status}
-                    onChange={(event) => setFilter('status', event.target.value)}
-                    options={CAMPAIGN_STATUS_OPTIONS}
-                />
+            <div className="grid gap-4" style={{ alignItems: 'start', gridTemplateColumns: hasLabels ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)' }}>
+                <FilterField label="Typ kampanii">
+                    <DarkSelect
+                        value={filters.campaignType}
+                        onChange={(v) => setFilter('campaignType', v)}
+                        options={CAMPAIGN_TYPE_OPTIONS}
+                        style={{ height: 38 }}
+                    />
+                </FilterField>
+                <FilterField label="Status">
+                    <DarkSelect
+                        value={filters.status}
+                        onChange={(v) => setFilter('status', v)}
+                        options={CAMPAIGN_STATUS_OPTIONS}
+                        style={{ height: 38 }}
+                    />
+                </FilterField>
+                {hasLabels && (
+                    <FilterField label="Etykieta">
+                        <DarkSelect
+                            value={filters.campaignLabel}
+                            onChange={(v) => setFilter('campaignLabel', v)}
+                            options={labelOptions}
+                            style={{ height: 38 }}
+                        />
+                    </FilterField>
+                )}
+                <FilterField label="Nazwa kampanii">
+                    <div style={{ position: 'relative' }}>
+                        <Search size={13} style={{
+                            position: 'absolute',
+                            left: 10,
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'rgba(255,255,255,0.25)',
+                            pointerEvents: 'none',
+                        }} />
+                        <input
+                            type="text"
+                            value={filters.campaignName}
+                            onChange={(e) => setFilter('campaignName', e.target.value)}
+                            placeholder="Szukaj..."
+                            style={{
+                                width: '100%',
+                                height: 38,
+                                padding: '0 10px 0 30px',
+                                borderRadius: 8,
+                                fontSize: 13,
+                                color: '#F0F0F0',
+                                background: 'rgba(255,255,255,0.04)',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                outline: 'none',
+                                transition: 'border-color 0.15s',
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(79,142,247,0.4)'}
+                            onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
+                        />
+                    </div>
+                </FilterField>
             </div>
         </div>
     )

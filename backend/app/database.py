@@ -109,6 +109,13 @@ def _ensure_sqlite_columns():
             "role_confidence": "FLOAT",
             "protection_level": "TEXT",
             "role_source": "TEXT DEFAULT 'AUTO'",
+            "labels": "TEXT",
+            "target_cpa_micros": "INTEGER",
+            "target_roas": "FLOAT",
+            "primary_status": "TEXT",
+            "primary_status_reasons": "TEXT",
+            "bidding_strategy_resource_name": "TEXT",
+            "portfolio_bid_strategy_id": "TEXT",
         },
         "recommendations": {
             "source": "TEXT DEFAULT 'PLAYBOOK_RULES'",
@@ -140,6 +147,8 @@ def _ensure_sqlite_columns():
         },
         "metrics_segmented": {
             "ad_network_type": "TEXT",
+            "age_range": "TEXT",
+            "gender": "TEXT",
         },
         "negative_keywords": {
             "ad_group_id": "INTEGER",

@@ -16,6 +16,7 @@ import {
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
+import DarkSelect from '../components/DarkSelect'
 
 const MATCH_COLORS = {
     EXACT: { color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', border: 'rgba(74,222,128,0.2)' },
@@ -334,8 +335,8 @@ function PositiveKeywordsTab({ selectedClientId, showToast, filters, searchParam
                                                 <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 280 }}><KeywordCell keyword={keyword} /></td>
                                                 <td style={{ padding: '10px 12px', maxWidth: 260 }}><CampaignCell keyword={keyword} /></td>
                                                 <td style={{ padding: '10px 12px' }}><MatchBadge matchType={keyword.match_type} /></td>
-                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>{keyword.clicks?.toLocaleString() ?? '-'}</td>
-                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{keyword.impressions?.toLocaleString() ?? '-'}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>{keyword.clicks?.toLocaleString('pl-PL') ?? '-'}</td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{keyword.impressions?.toLocaleString('pl-PL') ?? '-'}</td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>{keyword.cost != null ? `${keyword.cost.toFixed(2)} zl` : '-'}</td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' }}>{keyword.conversions?.toFixed(1) ?? '-'}</td>
                                                 <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>{keyword.ctr != null ? `${keyword.ctr.toFixed(2)}%` : '-'}</td>
@@ -511,14 +512,14 @@ function AddNegativeModal({ clientId, onClose, onDone, showToast }) {
         getCampaigns(clientId).then(r => {
             const items = r.items || r
             setCampaigns(items.filter(c => c.status !== 'REMOVED'))
-        }).catch(() => {})
+        }).catch((err) => console.error('[Keywords] campaigns load failed', err))
     }, [clientId])
 
     useEffect(() => {
         if (scope === 'AD_GROUP' && campaignId) {
             getAdGroups({ client_id: clientId, campaign_id: campaignId }).then(r => {
                 setAdGroups(Array.isArray(r) ? r : r.data || [])
-            }).catch(() => {})
+            }).catch((err) => console.error('[Keywords] ad groups load failed', err))
         }
     }, [scope, campaignId, clientId])
 
@@ -550,34 +551,52 @@ function AddNegativeModal({ clientId, onClose, onDone, showToast }) {
                     <div className="flex gap-3">
                         <div style={{ flex: 1 }}>
                             <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Typ dopasowania</label>
-                            <select value={matchType} onChange={e => setMatchType(e.target.value)} style={SELECT_STYLE}>
-                                <option value="PHRASE">PHRASE</option>
-                                <option value="EXACT">EXACT</option>
-                                <option value="BROAD">BROAD</option>
-                            </select>
+                            <DarkSelect
+                                value={matchType}
+                                onChange={(v) => setMatchType(v)}
+                                options={[
+                                    { value: 'PHRASE', label: 'PHRASE' },
+                                    { value: 'EXACT', label: 'EXACT' },
+                                    { value: 'BROAD', label: 'BROAD' },
+                                ]}
+                            />
                         </div>
                         <div style={{ flex: 1 }}>
                             <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Zakres</label>
-                            <select value={scope} onChange={e => { setScope(e.target.value); setAdGroupId('') }} style={SELECT_STYLE}>
-                                <option value="CAMPAIGN">Kampania</option>
-                                <option value="AD_GROUP">Grupa reklam</option>
-                            </select>
+                            <DarkSelect
+                                value={scope}
+                                onChange={(v) => { setScope(v); setAdGroupId('') }}
+                                options={[
+                                    { value: 'CAMPAIGN', label: 'Kampania' },
+                                    { value: 'AD_GROUP', label: 'Grupa reklam' },
+                                ]}
+                            />
                         </div>
                     </div>
                     <div>
                         <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Kampania</label>
-                        <select value={campaignId} onChange={e => { setCampaignId(e.target.value); setAdGroupId('') }} style={SELECT_STYLE}>
-                            <option value="">-- wybierz --</option>
-                            {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
+                        <DarkSelect
+                            value={campaignId}
+                            onChange={(v) => { setCampaignId(v); setAdGroupId('') }}
+                            options={[
+                                { value: '', label: '-- wybierz --' },
+                                ...campaigns.map(c => ({ value: c.id, label: c.name })),
+                            ]}
+                            placeholder="-- wybierz --"
+                        />
                     </div>
                     {scope === 'AD_GROUP' && (
                         <div>
                             <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Grupa reklam</label>
-                            <select value={adGroupId} onChange={e => setAdGroupId(e.target.value)} style={SELECT_STYLE}>
-                                <option value="">-- wybierz --</option>
-                                {adGroups.map(ag => <option key={ag.id} value={ag.id}>{ag.name}</option>)}
-                            </select>
+                            <DarkSelect
+                                value={adGroupId}
+                                onChange={(v) => setAdGroupId(v)}
+                                options={[
+                                    { value: '', label: '-- wybierz --' },
+                                    ...adGroups.map(ag => ({ value: ag.id, label: ag.name })),
+                                ]}
+                                placeholder="-- wybierz --"
+                            />
                         </div>
                     )}
                     <div className="flex justify-end gap-2" style={{ marginTop: 8 }}>
@@ -804,11 +823,15 @@ function AddItemsModal({ listId, onClose, onDone, showToast }) {
                     </div>
                     <div>
                         <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }}>Typ dopasowania</label>
-                        <select value={matchType} onChange={e => setMatchType(e.target.value)} style={SELECT_STYLE}>
-                            <option value="PHRASE">PHRASE</option>
-                            <option value="EXACT">EXACT</option>
-                            <option value="BROAD">BROAD</option>
-                        </select>
+                        <DarkSelect
+                            value={matchType}
+                            onChange={(v) => setMatchType(v)}
+                            options={[
+                                { value: 'PHRASE', label: 'PHRASE' },
+                                { value: 'EXACT', label: 'EXACT' },
+                                { value: 'BROAD', label: 'BROAD' },
+                            ]}
+                        />
                     </div>
                     <div className="flex justify-end gap-2" style={{ marginTop: 8 }}>
                         <button onClick={onClose} style={BTN_SECONDARY}>Anuluj</button>
@@ -832,7 +855,7 @@ function ApplyListModal({ listId, clientId, onClose, onDone, showToast }) {
         getCampaigns(clientId).then(r => {
             const items = r.items || r
             setCampaigns(items.filter(c => c.status !== 'REMOVED'))
-        }).catch(() => {})
+        }).catch((err) => console.error('[Keywords] list campaigns load failed', err))
     }, [clientId])
 
     function toggleCampaign(id) {
@@ -933,7 +956,7 @@ function KeywordExpansionTab({ selectedClientId }) {
                                 <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                     <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.search_term}</td>
                                     <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{s.clicks}</td>
-                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{s.impressions?.toLocaleString()}</td>
+                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{s.impressions?.toLocaleString('pl-PL')}</td>
                                     <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{s.ctr_pct}%</td>
                                     <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{s.cost_usd} zł</td>
                                     <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{s.conversions}</td>

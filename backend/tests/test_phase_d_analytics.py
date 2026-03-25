@@ -615,6 +615,6 @@ class TestPhaseDRecommendationTypes:
         assert hasattr(RecommendationType, "AUDIENCE_PERFORMANCE_ANOMALY")
         assert hasattr(RecommendationType, "MISSING_EXTENSIONS_ALERT")
 
-    def test_enum_count_is_30(self):
+    def test_enum_count_is_34(self):
         from app.services.recommendations import RecommendationType
-        assert len(RecommendationType) == 30
+        assert len(RecommendationType) == 34

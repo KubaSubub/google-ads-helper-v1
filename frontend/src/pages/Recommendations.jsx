@@ -27,10 +27,25 @@ const TYPE_CONFIG = {
     PAUSE_AD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Wstrzymaj reklamę' },
     INCREASE_BUDGET: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zwiększ budżet' },
     REALLOCATE_BUDGET: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Przesuń budżet' },
+    // v1.1 rules (R8-R13)
+    QS_ALERT: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Quality Score' },
+    IS_BUDGET_ALERT: { icon: TrendingUp, color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)', label: 'Impression Share — Budżet' },
+    IS_RANK_ALERT: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Impression Share — Ad Rank' },
+    LOW_CTR_KEYWORD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Niski CTR' },
+    WASTED_SPEND_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Przepalony Budżet' },
+    PMAX_CANNIBALIZATION: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'PMax Kanibalizacja' },
+    // v1.2 rules (R15-R18)
+    DEVICE_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia Urządzeń' },
+    GEO_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia Lokalizacji' },
+    BUDGET_PACING: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Tempo Budżetu' },
+    NGRAM_NEGATIVE: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'N-gram do Wykluczenia' },
     // v2.0 GAP rules
     AD_GROUP_HEALTH: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Zdrowie grupy reklam' },
+    SINGLE_AD_ALERT: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Tylko 1 reklama' },
+    OVERSIZED_AD_GROUP: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Za dużo keywords' },
+    ZERO_CONV_AD_GROUP: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Brak konwersji w grupie' },
     DISAPPROVED_AD_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Odrzucona reklama' },
-    SMART_BIDDING_CONV_ALERT: { icon: Zap, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Smart Bidding — niski wolumen' },
+    SMART_BIDDING_DATA_STARVATION: { icon: Zap, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Smart Bidding — niski wolumen' },
     ECPC_DEPRECATION: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'ECPC wycofane' },
     SCALING_OPPORTUNITY: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Okazja do skalowania' },
     // v2.0 GAP rules (Phase B+C)
@@ -536,6 +551,7 @@ export default function Recommendations() {
     const [filterPriority, setFilterPriority] = useState('ALL')
     const [filterSource, setFilterSource] = useState('ALL')
     const [filterExecution, setFilterExecution] = useState('ALL')
+    const [filterCategory, setFilterCategory] = useState('ALL')
     const [applyingId, setApplyingId] = useState(null)
     const [confirmModal, setConfirmModal] = useState(null)
     const [dryRunData, setDryRunData] = useState(null)
@@ -548,8 +564,9 @@ export default function Recommendations() {
             priority: filterPriority !== 'ALL' ? filterPriority : undefined,
             source: filterSource !== 'ALL' ? filterSource : undefined,
             executable: filterExecution === 'ALL' ? undefined : filterExecution === 'EXECUTABLE',
+            category: filterCategory !== 'ALL' ? filterCategory : undefined,
         })
-    }, [filterExecution, filterPriority, filterSource, updateFilters])
+    }, [filterCategory, filterExecution, filterPriority, filterSource, updateFilters])
 
     const executableItems = useMemo(
         () => (recommendations || []).filter(rec => rec.executable),
@@ -787,6 +804,23 @@ export default function Recommendations() {
                             }}
                         >
                             {mode}
+                        </button>
+                    ))}
+                    {[{ key: 'ALL', label: 'Wszystkie' }, { key: 'RECOMMENDATION', label: 'Rekomendacje' }, { key: 'ALERT', label: 'Alerty' }].map(cat => (
+                        <button
+                            key={cat.key}
+                            onClick={() => setFilterCategory(cat.key)}
+                            style={{
+                                padding: '4px 12px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                border: `1px solid ${filterCategory === cat.key ? 'rgba(123,92,224,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                                background: filterCategory === cat.key ? 'rgba(123,92,224,0.12)' : 'transparent',
+                                color: filterCategory === cat.key ? '#7B5CE0' : 'rgba(255,255,255,0.45)',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {cat.label}
                         </button>
                     ))}
                 </div>

@@ -172,6 +172,8 @@ class ActionExecutor:
         client_record = self.db.query(Client).filter(Client.id == client_id).first()
         client_limits = ((client_record.business_rules or {}).get("safety_limits") if client_record else None)
 
+        context = {}
+        precondition_state = {}
         try:
             context = self._build_context(payload, client_id)
             precondition_state = self._evaluate_preconditions(rec, payload, context)
@@ -188,9 +190,9 @@ class ActionExecutor:
                 execution_mode=mode,
                 precondition_status="FAILED",
                 action_payload=payload,
-                context_json=context if 'context' in locals() else {},
-                old_value_json=self._json_dumps(self._build_before_state(payload, precondition_state if 'precondition_state' in locals() else {})),
-                new_value_json=self._json_dumps(self._build_after_state(payload, precondition_state if 'precondition_state' in locals() else {})),
+                context_json=context,
+                old_value_json=self._json_dumps(self._build_before_state(payload, precondition_state)),
+                new_value_json=self._json_dumps(self._build_after_state(payload, precondition_state)),
                 error_message=str(exc),
             )
             self.db.commit()
@@ -693,5 +695,183 @@ class ActionExecutor:
             return int(value)
         except (TypeError, ValueError):
             return None
+
+    # ------------------------------------------------------------------
+    # Batch operations — single API call for multiple recommendations
+    # ------------------------------------------------------------------
+
+    def apply_add_negative_batch(
+        self,
+        recommendations: list[Recommendation],
+        client_id: int,
+        allow_demo_write: bool = False,
+    ) -> dict:
+        """Apply multiple ADD_NEGATIVE recommendations in batched API calls.
+
+        Groups negatives by (campaign_id, negative_level) and sends one mutate
+        per group instead of one per keyword.
+
+        Returns: {"applied": int, "failed": int, "errors": list[str]}
+        """
+        from app.services.google_ads import google_ads_service
+
+        if is_demo_protected_client(self.db, client_id) and not allow_demo_write:
+            return {
+                "applied": 0,
+                "failed": len(recommendations),
+                "errors": [demo_write_lock_reason("Batch ADD_NEGATIVE")],
+            }
+
+        applied = 0
+        failed = 0
+        errors: list[str] = []
+
+        # Phase 1: validate all recommendations and prepare DB entities
+        # Group: (campaign_id, negative_level) -> [(rec, NegativeKeyword)]
+        groups: dict[tuple, list[tuple[Recommendation, NegativeKeyword]]] = {}
+        skipped_recs: list[Recommendation] = []
+
+        for rec in recommendations:
+            payload = self._normalize_action_payload(rec)
+            action_type = payload.get("action_type")
+
+            if action_type != "ADD_NEGATIVE" or not payload.get("executable"):
+                failed += 1
+                errors.append(f"Rec #{rec.id}: not executable or wrong action type")
+                skipped_recs.append(rec)
+                continue
+
+            params = payload.get("params") or {}
+            target = payload.get("target") or {}
+            campaign_id = target.get("campaign_id") or params.get("campaign_id")
+            ad_group_id = params.get("ad_group_id")
+            text = (params.get("text") or "").strip()
+            match_type = params.get("match_type", "PHRASE")
+            negative_level = params.get("negative_level", "CAMPAIGN")
+
+            if not campaign_id or not text:
+                failed += 1
+                errors.append(f"Rec #{rec.id}: missing campaign_id or text")
+                continue
+
+            campaign = self.db.get(Campaign, campaign_id)
+            if not campaign:
+                failed += 1
+                errors.append(f"Rec #{rec.id}: campaign {campaign_id} not found")
+                continue
+
+            # Check duplicate
+            if negative_level == "AD_GROUP" and ad_group_id:
+                existing = (
+                    self.db.query(NegativeKeyword)
+                    .filter(
+                        NegativeKeyword.ad_group_id == ad_group_id,
+                        NegativeKeyword.negative_scope == "AD_GROUP",
+                        func.lower(NegativeKeyword.text) == text.lower(),
+                        NegativeKeyword.status != "REMOVED",
+                    )
+                    .first()
+                )
+            else:
+                existing = (
+                    self.db.query(NegativeKeyword)
+                    .filter(
+                        NegativeKeyword.campaign_id == campaign_id,
+                        NegativeKeyword.negative_scope == "CAMPAIGN",
+                        func.lower(NegativeKeyword.text) == text.lower(),
+                        NegativeKeyword.status != "REMOVED",
+                    )
+                    .first()
+                )
+            if existing:
+                applied += 1
+                errors.append(f"Rec #{rec.id}: negative '{text}' already exists (goal achieved)")
+                rec.status = "applied"
+                rec.applied_at = utcnow().replace(tzinfo=None)
+                continue
+
+            negative = NegativeKeyword(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                ad_group_id=ad_group_id if negative_level == "AD_GROUP" else None,
+                criterion_kind="NEGATIVE",
+                text=text,
+                match_type=match_type,
+                negative_scope=negative_level,
+                status="ENABLED",
+                source="LOCAL_ACTION",
+            )
+            self.db.add(negative)
+            self.db.flush()
+
+            group_key = (campaign_id, negative_level, ad_group_id if negative_level == "AD_GROUP" else None)
+            groups.setdefault(group_key, []).append((rec, negative))
+
+        # Phase 2: batch mutate per group
+        mode = "LIVE" if google_ads_service.is_connected else "LOCAL_ONLY"
+
+        for (campaign_id, level, ag_id), items in groups.items():
+            recs_in_group = [r for r, _ in items]
+            negs_in_group = [n for _, n in items]
+
+            try:
+                if google_ads_service.is_connected:
+                    if level == "AD_GROUP" and ag_id:
+                        ad_group = self.db.get(AdGroup, ag_id)
+                        if not ad_group:
+                            raise RuntimeError(f"AdGroup {ag_id} not found")
+                        google_ads_service.batch_add_ad_group_negatives(
+                            self.db, ad_group, negs_in_group,
+                        )
+                    else:
+                        campaign = self.db.get(Campaign, campaign_id)
+                        if not campaign:
+                            raise RuntimeError(f"Campaign {campaign_id} not found")
+                        google_ads_service.batch_add_campaign_negatives(
+                            self.db, campaign, negs_in_group,
+                        )
+
+                # Mark all recs in group as applied + log
+                for rec, neg in items:
+                    payload = self._normalize_action_payload(rec)
+                    self._record_log(
+                        recommendation=rec,
+                        action_type="ADD_NEGATIVE",
+                        entity_type="ad_group" if level == "AD_GROUP" else "campaign",
+                        entity_id=ag_id or campaign_id,
+                        status="SUCCESS",
+                        execution_mode=mode,
+                        precondition_status="PASSED",
+                        action_payload=payload,
+                        context_json={"batch": True, "batch_size": len(items)},
+                    )
+                    rec.status = "applied"
+                    rec.applied_at = utcnow().replace(tzinfo=None)
+                    applied += 1
+
+                self.db.commit()
+
+            except Exception as exc:
+                self.db.rollback()
+                for rec, neg in items:
+                    payload = self._normalize_action_payload(rec)
+                    self._record_log(
+                        recommendation=rec,
+                        action_type="ADD_NEGATIVE",
+                        entity_type="ad_group" if level == "AD_GROUP" else "campaign",
+                        entity_id=ag_id or campaign_id,
+                        status="FAILED",
+                        execution_mode="LIVE",
+                        precondition_status="PASSED",
+                        action_payload=payload,
+                        context_json={"batch": True},
+                        error_message=str(exc),
+                    )
+                    failed += 1
+                    errors.append(f"Batch group campaign={campaign_id}: {exc}")
+                self.db.commit()
+                break  # stop after first batch error for safety
+
+        return {"applied": applied, "failed": failed, "errors": errors}
 
 

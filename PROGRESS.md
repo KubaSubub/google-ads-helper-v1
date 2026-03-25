@@ -1,11 +1,11 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-22
+# Updated: 2026-03-25
 
 ## Status
 - Backend: 385 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive mocked-API tests = 143 total)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- GAP Analysis: Phase A+B+C (9 rules, 12 endpoints, ConversionAction model, demographics) + Phase D (4 rules, 6 endpoints, 6 new models, PMax/audiences/extensions)
+- GAP Analysis: Phase A+B+C + Phase D (34 recommendation rules, 47 analytics endpoints, 7 new models, PMax/audiences/extensions)
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
 - Sync: 22 total phases (15 prior + 7 new Phase D phases)
 
@@ -452,9 +452,9 @@
   - **GAP 10** `GET /analytics/bid-strategy-report` — daily target vs actual time series
 - Added `ConversionAction` model (`backend/app/models/conversion_action.py`) for conversion tracking metadata
 - Added 9 new recommendation rules (R19–R27):
-  - R19: `AD_GROUP_HEALTH` — ad count, keyword count, zero-conv groups
+  - R19: `AD_GROUP_HEALTH` — ad count, keyword count, zero-conv groups (split into `SINGLE_AD_ALERT`, `OVERSIZED_AD_GROUP`, `ZERO_CONV_AD_GROUP`)
   - R20: `DISAPPROVED_AD_ALERT` — disapproved/approved-limited ads
-  - R21: `SMART_BIDDING_CONV_ALERT` — insufficient conversion volume for Smart Bidding
+  - R21: `SMART_BIDDING_DATA_STARVATION` — insufficient conversion volume for Smart Bidding (renamed from `SMART_BIDDING_CONV_ALERT`)
   - R22: `ECPC_DEPRECATION` — eCPC deprecation warning
   - R23: `SCALING_OPPORTUNITY` — hero campaigns with IS headroom to scale
   - R24: `TARGET_DEVIATION_ALERT` — CPA/ROAS significantly off target
@@ -512,7 +512,7 @@
 
 ## Validation (GAP Analysis Phase D 2026-03-22)
 - Backend: 385 tests passed (`pytest --tb=short -q` — 30 new Phase D tests)
-- Recommendations contract test: 30 enum values verified (was 26)
+- Recommendations contract test: 34 enum values verified (was 26 → 30 → 34)
 - Seed: all Phase D data visible after reseed (AssetGroup, AssetGroupDaily, AssetGroupAsset, AssetGroupSignal, CampaignAudienceMetric, CampaignAsset, PMax channel metrics)
 
 ## Comprehensive Playwright E2E Tests (2026-03-22 — commit 262792d)
@@ -534,4 +534,15 @@
 
 ## Validation (E2E tests 2026-03-22)
 - Playwright: 185 tests passed (100% pass rate, `npx playwright test`)
+
+## Recommendation Rules Refactoring (2026-03-22)
+- Split monolithic `AD_GROUP_HEALTH` rule into 3 granular rules:
+  - `SINGLE_AD_ALERT` — ad group with <2 active ads (no A/B testing)
+  - `OVERSIZED_AD_GROUP` — ad group with too many keywords (>20)
+  - `ZERO_CONV_AD_GROUP` — ad group with spend but 0 conversions
+- Renamed `SMART_BIDDING_CONV_ALERT` → `SMART_BIDDING_DATA_STARVATION` for clarity
+- Added `LOW_CTR_KEYWORD` rule (was incorrectly using `PAUSE_KEYWORD` for low-CTR alerts)
+- Changed `WASTED_SPEND_ALERT` from per-campaign to account-level aggregation with $50 minimum spend threshold
+- Total recommendation types: 30 → 34
+- Frontend: added TYPE_CONFIG entries for all previously missing v1.1/v1.2 rule types + added category filter (Rekomendacje/Alerty)
 

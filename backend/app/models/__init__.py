@@ -27,6 +27,7 @@ from .asset_group_asset import AssetGroupAsset
 from .asset_group_signal import AssetGroupSignal
 from .campaign_audience import CampaignAudienceMetric
 from .campaign_asset import CampaignAsset
+from .sync_coverage import SyncCoverage
 
 __all__ = [
     "Client",
@@ -54,5 +55,6 @@ __all__ = [
     "AssetGroupSignal",
     "CampaignAudienceMetric",
     "CampaignAsset",
+    "SyncCoverage",
 ]
 

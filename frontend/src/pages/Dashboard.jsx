@@ -1,8 +1,8 @@
 ﻿import { useState, useEffect, useMemo, useCallback } from 'react'
-import { LineChart, Line } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
     MousePointerClick, DollarSign, Target, BarChart3,
-    TrendingUp, TrendingDown,
+    TrendingUp, TrendingDown, ChevronRight,
 } from 'lucide-react'
 import {
     getDashboardKPIs, getCampaigns,
@@ -149,10 +149,15 @@ function Sparkline({ data, direction }) {
     if (!data || data.length < 2) {
         return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>—</span>
     }
-    const color = direction === 'up' ? '#4ADE80' : direction === 'down' ? '#F87171' : '#4F8EF7'
+    // Cost trend: up = bad (spending more), down = good (saving)
+    const color = direction === 'up' ? '#F87171' : direction === 'down' ? '#4ADE80' : '#4F8EF7'
+    // Backend returns flat array [12.5, 14.2, ...] — Recharts needs [{v: 12.5}, ...]
+    const chartData = Array.isArray(data) && typeof data[0] === 'number'
+        ? data.map(v => ({ v }))
+        : data
     return (
-        <LineChart width={72} height={24} data={data}>
-            <Line type="monotone" dataKey="cost" stroke={color} strokeWidth={1.5} dot={false} />
+        <LineChart width={72} height={24} data={chartData}>
+            <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} dot={false} />
         </LineChart>
     )
 }
@@ -170,6 +175,8 @@ export default function Dashboard() {
     const [budgetPacing, setBudgetPacing]   = useState(null)
     const [deviceData, setDeviceData]       = useState(null)
     const [geoData, setGeoData]             = useState(null)
+
+    const [expandedDevice, setExpandedDevice] = useState(null)
 
     const [loading, setLoading]             = useState(false)
     const [healthLoading, setHealthLoading] = useState(false)
@@ -198,7 +205,7 @@ export default function Dashboard() {
         const _catch = (p) => p.catch(err => { console.error('[Dashboard secondary]', err); return null })
         return Promise.all([
             _catch(getHealthScore(selectedClientId, allParams)),
-            _catch(getCampaignTrends(selectedClientId, null, allParams)),
+            _catch(getCampaignTrends(selectedClientId, undefined, allParams)),
             getRecommendations(selectedClientId, { status: 'pending' }).catch(err => { console.error('[Dashboard recs]', err); return { recommendations: [] } }),
             _catch(getBudgetPacing(selectedClientId, campaignParams)),
             _catch(getDeviceBreakdown(selectedClientId, allParams)),
@@ -230,9 +237,11 @@ export default function Dashboard() {
         return campaigns.filter(c => {
             if (filters.campaignType !== 'ALL' && c.campaign_type !== filters.campaignType) return false
             if (filters.status !== 'ALL' && c.status !== filters.status) return false
+            if (filters.campaignName && !c.name?.toLowerCase().includes(filters.campaignName.toLowerCase())) return false
+            if (filters.campaignLabel !== 'ALL' && !(c.labels || []).includes(filters.campaignLabel)) return false
             return true
         })
-    }, [campaigns, filters.campaignType, filters.status])
+    }, [campaigns, filters.campaignType, filters.status, filters.campaignName, filters.campaignLabel])
     const filteredCampaignIds = useMemo(
         () => filteredCampaigns.map(c => c.id),
         [filteredCampaigns]
@@ -258,7 +267,10 @@ export default function Dashboard() {
                         Pulpit
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Ostatnie {days} dni
+                        {typeof filters.period === 'number'
+                            ? `Ostatnie ${filters.period} dni`
+                            : `${filters.dateFrom} — ${filters.dateTo}`
+                        }
                     </p>
                 </div>
             </div>
@@ -378,19 +390,92 @@ export default function Dashboard() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {deviceData.devices.map(d => {
                                     const color = d.device === 'MOBILE' ? '#4F8EF7' : d.device === 'DESKTOP' ? '#7B5CE0' : '#FBBF24'
+                                    const isExpanded = expandedDevice === d.device
+                                    const hasTrend = d.trend && d.trend.length >= 2
                                     return (
                                         <div key={d.device}>
-                                            <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                                                <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
+                                            <div
+                                                className="flex items-center justify-between"
+                                                style={{ marginBottom: 4, cursor: hasTrend ? 'pointer' : 'default' }}
+                                                onClick={() => hasTrend && setExpandedDevice(isExpanded ? null : d.device)}
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    {hasTrend && (
+                                                        <ChevronRight
+                                                            size={12}
+                                                            style={{
+                                                                color: 'rgba(255,255,255,0.3)',
+                                                                transform: isExpanded ? 'rotate(90deg)' : 'none',
+                                                                transition: 'transform 0.15s',
+                                                            }}
+                                                        />
+                                                    )}
+                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
+                                                </div>
                                                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
                                             </div>
                                             <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
                                                 <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
                                             </div>
                                             <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-                                                <span>CTR {d.ctr}% Â· CPC {d.cpc.toFixed(2)} zł</span>
+                                                <span>CTR {d.ctr}% · CPC {d.cpc.toFixed(2)} zł</span>
                                                 <span>ROAS {d.roas}×</span>
                                             </div>
+
+                                            {/* Expanded device trend */}
+                                            {isExpanded && hasTrend && (
+                                                <div style={{
+                                                    marginTop: 8,
+                                                    padding: '12px 14px',
+                                                    background: 'rgba(255,255,255,0.02)',
+                                                    border: '1px solid rgba(255,255,255,0.06)',
+                                                    borderRadius: 8,
+                                                }}>
+                                                    <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+                                                        {[
+                                                            { label: 'Kliknięcia', key: 'clicks', color: '#4F8EF7' },
+                                                            { label: 'Koszt', key: 'cost', color: '#FBBF24' },
+                                                            { label: 'Konwersje', key: 'conversions', color: '#4ADE80' },
+                                                        ].map(m => {
+                                                            const values = d.trend.map(t => t[m.key])
+                                                            const avg = values.reduce((a, b) => a + b, 0) / values.length
+                                                            return (
+                                                                <div key={m.key} style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>
+                                                                    <span style={{ color: m.color, fontWeight: 600 }}>●</span>{' '}
+                                                                    {m.label}: <span style={{ color: '#F0F0F0' }}>
+                                                                        {m.key === 'cost' ? `${avg.toFixed(2)} zł` : avg.toFixed(1)}
+                                                                    </span>
+                                                                    <span style={{ color: 'rgba(255,255,255,0.25)' }}> avg/d</span>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                    <ResponsiveContainer width="100%" height={100}>
+                                                        <LineChart data={d.trend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                                                            <XAxis
+                                                                dataKey="date"
+                                                                tickFormatter={v => { const dt = new Date(v); return `${dt.getDate()}.${(dt.getMonth()+1).toString().padStart(2,'0')}` }}
+                                                                tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.2)' }}
+                                                                axisLine={false} tickLine={false}
+                                                                interval="preserveStartEnd"
+                                                            />
+                                                            <Tooltip
+                                                                contentStyle={{
+                                                                    background: '#1a1d24',
+                                                                    border: '1px solid rgba(255,255,255,0.12)',
+                                                                    borderRadius: 8,
+                                                                    fontSize: 11,
+                                                                }}
+                                                                labelFormatter={v => { const dt = new Date(v); return `${dt.getDate()}.${(dt.getMonth()+1).toString().padStart(2,'0')}` }}
+                                                            />
+                                                            <Line type="monotone" dataKey="clicks" stroke="#4F8EF7" strokeWidth={1.5} dot={false} name="Kliknięcia" />
+                                                            <Line type="monotone" dataKey="cost" stroke="#FBBF24" strokeWidth={1.5} dot={false} name="Koszt (zł)" />
+                                                            <Line type="monotone" dataKey="conversions" stroke="#4ADE80" strokeWidth={1.5} dot={false} name="Konwersje" />
+                                                        </LineChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            )}
                                         </div>
                                     )
                                 })}

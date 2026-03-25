@@ -41,6 +41,7 @@ export const getClients = () => api.get('/clients/');
 export const getClient = (id) => api.get(`/clients/${id}`);
 export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
 export const syncClient = (id, days = 90) => api.post('/sync/trigger', null, { params: { client_id: id, days } });
+export const getDataCoverage = (clientId) => api.get('/sync/data-coverage', { params: { client_id: clientId } });
 export const discoverClients = (customerIds) =>
     api.post('/clients/discover', null, {
         params: customerIds ? { customer_ids: customerIds } : {},
@@ -158,20 +159,10 @@ export const detectAnomalies = (clientId) =>
 export const getCorrelationMatrix = (data) =>
     api.post('/analytics/correlation', data);
 
-// Export
-export const exportSearchTerms = (clientId, format = 'xlsx') =>
-    api.get('/export/search-terms', {
-        params: { client_id: clientId, format },
-        responseType: 'blob',
-    });
-export const exportKeywords = (clientId, format = 'xlsx') =>
-    api.get('/export/keywords', {
-        params: { client_id: clientId, format },
-        responseType: 'blob',
-    });
-
 // Sync
 export const getSyncStatus = () => api.get('/sync/status');
+export const getSyncPresets = () => api.get('/sync/presets');
+export const getSyncCoverage = (clientId) => api.get('/sync/coverage', { params: { client_id: clientId } });
 
 // Semantic
 export const getSemanticClusters = (params) =>
@@ -185,8 +176,8 @@ export const getTrends = (clientId, params = {}) =>
     api.get('/analytics/trends', { params: { client_id: clientId, ...params } });
 export const getHealthScore = (clientId, params = {}) =>
     api.get('/analytics/health-score', { params: { client_id: clientId, ...params } });
-export const getCampaignTrends = (clientId, days = 7, params = {}) =>
-    api.get('/analytics/campaign-trends', { params: { client_id: clientId, days, ...params } });
+export const getCampaignTrends = (clientId, days, params = {}) =>
+    api.get('/analytics/campaign-trends', { params: { client_id: clientId, ...(days != null ? { days } : {}), ...params } });
 export const getBudgetPacing = (clientId, params = {}) =>
     api.get('/analytics/budget-pacing', { params: { client_id: clientId, ...params } });
 export const getImpressionShare = (clientId, params = {}) =>

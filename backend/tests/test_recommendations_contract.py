@@ -48,6 +48,7 @@ def test_recommendation_type_enum_matches_active_ruleset():
         "ADD_NEGATIVE",
         "PAUSE_AD",
         "REALLOCATE_BUDGET",
+        "LOW_CTR_KEYWORD",
         "QS_ALERT",
         "IS_BUDGET_ALERT",
         "IS_RANK_ALERT",
@@ -60,8 +61,11 @@ def test_recommendation_type_enum_matches_active_ruleset():
         "ANALYTICS_ALERT",
         # v2.0 GAP rules (Phase A)
         "AD_GROUP_HEALTH",
+        "SINGLE_AD_ALERT",
+        "OVERSIZED_AD_GROUP",
+        "ZERO_CONV_AD_GROUP",
         "DISAPPROVED_AD_ALERT",
-        "SMART_BIDDING_CONV_ALERT",
+        "SMART_BIDDING_DATA_STARVATION",
         "ECPC_DEPRECATION",
         "SCALING_OPPORTUNITY",
         # v2.0 GAP rules (Phase B+C)
@@ -78,7 +82,7 @@ def test_recommendation_type_enum_matches_active_ruleset():
     actual = {member.value for member in RecommendationType}
 
     assert expected == actual
-    assert len(actual) == 30
+    assert len(actual) == 34
 
 
 def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):

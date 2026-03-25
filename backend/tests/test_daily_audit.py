@@ -150,13 +150,16 @@ class TestDailyAudit:
         data = resp.json()
         assert data["pending_recommendations"]["total_pending"] >= 1
 
-    def test_kpi_snapshot_today_vs_yesterday(self, api_client, db):
+    def test_kpi_snapshot_current_vs_previous(self, api_client, db):
         client = _seed(db)
         resp = api_client.get(f"/api/v1/daily-audit/?client_id={client.id}")
         data = resp.json()
         snap = data["kpi_snapshot"]
-        assert snap["today_clicks"] == 50
-        assert snap["yesterday_clicks"] == 40
+        # current_period = last 3 full days (yesterday-2..yesterday)
+        # previous_period = 3 days before that
+        assert snap["current_clicks"] > 0
+        assert snap["previous_clicks"] > 0
+        assert snap["period_days"] == 3
 
     def test_health_summary_has_score(self, api_client, db):
         client = _seed(db)
@@ -173,4 +176,4 @@ class TestDailyAudit:
         assert resp.status_code == 200
         data = resp.json()
         assert data["budget_pacing"] == []
-        assert data["kpi_snapshot"]["today_clicks"] == 0
+        assert data["kpi_snapshot"]["current_clicks"] == 0

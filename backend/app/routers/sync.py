@@ -1,19 +1,26 @@
 """Sync endpoint — trigger Google Ads data sync manually or check status."""
 
+import json
 from datetime import date, datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, Query
+from typing import Generator, Optional
+
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from loguru import logger
+
 from app.config import settings
+from app.database import SessionLocal, get_db
 from app.demo_guard import ensure_demo_write_allowed
-from app.database import get_db
 from app.models import (
-    Client, SyncLog, Campaign, AdGroup, Keyword, KeywordDaily, NegativeKeyword,
-    MetricDaily, MetricSegmented, SearchTerm, ChangeEvent,
+    Client, SyncLog, SyncCoverage, Campaign, AdGroup, Keyword, KeywordDaily,
+    NegativeKeyword, MetricDaily, MetricSegmented, SearchTerm, ChangeEvent,
 )
 from app.services.google_ads import google_ads_service
 from app.services.google_ads_debug import google_ads_debug_service
+from app.services.sync_config import PHASE_REGISTRY, PHASE_ORDER, SYNC_PRESETS, GROUP_LABELS
+from app.utils.sse import sse_event
 
 router = APIRouter(prefix="/sync", tags=["Data Sync"])
 
@@ -643,5 +650,457 @@ def sync_single_phase(
         return {"success": False, "phase": phase_name, "error": str(e)[:500]}
 
 
+@router.get("/data-coverage")
+def get_data_coverage(
+    client_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Return date range of synced data and last sync info for a client."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        return {"error": "Client not found"}
+
+    campaign_ids = db.query(Campaign.id).filter(Campaign.client_id == client_id)
+
+    min_date = (
+        db.query(func.min(MetricDaily.date))
+        .filter(MetricDaily.campaign_id.in_(campaign_ids))
+        .scalar()
+    )
+    max_date = (
+        db.query(func.max(MetricDaily.date))
+        .filter(MetricDaily.campaign_id.in_(campaign_ids))
+        .scalar()
+    )
+
+    last_sync = (
+        db.query(SyncLog)
+        .filter(SyncLog.client_id == client_id, SyncLog.status.in_(["success", "partial"]))
+        .order_by(SyncLog.finished_at.desc())
+        .first()
+    )
+
+    return {
+        "client_id": client_id,
+        "data_from": min_date.isoformat() if min_date else None,
+        "data_to": max_date.isoformat() if max_date else None,
+        "last_sync_at": last_sync.finished_at.isoformat() if last_sync and last_sync.finished_at else None,
+        "last_sync_days": last_sync.days if last_sync else None,
+        "last_sync_status": last_sync.status if last_sync else None,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# New endpoints: presets, per-resource coverage, SSE trigger-stream
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/presets")
+def get_sync_presets():
+    """Return sync presets and phase registry for the configuration modal."""
+    phases_info = {
+        k: {
+            "label": v["label"],
+            "group": v["group"],
+            "max_days": v["max_days"],
+            "pattern": v["pattern"],
+        }
+        for k, v in PHASE_REGISTRY.items()
+    }
+    presets_info = {
+        k: {
+            "label": v["label"],
+            "description": v["description"],
+            "mode": v["mode"],
+            "days": v.get("days"),
+        }
+        for k, v in SYNC_PRESETS.items()
+    }
+    return {
+        "presets": presets_info,
+        "phases": phases_info,
+        "groups": GROUP_LABELS,
+        "phase_order": PHASE_ORDER,
+    }
+
+
+@router.get("/coverage")
+def get_sync_coverage(
+    client_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Return per-resource sync coverage for a client."""
+    coverages = (
+        db.query(SyncCoverage)
+        .filter(SyncCoverage.client_id == client_id)
+        .all()
+    )
+    result = {}
+    for c in coverages:
+        result[c.resource_type] = {
+            "data_from": c.data_from.isoformat() if c.data_from else None,
+            "data_to": c.data_to.isoformat() if c.data_to else None,
+            "last_sync_at": c.last_sync_at.isoformat() if c.last_sync_at else None,
+            "last_status": c.last_status,
+            "max_days": PHASE_REGISTRY.get(c.resource_type, {}).get("max_days"),
+        }
+    return result
+
+
+# ─── Incremental date resolution ──────────────────────────────────
+
+
+def _resolve_dates_for_phase(
+    phase_name: str,
+    mode: str,
+    coverage: Optional[SyncCoverage],
+    user_date_from: Optional[date] = None,
+    user_date_to: Optional[date] = None,
+    fixed_days: Optional[int] = None,
+) -> tuple[Optional[date], Optional[date]]:
+    """Compute (date_from, date_to) for a metric phase based on mode and coverage."""
+    meta = PHASE_REGISTRY.get(phase_name, {})
+    max_days = meta.get("max_days")
+    yesterday = date.today() - timedelta(days=1)
+
+    # date_to is always yesterday (today may be incomplete)
+    effective_to = user_date_to or yesterday
+
+    if mode == "fixed" and fixed_days:
+        effective_from = date.today() - timedelta(days=fixed_days)
+    elif mode == "incremental" and coverage and coverage.data_to:
+        # Start from day after last synced data
+        effective_from = coverage.data_to + timedelta(days=1)
+        if effective_from > effective_to:
+            # Already up to date
+            return None, None
+    else:
+        # Full sync — go back as far as API allows
+        if max_days:
+            effective_from = date.today() - timedelta(days=max_days)
+        else:
+            effective_from = date.today() - timedelta(days=365)
+
+    # User override
+    if user_date_from:
+        effective_from = user_date_from
+
+    # Clamp to API limit
+    if max_days:
+        earliest_allowed = date.today() - timedelta(days=max_days)
+        if effective_from < earliest_allowed:
+            effective_from = earliest_allowed
+
+    return effective_from, effective_to
+
+
+def _upsert_coverage(
+    db: Session,
+    client_id: int,
+    resource_type: str,
+    phase_date_from: Optional[date],
+    phase_date_to: Optional[date],
+    status: str = "ok",
+):
+    """Update or create SyncCoverage record after a sync phase."""
+    existing = (
+        db.query(SyncCoverage)
+        .filter(
+            SyncCoverage.client_id == client_id,
+            SyncCoverage.resource_type == resource_type,
+        )
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    if existing:
+        if phase_date_from and (not existing.data_from or phase_date_from < existing.data_from):
+            existing.data_from = phase_date_from
+        if phase_date_to and (not existing.data_to or phase_date_to > existing.data_to):
+            existing.data_to = phase_date_to
+        existing.last_sync_at = now
+        existing.last_status = status
+    else:
+        db.add(SyncCoverage(
+            client_id=client_id,
+            resource_type=resource_type,
+            data_from=phase_date_from,
+            data_to=phase_date_to,
+            last_sync_at=now,
+            last_status=status,
+        ))
+    db.commit()
+
+
+# ─── Phase executor mapping ───────────────────────────────────────
+
+
+def _build_phase_executor(cid: str, db: Session, date_from: date, date_to: date, client_id: int):
+    """Return a dict mapping phase_name -> callable returning row count."""
+    return {
+        "campaigns":            lambda: google_ads_service.sync_campaigns(db, cid),
+        "impression_share":     lambda: google_ads_service.sync_campaign_impression_share(db, cid),
+        "ad_groups":            lambda: google_ads_service.sync_ad_groups(db, cid),
+        "keywords":             lambda: google_ads_service.sync_keywords(db, cid),
+        "negative_keywords":    lambda: google_ads_service.sync_negative_keywords(db, cid),
+        "keyword_daily":        lambda: google_ads_service.sync_keyword_daily(db, cid, date_from, date_to),
+        "daily_metrics":        lambda: google_ads_service.sync_daily_metrics(db, cid, date_from, date_to),
+        "search_terms":         lambda: google_ads_service.sync_search_terms(db, cid, date_from, date_to),
+        "pmax_terms":           lambda: google_ads_service.sync_pmax_search_terms(db, cid, date_from, date_to),
+        "device_metrics":       lambda: google_ads_service.sync_device_metrics(db, cid, date_from, date_to),
+        "geo_metrics":          lambda: google_ads_service.sync_geo_metrics(db, cid, date_from, date_to),
+        "change_events":        lambda: google_ads_service.sync_change_events(db, cid, client_id, days=28),
+        "conversion_actions":   lambda: google_ads_service.sync_conversion_actions(db, cid),
+        "age_metrics":          lambda: google_ads_service.sync_age_metrics(db, cid, date_from, date_to),
+        "gender_metrics":       lambda: google_ads_service.sync_gender_metrics(db, cid, date_from, date_to),
+        "pmax_channel_metrics": lambda: google_ads_service.sync_pmax_channel_metrics(db, cid, date_from, date_to),
+        "asset_groups":         lambda: google_ads_service.sync_asset_groups(db, cid),
+        "asset_group_daily":    lambda: google_ads_service.sync_asset_group_daily(db, cid, date_from, date_to),
+        "asset_group_assets":   lambda: google_ads_service.sync_asset_group_assets(db, cid),
+        "asset_group_signals":  lambda: google_ads_service.sync_asset_group_signals(db, cid),
+        "campaign_audiences":   lambda: google_ads_service.sync_campaign_audiences(db, cid, date_from, date_to),
+        "campaign_assets":      lambda: google_ads_service.sync_campaign_assets(db, cid),
+    }
+
+
+# ─── SSE streaming sync endpoint ─────────────────────────────────
+
+
+def _sse(event: str, data: dict) -> str:
+    return sse_event(event, json.dumps(data, default=str))
+
+
+@router.post("/trigger-stream")
+def trigger_sync_stream(
+    request: Request,
+    client_id: int = Query(...),
+    preset: Optional[str] = Query(None),
+    phases_filter: Optional[str] = Query(None, alias="phases", description="Comma-separated phase names"),
+    date_from_param: Optional[date] = Query(None, alias="date_from"),
+    date_to_param: Optional[date] = Query(None, alias="date_to"),
+    allow_demo_write: bool = Query(False),
+):
+    """Trigger sync with SSE progress streaming.
+
+    Returns a Server-Sent Events stream with per-phase progress updates.
+    """
+
+    def generate() -> Generator[str, None, None]:
+        db = SessionLocal()
+        try:
+            client = db.query(Client).filter(Client.id == client_id).first()
+            if not client:
+                yield _sse("error", {"message": "Client not found"})
+                return
+
+            try:
+                ensure_demo_write_allowed(db, client.id, allow_demo_write=allow_demo_write, operation="Sync")
+            except Exception as e:
+                yield _sse("error", {"message": str(e)})
+                return
+
+            diagnostics = google_ads_service.get_connection_diagnostics()
+            if not diagnostics["ready"]:
+                yield _sse("error", {"message": diagnostics["reason"]})
+                return
+
+            cid = google_ads_service.normalize_customer_id(client.google_customer_id)
+
+            # Resolve preset config
+            preset_config = SYNC_PRESETS.get(preset or "incremental", SYNC_PRESETS["incremental"])
+            mode = preset_config["mode"]
+            fixed_days = preset_config.get("days")
+
+            # Determine which phases to run
+            if phases_filter:
+                requested_phases = [p.strip() for p in phases_filter.split(",") if p.strip() in PHASE_REGISTRY]
+            else:
+                requested_phases = preset_config["phases"]
+
+            # Load existing coverage for incremental logic
+            coverages = {
+                c.resource_type: c
+                for c in db.query(SyncCoverage).filter(SyncCoverage.client_id == client_id).all()
+            }
+
+            # Create sync log
+            sync_log = SyncLog(client_id=client.id, days=0, status="running")
+            db.add(sync_log)
+            db.commit()
+            db.refresh(sync_log)
+
+            total_phases = len(requested_phases)
+            total_synced = 0
+            total_errors = 0
+            phase_results = {}
+            failed_phases = set()
+            import time
+            start_time = time.time()
+
+            yield _sse("sync_start", {
+                "sync_log_id": sync_log.id,
+                "total_phases": total_phases,
+                "mode": mode,
+                "phases": requested_phases,
+            })
+
+            for idx, phase_name in enumerate(requested_phases):
+                # Check if client disconnected
+                if hasattr(request, '_disconnected') and request._disconnected:
+                    break
+
+                meta = PHASE_REGISTRY.get(phase_name, {})
+                dep = meta.get("depends_on")
+
+                # Check dependency
+                if dep and dep in failed_phases:
+                    phase_results[phase_name] = {"count": 0, "status": "skipped", "reason": f"{dep} nie powiodło się"}
+                    yield _sse("phase_skip", {
+                        "phase": phase_name,
+                        "index": idx + 1,
+                        "total": total_phases,
+                        "label": meta.get("label", phase_name),
+                        "reason": f"Zależność {dep} nie powiodła się",
+                    })
+                    continue
+
+                # Resolve dates for this specific phase
+                if meta.get("pattern") == "B":
+                    phase_from, phase_to = _resolve_dates_for_phase(
+                        phase_name, mode, coverages.get(phase_name),
+                        date_from_param, date_to_param, fixed_days,
+                    )
+                    if phase_from is None and phase_to is None:
+                        # Already up to date
+                        phase_results[phase_name] = {"count": 0, "status": "skipped", "reason": "Dane aktualne"}
+                        yield _sse("phase_skip", {
+                            "phase": phase_name,
+                            "index": idx + 1,
+                            "total": total_phases,
+                            "label": meta.get("label", phase_name),
+                            "reason": "Dane aktualne",
+                        })
+                        continue
+                elif meta.get("pattern") == "C":
+                    # Change events — always last 28 days
+                    phase_from = date.today() - timedelta(days=28)
+                    phase_to = date.today() - timedelta(days=1)
+                else:
+                    # Pattern A — structural, no dates
+                    phase_from = None
+                    phase_to = None
+
+                yield _sse("phase_start", {
+                    "phase": phase_name,
+                    "index": idx + 1,
+                    "total": total_phases,
+                    "label": meta.get("label", phase_name),
+                    "date_from": str(phase_from) if phase_from else None,
+                    "date_to": str(phase_to) if phase_to else None,
+                })
+
+                # Build executor with resolved dates
+                executor = _build_phase_executor(
+                    cid, db,
+                    phase_from or (date.today() - timedelta(days=30)),
+                    phase_to or (date.today() - timedelta(days=1)),
+                    client.id,
+                )
+
+                try:
+                    fn = executor.get(phase_name)
+                    if not fn:
+                        raise RuntimeError(f"Unknown phase: {phase_name}")
+                    count = fn()
+                    phase_results[phase_name] = {"count": count, "status": "ok"}
+                    total_synced += count
+
+                    # Update coverage
+                    _upsert_coverage(db, client.id, phase_name, phase_from, phase_to, "ok")
+
+                    yield _sse("phase_done", {
+                        "phase": phase_name,
+                        "index": idx + 1,
+                        "total": total_phases,
+                        "count": count,
+                        "status": "ok",
+                    })
+
+                except Exception as e:
+                    err_msg = str(e)[:500]
+                    logger.error(f"SSE sync phase {phase_name} failed: {err_msg}")
+                    phase_results[phase_name] = {"count": 0, "status": "error", "error": err_msg}
+                    total_errors += 1
+                    if meta.get("critical"):
+                        failed_phases.add(phase_name)
+
+                    _upsert_coverage(db, client.id, phase_name, phase_from, phase_to, "error")
+
+                    yield _sse("phase_error", {
+                        "phase": phase_name,
+                        "index": idx + 1,
+                        "total": total_phases,
+                        "error": err_msg,
+                        "critical": meta.get("critical", False),
+                    })
+
+                    # Abort on critical failure
+                    if meta.get("critical"):
+                        failed_phases.add(phase_name)
+
+                # Emit progress
+                elapsed = time.time() - start_time
+                done_count = idx + 1
+                if done_count > 0 and done_count < total_phases:
+                    avg_per_phase = elapsed / done_count
+                    eta_seconds = int(avg_per_phase * (total_phases - done_count))
+                else:
+                    eta_seconds = 0
+
+                yield _sse("progress", {
+                    "percent": int(done_count / total_phases * 100),
+                    "done": done_count,
+                    "total": total_phases,
+                    "eta_seconds": eta_seconds,
+                    "elapsed_seconds": int(elapsed),
+                })
+
+            # Finalize sync log
+            elapsed_total = time.time() - start_time
+            if total_errors == 0:
+                sync_log.status = "success"
+            elif total_errors < len(phase_results):
+                sync_log.status = "partial"
+            else:
+                sync_log.status = "failed"
+
+            sync_log.phases = phase_results
+            sync_log.total_synced = total_synced
+            sync_log.total_errors = total_errors
+            sync_log.finished_at = datetime.now(timezone.utc)
+            db.commit()
+
+            yield _sse("done", {
+                "status": sync_log.status,
+                "total_synced": total_synced,
+                "total_errors": total_errors,
+                "sync_log_id": sync_log.id,
+                "elapsed_seconds": int(elapsed_total),
+                "phases": phase_results,
+            })
+
+        except Exception as exc:
+            logger.exception("SSE sync stream error")
+            yield _sse("error", {"message": str(exc)[:500]})
+        finally:
+            db.close()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 

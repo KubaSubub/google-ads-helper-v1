@@ -1,5 +1,6 @@
 """Daily Audit endpoint - aggregates all morning PPC checks into one view."""
 
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -68,9 +69,9 @@ def daily_audit(
     campaign_lookup = {c.id: c.name for c in all_campaigns}
 
     # ------------------------------------------------------------------
-    # 1. budget_pacing
+    # 1. budget_pacing  (use yesterday — today has no data yet)
     # ------------------------------------------------------------------
-    budget_pacing = _build_budget_pacing(db, enabled_campaigns, today)
+    budget_pacing = _build_budget_pacing(db, enabled_campaigns, yesterday)
 
     # ------------------------------------------------------------------
     # 2. anomalies_24h
@@ -107,9 +108,9 @@ def daily_audit(
     health_summary = _build_health_summary(db, client_id, enabled_campaign_ids)
 
     # ------------------------------------------------------------------
-    # 8. kpi_snapshot
+    # 8. kpi_snapshot  (last 3 full days vs previous 3 full days)
     # ------------------------------------------------------------------
-    kpi_snapshot = _build_kpi_snapshot(db, enabled_campaign_ids, today, yesterday)
+    kpi_snapshot = _build_kpi_snapshot(db, enabled_campaign_ids, today)
 
     return {
         "client_id": client_id,
@@ -133,26 +134,29 @@ def daily_audit(
 def _build_budget_pacing(
     db: Session,
     enabled_campaigns: list[Campaign],
-    today: date,
+    reference_date: date,
 ) -> list[dict]:
-    """Budget status for every enabled campaign."""
+    """Budget status for every enabled campaign on *reference_date*.
+
+    We use yesterday (the last full day) so numbers are never zero due
+    to sync delay.
+    """
     results: list[dict] = []
 
     for camp in enabled_campaigns:
         daily_budget = micros_to_currency(camp.budget_micros)
 
-        # Today's spend estimate from MetricDaily.
-        spent_today_micros = (
+        spent_micros = (
             db.query(func.sum(MetricDaily.cost_micros))
             .filter(
                 MetricDaily.campaign_id == camp.id,
-                MetricDaily.date == today,
+                MetricDaily.date == reference_date,
             )
             .scalar()
         ) or 0
-        spent_today = micros_to_currency(spent_today_micros)
+        spent = micros_to_currency(spent_micros)
 
-        pacing_pct = round((spent_today / daily_budget * 100), 1) if daily_budget > 0 else 0.0
+        pacing_pct = round((spent / daily_budget * 100), 1) if daily_budget > 0 else 0.0
 
         # Budget-limited flag based on IS lost to budget.
         is_limited = bool(
@@ -161,13 +165,21 @@ def _build_budget_pacing(
             or (camp.search_budget_lost_abs_top_is or 0) > 0
         )
 
+        budget_lost_is = round((camp.search_budget_lost_is or 0) * 100, 1)
+        budget_lost_top_is = round((camp.search_budget_lost_top_is or 0) * 100, 1)
+        budget_lost_abs_top_is = round((camp.search_budget_lost_abs_top_is or 0) * 100, 1)
+
         results.append({
             "campaign_id": camp.id,
             "campaign_name": camp.name,
             "daily_budget": round(daily_budget, 2),
-            "spent_today": round(spent_today, 2),
+            "spent": round(spent, 2),
             "pacing_pct": pacing_pct,
             "is_limited": is_limited,
+            "budget_lost_is": budget_lost_is,
+            "budget_lost_top_is": budget_lost_top_is,
+            "budget_lost_abs_top_is": budget_lost_abs_top_is,
+            "reference_date": str(reference_date),
         })
 
     return results
@@ -312,14 +324,19 @@ def _build_search_terms_needing_action(
     end_date: date,
     campaign_lookup: dict[int, str],
 ) -> list[dict]:
-    """Search terms with wasted spend in the last 7 days (top 50 by cost)."""
+    """Search terms with wasted spend (top 50 by cost).
+
+    Uses an overlapping-range check so that terms whose reporting window
+    intersects the requested period are included (seed data often stores
+    one row per full sync window rather than per day).
+    """
     query = (
         db.query(SearchTerm)
         .join(Campaign, SearchTerm.campaign_id == Campaign.id)
         .filter(
             Campaign.client_id == client_id,
-            SearchTerm.date_from >= start_date,
-            SearchTerm.date_to <= end_date,
+            SearchTerm.date_to >= start_date,
+            SearchTerm.date_from <= end_date,
         )
         .filter(
             # Clicks >= 3 with zero conversions, OR cost > $5 with zero conversions.
@@ -346,8 +363,23 @@ def _build_search_terms_needing_action(
     ]
 
 
+_RULE_LABELS: dict[str, str] = {
+    "ADD_KEYWORD": "Dodaj keyword",
+    "PAUSE_KEYWORD": "Pauzuj keyword",
+    "INCREASE_BID": "Zwiększ stawkę",
+    "DECREASE_BID": "Obniż stawkę",
+    "ADD_NEGATIVE": "Dodaj negatyw",
+    "PAUSE_AD": "Pauzuj reklamę",
+    "REALLOCATE_BUDGET": "Przenieś budżet",
+    "INCREASE_BUDGET": "Zwiększ budżet",
+    "QUALITY_SCORE_ALERT": "Quality Score",
+    "IS_LOST_BUDGET": "IS — budżet",
+    "IS_LOST_RANK": "IS — pozycja",
+}
+
+
 def _build_pending_recommendations(db: Session, client_id: int) -> dict:
-    """Count of pending recommendations plus top 5 by priority."""
+    """Pending recommendations grouped by rule type for the audit view."""
     pending = (
         db.query(Recommendation)
         .filter(
@@ -358,25 +390,64 @@ def _build_pending_recommendations(db: Session, client_id: int) -> dict:
     )
     total = len(pending)
 
-    # Sort: HIGH first, then MEDIUM, then LOW.
-    pending.sort(key=lambda r: _PRIORITY_ORDER.get(r.priority, 99))
-    top_5 = pending[:5]
+    # Group by rule_id.
+    by_rule: dict[str, list] = defaultdict(list)
+    for rec in pending:
+        by_rule[rec.rule_id].append(rec)
 
-    items = []
-    for rec in top_5:
-        evidence = rec.evidence_json or {}
-        items.append({
-            "id": rec.id,
-            "type": rec.rule_id,
-            "priority": rec.priority,
-            "reason": rec.reason,
-            "campaign_name": evidence.get("campaign_name"),
-            "keyword_text": evidence.get("keyword_text"),
+    groups = []
+    for rule_id, recs in by_rule.items():
+        # Determine highest priority in group.
+        recs.sort(key=lambda r: _PRIORITY_ORDER.get(r.priority, 99))
+        max_priority = recs[0].priority if recs else "LOW"
+
+        # Build top 3 items with entity name + key metric.
+        items = []
+        for rec in recs[:3]:
+            evidence = rec.evidence_json or {}
+            meta = evidence.get("metadata", {})
+            entity = meta.get("entity_name") or evidence.get("keyword_text") or ""
+            campaign = meta.get("campaign_name") or ""
+
+            # Pick a meaningful metric string.
+            conv = meta.get("conversions")
+            cost = meta.get("cost")
+            metric = ""
+            if conv is not None and conv > 0:
+                metric = f"{int(conv)} konw."
+            elif cost is not None and cost > 0:
+                metric = f"{cost:.0f} zł / 0 konw."
+
+            detail = ""
+            action = evidence.get("recommended_action", "")
+            if "EXACT" in action:
+                detail = "→ EXACT"
+            elif "PHRASE" in action:
+                detail = "→ PHRASE"
+            elif "Review" in action:
+                detail = "→ przejrzyj"
+
+            items.append({
+                "entity_name": entity,
+                "campaign_name": campaign,
+                "metric": metric,
+                "detail": detail,
+            })
+
+        groups.append({
+            "rule_id": rule_id,
+            "label": _RULE_LABELS.get(rule_id, rule_id.replace("_", " ").title()),
+            "count": len(recs),
+            "max_priority": max_priority,
+            "items": items,
         })
+
+    # Sort groups: highest priority first, then by count descending.
+    groups.sort(key=lambda g: (_PRIORITY_ORDER.get(g["max_priority"], 99), -g["count"]))
 
     return {
         "total_pending": total,
-        "top_5": items,
+        "groups": groups,
     }
 
 
@@ -412,20 +483,32 @@ def _build_kpi_snapshot(
     db: Session,
     campaign_ids: list[int],
     today: date,
-    yesterday: date,
+    period_days: int = 3,
 ) -> dict:
-    """Today vs yesterday aggregated spend, clicks, conversions."""
+    """Last N full days vs previous N full days.
+
+    Because Google Ads data syncs with a delay, 'today' usually has no
+    metrics yet.  We anchor on *yesterday* as the most recent full day and
+    compare the *period_days* window ending yesterday against the preceding
+    window of the same length.
+    """
     if not campaign_ids:
         return {
-            "today_spend": 0.0,
-            "yesterday_spend": 0.0,
-            "today_clicks": 0,
-            "yesterday_clicks": 0,
-            "today_conversions": 0.0,
-            "yesterday_conversions": 0.0,
+            "current_spend": 0.0,
+            "previous_spend": 0.0,
+            "current_clicks": 0,
+            "previous_clicks": 0,
+            "current_conversions": 0.0,
+            "previous_conversions": 0.0,
+            "period_days": period_days,
         }
 
-    def _agg(target_date: date) -> dict:
+    yesterday = today - timedelta(days=1)
+    current_start = yesterday - timedelta(days=period_days - 1)
+    previous_end = current_start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=period_days - 1)
+
+    def _agg(start: date, end: date) -> dict:
         row = (
             db.query(
                 func.sum(MetricDaily.cost_micros).label("cost"),
@@ -434,7 +517,8 @@ def _build_kpi_snapshot(
             )
             .filter(
                 MetricDaily.campaign_id.in_(campaign_ids),
-                MetricDaily.date == target_date,
+                MetricDaily.date >= start,
+                MetricDaily.date <= end,
             )
             .first()
         )
@@ -444,14 +528,15 @@ def _build_kpi_snapshot(
             "conversions": round(float(row.conversions or 0), 2) if row else 0.0,
         }
 
-    t = _agg(today)
-    y = _agg(yesterday)
+    current = _agg(current_start, yesterday)
+    previous = _agg(previous_start, previous_end)
 
     return {
-        "today_spend": t["spend"],
-        "yesterday_spend": y["spend"],
-        "today_clicks": t["clicks"],
-        "yesterday_clicks": y["clicks"],
-        "today_conversions": t["conversions"],
-        "yesterday_conversions": y["conversions"],
+        "current_spend": current["spend"],
+        "previous_spend": previous["spend"],
+        "current_clicks": current["clicks"],
+        "previous_clicks": previous["clicks"],
+        "current_conversions": current["conversions"],
+        "previous_conversions": previous["conversions"],
+        "period_days": period_days,
     }

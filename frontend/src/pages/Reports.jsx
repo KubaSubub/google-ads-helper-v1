@@ -86,7 +86,7 @@ function MonthComparisonSection({ data }) {
     return (
         <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#fff', marginBottom: 10 }}>
-                Porownanie miesiac do miesiaca
+                Porównanie miesiąc do miesiąca
             </div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
                 {data.period?.label} vs {data.previous_period?.label}
@@ -351,21 +351,21 @@ function TokenUsageBadge({ usage, model }) {
                 <>
                     <span>
                         <span style={{ color: 'rgba(255,255,255,0.3)' }}>in: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{input.toLocaleString()}</span>
+                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{input.toLocaleString('pl-PL')}</span>
                     </span>
                     <span>
                         <span style={{ color: 'rgba(255,255,255,0.3)' }}>out: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{output.toLocaleString()}</span>
+                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{output.toLocaleString('pl-PL')}</span>
                     </span>
                     {cacheRead > 0 && (
                         <span>
                             <span style={{ color: 'rgba(255,255,255,0.3)' }}>cache: </span>
-                            <span style={{ color: '#4F8EF7' }}>{cacheRead.toLocaleString()}</span>
+                            <span style={{ color: '#4F8EF7' }}>{cacheRead.toLocaleString('pl-PL')}</span>
                         </span>
                     )}
                     <span>
                         <span style={{ color: 'rgba(255,255,255,0.3)' }}>total: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{total.toLocaleString()}</span>
+                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{total.toLocaleString('pl-PL')}</span>
                     </span>
                     {durationSec && (
                         <span style={{ color: 'rgba(255,255,255,0.3)' }}>{durationSec}s</span>
@@ -397,6 +397,15 @@ export default function Reports() {
     const [tokenUsage, setTokenUsage] = useState(null);
     const [reportType, setReportType] = useState('monthly');
     const streamRef = useRef(null);
+    const abortRef = useRef(null);
+
+    // Cleanup SSE stream on unmount
+    useEffect(() => {
+        return () => {
+            abortRef.current?.abort();
+            streamRef.current?.cancel?.();
+        };
+    }, []);
 
     // Load a specific report
     const loadReport = useCallback(async (reportId) => {
@@ -454,11 +463,13 @@ export default function Reports() {
         setTokenUsage(null);
 
         try {
+            abortRef.current = new AbortController();
             const response = await fetch(`/api/v1/reports/generate?client_id=${selectedClientId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({ report_type: reportType }),
+                signal: abortRef.current.signal,
             });
 
             if (!response.ok) {

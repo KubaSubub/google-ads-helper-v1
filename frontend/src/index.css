@@ -8,6 +8,12 @@
   --color-stable: rgba(255,255,255,0.3);
   --accent-blue: #4F8EF7;
   --accent-purple: #7B5CE0;
+  --color-bg-primary: #0D0F14;
+  --color-sidebar: #111318;
+  --color-surface-elevated: #1A1D24;
+  --color-danger: #F87171;
+  --color-warning: #FBBF24;
+  --color-success: #4ADE80;
 }
 
 * {
@@ -41,15 +47,15 @@ body {
   border-color: rgba(255,255,255,0.12);
 }
 
-/* Legacy glassmorphism (keep for existing pages) */
+/* Legacy glassmorphism (v2 palette aligned) */
 .glass {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(13, 15, 20, 0.6);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(79, 142, 247, 0.15);
 }
 .glass-hover:hover {
-  background: rgba(15, 23, 42, 0.8);
-  border-color: rgba(99, 102, 241, 0.3);
+  background: rgba(13, 15, 20, 0.8);
+  border-color: rgba(79, 142, 247, 0.3);
 }
 
 /* Glow effects */
@@ -80,6 +86,12 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide-in from right (drawer) */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out forwards;

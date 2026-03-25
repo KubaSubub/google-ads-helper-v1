@@ -3,9 +3,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date, timedelta, datetime, timezone
-import numpy as np
-import pandas as pd
-from scipy.stats import ttest_ind
+
+try:
+    import numpy as np
+    import pandas as pd
+    from scipy.stats import ttest_ind
+except ImportError as _import_err:
+    raise ImportError(
+        "Analytics router requires numpy, pandas, and scipy. "
+        "Install them with: pip install numpy pandas scipy"
+    ) from _import_err
 
 from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
@@ -143,7 +150,12 @@ def run_anomaly_detection(
 
 @router.post("/correlation")
 def correlation_matrix(data: CorrelationRequest, db: Session = Depends(get_db)):
-    """Calculate Pearson correlation matrix between selected metrics."""
+    """Calculate Pearson correlation matrix between selected metrics.
+
+    Aggregates MetricDaily per day first (same as /trends), then computes
+    correlation on the daily aggregates. This avoids mixing campaign-level
+    rows which would distort the time-series correlation.
+    """
     invalid = set(data.metrics) - VALID_METRICS
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid metrics: {invalid}")
@@ -160,13 +172,55 @@ def correlation_matrix(data: CorrelationRequest, db: Session = Depends(get_db)):
     if len(rows) < 3:
         raise HTTPException(status_code=400, detail="Not enough data points for correlation (need at least 3)")
 
-    df = pd.DataFrame([{m: getattr(r, m) for m in data.metrics} for r in rows])
-    corr = df.corr(method="pearson")
+    # Aggregate per day (same logic as get_trends) to get true time-series
+    from collections import defaultdict
+    day_map = defaultdict(lambda: {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                                    "conversions": 0.0, "conv_value_micros": 0})
+    for r in rows:
+        d = day_map[r.date]
+        d["clicks"] += r.clicks or 0
+        d["impressions"] += r.impressions or 0
+        d["cost_micros"] += r.cost_micros or 0
+        d["conversions"] += r.conversions or 0
+        d["conv_value_micros"] += r.conversion_value_micros or 0
+
+    if len(day_map) < 3:
+        raise HTTPException(status_code=400, detail="Not enough daily data points for correlation (need at least 3 days)")
+
+    # Derive metrics per day (matching /trends output)
+    daily_rows = []
+    for agg in day_map.values():
+        clicks = agg["clicks"]
+        impressions = agg["impressions"]
+        cost_micros = agg["cost_micros"]
+        conversions = agg["conversions"]
+        conv_value = agg["conv_value_micros"] / 1_000_000
+        cost = cost_micros / 1_000_000
+        avg_cpc = cost / clicks if clicks else 0
+
+        daily_rows.append({
+            "clicks": clicks,
+            "impressions": impressions,
+            "cost_micros": cost_micros,
+            "conversions": conversions,
+            "ctr": clicks / impressions if impressions else 0,
+            "roas": conv_value / cost if cost else 0,
+            "avg_cpc_micros": int(cost_micros / clicks) if clicks else 0,
+            "conversion_rate": conversions / clicks if clicks else 0,
+        })
+
+    df = pd.DataFrame(daily_rows)
+    # Only keep requested metrics that exist in df
+    valid_cols = [m for m in data.metrics if m in df.columns]
+    if len(valid_cols) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 valid metrics for correlation")
+
+    corr = df[valid_cols].corr(method="pearson")
 
     return {
         "matrix": corr.fillna(0).round(3).to_dict(),
-        "metrics": data.metrics,
-        "data_points": len(rows),
+        "metrics": valid_cols,
+        "data_points": len(day_map),
     }
 
 
@@ -400,7 +454,7 @@ def forecast_metric(
     )
 
     if len(rows) < 7:
-        return {"error": "Need at least 7 data points for forecast", "data_points": len(rows)}
+        raise HTTPException(status_code=400, detail=f"Need at least 7 data points for forecast (got {len(rows)})")
 
     dates = [r.date for r in rows]
     raw_values = [getattr(r, normalized_metric) or 0 for r in rows]

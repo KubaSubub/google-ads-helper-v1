@@ -77,6 +77,7 @@ class RecommendationType(str, Enum):
     PAUSE_AD = "PAUSE_AD"
     REALLOCATE_BUDGET = "REALLOCATE_BUDGET"
     # v1.1 (R8-R13)
+    LOW_CTR_KEYWORD = "LOW_CTR_KEYWORD"
     QS_ALERT = "QS_ALERT"
     IS_BUDGET_ALERT = "IS_BUDGET_ALERT"
     IS_RANK_ALERT = "IS_RANK_ALERT"
@@ -90,8 +91,11 @@ class RecommendationType(str, Enum):
     ANALYTICS_ALERT = "ANALYTICS_ALERT"
     # v2.0 GAP rules (R19+)
     AD_GROUP_HEALTH = "AD_GROUP_HEALTH"
+    SINGLE_AD_ALERT = "SINGLE_AD_ALERT"
+    OVERSIZED_AD_GROUP = "OVERSIZED_AD_GROUP"
+    ZERO_CONV_AD_GROUP = "ZERO_CONV_AD_GROUP"
     DISAPPROVED_AD_ALERT = "DISAPPROVED_AD_ALERT"
-    SMART_BIDDING_CONV_ALERT = "SMART_BIDDING_CONV_ALERT"
+    SMART_BIDDING_DATA_STARVATION = "SMART_BIDDING_DATA_STARVATION"
     ECPC_DEPRECATION = "ECPC_DEPRECATION"
     SCALING_OPPORTUNITY = "SCALING_OPPORTUNITY"
     TARGET_DEVIATION_ALERT = "TARGET_DEVIATION_ALERT"
@@ -1172,7 +1176,7 @@ class RecommendationsEngine:
             camp_name = campaign.name if campaign else "Unknown"
 
             recs.append(Recommendation(
-                type=RecommendationType.PAUSE_KEYWORD,
+                type=RecommendationType.LOW_CTR_KEYWORD,
                 priority=Priority.MEDIUM,
                 entity_type="keyword",
                 entity_id=kw.id,
@@ -1208,69 +1212,70 @@ class RecommendationsEngine:
     ) -> list[Recommendation]:
         recs = []
         t = self.thresholds
+        min_spend_micros = 50_000_000  # $50 minimum total spend
 
-        campaigns = (
-            db.query(Campaign)
-            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+        # Per-client (account-level) alert — aggregate all keywords across campaigns
+        keywords = (
+            db.query(Keyword)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Keyword.status == "ENABLED",
+            )
             .all()
         )
+        if not keywords:
+            return recs
 
-        for campaign in campaigns:
-            keywords = (
-                db.query(Keyword)
-                .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
-                .filter(
-                    AdGroup.campaign_id == campaign.id,
-                    Keyword.status == "ENABLED",
-                )
-                .all()
+        total_cost_micros = sum(k.cost_micros or 0 for k in keywords)
+        if total_cost_micros < min_spend_micros:
+            return recs
+
+        total_cost = _micros_to_usd(total_cost_micros)
+        wasted_cost_micros = sum(
+            k.cost_micros or 0
+            for k in keywords
+            if (k.conversions or 0) == 0
+        )
+        wasted_cost = _micros_to_usd(wasted_cost_micros)
+        wasted_pct = (wasted_cost / total_cost) * 100 if total_cost > 0 else 0
+
+        if wasted_pct >= t["r12_wasted_pct_medium"]:
+            priority = (
+                Priority.HIGH
+                if wasted_pct >= t["r12_wasted_pct_high"]
+                else Priority.MEDIUM
             )
-            if not keywords:
-                continue
-
-            total_cost = sum(_micros_to_usd(k.cost_micros) for k in keywords)
-            if total_cost <= 0:
-                continue
-
-            wasted_cost = sum(
-                _micros_to_usd(k.cost_micros)
-                for k in keywords
-                if (k.conversions or 0) == 0
-            )
-            wasted_pct = (wasted_cost / total_cost) * 100
-
-            if wasted_pct >= t["r12_wasted_pct_medium"]:
-                priority = (
-                    Priority.HIGH
-                    if wasted_pct >= t["r12_wasted_pct_high"]
-                    else Priority.MEDIUM
-                )
-                recs.append(Recommendation(
-                    type=RecommendationType.WASTED_SPEND_ALERT,
-                    priority=priority,
-                    entity_type="campaign",
-                    entity_id=campaign.id,
-                    entity_name=campaign.name,
-                    campaign_name=campaign.name,
-                    category="ALERT",
-                    reason=(
-                        f"{wasted_pct:.0f}% budżetu (${wasted_cost:.2f}) "
-                        f"idzie na keywords bez konwersji"
-                    ),
-                    current_value=(
-                        f"Wasted: ${wasted_cost:.2f} / ${total_cost:.2f} "
-                        f"({wasted_pct:.0f}%)"
-                    ),
-                    recommended_action=(
-                        "Sprawdź keywords z conv=0 i wysokim spend — "
-                        "rozważ pause lub negative"
-                    ),
-                    metadata={
-                        "wasted_pct": round(wasted_pct, 1),
-                        "wasted_usd": round(wasted_cost, 2),
-                        "total_usd": round(total_cost, 2),
-                    },
-                ))
+            recs.append(Recommendation(
+                type=RecommendationType.WASTED_SPEND_ALERT,
+                priority=priority,
+                entity_type="client",
+                entity_id=client_id,
+                entity_name=f"Client {client_id}",
+                campaign_name="Account-wide",
+                category="ALERT",
+                reason=(
+                    f"{wasted_pct:.0f}% budżetu (${wasted_cost:.0f}) "
+                    f"wydane na keywords bez żadnej konwersji"
+                ),
+                current_value=(
+                    f"Wasted: ${wasted_cost:.2f} / ${total_cost:.2f} "
+                    f"({wasted_pct:.0f}%)"
+                ),
+                recommended_action=(
+                    "Sprawdź keywords z conv=0 i wysokim spend — "
+                    "rozważ pause lub negative"
+                ),
+                metadata={
+                    "wasted_pct": round(wasted_pct, 1),
+                    "wasted_usd": round(wasted_cost, 2),
+                    "total_usd": round(total_cost, 2),
+                    "wasted_spend_micros": wasted_cost_micros,
+                    "total_spend_micros": total_cost_micros,
+                },
+            ))
 
         return recs
 
@@ -1754,8 +1759,9 @@ class RecommendationsEngine:
             .filter(Keyword.ad_group_id.in_(ag_ids), Keyword.status == "ENABLED", Keyword.criterion_kind == "POSITIVE")
             .group_by(Keyword.ad_group_id).all()
         )
-        ag_cost_conv = dict(
-            db.query(
+        ag_cost_conv = {
+            row[0]: (row[1], row[2])
+            for row in db.query(
                 Keyword.ad_group_id,
                 func.coalesce(func.sum(KeywordDaily.cost_micros), 0),
                 func.coalesce(func.sum(KeywordDaily.conversions), 0.0),
@@ -1763,7 +1769,7 @@ class RecommendationsEngine:
             .join(Keyword, KeywordDaily.keyword_id == Keyword.id)
             .filter(Keyword.ad_group_id.in_(ag_ids), KeywordDaily.date >= cutoff)
             .group_by(Keyword.ad_group_id).all()
-        )
+        }
 
         for row in ad_groups:
             ag = row.AdGroup
@@ -1774,43 +1780,66 @@ class RecommendationsEngine:
             cost_usd = _micros_to_usd(cost_conv[0]) if cost_conv else 0.0
             conv = (cost_conv[1] if cost_conv else 0.0) or 0.0
 
-            issues = []
-            if ads == 0:
-                issues.append("Brak reklam")
-            elif ads < t["r19_min_ads"]:
-                issues.append(f"Tylko {ads} reklama (brak A/B)")
-            if kws < t["r19_min_keywords"]:
-                issues.append(f"Za mało słów kluczowych ({kws})")
+            base_meta = {
+                "ads_count": ads,
+                "keywords_count": kws,
+                "cost_usd": round(cost_usd, 2),
+                "conversions": round(conv, 2),
+            }
+
+            # SINGLE_AD_ALERT: only 1 active ad (no A/B testing)
+            if ads < t["r19_min_ads"]:
+                recs.append(Recommendation(
+                    type=RecommendationType.SINGLE_AD_ALERT,
+                    priority=Priority.HIGH if ads == 0 else Priority.LOW,
+                    entity_type="ad_group",
+                    entity_id=ag.id,
+                    entity_name=ag.name,
+                    campaign_name=campaign_name,
+                    campaign_id=ag.campaign_id,
+                    ad_group_id=ag.id,
+                    category="ALERT",
+                    reason=f"Tylko {ads} reklama w grupie '{ag.name}'" if ads > 0 else f"Brak reklam w grupie '{ag.name}'",
+                    current_value=f"Reklamy: {ads}",
+                    recommended_action="Minimum 2 reklamy RSA per ad group dla A/B testing",
+                    metadata=base_meta,
+                ))
+
+            # OVERSIZED_AD_GROUP: too many keywords
             if kws > t["r19_max_keywords"]:
-                issues.append(f"Za dużo słów kluczowych ({kws})")
+                recs.append(Recommendation(
+                    type=RecommendationType.OVERSIZED_AD_GROUP,
+                    priority=Priority.LOW,
+                    entity_type="ad_group",
+                    entity_id=ag.id,
+                    entity_name=ag.name,
+                    campaign_name=campaign_name,
+                    campaign_id=ag.campaign_id,
+                    ad_group_id=ag.id,
+                    category="ALERT",
+                    reason=f"Za dużo keywords w grupie '{ag.name}' ({kws})",
+                    current_value=f"Keywords: {kws}",
+                    recommended_action="Więcej niż 20 keywords = słabe message match. Rozważ podział na mniejsze grupy.",
+                    metadata=base_meta,
+                ))
+
+            # ZERO_CONV_AD_GROUP: ad group with spend but 0 conversions
             if cost_usd >= t["r19_zero_conv_min_cost"] and conv == 0:
-                issues.append(f"Brak konwersji przy ${cost_usd:.0f} wydatków")
-
-            if not issues:
-                continue
-
-            severity = Priority.HIGH if (ads == 0 or (cost_usd >= t["r19_zero_conv_min_cost"] and conv == 0)) else Priority.MEDIUM
-            recs.append(Recommendation(
-                type=RecommendationType.AD_GROUP_HEALTH,
-                priority=severity,
-                entity_type="ad_group",
-                entity_id=ag.id,
-                entity_name=ag.name,
-                campaign_name=campaign_name,
-                campaign_id=ag.campaign_id,
-                ad_group_id=ag.id,
-                category="ALERT",
-                reason="; ".join(issues),
-                current_value=f"Reklamy: {ads}, Słowa: {kws}, Koszt: ${cost_usd:.2f}, Konw.: {conv:.1f}",
-                recommended_action="Dodaj brakujące reklamy lub słowa kluczowe",
-                metadata={
-                    "ads_count": ads,
-                    "keywords_count": kws,
-                    "cost_usd": round(cost_usd, 2),
-                    "conversions": round(conv, 2),
-                    "issues": issues,
-                },
-            ))
+                recs.append(Recommendation(
+                    type=RecommendationType.ZERO_CONV_AD_GROUP,
+                    priority=Priority.MEDIUM,
+                    entity_type="ad_group",
+                    entity_id=ag.id,
+                    entity_name=ag.name,
+                    campaign_name=campaign_name,
+                    campaign_id=ag.campaign_id,
+                    ad_group_id=ag.id,
+                    category="ALERT",
+                    reason=f"Ad group '{ag.name}' — ${cost_usd:.0f} bez konwersji (30 dni)",
+                    current_value=f"Koszt: ${cost_usd:.2f}, Konw.: 0",
+                    recommended_action="Sprawdź keywords i reklamy — rozważ pause lub restrukturyzację",
+                    metadata=base_meta,
+                ))
 
         return recs
 
@@ -1887,7 +1916,7 @@ class RecommendationsEngine:
 
             severity = Priority.HIGH if conv_sum < min_conv * 0.5 else Priority.MEDIUM
             recs.append(Recommendation(
-                type=RecommendationType.SMART_BIDDING_CONV_ALERT,
+                type=RecommendationType.SMART_BIDDING_DATA_STARVATION,
                 priority=severity,
                 entity_type="campaign",
                 entity_id=campaign.id,

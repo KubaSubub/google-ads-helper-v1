@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Column, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -38,6 +38,9 @@ class Campaign(Base):
     role_confidence = Column(Float, nullable=True)
     protection_level = Column(String(10), nullable=True)
     role_source = Column(String(10), nullable=True)
+
+    # Labels (JSON array of label names from Google Ads)
+    labels = Column(Text, nullable=True)  # JSON: ["Brand", "Q1 2026"]
 
     # Impression Share (campaign-level, 0.0-1.0 from API)
     search_impression_share = Column(Float, nullable=True)

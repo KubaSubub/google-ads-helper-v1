@@ -33,26 +33,21 @@ const CORRELATION_METRIC_MAP = {
     cvr: 'conversion_rate',
 }
 
-// Pearson correlation coefficient
-function pearsonCorrelation(x, y) {
-    const n = x.length
-    if (n < 2) return null
-    const meanX = x.reduce((a, b) => a + b, 0) / n
-    const meanY = y.reduce((a, b) => a + b, 0) / n
-    const num = x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0)
-    const denX = Math.sqrt(x.reduce((sum, xi) => sum + (xi - meanX) ** 2, 0))
-    const denY = Math.sqrt(y.reduce((sum, yi) => sum + (yi - meanY) ** 2, 0))
-    if (denX === 0 || denY === 0) return null
-    return num / (denX * denY)
-}
-
 function getCorrelationLabel(r) {
-    if (r === null) return null
+    if (r === null || r === undefined) return null
     const abs = Math.abs(r)
     const sign = r > 0 ? '+' : ''
-    if (abs > 0.7) return `${sign}${r.toFixed(2)} ${r > 0 ? '↑ silna' : '↓ silna ujemna'}`
-    if (abs > 0.4) return `${sign}${r.toFixed(2)} → umiarkowana`
-    return `${r.toFixed(2)} ≈ brak korelacji`
+    if (abs > 0.7) {
+        return r > 0
+            ? `${sign}${r.toFixed(2)} ↑ silna dodatnia`
+            : `${r.toFixed(2)} ↓ silna ujemna`
+    }
+    if (abs > 0.4) {
+        return r > 0
+            ? `${sign}${r.toFixed(2)} → umiarkowana dodatnia`
+            : `${r.toFixed(2)} → umiarkowana ujemna`
+    }
+    return `${r.toFixed(2)} ≈ słaba / brak`
 }
 
 function formatDate(dateStr) {
@@ -84,7 +79,7 @@ const CustomTooltip = ({ active, payload, label }) => {
             <div style={{ color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{label}</div>
             {payload.map((p, i) => (
                 <div key={i} style={{ color: p.color, marginBottom: 2 }}>
-                    {p.name}: <strong>{p.value?.toLocaleString?.() ?? p.value}</strong>
+                    {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL') ?? p.value}</strong>
                 </div>
             ))}
         </div>
@@ -99,18 +94,21 @@ export default function TrendExplorer({ campaignIds = [] }) {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(false)
     const [isMock, setIsMock] = useState(false)
-    const [correlationLabel, setCorrelationLabel] = useState(null)
+    const [correlationData, setCorrelationData] = useState(null) // { best: {pairLabel,label,r}, pairs: [{a,b,r,label}...] }
+    const [showCorrelationPopup, setShowCorrelationPopup] = useState(false)
 
     const fetchData = useCallback(async () => {
         if (!selectedClientId) return
         setLoading(true)
         try {
-            const result = await getTrends(selectedClientId, {
+            const params = {
                 metrics: activeMetrics.join(','),
-                days: days,
-                campaign_type: filters.campaignType,
-                status: filters.status,
-            })
+                date_from: filters.dateFrom,
+                date_to: filters.dateTo,
+            }
+            if (filters.campaignType !== 'ALL') params.campaign_type = filters.campaignType
+            if (filters.status !== 'ALL') params.status = filters.status
+            const result = await getTrends(selectedClientId, params)
             setData(result.data || [])
             setIsMock(result.is_mock || false)
         } catch (e) {
@@ -119,9 +117,22 @@ export default function TrendExplorer({ campaignIds = [] }) {
         } finally {
             setLoading(false)
         }
-    }, [selectedClientId, activeMetrics, days, filters.campaignType, filters.status])
+    }, [selectedClientId, activeMetrics, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status])
 
     useEffect(() => { fetchData() }, [fetchData])
+
+    // Close popups on outside click
+    useEffect(() => {
+        if (!showCorrelationPopup && !showDropdown) return
+        const handler = (e) => {
+            if (!e.target.closest('[data-correlation-popup]') && !e.target.closest('[data-metric-dropdown]')) {
+                setShowCorrelationPopup(false)
+                setShowDropdown(false)
+            }
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [showCorrelationPopup, showDropdown])
 
     const addMetric = (key) => {
         if (activeMetrics.length >= 5 || activeMetrics.includes(key)) return
@@ -134,51 +145,65 @@ export default function TrendExplorer({ campaignIds = [] }) {
         setActiveMetrics(prev => prev.filter(m => m !== key))
     }
 
-    const localCorrelationLabel = useCallback(() => {
-        if (activeMetrics.length < 2 || data.length < 3) return null
-        const x = data.map(d => d[activeMetrics[0]] ?? 0)
-        const y = data.map(d => d[activeMetrics[1]] ?? 0)
-        const r = pearsonCorrelation(x, y)
-        return getCorrelationLabel(r)
-    }, [activeMetrics, data])
-
     useEffect(() => {
         let cancelled = false
 
         const fetchCorrelation = async () => {
             if (activeMetrics.length < 2 || data.length < 3) {
-                if (!cancelled) setCorrelationLabel(null)
+                if (!cancelled) setCorrelationData(null)
                 return
             }
 
-            const mappedA = CORRELATION_METRIC_MAP[activeMetrics[0]]
-            const mappedB = CORRELATION_METRIC_MAP[activeMetrics[1]]
-            const fallback = localCorrelationLabel()
-
-            if (!mappedA || !mappedB || campaignIds.length === 0) {
-                if (!cancelled) setCorrelationLabel(fallback)
+            // Map all active metrics to backend names
+            const mapped = activeMetrics
+                .map(k => ({ key: k, backend: CORRELATION_METRIC_MAP[k] }))
+                .filter(m => m.backend)
+            if (mapped.length < 2) {
+                if (!cancelled) setCorrelationData(null)
                 return
             }
 
             try {
                 const response = await getCorrelationMatrix({
                     campaign_ids: campaignIds,
-                    metrics: [mappedA, mappedB],
+                    metrics: mapped.map(m => m.backend),
                     date_from: filters.dateFrom || undefined,
                     date_to: filters.dateTo || undefined,
                 })
-                const r = response?.matrix?.[mappedA]?.[mappedB]
-                if (!cancelled) {
-                    setCorrelationLabel(typeof r === 'number' ? getCorrelationLabel(r) : fallback)
+                if (cancelled) return
+
+                // Build all correlation pairs
+                const pairs = []
+                let bestIdx = 0
+                for (let i = 0; i < mapped.length; i++) {
+                    for (let j = i + 1; j < mapped.length; j++) {
+                        const r = response?.matrix?.[mapped[i].backend]?.[mapped[j].backend]
+                        if (typeof r === 'number') {
+                            const labelA = METRIC_OPTIONS.find(m => m.key === mapped[i].key)?.label ?? mapped[i].key
+                            const labelB = METRIC_OPTIONS.find(m => m.key === mapped[j].key)?.label ?? mapped[j].key
+                            pairs.push({ a: labelA, b: labelB, r, label: getCorrelationLabel(r) })
+                            if (Math.abs(r) > Math.abs(pairs[bestIdx].r)) bestIdx = pairs.length - 1
+                        }
+                    }
+                }
+
+                if (pairs.length > 0) {
+                    const best = pairs[bestIdx]
+                    setCorrelationData({
+                        best: { pairLabel: `${best.a} vs ${best.b}`, label: best.label, r: best.r },
+                        pairs: pairs.sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
+                    })
+                } else {
+                    setCorrelationData(null)
                 }
             } catch (e) {
-                if (!cancelled) setCorrelationLabel(fallback)
+                if (!cancelled) setCorrelationData(null)
             }
         }
 
         fetchCorrelation()
         return () => { cancelled = true }
-    }, [activeMetrics, campaignIds, data, filters.dateFrom, filters.dateTo, localCorrelationLabel])
+    }, [activeMetrics, campaignIds, data, filters.dateFrom, filters.dateTo])
     const dual = needsDualAxis(activeMetrics)
     const pctMetrics = ['ctr', 'cvr']
 
@@ -228,7 +253,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
 
                     {/* Add metric button */}
                     {activeMetrics.length < 5 && availableToAdd.length > 0 && (
-                        <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'relative' }} data-metric-dropdown>
                             <button
                                 onClick={() => setShowDropdown(v => !v)}
                                 style={{
@@ -283,15 +308,95 @@ export default function TrendExplorer({ campaignIds = [] }) {
                         </div>
                     )}
 
-                    {/* Correlation badge */}
-                    {correlationLabel && (
-                        <div style={{
-                            fontSize: 11,
-                            color: 'rgba(255,255,255,0.4)',
-                            paddingLeft: 8,
-                            borderLeft: '1px solid rgba(255,255,255,0.08)',
-                        }}>
-                            Kor. <span style={{ color: '#FBBF24' }}>{correlationLabel}</span>
+                    {/* Correlation badge — click to show full matrix */}
+                    {correlationData && (
+                        <div style={{ position: 'relative' }} data-correlation-popup>
+                            <button
+                                onClick={() => setShowCorrelationPopup(v => !v)}
+                                style={{
+                                    fontSize: 11,
+                                    color: 'rgba(255,255,255,0.4)',
+                                    paddingLeft: 8,
+                                    background: 'none',
+                                    border: 'none',
+                                    borderLeft: '1px solid rgba(255,255,255,0.08)',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                }}
+                                className="hover:text-white/60"
+                            >
+                                <span style={{ color: 'rgba(255,255,255,0.3)' }}>
+                                    Kor.
+                                </span>
+                                <span style={{
+                                    color: Math.abs(correlationData.best.r) > 0.7 ? '#4ADE80'
+                                         : Math.abs(correlationData.best.r) > 0.4 ? '#FBBF24'
+                                         : 'rgba(255,255,255,0.35)',
+                                }}>
+                                    {correlationData.best.r > 0 ? '+' : ''}{correlationData.best.r.toFixed(2)}
+                                </span>
+                                {correlationData.pairs.length > 1 && (
+                                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)' }}>
+                                        ({correlationData.pairs.length} par)
+                                    </span>
+                                )}
+                            </button>
+
+                            {showCorrelationPopup && (
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        right: 0,
+                                        marginTop: 6,
+                                        background: '#1a1d24',
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        borderRadius: 8,
+                                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                                        zIndex: 50,
+                                        minWidth: 280,
+                                        padding: '12px 0',
+                                    }}
+                                >
+                                    <div style={{
+                                        padding: '0 14px 8px',
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        color: 'rgba(255,255,255,0.5)',
+                                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                        marginBottom: 4,
+                                    }}>
+                                        Macierz korelacji (Pearson)
+                                    </div>
+                                    {correlationData.pairs.map((pair, i) => {
+                                        const absR = Math.abs(pair.r)
+                                        const rColor = absR > 0.7 ? '#4ADE80'
+                                                      : absR > 0.4 ? '#FBBF24'
+                                                      : 'rgba(255,255,255,0.35)'
+                                        return (
+                                            <div
+                                                key={i}
+                                                style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    padding: '6px 14px',
+                                                    fontSize: 11,
+                                                }}
+                                            >
+                                                <span style={{ color: 'rgba(255,255,255,0.6)', flex: 1 }}>
+                                                    {pair.a} <span style={{ color: 'rgba(255,255,255,0.2)' }}>vs</span> {pair.b}
+                                                </span>
+                                                <span style={{ color: rColor, fontWeight: 600, marginLeft: 12, whiteSpace: 'nowrap' }}>
+                                                    {pair.r > 0 ? '+' : ''}{pair.r.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

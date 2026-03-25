@@ -4,10 +4,38 @@ Google Ads Helper - FastAPI Application Entry Point.
 Run with: uvicorn app.main:app --reload --port 8000
 """
 
+import json
 from contextlib import asynccontextmanager
+from datetime import date, datetime
+from typing import Any
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from loguru import logger
+
+
+class PLJsonEncoder(json.JSONEncoder):
+    """JSON encoder that appends 'Z' to naive datetimes (assumed UTC)."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, datetime):
+            # Naive datetimes from DB are UTC — mark them so browsers convert to local TZ
+            if obj.tzinfo is None:
+                return obj.isoformat() + "Z"
+            return obj.isoformat()
+        if isinstance(obj, date):
+            return obj.isoformat()
+        return super().default(obj)
+
+
+class UTCJsonResponse(JSONResponse):
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            content,
+            cls=PLJsonEncoder,
+            ensure_ascii=False,
+        ).encode("utf-8")
 
 from app.config import settings
 from app.database import init_db
@@ -47,6 +75,7 @@ app = FastAPI(
     description="Local-first API for managing and optimizing Google Ads campaigns.",
     version="0.1.0",
     lifespan=lifespan,
+    default_response_class=UTCJsonResponse,
 )
 
 # CORS - allow frontend dev server (Vite default port)

@@ -4,6 +4,7 @@ import { FilterProvider } from './contexts/FilterContext';
 import Toast from './components/Toast';
 import Sidebar from './components/Sidebar';
 import GlobalFilterBar from './components/GlobalFilterBar';
+import GlobalDatePicker from './components/GlobalDatePicker';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Campaigns from './pages/Campaigns';
@@ -14,7 +15,7 @@ import Semantic from './pages/Semantic';
 import Recommendations from './pages/Recommendations';
 import QualityScore from './pages/QualityScore';
 import Forecast from './pages/Forecast';
-import Clients from './pages/Clients';
+
 import ActionHistory from './pages/ActionHistory';
 import Alerts from './pages/Alerts';
 import SearchOptimization from './pages/SearchOptimization';
@@ -45,9 +46,24 @@ function AppContent() {
     return (
         <div className="flex h-screen overflow-hidden">
             <Sidebar />
-            <main className="flex-1 overflow-y-auto p-6 lg:p-8 pt-16 lg:pt-8">
-                {showGlobalFilter && <GlobalFilterBar />}
-                <Routes>
+            <div className="flex-1 flex flex-col overflow-hidden">
+                <header
+                    className="hidden lg:flex"
+                    style={{
+                        height: 56,
+                        flexShrink: 0,
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        padding: '0 32px',
+                        borderBottom: '1px solid rgba(255,255,255,0.07)',
+                        background: '#0D0F14',
+                    }}
+                >
+                    <GlobalDatePicker />
+                </header>
+                <main className="flex-1 overflow-y-auto p-6 lg:p-8 pt-16 lg:pt-8">
+                    {showGlobalFilter && <GlobalFilterBar />}
+                    <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/daily-audit" element={<DailyAudit />} />
                     <Route path="/campaigns" element={<Campaigns />} />
@@ -58,15 +74,16 @@ function AppContent() {
                     <Route path="/recommendations" element={<Recommendations />} />
                     <Route path="/quality-score" element={<QualityScore />} />
                     <Route path="/forecast" element={<Forecast />} />
-                    <Route path="/clients" element={<Clients />} />
+                    <Route path="/clients" element={<Navigate to="/" replace />} />
                     <Route path="/action-history" element={<ActionHistory />} />
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/search-optimization" element={<SearchOptimization />} />
                     <Route path="/agent" element={<Agent />} />
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/settings" element={<Settings />} />
-                </Routes>
-            </main>
+                    </Routes>
+                </main>
+            </div>
             <Toast toast={toast} onClose={hideToast} />
         </div>
     );

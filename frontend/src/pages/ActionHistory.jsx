@@ -5,6 +5,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import DataTable from '../components/DataTable';
 import DiffView from '../components/DiffView';
 import EmptyState from '../components/EmptyState';
+import DarkSelect from '../components/DarkSelect';
 import {
     Undo2, Loader2, ChevronDown, ChevronRight,
     Megaphone, KeyRound, Search, Users, Zap, Globe, Settings2, LayoutGrid
@@ -391,15 +392,20 @@ export default function ActionHistory() {
     // Fetch filter options
     useEffect(() => {
         if (!selectedClientId) return;
-        getHistoryFilters(selectedClientId).then(setFilterOptions).catch(() => {});
+        getHistoryFilters(selectedClientId).then(setFilterOptions).catch((err) => console.error('[ActionHistory] filters load failed', err));
     }, [selectedClientId]);
 
     // Fetch data
     useEffect(() => {
-        fetchData();
+        if (!selectedClientId) return;
+        let cancelled = false;
+        (async () => {
+            await fetchData(cancelled);
+        })();
+        return () => { cancelled = true; };
     }, [selectedClientId, activeTab, filters]);
 
-    const fetchData = async () => {
+    const fetchData = async (cancelled = false) => {
         if (!selectedClientId) return;
         setLoading(true);
         setExpandedId(null);
@@ -595,38 +601,38 @@ export default function ActionHistory() {
                         style={filterInputStyle}
                         placeholder="Do"
                     />
-                    <select
+                    <DarkSelect
                         value={filters.resourceType}
-                        onChange={e => setFilters(f => ({ ...f, resourceType: e.target.value }))}
-                        style={filterInputStyle}
-                    >
-                        <option value="">Typ zasobu</option>
-                        {filterOptions.resource_types.map(t => (
-                            <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
-                        ))}
-                    </select>
+                        onChange={(v) => setFilters(f => ({ ...f, resourceType: v }))}
+                        options={[
+                            { value: '', label: 'Typ zasobu' },
+                            ...filterOptions.resource_types.map(t => ({ value: t, label: t.replace(/_/g, ' ') })),
+                        ]}
+                        placeholder="Typ zasobu"
+                        style={{ minWidth: 140 }}
+                    />
                     {activeTab === 'external' && (
                         <>
-                            <select
+                            <DarkSelect
                                 value={filters.userEmail}
-                                onChange={e => setFilters(f => ({ ...f, userEmail: e.target.value }))}
-                                style={filterInputStyle}
-                            >
-                                <option value="">Użytkownik</option>
-                                {filterOptions.user_emails.map(e => (
-                                    <option key={e} value={e}>{e}</option>
-                                ))}
-                            </select>
-                            <select
+                                onChange={(v) => setFilters(f => ({ ...f, userEmail: v }))}
+                                options={[
+                                    { value: '', label: 'Użytkownik' },
+                                    ...filterOptions.user_emails.map(e => ({ value: e, label: e })),
+                                ]}
+                                placeholder="Użytkownik"
+                                style={{ minWidth: 140 }}
+                            />
+                            <DarkSelect
                                 value={filters.clientType}
-                                onChange={e => setFilters(f => ({ ...f, clientType: e.target.value }))}
-                                style={filterInputStyle}
-                            >
-                                <option value="">Źródło</option>
-                                {filterOptions.client_types.map(t => (
-                                    <option key={t} value={t}>{SOURCE_LABELS[t] || t}</option>
-                                ))}
-                            </select>
+                                onChange={(v) => setFilters(f => ({ ...f, clientType: v }))}
+                                options={[
+                                    { value: '', label: 'Źródło' },
+                                    ...filterOptions.client_types.map(t => ({ value: t, label: SOURCE_LABELS[t] || t })),
+                                ]}
+                                placeholder="Źródło"
+                                style={{ minWidth: 120 }}
+                            />
                         </>
                     )}
                     {(filters.dateFrom || filters.dateTo || filters.resourceType || filters.userEmail || filters.clientType) && (

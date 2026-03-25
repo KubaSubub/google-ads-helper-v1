@@ -1,19 +1,23 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
     Award,
     Bell,
     Brain,
     Calendar,
-    ChevronRight,
+    ChevronDown,
     ClipboardCheck,
+    Download,
     History,
     KeyRound,
     LayoutDashboard,
     Lightbulb,
+    Loader2,
     LogOut,
     Megaphone,
     Menu,
+    Plus,
+    RefreshCw,
     Search,
     Settings,
     FileBarChart2,
@@ -24,16 +28,15 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useApp } from '../contexts/AppContext'
-import { useFilter } from '../contexts/FilterContext'
-import { logout } from '../api'
+import { logout, discoverClients, getDataCoverage } from '../api'
+import SyncModal from './SyncModal'
 
 const NAV_GROUPS = [
     {
         label: 'PRZEGLĄD',
         items: [
             { to: '/', label: 'Pulpit', icon: LayoutDashboard },
-            { to: '/daily-audit', label: 'Codzienny audyt', icon: ClipboardCheck },
-            { to: '/clients', label: 'Klienci', icon: Users },
+            { to: '/daily-audit', label: 'Poranny przegląd', icon: ClipboardCheck },
         ],
     },
     {
@@ -75,13 +78,6 @@ const NAV_GROUPS = [
     },
 ]
 
-const PERIOD_PRESETS = [
-    { label: '7d', value: 7 },
-    { label: '14d', value: 14 },
-    { label: '30d', value: 30 },
-    { label: '90d', value: 90 },
-]
-
 function NavItem({ to, label, icon: Icon, showBadge, alertCount, onClick }) {
     const location = useLocation()
     const active = location.pathname === to || (to !== '/' && location.pathname.startsWith(to))
@@ -108,7 +104,7 @@ function NavItem({ to, label, icon: Icon, showBadge, alertCount, onClick }) {
             {showBadge && alertCount > 0 && (
                 <span
                     style={{
-                        background: '#EF4444',
+                        background: '#F87171',
                         fontSize: 10,
                         padding: '1px 6px',
                         borderRadius: 999,
@@ -124,104 +120,525 @@ function NavItem({ to, label, icon: Icon, showBadge, alertCount, onClick }) {
     )
 }
 
-function DateRangePicker() {
-    const { filters, setFilter } = useFilter()
-    const [showCustom, setShowCustom] = useState(filters.period === null)
+function ClientDrawer({ open, onClose }) {
+    const { selectedClientId, setSelectedClientId, clients, showToast, refreshClients } = useApp()
+    const [discovering, setDiscovering] = useState(false)
+    const [syncModalClient, setSyncModalClient] = useState(null) // {id, name}
+    const [customerId, setCustomerId] = useState('')
+    const [fetchingSingle, setFetchingSingle] = useState(false)
+    const [showAddInput, setShowAddInput] = useState(false)
+    const [coverageMap, setCoverageMap] = useState({})
+    const drawerRef = useRef(null)
+
+    useEffect(() => {
+        if (!open) return
+        const handler = (e) => {
+            // Don't close drawer if click is inside SyncModal overlay
+            if (e.target.closest('[data-sync-modal]')) return
+            if (drawerRef.current && !drawerRef.current.contains(e.target)) onClose()
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [open, onClose])
+
+    useEffect(() => {
+        if (!open) {
+            setShowAddInput(false)
+            setCustomerId('')
+            return
+        }
+        clients.forEach((client) => {
+            getDataCoverage(client.id)
+                .then((data) => setCoverageMap((prev) => ({ ...prev, [client.id]: data })))
+                .catch((err) => console.error('[ClientDrawer] coverage fetch failed', err))
+        })
+    }, [open, clients])
+
+    const handleSync = (clientId) => {
+        const client = clients.find(c => c.id === clientId)
+        setSyncModalClient({ id: clientId, name: client?.name || `Klient #${clientId}` })
+    }
+
+    const handleSyncModalClose = () => {
+        setSyncModalClient(null)
+        // Refresh coverage after sync
+        clients.forEach((client) => {
+            getDataCoverage(client.id)
+                .then((data) => setCoverageMap((prev) => ({ ...prev, [client.id]: data })))
+                .catch((err) => console.error('[ClientDrawer] coverage refresh failed', err))
+        })
+    }
+
+    const handleDiscover = async () => {
+        setDiscovering(true)
+        try {
+            const result = await discoverClients()
+            showToast(result.message, 'success')
+            const updated = await refreshClients()
+            if (!selectedClientId && updated?.length > 0) setSelectedClientId(updated[0].id)
+        } catch (err) {
+            showToast(err.message || 'Błąd pobierania klientów', 'error')
+        } finally {
+            setDiscovering(false)
+        }
+    }
+
+    const handleFetchSingle = async () => {
+        if (!customerId.trim()) return
+        setFetchingSingle(true)
+        try {
+            const result = await discoverClients(customerId.trim())
+            showToast(result.message, 'success')
+            setCustomerId('')
+            setShowAddInput(false)
+            const updated = await refreshClients()
+            if (!selectedClientId && updated?.length > 0) setSelectedClientId(updated[0].id)
+        } catch (err) {
+            showToast(err.message || 'Błąd pobierania konta', 'error')
+        } finally {
+            setFetchingSingle(false)
+        }
+    }
+
+    if (!open) return null
 
     return (
-        <div style={{ padding: '0 10px 8px' }}>
+        <div style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 60,
+            background: 'rgba(0,0,0,0.5)',
+            transition: 'opacity 0.2s',
+        }}>
             <div
+                ref={drawerRef}
                 style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 10,
-                    padding: '8px 10px',
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 380,
+                    maxWidth: '100vw',
+                    background: '#111318',
+                    borderLeft: '1px solid rgba(255,255,255,0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    animation: 'slideInRight 0.2s ease-out',
                 }}
             >
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                    Zakres dat
-                </div>
-                <div style={{ display: 'flex', gap: 4, marginBottom: showCustom ? 8 : 0 }}>
-                    {PERIOD_PRESETS.map((preset) => {
-                        const active = filters.period === preset.value
-                        return (
-                            <button
-                                key={preset.value}
-                                onClick={() => {
-                                    setFilter('period', preset.value)
-                                    setShowCustom(false)
-                                }}
-                                style={{
-                                    flex: 1,
-                                    padding: '4px 0',
-                                    borderRadius: 6,
-                                    fontSize: 11,
-                                    fontWeight: active ? 600 : 400,
-                                    border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
-                                    background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
-                                    color: active ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s',
-                                }}
-                            >
-                                {preset.label}
-                            </button>
-                        )
-                    })}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 20px',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        Zarządzanie klientami
+                    </h2>
                     <button
-                        onClick={() => setShowCustom((current) => !current)}
-                        title="Własny zakres"
+                        onClick={onClose}
                         style={{
-                            padding: '4px 6px',
+                            width: 28,
+                            height: 28,
                             borderRadius: 6,
-                            fontSize: 11,
-                            border: `1px solid ${filters.period === null ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
-                            background: filters.period === null ? 'rgba(79,142,247,0.18)' : 'transparent',
-                            color: filters.period === null ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
-                            cursor: 'pointer',
+                            background: 'rgba(255,255,255,0.06)',
+                            border: 'none',
                             display: 'flex',
                             alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'rgba(255,255,255,0.4)',
+                            transition: 'background 0.15s',
                         }}
+                        className="hover:bg-white/[0.1]"
                     >
-                        <Calendar size={11} />
+                        <X size={14} />
                     </button>
                 </div>
-                {showCustom && (
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+
+                <div style={{
+                    display: 'flex',
+                    gap: 8,
+                    padding: '12px 20px',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                }}>
+                    <button
+                        onClick={handleDiscover}
+                        disabled={discovering}
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            padding: '8px 12px',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            background: 'rgba(79,142,247,0.12)',
+                            border: '1px solid rgba(79,142,247,0.3)',
+                            color: '#4F8EF7',
+                            cursor: 'pointer',
+                            opacity: discovering ? 0.5 : 1,
+                            transition: 'all 0.15s',
+                        }}
+                    >
+                        {discovering ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                        Pobierz klientów
+                    </button>
+                    <button
+                        onClick={() => setShowAddInput((v) => !v)}
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            padding: '8px 12px',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            color: 'rgba(255,255,255,0.5)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                        }}
+                        className="hover:bg-white/[0.06]"
+                    >
+                        <Plus size={13} />
+                        Dodaj ręcznie
+                    </button>
+                </div>
+
+                {showAddInput && (
+                    <div style={{
+                        display: 'flex',
+                        gap: 8,
+                        padding: '10px 20px',
+                        borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    }}>
                         <input
-                            type="date"
-                            value={filters.dateFrom}
-                            onChange={(event) => setFilter('dateFrom', event.target.value)}
+                            type="text"
+                            value={customerId}
+                            onChange={(e) => setCustomerId(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleFetchSingle()}
+                            placeholder="np. 123-456-7890"
+                            autoFocus
                             style={{
                                 flex: 1,
-                                padding: '4px 6px',
-                                borderRadius: 6,
-                                fontSize: 11,
-                                background: 'rgba(255,255,255,0.06)',
+                                background: 'rgba(255,255,255,0.05)',
                                 border: '1px solid rgba(255,255,255,0.1)',
-                                color: 'rgba(255,255,255,0.7)',
+                                borderRadius: 6,
+                                padding: '6px 10px',
+                                fontSize: 12,
+                                color: '#F0F0F0',
                                 outline: 'none',
                             }}
                         />
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>-</span>
-                        <input
-                            type="date"
-                            value={filters.dateTo}
-                            onChange={(event) => setFilter('dateTo', event.target.value)}
+                        <button
+                            onClick={handleFetchSingle}
+                            disabled={fetchingSingle || !customerId.trim()}
                             style={{
-                                flex: 1,
-                                padding: '4px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                padding: '6px 14px',
                                 borderRadius: 6,
-                                fontSize: 11,
-                                background: 'rgba(255,255,255,0.06)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: 'rgba(255,255,255,0.7)',
-                                outline: 'none',
+                                fontSize: 12,
+                                fontWeight: 500,
+                                background: 'rgba(79,142,247,0.15)',
+                                border: '1px solid rgba(79,142,247,0.3)',
+                                color: '#4F8EF7',
+                                cursor: 'pointer',
+                                opacity: (fetchingSingle || !customerId.trim()) ? 0.4 : 1,
+                                transition: 'all 0.15s',
                             }}
-                        />
+                        >
+                            {fetchingSingle ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+                            Pobierz
+                        </button>
                     </div>
                 )}
+
+                <div style={{
+                    padding: '8px 20px 4px',
+                }}>
+                    <div style={{
+                        fontSize: 9,
+                        color: 'rgba(255,255,255,0.3)',
+                        letterSpacing: '0.15em',
+                        textTransform: 'uppercase',
+                        fontWeight: 500,
+                    }}>
+                        Połączone konta
+                    </div>
+                </div>
+
+                <div style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '4px 16px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                }}>
+                    {clients.length === 0 ? (
+                        <div style={{
+                            padding: '32px 0',
+                            textAlign: 'center',
+                            color: 'rgba(255,255,255,0.3)',
+                            fontSize: 12,
+                        }}>
+                            <Users size={24} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+                            Brak klientów. Kliknij "Pobierz klientów".
+                        </div>
+                    ) : (
+                        clients.map((client) => {
+                            const isSelected = selectedClientId === client.id
+                            const cov = coverageMap[client.id]
+                            return (
+                                <div
+                                    key={client.id}
+                                    onClick={() => {
+                                        setSelectedClientId(client.id)
+                                    }}
+                                    style={{
+                                        padding: '10px 14px',
+                                        borderRadius: 8,
+                                        cursor: 'pointer',
+                                        background: isSelected ? 'rgba(79,142,247,0.08)' : 'rgba(255,255,255,0.03)',
+                                        border: `1px solid ${isSelected ? 'rgba(79,142,247,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                                        transition: 'all 0.15s',
+                                    }}
+                                    className={!isSelected ? 'hover:bg-white/[0.05]' : ''}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            {isSelected && (
+                                                <span style={{
+                                                    width: 6,
+                                                    height: 6,
+                                                    borderRadius: '50%',
+                                                    background: '#4ADE80',
+                                                    boxShadow: '0 0 6px #4ade80',
+                                                    flexShrink: 0,
+                                                }} />
+                                            )}
+                                            <span style={{ fontSize: 13, fontWeight: 500, color: '#F0F0F0' }}>
+                                                {client.name}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleSync(client.id)
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 4,
+                                                padding: '4px 10px',
+                                                borderRadius: 5,
+                                                fontSize: 10,
+                                                background: 'rgba(255,255,255,0.06)',
+                                                border: 'none',
+                                                color: 'rgba(255,255,255,0.4)',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s',
+                                            }}
+                                            className="hover:bg-white/[0.1]"
+                                        >
+                                            <RefreshCw size={10} />
+                                            Sync
+                                        </button>
+                                    </div>
+                                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <span>{client.google_customer_id}</span>
+                                        {cov?.last_sync_at && (
+                                            <span>
+                                                Ostatni sync: {new Date(cov.last_sync_at).toLocaleString('pl-PL')}
+                                            </span>
+                                        )}
+                                        {cov?.data_from && cov?.data_to && (
+                                            <span>
+                                                Dane: {new Date(cov.data_from).toLocaleDateString('pl-PL')} — {new Date(cov.data_to).toLocaleDateString('pl-PL')}
+                                            </span>
+                                        )}
+                                        {!cov?.data_from && !cov?.last_sync_at && (
+                                            <span style={{ fontStyle: 'italic' }}>Brak zsynchronizowanych danych</span>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        })
+                    )}
+                </div>
             </div>
+
+            <SyncModal
+                isOpen={!!syncModalClient}
+                clientId={syncModalClient?.id}
+                clientName={syncModalClient?.name}
+                onClose={handleSyncModalClose}
+            />
+        </div>
+    )
+}
+
+function ClientSelector({ onOpenDrawer }) {
+    const { selectedClientId, setSelectedClientId, clients } = useApp()
+    const selectedClient = clients.find((c) => c.id === selectedClientId)
+    const [open, setOpen] = useState(false)
+    const ref = useRef(null)
+
+    useEffect(() => {
+        if (!open) return
+        const handler = (e) => {
+            if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [open])
+
+    return (
+        <div style={{ padding: '10px 12px 8px' }}>
+            <div style={{
+                fontSize: 10,
+                color: 'rgba(255,255,255,0.3)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                padding: '0 2px 6px',
+                fontWeight: 500,
+            }}>
+                Klient
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+                <div ref={ref} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                    <button
+                        onClick={() => setOpen((o) => !o)}
+                        style={{
+                            width: '100%',
+                            height: 38,
+                            padding: '0 32px 0 12px',
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            color: selectedClient ? '#FFFFFF' : 'rgba(255,255,255,0.4)',
+                            background: open ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${open ? 'rgba(79,142,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                            outline: 'none',
+                            cursor: 'pointer',
+                            transition: 'border-color 0.15s, background 0.15s',
+                            textAlign: 'left',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        }}
+                        className="hover:bg-white/[0.06]"
+                    >
+                        {selectedClient ? selectedClient.name : 'Wybierz klienta...'}
+                    </button>
+                    <ChevronDown
+                        size={14}
+                        style={{
+                            position: 'absolute',
+                            right: 10,
+                            top: '50%',
+                            transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)`,
+                            color: 'rgba(255,255,255,0.3)',
+                            pointerEvents: 'none',
+                            transition: 'transform 0.15s',
+                        }}
+                    />
+                    {open && (
+                        <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 4px)',
+                            left: 0,
+                            right: 0,
+                            zIndex: 50,
+                            background: '#1A1D24',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: 10,
+                            padding: 4,
+                            boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+                            maxHeight: 240,
+                            overflowY: 'auto',
+                        }}>
+                            {clients.map((client) => {
+                                const active = client.id === selectedClientId
+                                return (
+                                    <button
+                                        key={client.id}
+                                        onClick={() => {
+                                            setSelectedClientId(client.id)
+                                            setOpen(false)
+                                        }}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            width: '100%',
+                                            padding: '8px 10px',
+                                            borderRadius: 7,
+                                            fontSize: 12,
+                                            fontWeight: active ? 500 : 400,
+                                            color: active ? '#FFFFFF' : 'rgba(255,255,255,0.65)',
+                                            background: active ? 'rgba(79,142,247,0.15)' : 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'background 0.1s',
+                                        }}
+                                        className={!active ? 'hover:bg-white/[0.05]' : ''}
+                                    >
+                                        <span style={{
+                                            width: 6,
+                                            height: 6,
+                                            borderRadius: '50%',
+                                            flexShrink: 0,
+                                            background: active ? '#4ADE80' : 'rgba(255,255,255,0.15)',
+                                        }} />
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {client.name}
+                                        </span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+                <button
+                    onClick={onOpenDrawer}
+                    title="Zarządzanie klientami"
+                    style={{
+                        width: 38,
+                        borderRadius: 8,
+                        background: 'rgba(79,142,247,0.12)',
+                        border: '1px solid rgba(79,142,247,0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: '#4F8EF7',
+                        flexShrink: 0,
+                        transition: 'all 0.15s',
+                    }}
+                    className="hover:bg-[rgba(79,142,247,0.2)]"
+                >
+                    <Settings size={14} />
+                </button>
+            </div>
+            {selectedClient && (
+                <div style={{
+                    fontSize: 10,
+                    color: 'rgba(255,255,255,0.25)',
+                    padding: '5px 4px 0',
+                }}>
+                    ID: {selectedClient.google_customer_id}
+                </div>
+            )}
         </div>
     )
 }
@@ -229,6 +646,7 @@ function DateRangePicker() {
 function SidebarContent({ onNavigate }) {
     const { selectedClientId, setSelectedClientId, alertCount, clients } = useApp()
     const selectedClient = clients.find((client) => client.id === selectedClientId)
+    const [drawerOpen, setDrawerOpen] = useState(false)
 
     const handleLogout = async () => {
         try {
@@ -239,7 +657,7 @@ function SidebarContent({ onNavigate }) {
 
     return (
         <div className="flex flex-col h-full" style={{ background: '#111318' }}>
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '16px 16px 14px' }}>
+            <div style={{ padding: '16px 12px 12px' }}>
                 <div className="flex items-center gap-2.5">
                     <div
                         style={{
@@ -265,73 +683,10 @@ function SidebarContent({ onNavigate }) {
                     </div>
                 </div>
             </div>
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.07)' }} />
 
-            <div style={{ padding: '10px 10px 8px' }}>
-                <div
-                    style={{
-                        position: 'relative',
-                        overflow: 'hidden',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 10,
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                        transition: 'background 0.15s',
-                    }}
-                    className="hover:bg-white/[0.06]"
-                >
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 5 }}>
-                        Aktywny klient
-                    </div>
-                    {selectedClient ? (
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                    style={{
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: '50%',
-                                        flexShrink: 0,
-                                        background: '#4ADE80',
-                                        boxShadow: '0 0 6px #4ade80',
-                                    }}
-                                />
-                                <span className="text-white text-[13px] font-medium truncate">{selectedClient.name}</span>
-                            </div>
-                            <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-between">
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Wybierz klienta...</span>
-                            <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />
-                        </div>
-                    )}
-                    {selectedClient && (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 3 }}>
-                            Sync * aktywny
-                        </div>
-                    )}
-                    <select
-                        value={selectedClientId || ''}
-                        onChange={(event) => setSelectedClientId(event.target.value ? Number(event.target.value) : null)}
-                        style={{
-                            position: 'absolute',
-                            opacity: 0,
-                            inset: 0,
-                            width: '100%',
-                            height: '100%',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        <option value="">Wybierz klienta...</option>
-                        {clients.map((client) => (
-                            <option key={client.id} value={client.id}>{client.name}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            <DateRangePicker />
+            <ClientSelector onOpenDrawer={() => setDrawerOpen(true)} />
+            <ClientDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
             <nav className="flex-1 overflow-y-auto" style={{ padding: '4px 8px' }}>
                 {NAV_GROUPS.map((group) => (

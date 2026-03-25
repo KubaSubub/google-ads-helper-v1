@@ -6,6 +6,7 @@ import { TrendingUp, TrendingDown, Activity, AlertCircle, Calendar, Loader2 } fr
 import { getForecast, getCampaigns } from '../api'
 import { useApp } from '../contexts/AppContext'
 import EmptyState from '../components/EmptyState'
+import DarkSelect from '../components/DarkSelect'
 
 function PillButton({ active, onClick, children }) {
     return (
@@ -45,40 +46,46 @@ export default function Forecast() {
     const [error, setError] = useState(null)
 
     useEffect(() => {
-        if (selectedClientId) loadCampaigns()
+        if (!selectedClientId) return
+        let cancelled = false
+        async function load() {
+            try {
+                const res = await getCampaigns(selectedClientId)
+                if (cancelled) return
+                const items = res?.items || []
+                setCampaigns(items)
+                if (items.length > 0) setSelectedCampaign(items[0].id)
+            } catch (err) {
+                if (!cancelled) setError(err.message)
+            }
+        }
+        load()
+        return () => { cancelled = true }
     }, [selectedClientId])
 
     useEffect(() => {
-        if (selectedCampaign) loadForecast()
+        if (!selectedCampaign) return
+        let cancelled = false
+        async function load() {
+            setLoading(true)
+            setError(null)
+            try {
+                const res = await getForecast(selectedCampaign, metric, 7)
+                if (cancelled) return
+                setData(res)
+            } catch (err) {
+                if (!cancelled) setError(err.message)
+            } finally {
+                if (!cancelled) setLoading(false)
+            }
+        }
+        load()
+        return () => { cancelled = true }
     }, [selectedCampaign, metric])
-
-    async function loadCampaigns() {
-        try {
-            const res = await getCampaigns(selectedClientId)
-            const items = res?.items || []
-            setCampaigns(items)
-            if (items.length > 0) setSelectedCampaign(items[0].id)
-        } catch (err) {
-            console.error("Failed to load campaigns", err)
-        }
-    }
-
-    async function loadForecast() {
-        setLoading(true)
-        setError(null)
-        try {
-            const res = await getForecast(selectedCampaign, metric, 7)
-            setData(res)
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setLoading(false)
-        }
-    }
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta" />
 
-    if (!selectedCampaign) {
+    if (!selectedCampaign && !error) {
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
                 <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
@@ -111,23 +118,13 @@ export default function Forecast() {
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <select
+                    <DarkSelect
                         value={selectedCampaign}
-                        onChange={e => setSelectedCampaign(Number(e.target.value))}
-                        style={{
-                            background: 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white',
-                            fontSize: 12,
-                            borderRadius: 8,
-                            padding: '6px 10px',
-                            outline: 'none',
-                        }}
-                    >
-                        {campaigns.map(c => (
-                            <option key={c.id} value={c.id} style={{ background: '#111318' }}>{c.name}</option>
-                        ))}
-                    </select>
+                        onChange={(v) => setSelectedCampaign(Number(v))}
+                        options={campaigns.map(c => ({ value: c.id, label: c.name }))}
+                        placeholder="Kampania..."
+                        style={{ minWidth: 200 }}
+                    />
 
                     <div className="flex gap-1.5">
                         {METRIC_OPTIONS.map(m => (

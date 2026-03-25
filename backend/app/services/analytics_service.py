@@ -25,6 +25,7 @@ from app.models.asset_group_signal import AssetGroupSignal
 from app.models.campaign_audience import CampaignAudienceMetric
 from app.models.campaign_asset import CampaignAsset
 from app.utils.formatters import micros_to_currency
+from loguru import logger
 
 
 class AnalyticsService:
@@ -336,6 +337,7 @@ class AnalyticsService:
         is_mock = False
         if not day_map:
             is_mock = True
+            logger.warning("Returning mock trend data — no MetricDaily rows found for campaigns")
             day_map = self._mock_daily_data(campaign_ids, date_from, date_to)
 
         # Build output rows with derived metrics
@@ -452,16 +454,18 @@ class AnalyticsService:
 
         score = 100
         issues = []
+        breakdown = {"base": 100}
 
-        # 1. Unresolved alerts
+        # 1. Unresolved alerts (capped per severity)
         alerts = self.db.query(Alert).filter(
             Alert.client_id == client_id,
             Alert.resolved_at.is_(None),
         ).all()
         high_alerts = [a for a in alerts if a.severity == "HIGH"]
         med_alerts = [a for a in alerts if a.severity == "MEDIUM"]
-        score -= len(high_alerts) * 10
-        score -= len(med_alerts) * 5
+        alert_penalty = min(len(high_alerts) * 10, 30) + min(len(med_alerts) * 5, 20)
+        score -= alert_penalty
+        breakdown["alert_penalty"] = alert_penalty
         if high_alerts:
             issues.append({
                 "severity": "HIGH",
@@ -486,6 +490,9 @@ class AnalyticsService:
         campaigns_with_data = 0
         total_campaigns = len(active_campaigns)
 
+        zero_conv_penalty = 0
+        roas_penalty = 0
+
         for campaign in active_campaigns:
             rows = self.db.query(MetricDaily).filter(
                 MetricDaily.campaign_id == campaign.id,
@@ -502,12 +509,21 @@ class AnalyticsService:
 
             if total_clicks > 10 and total_conv == 0:
                 no_conv_campaigns.append(campaign.name)
-                score -= 3
+                zero_conv_penalty += 3
 
+            # FIX 4: skip ROAS penalty for brand campaigns
+            is_brand = (campaign.campaign_role_final or "").upper() in ("BRAND", "BRAND_EXACT")
             roas = total_conv_value / total_cost if total_cost > 0 else 0
-            if total_cost > 10 and roas < 1:
+            if total_cost > 10 and roas < 1 and not is_brand:
                 low_roas_campaigns.append(campaign.name)
-                score -= 5
+                roas_penalty += 5
+
+        zero_conv_penalty = min(zero_conv_penalty, 15)  # cap: max -15 from zero conversions
+        roas_penalty = min(roas_penalty, 20)  # cap: max -20 from low ROAS
+        score -= zero_conv_penalty
+        score -= roas_penalty
+        breakdown["zero_conv_penalty"] = zero_conv_penalty
+        breakdown["roas_penalty"] = roas_penalty
 
         if no_conv_campaigns:
             issues.append({
@@ -523,12 +539,16 @@ class AnalyticsService:
             })
 
         # 3. CTR trend: second half vs first half of period
-        campaign_ids = [c.id for c in active_campaigns]
+        # FIX 3: exclude PMax/Display/Video — CTR is naturally volatile for these types
+        ctr_penalty = 0
+        ctr_eligible = [c for c in active_campaigns
+                        if (c.campaign_type or "").upper() not in ("PERFORMANCE_MAX", "DISPLAY", "VIDEO")]
+        ctr_campaign_ids = [c.id for c in ctr_eligible]
         midpoint = period_start + timedelta(days=half_period)
-        if campaign_ids:
+        if ctr_campaign_ids:
             def _sum_ctr(d_from, d_to):
                 rows = self.db.query(MetricDaily).filter(
-                    MetricDaily.campaign_id.in_(campaign_ids),
+                    MetricDaily.campaign_id.in_(ctr_campaign_ids),
                     MetricDaily.date >= d_from,
                     MetricDaily.date <= d_to,
                 ).all()
@@ -539,16 +559,68 @@ class AnalyticsService:
             ctr_last = _sum_ctr(midpoint, period_end)
             ctr_prev = _sum_ctr(period_start, midpoint)
             if ctr_prev > 0 and ctr_last < ctr_prev * 0.85:
-                score -= 5
+                ctr_penalty = 5
+                score -= ctr_penalty
                 drop_pct = round((ctr_prev - ctr_last) / ctr_prev * 100, 1)
                 issues.append({
                     "severity": "MEDIUM",
                     "message": f"CTR spada {drop_pct}% tydzień do tygodnia",
                     "action": "keywords",
                 })
+        breakdown["ctr_penalty"] = ctr_penalty
 
-        # Positive insights
-        if active_campaigns and not no_conv_campaigns and not low_roas_campaigns and not high_alerts:
+        # 4. Budget pacing — underspend / overspend detection
+        import calendar as _cal
+        pacing_penalty = 0
+        today = date.today()
+        month_start = today.replace(day=1)
+        days_elapsed = (today - month_start).days + 1
+        days_in_month = _cal.monthrange(today.year, today.month)[1]
+        month_progress = days_elapsed / days_in_month
+
+        if month_progress > 0.10 and active_campaigns:
+            from sqlalchemy import func as sa_func
+            for camp in active_campaigns:
+                if not camp.budget_micros or camp.budget_micros <= 0:
+                    continue
+                budget_monthly = (camp.budget_micros / 1_000_000) * days_in_month
+                actual_micros = (
+                    self.db.query(sa_func.sum(MetricDaily.cost_micros))
+                    .filter(
+                        MetricDaily.campaign_id == camp.id,
+                        MetricDaily.date >= month_start,
+                        MetricDaily.date <= today,
+                    )
+                    .scalar()
+                ) or 0
+                actual_spend = actual_micros / 1_000_000
+                expected_spend = budget_monthly * month_progress
+                if expected_spend <= 0:
+                    continue
+                pct = actual_spend / expected_spend
+
+                if pct < 0.40 and month_progress > 0.30:
+                    pacing_penalty += 5
+                    issues.append({
+                        "severity": "MEDIUM",
+                        "message": f"'{camp.name}' niedowydaje budżetu ({pct*100:.0f}% oczekiwanego przy {month_progress*100:.0f}% miesiąca)",
+                        "action": "campaigns",
+                    })
+                elif pct > 1.30:
+                    pacing_penalty += 5
+                    issues.append({
+                        "severity": "HIGH",
+                        "message": f"'{camp.name}' przepala budżet ({pct*100:.0f}% oczekiwanego przy {month_progress*100:.0f}% miesiąca)",
+                        "action": "campaigns",
+                    })
+
+        pacing_penalty = min(pacing_penalty, 15)  # cap: max -15 from pacing
+        score -= pacing_penalty
+        breakdown["pacing_penalty"] = pacing_penalty
+
+        # Positive insights — only if truly no issues
+        has_problems = no_conv_campaigns or low_roas_campaigns or high_alerts or pacing_penalty > 0
+        if active_campaigns and not has_problems:
             issues.append({
                 "severity": "INFO",
                 "message": "Konto w dobrej kondycji — brak krytycznych problemów",
@@ -568,6 +640,7 @@ class AnalyticsService:
         return {
             "score": max(0, min(100, score)),
             "issues": issues,
+            "breakdown": breakdown,
             "campaigns_with_data": campaigns_with_data,
             "total_campaigns": total_campaigns,
             "data_available": data_available,
@@ -755,17 +828,26 @@ class AnalyticsService:
             .all()
         )
 
-        # Aggregate by device
+        # Aggregate by device (totals + daily trends)
         device_agg: dict[str, dict] = {}
+        device_daily: dict[str, dict[date, dict]] = {}
         for r in rows:
             dev = r.device
             if dev not in device_agg:
                 device_agg[dev] = {"clicks": 0, "impressions": 0, "cost_micros": 0, "conversions": 0.0, "conv_value_micros": 0}
+                device_daily[dev] = {}
             device_agg[dev]["clicks"] += r.clicks or 0
             device_agg[dev]["impressions"] += r.impressions or 0
             device_agg[dev]["cost_micros"] += r.cost_micros or 0
             device_agg[dev]["conversions"] += r.conversions or 0
             device_agg[dev]["conv_value_micros"] += r.conversion_value_micros or 0
+
+            d = r.date
+            if d not in device_daily[dev]:
+                device_daily[dev][d] = {"clicks": 0, "cost_micros": 0, "conversions": 0.0}
+            device_daily[dev][d]["clicks"] += r.clicks or 0
+            device_daily[dev][d]["cost_micros"] += r.cost_micros or 0
+            device_daily[dev][d]["conversions"] += r.conversions or 0
 
         devices = []
         total_clicks = sum(d["clicks"] for d in device_agg.values())
@@ -774,6 +856,19 @@ class AnalyticsService:
         for dev, agg in sorted(device_agg.items()):
             cost_usd = agg["cost_micros"] / 1_000_000
             conv_value_usd = agg["conv_value_micros"] / 1_000_000
+
+            # Build daily trend sorted by date
+            daily = device_daily.get(dev, {})
+            trend = [
+                {
+                    "date": str(dt),
+                    "clicks": daily[dt]["clicks"],
+                    "cost": round(daily[dt]["cost_micros"] / 1_000_000, 2),
+                    "conversions": round(daily[dt]["conversions"], 2),
+                }
+                for dt in sorted(daily.keys())
+            ]
+
             devices.append({
                 "device": dev,
                 "clicks": agg["clicks"],
@@ -785,6 +880,7 @@ class AnalyticsService:
                 "roas": round(conv_value_usd / cost_usd, 2) if cost_usd > 0 else 0,
                 "share_clicks_pct": round(agg["clicks"] / total_clicks * 100, 1) if total_clicks else 0,
                 "share_cost_pct": round(agg["cost_micros"] / total_cost * 100, 1) if total_cost else 0,
+                "trend": trend,
             })
 
         return {"period_days": period_days, "devices": devices}

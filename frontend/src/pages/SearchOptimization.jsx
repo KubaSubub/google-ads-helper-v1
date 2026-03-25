@@ -192,7 +192,7 @@ function MatchTypeSection({ data }) {
                         <tr key={mt.match_type} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ ...TD, fontFamily: 'inherit' }}><MatchBadge type={mt.match_type} /></td>
                             <td style={TD_DIM}>{mt.keyword_count}</td>
-                            <td style={TD}>{mt.clicks.toLocaleString()}</td>
+                            <td style={TD}>{mt.clicks.toLocaleString('pl-PL')}</td>
                             <td style={TD}>{mt.cost_usd.toFixed(2)} zł</td>
                             <td style={TD}>{mt.conversions.toFixed(1)}</td>
                             <td style={TD_DIM}>{mt.ctr}%</td>
@@ -252,7 +252,7 @@ function NgramSection({ data, ngramSize, setNgramSize }) {
                             <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isWaste ? 'rgba(248,113,113,0.04)' : 'transparent' }}>
                                 <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: isWaste ? '#F87171' : '#F0F0F0' }}>{ng.ngram}</td>
                                 <td style={TD_DIM}>{ng.occurrences}</td>
-                                <td style={TD}>{ng.clicks.toLocaleString()}</td>
+                                <td style={TD}>{ng.clicks.toLocaleString('pl-PL')}</td>
                                 <td style={TD}>{ng.cost_usd.toFixed(2)} zł</td>
                                 <td style={TD}>{ng.conversions.toFixed(1)}</td>
                                 <td style={TD_DIM}>{ng.cvr}%</td>
@@ -360,7 +360,7 @@ function LandingPageSection({ data }) {
                                 </span>
                             </td>
                             <td style={TD_DIM}>{p.keyword_count}</td>
-                            <td style={TD}>{p.clicks.toLocaleString()}</td>
+                            <td style={TD}>{p.clicks.toLocaleString('pl-PL')}</td>
                             <td style={TD}>{p.cost_usd.toFixed(2)} zł</td>
                             <td style={TD}>{p.conversions.toFixed(1)}</td>
                             <td style={TD_DIM}>{p.cvr}%</td>
@@ -431,7 +431,7 @@ function HourlyDaypartingSection({ data }) {
                                 background: isBizHour ? 'rgba(79,142,247,0.03)' : 'transparent',
                             }}>
                                 <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500 }}>{h.hour_label}</td>
-                                <td style={TD}>{h.clicks.toLocaleString()}</td>
+                                <td style={TD}>{h.clicks.toLocaleString('pl-PL')}</td>
                                 <td style={TD}>{h.cost_usd.toFixed(2)} zł</td>
                                 <td style={TD}>{h.conversions.toFixed(1)}</td>
                                 <td style={TD_DIM}>{h.ctr}%</td>
@@ -957,7 +957,7 @@ function DemographicsSection({ data }) {
                         {items.map((item, i) => (
                             <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                 <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{item.segment}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{item.clicks?.toLocaleString()}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{item.clicks?.toLocaleString('pl-PL')}</td>
                                 <td style={{ ...TD, textAlign: 'right' }}>${item.cost_usd}</td>
                                 <td style={{ ...TD, textAlign: 'right' }}>{item.conversions}</td>
                                 <td style={{ ...TD, textAlign: 'right', color: item.cpa_usd && data.avg_cpa_usd && item.cpa_usd > data.avg_cpa_usd * 2 ? '#F87171' : 'rgba(255,255,255,0.8)' }}>{item.cpa_usd != null ? `$${item.cpa_usd}` : '—'}</td>
@@ -1005,7 +1005,7 @@ function PmaxChannelsSection({ data }) {
                     {data.channels.map((ch, i) => (
                         <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{ch.network_type}</td>
-                            <td style={{ ...TD, textAlign: 'right' }}>{ch.clicks?.toLocaleString()}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{ch.clicks?.toLocaleString('pl-PL')}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{(ch.cost_micros / 1e6).toFixed(0)} zl</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{ch.conversions?.toFixed(1)}</td>
                             <td style={{ ...TD_DIM, textAlign: 'right' }}>{ch.cost_share_pct?.toFixed(1)}%</td>
@@ -1168,8 +1168,8 @@ function ExtPerfSection({ data }) {
                         <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{t.asset_type}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{t.count}</td>
-                            <td style={{ ...TD, textAlign: 'right' }}>{t.total_clicks?.toLocaleString()}</td>
-                            <td style={{ ...TD, textAlign: 'right' }}>{t.total_impressions?.toLocaleString()}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{t.total_clicks?.toLocaleString('pl-PL')}</td>
+                            <td style={{ ...TD, textAlign: 'right' }}>{t.total_impressions?.toLocaleString('pl-PL')}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{t.avg_ctr?.toFixed(2)}%</td>
                             <td style={{ ...TD, textAlign: 'right', color: PERF_COLOR.BEST }}>{t.performance_labels?.BEST || 0}</td>
                             <td style={{ ...TD, textAlign: 'right', color: PERF_COLOR.GOOD }}>{t.performance_labels?.GOOD || 0}</td>
@@ -1244,33 +1244,34 @@ export default function SearchOptimization() {
         setLoading(true)
         setError(null)
         try {
+            const _catch = (label) => (err) => { console.warn(`[SearchOptim] ${label}`, err); return null }
             const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
                    pch, agp, sth, aud, mex, exp] = await Promise.all([
-                getWastedSpend(selectedClientId, allParams).catch(() => null),
-                getDayparting(selectedClientId, allParams).catch(() => null),
-                getMatchTypeAnalysis(selectedClientId, allParams).catch(() => null),
-                getNgramAnalysis(selectedClientId, { ngram_size: ngramSize, ...allParams }).catch(() => null),
-                getRsaAnalysis(selectedClientId, allParams).catch(() => null),
-                getLandingPages(selectedClientId, allParams).catch(() => null),
-                getHourlyDayparting(selectedClientId, allParams).catch(() => null),
-                getAccountStructure(selectedClientId).catch(() => null),
-                getBiddingAdvisor(selectedClientId, allParams).catch(() => null),
-                getConversionHealth(selectedClientId, allParams).catch(() => null),
-                getAdGroupHealth(selectedClientId, allParams).catch(() => null),
-                getSmartBiddingHealth(selectedClientId, allParams).catch(() => null),
-                getParetoAnalysis(selectedClientId, allParams).catch(() => null),
-                getScalingOpportunities(selectedClientId, allParams).catch(() => null),
-                getTargetVsActual(selectedClientId, allParams).catch(() => null),
-                getLearningStatus(selectedClientId).catch(() => null),
-                getPortfolioHealth(selectedClientId, allParams).catch(() => null),
-                getConversionQuality(selectedClientId).catch(() => null),
-                getDemographics(selectedClientId, allParams).catch(() => null),
-                getPmaxChannels(selectedClientId, allParams).catch(() => null),
-                getAssetGroupPerformance(selectedClientId, allParams).catch(() => null),
-                getPmaxSearchThemes(selectedClientId).catch(() => null),
-                getAudiencePerformance(selectedClientId, allParams).catch(() => null),
-                getMissingExtensions(selectedClientId, allParams).catch(() => null),
-                getExtensionPerformance(selectedClientId, allParams).catch(() => null),
+                getWastedSpend(selectedClientId, allParams).catch(_catch('wasted-spend')),
+                getDayparting(selectedClientId, allParams).catch(_catch('dayparting')),
+                getMatchTypeAnalysis(selectedClientId, allParams).catch(_catch('match-type')),
+                getNgramAnalysis(selectedClientId, { ngram_size: ngramSize, ...allParams }).catch(_catch('ngram')),
+                getRsaAnalysis(selectedClientId, allParams).catch(_catch('rsa')),
+                getLandingPages(selectedClientId, allParams).catch(_catch('landing-pages')),
+                getHourlyDayparting(selectedClientId, allParams).catch(_catch('hourly-dayparting')),
+                getAccountStructure(selectedClientId).catch(_catch('account-structure')),
+                getBiddingAdvisor(selectedClientId, allParams).catch(_catch('bidding-advisor')),
+                getConversionHealth(selectedClientId, allParams).catch(_catch('conversion-health')),
+                getAdGroupHealth(selectedClientId, allParams).catch(_catch('ad-group-health')),
+                getSmartBiddingHealth(selectedClientId, allParams).catch(_catch('smart-bidding')),
+                getParetoAnalysis(selectedClientId, allParams).catch(_catch('pareto')),
+                getScalingOpportunities(selectedClientId, allParams).catch(_catch('scaling')),
+                getTargetVsActual(selectedClientId, allParams).catch(_catch('target-vs-actual')),
+                getLearningStatus(selectedClientId).catch(_catch('learning-status')),
+                getPortfolioHealth(selectedClientId, allParams).catch(_catch('portfolio-health')),
+                getConversionQuality(selectedClientId).catch(_catch('conversion-quality')),
+                getDemographics(selectedClientId, allParams).catch(_catch('demographics')),
+                getPmaxChannels(selectedClientId, allParams).catch(_catch('pmax-channels')),
+                getAssetGroupPerformance(selectedClientId, allParams).catch(_catch('asset-group')),
+                getPmaxSearchThemes(selectedClientId).catch(_catch('pmax-themes')),
+                getAudiencePerformance(selectedClientId, allParams).catch(_catch('audience')),
+                getMissingExtensions(selectedClientId, allParams).catch(_catch('missing-ext')),
+                getExtensionPerformance(selectedClientId, allParams).catch(_catch('ext-performance')),
             ])
             setWaste(w)
             setDaypart(dp)

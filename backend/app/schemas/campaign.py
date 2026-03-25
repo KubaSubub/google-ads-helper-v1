@@ -1,9 +1,10 @@
 """Campaign and MetricDaily schemas with micros to currency conversion."""
 
+import json
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, field_validator
 
 from .common import CampaignRole, ProtectionLevel, RoleSource
 
@@ -17,7 +18,7 @@ class MetricDailyResponse(BaseModel):
     clicks: int = 0
     impressions: int = 0
     ctr: float = 0.0
-    conversions: float = 0
+    conversions: float = 0.0
     conversion_rate: float = 0.0
     cost_micros: int = 0
     roas: float = 0.0
@@ -94,8 +95,22 @@ class CampaignResponse(BaseModel):
     abs_top_impression_pct: Optional[float] = None
     top_impression_pct: Optional[float] = None
 
+    labels: list[str] = []
+
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    @field_validator('labels', mode='before')
+    @classmethod
+    def parse_labels(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return []
+        return v
 
     @computed_field
     @property

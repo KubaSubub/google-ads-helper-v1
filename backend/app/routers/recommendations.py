@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta, timezone
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.demo_guard import ensure_demo_write_allowed
@@ -441,10 +443,6 @@ def dismiss_recommendation(
 # Bulk-apply "quick scripts" endpoint
 # ---------------------------------------------------------------------------
 
-from pydantic import BaseModel  # noqa: E402
-from typing import List  # noqa: E402
-
-
 class BulkApplyRequest(BaseModel):
     client_id: int
     category: str  # "clean_waste", "pause_burning", "boost_winners", "emergency_brake", "add_negatives"
@@ -560,25 +558,58 @@ def bulk_apply_recommendations(
     if priority_filter:
         query = query.filter(RecommendationModel.priority == priority_filter)
 
-    matching_recs: list[RecommendationModel] = query.all()
+    all_recs: list[RecommendationModel] = query.all()
 
+    # Separate executable from non-executable
+    executable_recs: list[RecommendationModel] = []
+    skipped_recs: list[RecommendationModel] = []
+    for rec in all_recs:
+        ap = rec.action_payload or {}
+        # Check executable flag in action_payload or suggested_action
+        is_exe = ap.get("executable", True) if ap.get("action_type") else True
+        if is_exe:
+            executable_recs.append(rec)
+        else:
+            skipped_recs.append(rec)
+
+    # Build items list — only executable recommendations
     items: List[dict] = []
-    for rec in matching_recs:
+    for rec in executable_recs:
         items.append({
             "id": rec.id,
             "action_type": rec.rule_id,
             "priority": rec.priority,
             "summary": _build_item_summary(rec),
             "estimated_savings_usd": _estimated_savings_usd(rec),
+            "status": "pending",
         })
 
     applied = 0
     failed = 0
     errors: List[str] = []
+    # Track per-item results by rec id
+    item_status: dict[int, str] = {}
 
     if not body.dry_run:
         executor = ActionExecutor(db)
-        for rec in matching_recs:
+
+        # Use batch path for ADD_NEGATIVE — single API call per campaign
+        batch_eligible = [r for r in executable_recs if r.rule_id == "ADD_NEGATIVE"]
+        individual = [r for r in executable_recs if r.rule_id != "ADD_NEGATIVE"]
+
+        if batch_eligible:
+            batch_result = executor.apply_add_negative_batch(
+                batch_eligible, body.client_id, allow_demo_write=allow_demo_write,
+            )
+            applied += batch_result["applied"]
+            failed += batch_result["failed"]
+            errors.extend(batch_result["errors"])
+            # Mark items from batch
+            for rec in batch_eligible:
+                # After batch, rec.status was updated to "applied" if successful
+                item_status[rec.id] = "success" if rec.status == "applied" else "failed"
+
+        for rec in individual:
             try:
                 result = executor.apply_recommendation(
                     rec.id,
@@ -588,19 +619,29 @@ def bulk_apply_recommendations(
                 )
                 if result.get("status") in ("success", "applied", "dry_run"):
                     applied += 1
+                    item_status[rec.id] = "success"
                 else:
                     failed += 1
+                    item_status[rec.id] = "failed"
                     errors.append(
                         f"Rec #{rec.id}: {result.get('message') or result.get('reason', 'unknown error')}"
                     )
             except Exception as exc:
                 failed += 1
+                item_status[rec.id] = "failed"
                 errors.append(f"Rec #{rec.id}: {exc}")
+
+        # Update item statuses in response
+        for item in items:
+            item["status"] = item_status.get(item["id"], "pending")
+
+    skipped_count = len(skipped_recs)
 
     return {
         "category": body.category,
         "dry_run": body.dry_run,
-        "total_matching": len(matching_recs),
+        "total_matching": len(executable_recs),
+        "total_skipped": skipped_count,
         "items": items,
         "applied": applied,
         "failed": failed,
