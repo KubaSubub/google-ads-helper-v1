@@ -1,94 +1,100 @@
-# Ocena eksperta Google Ads — Pulpit (Dashboard)
-> Data: 2026-03-25 | Srednia ocena: 8.5/10 | Werdykt: ZMODYFIKOWAC
+# Ocena eksperta Google Ads — Dashboard (Pulpit)
+> Data: 2026-03-26 (re-test) | Srednia ocena: 9.0/10 | Werdykt: ZACHOWAC
 
 ## TL;DR
-Pulpit to solidna, dobrze zaprojektowana strona startowa ktora pokrywa kluczowe potrzeby codziennego przegladu konta. Daje realną wartość ponad natywny Google Ads UI dzięki Health Score, automatycznym insightom i pacing budżetu w jednym widoku. Brakuje kilku krytycznych elementów wymienionych w playbooku.
+Dashboard to najlepsza strona startowa w narzedziu. Pokrywa 100% Daily Checks i ~70% Weekly Reviews z playbooka w jednym widoku. Po poprawce WoW chart (daty zamiast nazw dni) widget porownania okresow jest w pelni uzyteczny. Dwa blokery do 10/10: sortowanie tabeli kampanii i deep-link do kampanii.
 
 ## Oceny
+
 | Kryterium | Ocena | Komentarz |
 |-----------|-------|-----------|
-| Potrzebnosc | 9/10 | Dashboard to absolutny must-have — specjalista zaczyna od niego każdy dzień. Playbook sekcja 1.1 "Daily Checks" mapuje się bezpośrednio na tę zakładkę |
-| Kompletnosc | 7/10 | 8 endpointów, bogate dane — ale brakuje Impressions i CTR w KPI cards, brakuje CPA. Tabela kampanii nie pokazuje metryk performance (clicks, cost, conv) |
-| Wartosc dodana vs Google Ads UI | 8/10 | Health Score, InsightsFeed, Budget Pacing, Device+Geo w jednym widoku — Google Ads nie ma takiego "single pane of glass" |
-| Priorytet MVP | 10/10 | Absolutnie pierwsza strona którą specjalista otwiera. Bez dashboardu aplikacja nie ma sensu |
-| **SREDNIA** | **8.5/10** | |
+| Potrzebnosc | 9/10 | Codziennie rano. Must-have #1. GAds Overview jest slabsze. |
+| Kompletnosc | 9/10 | 8 KPI, Health Score, InsightsFeed, TrendExplorer, WoW (z datami!), Campaign table z metrykami, Budget Pacing, Device+Geo, IS. Brakuje sortowania tabeli. |
+| Wartosc dodana vs Google Ads UI | 9/10 | Health Score, Wasted Spend KPI, Trend Explorer z korelacjami, Budget Pacing zbiorczy, WoW nakladany chart z datami. Podbilem z 8 bo fix dat w WoW uczynilo go real-world uzytecznym. |
+| Priorytet MVP | 10/10 | Bez dashboardu apka nie ma sensu. |
+| **SREDNIA** | **9.3/10** | Wzrost z 9.0 — fix WoW dates |
 
 ## Co robi dobrze
-- **Health Score** (Dashboard.jsx:36-111) — unikalny element, Google Ads tego nie ma. Circular gauge z listą issues daje natychmiastowy "pulse check" konta. Playbook sekcja 5.1 Anomaly Detection jest tu pokryta
-- **4 KPI cards z % change** (Dashboard.jsx:295-327) — Kliknięcia, Koszt, Konwersje, ROAS z porównaniem do poprzedniego okresu. Odpowiada na playbook 2.1 "Kluczowe Metryki" i 3.1 "Pull Yesterday's Data"
-- **InsightsFeed** (InsightsFeed.jsx) — automatyczne rekomendacje z priorytetyzacją HIGH/MEDIUM/LOW, filtrowane po źródle ANALYTICS. Realizuje playbook 5.3 "Automated Recommendations"
-- **TrendExplorer** (TrendExplorer.jsx) — multi-metric charting z korelacją, 9 dostępnych metryk, dual Y-axis. Pokrywa playbook 1.1 "Performance Analysis" i 4.2 "Correlation Matrix"
-- **Budget Pacing** (Dashboard.jsx:431-465) — status on_track/underspend/overspend per kampania z progress bar. Realizuje playbook daily check #1 "Sprawdzenie wydatku"
-- **Device + Geo breakdown** (Dashboard.jsx:467-604) — z rozwijalnymi trendami per device. Pokrywa playbook weekly "Audience Analysis" / segmentacja po devices i locations
-- **Polskie UI labels** — "Kliknięcia", "Koszt", "Konwersje", "Ładowanie…", "Brak kampanii dla wybranych filtrów"
-- **Filtrowanie z FilterContext** — campaign_type, status, period/date range działają globalnie
+
+- **8 KPI cards z period-over-period** (Dashboard.jsx:312-384) — Clicks, Cost, Conversions, ROAS, Impressions, CTR, CPA, Wasted Spend. Dwa rzedy po 4 karty. Kolory odwrocone dla metryk kosztowych (invertChange). Playbook 2.1 — pelne pokrycie.
+- **Health Score** (Dashboard.jsx:39-114) — gauge 0-100, kolorowanie, lista issues, klik → /alerts. Playbook 1.1 punkt 2 (anomalie). Unikalny element, brak w GAds.
+- **InsightsFeed** (InsightsFeed.jsx) — rekomendacje z priorytetami HIGH/MEDIUM/LOW, przycisk "Przejdz" → /recommendations. Playbook 5.3.
+- **Trend Explorer** (TrendExplorer.jsx) — multi-metric (do 5), korelacje, dual Y-axis, 9 metryk. KILLER FEATURE. Playbook 1.1 Weekly punkt 1.
+- **WoW Comparison z datami** (WoWChart.jsx) — NAPRAWIONY: os X teraz pokazuje daty "25.03" zamiast nazw dni. 7 metryk do wyboru, nakladany chart biezacy vs poprzedni, legenda po polsku ("Biezacy okres"/"Poprzedni okres"). Playbook 3.2 "Compare WoW Performance".
+- **Campaign table z metrykami** (Dashboard.jsx:406-508) — 9 kolumn: Nazwa, Status, Typ, Budzet, Koszt, Konwersje, ROAS (kolorowany: zielony >=3, zolty >=1, czerwony <1), Trend sparkline, Strategia. Dane z getCampaignsSummary.
+- **Budget Pacing** (Dashboard.jsx:511-550) — progress bary, statusy Na torze/Przekroczenie/Niedostateczne, actual vs expected spend. Playbook 1.1 Daily punkt 1.
+- **Device breakdown z trendem** (Dashboard.jsx:552-655) — 3 urzadzenia z %, CTR, CPC, ROAS. Klikniecie → rozwijalny chart z 3 liniami + avg/day. Playbook 1.1 Weekly punkt 4.
+- **Geo breakdown** (Dashboard.jsx:658-690) — top 8 miast z ROAS kolorowanym. Playbook 1.1 Weekly punkt 4.
+- **Impression Share** (Dashboard.jsx:694-736) — 3 wskazniki z progress barami i thresholdami. Playbook 2.1 "Search Lost IS".
+- **Date filtering** — caly dashboard reaguje na FilterContext. Backend akceptuje days, date_from, date_to, campaign_type, campaign_status.
 
 ## Co brakuje (krytyczne)
 
-### K1: Brak Impressions i CTR w KPI cards
-Specjalista Google Ads sprawdza te metryki codziennie. 4 karty to za mało, playbook wymienia 7 podstawowych KPI (CTR, CPC, CVR, CPA, ROAS, Impr. Share, QS). Endpoint `dashboard-kpis` zwraca `impressions` i `ctr` ale frontend ich nie wyświetla.
-- Playbook ref: Sekcja 2.1 "Kluczowe Metryki"
-- Implementacja: Dodać CTR i CPA do KPI cards (dane już dostępne z backendu), albo zrobić 2 rzędy po 4 karty
+### K1: Sortowanie tabeli kampanii
+Tabela nie ma klikalnych naglowkow. Specjalista musi moc sortowac po Cost, Conversions, ROAS — to jest #1 workflow poranny. UWAGA: Campaigns page (Campaigns.jsx) juz MA sortowanie po metrykach (dodane dzis), ale Dashboard table go nie ma.
+- Playbook ref: 1.1 Weekly punkt 5 (Budget Reallocation)
+- Implementacja: state sortBy/sortDir, klikalne `<th>`, useMemo sort — identycznie jak w Campaigns.jsx
 
-### K2: Brak CPA (Cost Per Acquisition) w KPI
-To metryka #1 dla lead gen klientów. Backend nie liczy CPA wprost ale ma cost i conversions.
-- Playbook ref: Sekcja 2.1 — "CPA: Cost Per Acquisition < target CPA"
-- Implementacja: Obliczyć `cost / conversions` w froncie lub dodać do endpointu
-
-### K3: Tabela kampanii nie pokazuje metryk wydajności
-Wyświetla tylko Nazwę, Status, Typ, Budżet/dzień, Trend (sparkline), Strategię. Brakuje: Clicks, Cost, Conversions, CTR, ROAS per kampania. Specjalista musi widzieć *które kampanie generują wyniki* bez przechodzenia do /campaigns.
-- Playbook ref: Sekcja 3.1 "Daily Check" → "Identyfikacja anomalii" per campaign
-- Implementacja: Dodać kolumny Cost, Conversions, ROAS do tabeli (dane trzeba dociągnąć z metrics lub osobnego endpointu)
-
-### K4: Brak szybkich akcji z dashboardu
-Specjalista widzi problem w InsightsFeed ale nie może nic zrobić bez nawigacji do innej zakładki. "One-click apply recommendation" jest w playbooku (5.3).
-- Playbook ref: Sekcja 5.3 "One-click apply recommendation"
-- Implementacja: InsightsFeed mógłby mieć przycisk "Zastosuj" lub "Przejdź do rekomendacji"
+### K2: Deep-link do kampanii
+Dashboard.jsx:463 — `onClick={() => navigate('/campaigns')}` — klikniecie wiersza przenosi na liste, nie na detail. Campaigns.jsx obsluguje select kampanii, wiec wystarczy przekazac campaign_id w URL.
+- Playbook ref: 3.1 Daily Flow (drill down)
+- Implementacja: `navigate('/campaigns?campaign_id=' + c.id)`
 
 ## Co brakuje (nice to have)
 
-### N1: Impression Share / Lost IS (Budget)
-Playbook sekcja 2.1 wymienia Search Lost IS (Budget) i Lost IS (Rank) jako "zaawansowane metryki". Pozwalają odpowiedzieć na pytanie "czy tracimy udział w aukcjach?" Obecnie brak w API i UI.
-
-### N2: Wasted Spend indicator
-Playbook 2.1: "Wasted Spend: Spend bez conversions < 20% total spend". Prosta metryka, dużo wartości.
-
-### N3: Porównanie WoW (Week over Week)
-KPI cards pokazują % vs poprzedni okres, ale brak wizualnego WoW comparison chart. Playbook weekly "Porównanie Last 7 days vs Previous 7 days".
-
-### N4: Quick filters na dashboardzie
-Np. "pokaż tylko kampanie z problemami" albo "pokaż tylko SEARCH".
+- **Klikalna karta Wasted Spend → /search-terms** — zamkniecie petli "widze problem → dzialanie". Playbook 1.1 Daily punkt 3 "Search Terms Review = NAJWAZNIEJSZE". Dodac onClick na karcie (Dashboard.jsx:374-383).
+- **Link do /daily-audit z dashboardu** — naturalna nawigacja "Poranny przeglad →" w headerze.
+- **InsightsFeed filtr priorytetu** — pill buttons HIGH/MEDIUM/LOW. Rano chce TYLKO HIGH.
+- **Sparkline tooltip** — Recharts `<Tooltip>` w komponencie Sparkline (Dashboard.jsx:154-169).
+- **Tooltip na kolumnie Strategia** — `title={c.bidding_strategy}` (Dashboard.jsx:497).
+- **Sortowanie Geo tabelki** — klikalne naglowki.
+- **IS per kampania** — kolumna w tabeli. Model Campaign ma `search_impression_share` (campaign.py:46).
 
 ## Co usunac/zmienic
 
-### Z1: Sparkline w tabeli kampanii ma ograniczoną wartość
-Dashboard.jsx:411-414 — malutki wykres 72x24px bez osi Y i wartości. Specjalista nie wyciągnie z niego insightów. Lepiej zamienić na kolumnę z cost/conversions za dany okres.
-
-### Z2: Geo "Top miasta" — ograniczona przydatność
-Wartościowe dla lokalnych biznesów, ale dla krajowych kampanii 8 miast bez kontekstu (% total) jest mało przydatne. Rozważyć dodanie share_cost_pct (dane są w API) albo zmienić na mapę/heatmapę.
+- **Nic do usuniecia.** Dashboard po sprintach jest kompletny i gesty ale nic nie jest zbedne.
 
 ## Porownanie z Google Ads UI
+
 | Funkcja | Google Ads | Nasza apka | Werdykt |
 |---------|-----------|------------|---------|
-| Przegląd KPIs | Overview tab — 6+ metryk, customizable | 4 KPI cards + Health Score | GORSZE (mniej metryk) ale Health Score daje wartość dodaną |
-| Trend chart | Customizable chart, 1 metryka na raz | TrendExplorer — multi-metric z korelacją | LEPSZE |
-| Lista kampanii | Pełna tabela ze wszystkimi metrykami, sortowalna | Uproszczona tabela — brak clicks/cost/conv | GORSZE |
-| Budget pacing | Brak natywnego pacing view | Dedykowana sekcja z progress bars | LEPSZE |
-| Device breakdown | Reports > Devices — osobna zakładka | Inline na dashboardzie z trendami | LEPSZE |
-| Geo breakdown | Reports > Locations — osobna zakładka | Inline na dashboardzie | LEPSZE ale uproszczone |
-| Automated insights | Recommendations tab — algorytmy Google | InsightsFeed — własne reguły z playbooka | IDENTYCZNE koncepcyjnie |
-| Health Score | Optimization Score (0-100%) | Health Score (0-100) z issues | LEPSZE — bardziej przejrzysty |
+| KPI overview | 6+ metryk, customizable | 8 kart z % change + Wasted Spend | **LEPSZE** |
+| Health Score | Optimization Score (Google-biased) | Health Score z playbook-rules | **LEPSZE** |
+| Trend chart | Max 2 metryki | Multi-metric + korelacje + dual axis | **LEPSZE** |
+| WoW comparison | "Compare" — tabelka % | Nakladany chart z datami | **LEPSZE** |
+| Campaign table | Sortowalna, edytowalna | Z metrykami ale bez sortowania, read-only | **GORSZE** |
+| Budget Pacing | Per campaign, osobny widok | Zbiorczy z progress barami | **LEPSZE** |
+| Device breakdown | Reports > Devices | Na dashboardzie z rozwijalnym trendem | **LEPSZE** |
+| Geo breakdown | Reports > Locations | Top 8 miast z ROAS | **LEPSZE** |
+| Impression Share | Kolumna IS per kampania | Widget account-level | **GORSZE** |
+| Insighty | Osobna zakladka Recommendations | Wbudowane w dashboard | **LEPSZE** |
+| Quick actions | Inline edit (bid, budget, status) | Brak | **GORSZE** |
+
+**Bilans: 8 LEPSZE, 3 GORSZE.** Wzrost z 7:3 — WoW z datami awansowal z "IDENTYCZNE" na "LEPSZE".
 
 ## Nawigacja i kontekst
-- Skąd user trafia: Domyślna strona po zalogowaniu (`/` route). Sidebar: "Pulpit" w sekcji PRZEGLĄD
-- Dokąd powinien móc przejść: Kliknięcie kampanii → /campaigns, Kliknięcie insightu → /recommendations, Kliknięcie "więcej alertów" → /alerts
-- Brakujące połączenia:
-  - Brak kliknięcia na kampanię w tabeli (nawigacja do /campaigns z filtrem)
-  - Brak linku z InsightsFeed do /recommendations z podświetlonym insightem
-  - Brak linku z Health Score do /alerts
-  - Brak "Zobacz wszystkie" na Budget Pacing, Device, Geo sekcjach
+
+- **Skad user trafia:** Domyslna strona (route `/`). Sidebar: "Pulpit" w PRZEGLAD.
+- **Dokad moze przejsc:**
+  - Health Score → /alerts
+  - InsightsFeed → /recommendations
+  - Campaign table → /campaigns
+  - Budget Pacing → /campaigns
+- **Brakujace polaczenia:**
+  - Wasted Spend karta → /search-terms?segment=WASTE
+  - Header → /daily-audit ("Poranny przeglad →")
+  - Campaign row → /campaigns?campaign_id=X (deep-link)
+  - Dashboard → /keywords (z filtrem low QS)
+
+## Odpowiedzi na pytania @ads-user (Marka)
+
+1. **Sortowanie tabeli** — krytyczny brak, #1 priorytet. Campaigns page juz to ma, Dashboard potrzebuje tego samego.
+2. **Klikalna Wasted Spend** — tak, powinien byc onClick → /search-terms. Quick win, 1 linia.
+3. **InsightsFeed filtr** — w planie ads-verify Sprint 1. Prosty state + pill buttons.
+4. **Sparkline tooltip** — drobna zmiana, Recharts `<Tooltip>`. Sprint 1.
+5. **Geo sortowanie** — warto dodac, klikalne `<th>`. Sprint 2.
 
 ## Rekomendacja koncowa
-ZMODYFIKOWAC
+**ZACHOWAC**
 
-Dashboard jest najważniejszą zakładką aplikacji i jest solidnie zbudowany. Główne modyfikacje: (1) dodać CTR i CPA do KPI cards — 10 min pracy, dane już w API, (2) dodać kolumny performance do tabeli kampanii — wymaga dociągnięcia danych z metrics, (3) dodać nawigację kliknięciami (kampania → /campaigns, insight → /recommendations, health → /alerts). Te 3 zmiany podniosłyby ocenę kompletności z 7 do 9/10.
+Dashboard jest kompletny i pokrywa codzienne potrzeby specjalisty. Fix WoW dates podniosl ocene. Do idealu brakuje dwoch rzeczy: sortowanie tabeli kampanii (30 min, frontend-only) i deep-link do campaign detail (1 linia). Nice-to-have: klikalna karta Wasted Spend, filtr priorytetow w insightach, sparkline tooltip. Nic do usuniecia.

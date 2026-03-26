@@ -86,8 +86,10 @@ Project command prompts are stored in `.claude/commands/`:
 - `docs-sync.md` — synchronizacja dokumentacji z kodem
 - `pm-check.md` — PM review (kod jako zrodlo prawdy)
 - `done.md` — zamkniecie zadania: testy → commit → docs-sync → push (z PM gate)
+- `ads-user.md` — symulacja specjalisty PPC klikajacego po zakladce (UX review oczami end-usera)
 - `ads-expert.md` — ocena zakladki przez specjaliste Google Ads (potrzebnosc, kompletnosc, wartosc vs Google Ads UI)
 - `ads-verify.md` — weryfikacja co z raportu ads-expert juz istnieje w kodzie + plan implementacji
+- `ads-check.md` �� weryfikacja czy taski z ads-verify zostaly wdrozone (QA gate)
 
 Use them as workflow helpers, but keep behavior aligned with `AGENTS.md`.
 
@@ -109,6 +111,24 @@ Hooki automatyczne:
 - `Stop` — wyswietla podsumowanie sesji (zmienione pliki, przypomnienie o /done)
 - `post-commit` (git) — odpala /docs-sync w tle
 - `pre-push` (git) — odpala /pm-check, blokuje push jesli < 7/10
+
+## 7b) Ads Review Pipeline
+
+Pipeline do oceny i iteracji zakladek z perspektywy specjalisty Google Ads:
+```
+/ads-user {tab}          ← symulacja PPCowca, notatki UX
+  └─ /ads-expert {tab}   ← automatycznie: ocena ekspercka 4 kryteria
+       └─ /ads-verify {tab}  ← automatycznie: plan implementacji
+            └─ [dev implementuje sprinty]
+                 └─ /ads-check {tab}  ← QA: czy taski wdrozone?
+                      └─ /ads-user {tab}  ← automatycznie jesli GOTOWE: re-test
+```
+
+Raporty zapisywane w `docs/reviews/`:
+- `ads-user-{tab}.md` — notatki usera
+- `ads-expert-{tab}.md` — raport eksperta
+- `ads-verify-{tab}.md` — plan implementacji ze statusami
+- `ads-check-{tab}.md` — wynik weryfikacji QA
 
 ## 8) Current State
 

@@ -743,6 +743,12 @@ def campaigns_summary(
         .all()
     )
 
+    # Fetch IS data from Campaign model
+    is_map = {}
+    camp_rows = db.query(Campaign.id, Campaign.search_impression_share).filter(Campaign.id.in_(campaign_ids)).all()
+    for cr in camp_rows:
+        is_map[cr.id] = cr.search_impression_share
+
     result = {}
     for r in rows:
         cost_usd = micros_to_currency(r.cost_micros or 0)
@@ -757,6 +763,7 @@ def campaigns_summary(
             "conversions": round(conversions, 1),
             "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
             "roas": round(conv_value_usd / cost_usd, 2) if cost_usd else 0,
+            "impression_share": is_map.get(r.campaign_id),
         }
 
     return {"campaigns": result}

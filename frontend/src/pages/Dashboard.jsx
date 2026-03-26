@@ -2,7 +2,8 @@
 import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
     MousePointerClick, DollarSign, Target, BarChart3,
-    TrendingUp, TrendingDown, ChevronRight, Eye, Percent, ShoppingCart, Trash2,
+    TrendingUp, TrendingDown, ChevronRight, ChevronUp, ChevronDown,
+    Eye, Percent, ShoppingCart, Trash2,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -163,6 +164,11 @@ function Sparkline({ data, direction }) {
         : data
     return (
         <LineChart width={72} height={24} data={chartData}>
+            <Tooltip
+                contentStyle={{ background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, fontSize: 10, padding: '4px 8px' }}
+                formatter={v => [`${typeof v === 'number' ? v.toLocaleString('pl-PL', { maximumFractionDigits: 1 }) : v}`, null]}
+                labelFormatter={() => ''}
+            />
             <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} dot={false} />
         </LineChart>
     )
@@ -187,6 +193,10 @@ export default function Dashboard() {
     const [impressionShare, setImpressionShare] = useState(null)
 
     const [expandedDevice, setExpandedDevice] = useState(null)
+    const [sortBy, setSortBy] = useState('cost_usd')
+    const [sortDir, setSortDir] = useState('desc')
+    const [geoSortBy, setGeoSortBy] = useState('cost_usd')
+    const [geoSortDir, setGeoSortDir] = useState('desc')
 
     const [loading, setLoading]             = useState(false)
     const [healthLoading, setHealthLoading] = useState(false)
@@ -248,16 +258,26 @@ export default function Dashboard() {
         return () => { cancelled = true }
     }, [loadData])
 
-    // In-memory filtering for campaign table
+    // In-memory filtering + sorting for campaign table
     const filteredCampaigns = useMemo(() => {
-        return campaigns.filter(c => {
+        let result = campaigns.filter(c => {
             if (filters.campaignType !== 'ALL' && c.campaign_type !== filters.campaignType) return false
             if (filters.status !== 'ALL' && c.status !== filters.status) return false
             if (filters.campaignName && !c.name?.toLowerCase().includes(filters.campaignName.toLowerCase())) return false
             if (filters.campaignLabel !== 'ALL' && !(c.labels || []).includes(filters.campaignLabel)) return false
             return true
         })
-    }, [campaigns, filters.campaignType, filters.status, filters.campaignName, filters.campaignLabel])
+        if (sortBy && campaignMetrics) {
+            result = [...result].sort((a, b) => {
+                const mA = campaignMetrics[String(a.id)]
+                const mB = campaignMetrics[String(b.id)]
+                const vA = sortBy === 'budget_usd' ? (a.budget_usd ?? 0) : (mA?.[sortBy] ?? 0)
+                const vB = sortBy === 'budget_usd' ? (b.budget_usd ?? 0) : (mB?.[sortBy] ?? 0)
+                return sortDir === 'desc' ? vB - vA : vA - vB
+            })
+        }
+        return result
+    }, [campaigns, filters.campaignType, filters.status, filters.campaignName, filters.campaignLabel, campaignMetrics, sortBy, sortDir])
     const filteredCampaignIds = useMemo(
         () => filteredCampaigns.map(c => c.id),
         [filteredCampaigns]
@@ -289,6 +309,9 @@ export default function Dashboard() {
                         }
                     </p>
                 </div>
+                <span onClick={() => navigate('/daily-audit')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                    Poranny przegląd →
+                </span>
             </div>
 
             {error && (
@@ -372,14 +395,16 @@ export default function Dashboard() {
                             invertChange
                         />
                         {wastedSpend && (
-                            <MiniKPI
-                                title="Wasted Spend"
-                                tooltip="Wydatki bez konwersji"
-                                value={wastedSpend.total_waste_usd}
-                                suffix=" zł"
-                                icon={Trash2}
-                                iconColor={wastedSpend.waste_pct > 25 ? '#F87171' : wastedSpend.waste_pct > 15 ? '#FBBF24' : '#4ADE80'}
-                            />
+                            <div onClick={() => navigate('/search-terms?segment=WASTE')} style={{ cursor: 'pointer' }}>
+                                <MiniKPI
+                                    title="Wasted Spend"
+                                    tooltip="Wydatki bez konwersji — kliknij aby zobaczyć waste terms"
+                                    value={wastedSpend.total_waste_usd}
+                                    suffix=" zł"
+                                    icon={Trash2}
+                                    iconColor={wastedSpend.waste_pct > 25 ? '#F87171' : wastedSpend.waste_pct > 15 ? '#FBBF24' : '#4ADE80'}
+                                />
+                            </div>
                         )}
                     </div>
                 </div>
@@ -427,18 +452,44 @@ export default function Dashboard() {
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                    {['Nazwa', 'Status', 'Typ', 'Budżet/dzień', 'Koszt', 'Konwersje', 'ROAS', `Trend (${days}d)`, 'Strategia'].map(h => {
-                                        const rightAligned = ['Budżet/dzień', 'Koszt', 'Konwersje', 'ROAS'].includes(h)
+                                    {[
+                                        { label: 'Nazwa', key: null },
+                                        { label: 'Status', key: null },
+                                        { label: 'Typ', key: null },
+                                        { label: 'Budżet/dzień', key: 'budget_usd', right: true },
+                                        { label: 'Koszt', key: 'cost_usd', right: true },
+                                        { label: 'Konwersje', key: 'conversions', right: true },
+                                        { label: 'ROAS', key: 'roas', right: true },
+                                        { label: 'IS', key: 'impression_share', right: true },
+                                        { label: `Trend (${days}d)`, key: null },
+                                        { label: 'Strategia', key: null },
+                                    ].map(h => {
+                                        const isSorted = h.key && sortBy === h.key
                                         return (
-                                            <th key={h} style={{
-                                                padding: '10px 16px',
-                                                textAlign: rightAligned ? 'right' : 'left',
-                                                fontSize: 10, fontWeight: 500,
-                                                color: 'rgba(255,255,255,0.35)',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.08em',
-                                                whiteSpace: 'nowrap',
-                                            }}>{h}</th>
+                                            <th
+                                                key={h.label}
+                                                onClick={h.key ? () => {
+                                                    if (sortBy === h.key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+                                                    else { setSortBy(h.key); setSortDir('desc') }
+                                                } : undefined}
+                                                style={{
+                                                    padding: '10px 16px',
+                                                    textAlign: h.right ? 'right' : 'left',
+                                                    fontSize: 10, fontWeight: 500,
+                                                    color: isSorted ? '#4F8EF7' : 'rgba(255,255,255,0.35)',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.08em',
+                                                    whiteSpace: 'nowrap',
+                                                    cursor: h.key ? 'pointer' : 'default',
+                                                    userSelect: 'none',
+                                                }}
+                                            >
+                                                {h.label}
+                                                {isSorted && (sortDir === 'desc'
+                                                    ? <ChevronDown size={10} style={{ marginLeft: 2, verticalAlign: 'middle' }} />
+                                                    : <ChevronUp size={10} style={{ marginLeft: 2, verticalAlign: 'middle' }} />
+                                                )}
+                                            </th>
                                         )
                                     })}
                                 </tr>
@@ -446,7 +497,7 @@ export default function Dashboard() {
                             <tbody>
                                 {filteredCampaigns.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                                        <td colSpan={10} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
                                             Brak kampanii dla wybranych filtrów
                                         </td>
                                     </tr>
@@ -460,7 +511,7 @@ export default function Dashboard() {
                                             style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s', cursor: 'pointer' }}
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                            onClick={() => navigate('/campaigns')}
+                                            onClick={() => navigate(`/campaigns?campaign_id=${c.id}`)}
                                         >
                                             <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 260 }}>
                                                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -488,13 +539,16 @@ export default function Dashboard() {
                                             <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics ? ((metrics.roas >= 3) ? '#4ADE80' : (metrics.roas >= 1) ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
                                                 {metrics ? `${metrics.roas.toFixed(2)}×` : '—'}
                                             </td>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics?.impression_share != null ? (metrics.impression_share > 0.5 ? '#4ADE80' : metrics.impression_share > 0.3 ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
+                                                {metrics?.impression_share != null ? `${(metrics.impression_share * 100).toFixed(0)}%` : '—'}
+                                            </td>
                                             <td style={{ padding: '11px 16px' }}>
                                                 <div className="flex items-center gap-2">
                                                     <Sparkline data={trendData?.cost_trend} direction={trendData?.direction} />
                                                 </div>
                                             </td>
                                             <td style={{ padding: '11px 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', maxWidth: 180 }}>
-                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.bidding_strategy ?? ''}>
                                                     {c.bidding_strategy ?? '—'}
                                                 </span>
                                             </td>
@@ -665,17 +719,45 @@ export default function Dashboard() {
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
-                                        {['Miasto', 'Kliknięcia', 'Koszt', '% kosztu', 'ROAS'].map(h => (
-                                            <th key={h} style={{
-                                                padding: '4px 6px', fontSize: 10, fontWeight: 500,
-                                                color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
-                                                letterSpacing: '0.08em', textAlign: h === 'Miasto' ? 'left' : 'right',
-                                            }}>{h}</th>
-                                        ))}
+                                        {[
+                                            { label: 'Miasto', key: 'city' },
+                                            { label: 'Kliknięcia', key: 'clicks' },
+                                            { label: 'Koszt', key: 'cost_usd' },
+                                            { label: '% kosztu', key: 'share_cost_pct' },
+                                            { label: 'ROAS', key: 'roas' },
+                                        ].map(h => {
+                                            const isSorted = geoSortBy === h.key
+                                            return (
+                                                <th
+                                                    key={h.label}
+                                                    onClick={() => {
+                                                        if (geoSortBy === h.key) setGeoSortDir(d => d === 'desc' ? 'asc' : 'desc')
+                                                        else { setGeoSortBy(h.key); setGeoSortDir('desc') }
+                                                    }}
+                                                    style={{
+                                                        padding: '4px 6px', fontSize: 10, fontWeight: 500,
+                                                        color: isSorted ? '#4F8EF7' : 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+                                                        letterSpacing: '0.08em', textAlign: h.key === 'city' ? 'left' : 'right',
+                                                        cursor: 'pointer', userSelect: 'none',
+                                                    }}
+                                                >
+                                                    {h.label}
+                                                    {isSorted && (geoSortDir === 'desc'
+                                                        ? <ChevronDown size={9} style={{ marginLeft: 2, verticalAlign: 'middle' }} />
+                                                        : <ChevronUp size={9} style={{ marginLeft: 2, verticalAlign: 'middle' }} />
+                                                    )}
+                                                </th>
+                                            )
+                                        })}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {geoData.cities.slice(0, 8).map(c => (
+                                    {[...geoData.cities].sort((a, b) => {
+                                        const vA = geoSortBy === 'city' ? (a.city || '') : (a[geoSortBy] ?? 0)
+                                        const vB = geoSortBy === 'city' ? (b.city || '') : (b[geoSortBy] ?? 0)
+                                        if (typeof vA === 'string') return geoSortDir === 'desc' ? vB.localeCompare(vA) : vA.localeCompare(vB)
+                                        return geoSortDir === 'desc' ? vB - vA : vA - vB
+                                    }).slice(0, 8).map(c => (
                                         <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                             <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
                                             <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>

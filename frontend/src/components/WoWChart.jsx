@@ -52,8 +52,15 @@ export default function WoWChart() {
     for (let i = 0; i < maxDays; i++) {
         const cur = data?.current?.find(d => d.day_index === i)
         const prev = data?.previous?.find(d => d.day_index === i)
+        const curDate = cur?.date
+        const prevDate = prev?.date
+        const formatDate = (s) => {
+            if (!s) return null
+            const d = new Date(s)
+            return `${d.getDate()}.${(d.getMonth() + 1).toString().padStart(2, '0')}`
+        }
         merged.push({
-            day: cur?.dow || prev?.dow || `D${i + 1}`,
+            day: formatDate(curDate) || formatDate(prevDate) || `D${i + 1}`,
             current: cur?.value ?? null,
             previous: prev?.value ?? null,
         })

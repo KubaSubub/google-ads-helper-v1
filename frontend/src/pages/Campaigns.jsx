@@ -7,12 +7,12 @@ import {
 import {
     MousePointerClick, DollarSign, Target, TrendingUp, TrendingDown,
     KeyRound, Search, BarChart3, Plus, X, Monitor, MapPin, Clock,
-    Eye, Percent, ArrowUpRight, Crosshair, Wallet, Activity,
+    Eye, Percent, ArrowUpRight, Crosshair, Wallet, Activity, ArrowDownUp, Filter,
 } from 'lucide-react'
 import {
     getCampaigns, getCampaignKPIs, getCampaignMetrics, updateCampaign,
     getDeviceBreakdown, getGeoBreakdown, getBudgetPacing,
-    getImpressionShare, getUnifiedTimeline,
+    getImpressionShare, getUnifiedTimeline, getCampaignsSummary,
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
@@ -604,6 +604,13 @@ export default function Campaigns() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
 
+    // Campaign list sorting & filtering
+    const [campSummary, setCampSummary] = useState({})
+    const [sortBy, setSortBy] = useState('cost_usd')
+    const [sortDir, setSortDir] = useState('desc')
+    const [metricFilter, setMetricFilter] = useState({ field: null, op: 'gte', value: '' })
+    const [showFilter, setShowFilter] = useState(false)
+
     // Secondary data
     const [deviceData, setDeviceData] = useState(null)
     const [geoData, setGeoData] = useState(null)
@@ -615,14 +622,18 @@ export default function Campaigns() {
 
     useEffect(() => {
         if (selectedClientId) loadCampaigns()
-    }, [selectedClientId, campaignParams])
+    }, [selectedClientId, campaignParams, allParams])
 
     async function loadCampaigns() {
         setLoading(true)
         try {
-            const data = await getCampaigns(selectedClientId, campaignParams)
+            const [data, summaryData] = await Promise.all([
+                getCampaigns(selectedClientId, campaignParams),
+                getCampaignsSummary(selectedClientId, allParams).catch(() => ({ campaigns: {} })),
+            ])
             const items = data.items || []
             setCampaigns(items)
+            setCampSummary(summaryData?.campaigns || {})
             if (items.length > 0) selectCampaign(items[0])
         } catch (err) {
             setError(err.message)
@@ -716,14 +727,34 @@ export default function Campaigns() {
         }
     }
 
-    // Campaigns filtered by backend (type/status) + in-memory name/label filter
+    // Campaigns filtered by backend (type/status) + in-memory name/label/metric filter + sort
     const filteredCampaigns = useMemo(() => {
-        return campaigns.filter(c => {
+        let result = campaigns.filter(c => {
             if (filters.campaignName && !c.name?.toLowerCase().includes(filters.campaignName.toLowerCase())) return false
             if (filters.campaignLabel !== 'ALL' && !(c.labels || []).includes(filters.campaignLabel)) return false
+            // Metric filter
+            if (metricFilter.field && metricFilter.value !== '') {
+                const m = campSummary[String(c.id)]
+                const val = m?.[metricFilter.field] ?? 0
+                const threshold = parseFloat(metricFilter.value)
+                if (isNaN(threshold)) return true
+                if (metricFilter.op === 'gte' && val < threshold) return false
+                if (metricFilter.op === 'lte' && val > threshold) return false
+            }
             return true
         })
-    }, [campaigns, filters.campaignName, filters.campaignLabel])
+        // Sort by metric
+        if (sortBy) {
+            result = [...result].sort((a, b) => {
+                const mA = campSummary[String(a.id)]
+                const mB = campSummary[String(b.id)]
+                const vA = sortBy === 'budget' ? (a.budget_usd ?? 0) : (mA?.[sortBy] ?? 0)
+                const vB = sortBy === 'budget' ? (b.budget_usd ?? 0) : (mB?.[sortBy] ?? 0)
+                return sortDir === 'desc' ? vB - vA : vA - vB
+            })
+        }
+        return result
+    }, [campaigns, filters.campaignName, filters.campaignLabel, campSummary, sortBy, sortDir, metricFilter])
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (loading) return <LoadingSpinner />
@@ -746,6 +777,97 @@ export default function Campaigns() {
             <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
                 {/* Campaign list */}
                 <div className="v2-card" style={{ padding: 6, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
+                    {/* Sort & Filter toolbar */}
+                    <div style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 4 }}>
+                        <div className="flex items-center gap-2" style={{ marginBottom: showFilter ? 8 : 0 }}>
+                            <select
+                                value={sortBy}
+                                onChange={e => setSortBy(e.target.value)}
+                                style={{
+                                    flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: 6, padding: '4px 6px', fontSize: 10, color: '#F0F0F0', cursor: 'pointer',
+                                }}
+                            >
+                                <option value="cost_usd">Koszt</option>
+                                <option value="conversions">Konwersje</option>
+                                <option value="roas">ROAS</option>
+                                <option value="clicks">Kliknięcia</option>
+                                <option value="ctr">CTR</option>
+                                <option value="budget">Budżet</option>
+                            </select>
+                            <button
+                                onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                                title={sortDir === 'desc' ? 'Malejąco' : 'Rosnąco'}
+                                style={{
+                                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#F0F0F0', fontSize: 10,
+                                }}
+                            >
+                                {sortDir === 'desc' ? '↓' : '↑'}
+                            </button>
+                            <button
+                                onClick={() => setShowFilter(v => !v)}
+                                title="Filtruj po metryce"
+                                style={{
+                                    background: showFilter ? 'rgba(79,142,247,0.15)' : 'rgba(255,255,255,0.06)',
+                                    border: `1px solid ${showFilter ? 'rgba(79,142,247,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                                    borderRadius: 6, padding: '4px 6px', cursor: 'pointer',
+                                    color: showFilter ? '#4F8EF7' : '#F0F0F0',
+                                }}
+                            >
+                                <Filter size={11} />
+                            </button>
+                        </div>
+                        {showFilter && (
+                            <div className="flex items-center gap-2">
+                                <select
+                                    value={metricFilter.field || ''}
+                                    onChange={e => setMetricFilter(f => ({ ...f, field: e.target.value || null }))}
+                                    style={{
+                                        flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 6, padding: '4px 6px', fontSize: 10, color: '#F0F0F0', cursor: 'pointer',
+                                    }}
+                                >
+                                    <option value="">— metryka —</option>
+                                    <option value="cost_usd">Koszt</option>
+                                    <option value="conversions">Konwersje</option>
+                                    <option value="roas">ROAS</option>
+                                    <option value="clicks">Kliknięcia</option>
+                                    <option value="ctr">CTR</option>
+                                </select>
+                                <select
+                                    value={metricFilter.op}
+                                    onChange={e => setMetricFilter(f => ({ ...f, op: e.target.value }))}
+                                    style={{
+                                        width: 36, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 6, padding: '4px 4px', fontSize: 10, color: '#F0F0F0', cursor: 'pointer',
+                                    }}
+                                >
+                                    <option value="gte">≥</option>
+                                    <option value="lte">≤</option>
+                                </select>
+                                <input
+                                    type="number"
+                                    value={metricFilter.value}
+                                    onChange={e => setMetricFilter(f => ({ ...f, value: e.target.value }))}
+                                    placeholder="0"
+                                    style={{
+                                        width: 52, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 6, padding: '4px 6px', fontSize: 10, color: '#F0F0F0',
+                                    }}
+                                />
+                                {metricFilter.field && (
+                                    <button
+                                        onClick={() => setMetricFilter({ field: null, op: 'gte', value: '' })}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', padding: 0 }}
+                                    >
+                                        <X size={11} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {filteredCampaigns.length === 0 ? (
                         <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
                             Brak kampanii
@@ -753,6 +875,7 @@ export default function Campaigns() {
                     ) : filteredCampaigns.map(c => {
                         const active = selected?.id === c.id
                         const sCfg = STATUS_CONFIG[c.status] || { dot: '#666', color: '#666', label: c.status }
+                        const cm = campSummary[String(c.id)]
                         return (
                             <button
                                 key={c.id}
@@ -778,6 +901,15 @@ export default function Campaigns() {
                                     <span>·</span>
                                     <span>{c.budget_usd?.toFixed(0)} zł/d</span>
                                 </div>
+                                {cm && (
+                                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', display: 'flex', gap: 8, marginTop: 4 }}>
+                                        <span>{cm.cost_usd?.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł</span>
+                                        <span>{cm.conversions?.toFixed(1)} conv</span>
+                                        <span style={{ color: (cm.roas ?? 0) >= 3 ? '#4ADE80' : (cm.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>
+                                            {cm.roas?.toFixed(1)}× ROAS
+                                        </span>
+                                    </div>
+                                )}
                             </button>
                         )
                     })}

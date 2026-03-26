@@ -51,11 +51,19 @@ function mapInsights(recommendations = []) {
         }))
 }
 
+const PRIORITY_PILLS = ['ALL', 'HIGH', 'MEDIUM', 'LOW']
+
 export default function InsightsFeed({ recommendations }) {
     const insights = useMemo(() => mapInsights(recommendations), [recommendations])
     const [expanded, setExpanded] = useState(insights.length > 0)
+    const [filterPriority, setFilterPriority] = useState('ALL')
     const hasInsights = insights.length > 0
     const navigate = useNavigate()
+
+    const filteredInsights = useMemo(() => {
+        if (filterPriority === 'ALL') return insights
+        return insights.filter(i => i.priority === filterPriority)
+    }, [insights, filterPriority])
 
     return (
         <div className="v2-card" style={{ overflow: 'hidden' }}>
@@ -105,7 +113,29 @@ export default function InsightsFeed({ recommendations }) {
 
             {expanded && hasInsights && (
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {insights.map(insight => {
+                    <div className="flex items-center gap-1" style={{ marginBottom: 4 }}>
+                        {PRIORITY_PILLS.map(p => {
+                            const active = filterPriority === p
+                            const label = p === 'ALL' ? 'Wszystkie' : p === 'HIGH' ? 'Pilne' : p === 'MEDIUM' ? 'Średnie' : 'Info'
+                            const count = p === 'ALL' ? insights.length : insights.filter(i => i.priority === p).length
+                            return (
+                                <button
+                                    key={p}
+                                    onClick={e => { e.stopPropagation(); setFilterPriority(p) }}
+                                    style={{
+                                        fontSize: 10, fontWeight: 500, padding: '3px 8px', borderRadius: 999,
+                                        border: `1px solid ${active ? 'rgba(79,142,247,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                                        background: active ? 'rgba(79,142,247,0.12)' : 'transparent',
+                                        color: active ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {label} ({count})
+                                </button>
+                            )
+                        })}
+                    </div>
+                    {filteredInsights.map(insight => {
                         const cfg = PRIORITY_CONFIG[insight.priority] || PRIORITY_CONFIG.LOW
                         const Icon = cfg.icon
                         return (
