@@ -143,7 +143,7 @@ Base API URL: `/api/v1`
 - `GET /analytics/health-score?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
 - `GET /analytics/campaign-trends?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
 - `GET /analytics/wow-comparison?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&metric=cost&campaign_type=ALL&campaign_status=&status=ALL` — current vs previous period with day-of-week alignment for overlay chart. Allowed metrics: cost, clicks, impressions, conversions, ctr, cpc, roas, cpa
-- `GET /analytics/campaigns-summary?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` — per-campaign aggregated metrics (clicks, impressions, cost_usd, conversions, ctr, roas) for a given period
+- `GET /analytics/campaigns-summary?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` — per-campaign aggregated metrics (clicks, impressions, cost_usd, conversions, ctr, roas, impression_share) for a given period
 - `GET /analytics/budget-pacing?client_id=X&campaign_type=&campaign_status=`
 - `GET /analytics/quality-score-audit?client_id=X&qs_threshold=5`
 - `GET /analytics/forecast?campaign_id=X&metric=clicks&forecast_days=14`

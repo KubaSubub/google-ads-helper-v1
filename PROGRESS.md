@@ -1,13 +1,17 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-25
+# Updated: 2026-03-26 (docs-sync)
 
 ## Status
 - Backend: 474 tests passing (`pytest --tb=short -q`)
 - Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive + 42 edge-case = 185 total)
 - Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- GAP Analysis: Phase A+B+C + Phase D (34 recommendation rules, 47 analytics endpoints, 7 new models, PMax/audiences/extensions)
+- GAP Analysis: Phase A+B+C + Phase D (34 recommendation rules, 49 analytics endpoints, 7 new models, PMax/audiences/extensions)
 - Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
 - Sync: 22 total phases (15 prior + 7 new Phase D phases), SSE streaming sync modal with presets and per-resource coverage
+- Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation improvements
+- Dashboard polish: sortable campaign table, IS column, deep-links, InsightsFeed priority filter, geo sorting, sparkline tooltips
+- Campaigns: sort/filter sidebar by metrics (cost, conversions, ROAS), mini-metrics in campaign tiles
+- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check (documented in CLAUDE.md 7b)
 
 ## Frontend Filtering Iteration 1
 - Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`
@@ -56,6 +60,31 @@
 - `backend/tests/test_wasted_spend_dates.py` — 3 tests for wasted-spend date filtering
 - `backend/tests/test_wow_comparison.py` — 3 tests for wow-comparison endpoint
 - `docs/reviews/` — 4 review documents (ads-expert + ads-verify for dashboard and all)
+
+## Dashboard Polish Sprint (2026-03-26)
+
+### From ads-verify plan (9/9 tasks DONE — confirmed by /ads-check)
+- K1: Sortable campaign table — click Budżet/Koszt/Konwersje/ROAS headers
+- K2: Deep-link campaign rows → /campaigns?campaign_id=X
+- N1: Clickable Wasted Spend card → /search-terms?segment=WASTE
+- N2: "Poranny przegląd →" link in dashboard header → /daily-audit
+- N3: InsightsFeed priority filter pills (Pilne/Średnie/Info)
+- N4: Sparkline tooltip on hover
+- N5: Tooltip on truncated bidding strategy column
+- N6: Sortable geo table (click any column header)
+- N7: IS per campaign column in dashboard table (backend: campaigns-summary endpoint + frontend)
+
+### Other improvements
+- WoW chart fix: X-axis now shows dates (25.03) instead of day names (Pon)
+- Campaigns page: sort dropdown + metric filter + mini-metrics (cost/conv/ROAS) in sidebar tiles
+- New skills: `/ads-user` (PPC user simulation), `/ads-check` (QA gate)
+- Updated `/ads-verify` with post-implementation instructions
+- Ads review pipeline documented in CLAUDE.md section 7b
+
+### Validation
+- 474 backend tests passing
+- Frontend build passing (vite build)
+- Ads review reports: docs/reviews/ads-{user,expert,verify,check}-dashboard.md
 
 ## Completed In This Milestone
 
