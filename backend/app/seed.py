@@ -21,6 +21,13 @@ from app.models.campaign_audience import CampaignAudienceMetric
 from app.models.campaign_asset import CampaignAsset
 from app.models.report import Report
 from app.models.auction_insight import AuctionInsight
+from app.models.product_group import ProductGroup
+from app.models.placement import Placement
+from app.models.bid_modifier import BidModifier
+from app.models.audience import Audience
+from app.models.topic import TopicPerformance
+from app.models.bidding_strategy import BiddingStrategy, SharedBudget
+from app.models.google_recommendation import GoogleRecommendation
 
 
 # Deterministic seed for reproducibility
@@ -102,9 +109,10 @@ def _seed_demo_data_impl(db):
         ("Kanapy - Generic", "SEARCH", 250, "ENABLED", "TARGET_CPA"),
         ("Meble Biurowe", "SEARCH", 100, "ENABLED", "ENHANCED_CPC"),
         ("Shopping - Łóżka", "SHOPPING", 200, "ENABLED", "TARGET_ROAS"),
-        ("Display - Remarketing", "DISPLAY", 80, "PAUSED", "MAXIMIZE_CONVERSIONS"),
+        ("Display - Remarketing", "DISPLAY", 80, "ENABLED", "MAXIMIZE_CONVERSIONS"),
         ("PMax - Meble Ogólne", "PERFORMANCE_MAX", 350, "ENABLED", "MAXIMIZE_CONVERSION_VALUE"),
         ("Kanapy - Retarget", "SEARCH", 120, "ENABLED", "TARGET_CPA"),  # portfolio member
+        ("Video - YouTube Meble", "VIDEO", 60, "ENABLED", "TARGET_CPA"),
     ]
 
     campaigns = []
@@ -807,6 +815,186 @@ def _seed_demo_data_impl(db):
                     top_of_page_rate=round(RNG.uniform(0.15, 0.65), 4),
                     abs_top_of_page_rate=round(RNG.uniform(0.05, 0.30), 4),
                 ))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Product Groups (Shopping campaign — tree structure)
+    # -----------------------------------------------------------------------
+    shopping_campaigns = [c for c in campaigns if c.campaign_type == "SHOPPING"]
+    PRODUCT_BRANDS = ["Demo Meble", "Ikea", "BRW", "Agata"]
+    PRODUCT_TYPES = ["Łóżka", "Kanapy", "Stoły", "Krzesła", "Biurka"]
+    for camp in shopping_campaigns:
+        ag = db.query(AdGroup).filter(AdGroup.campaign_id == camp.id).first()
+        ag_id = ag.id if ag else None
+        # Root node
+        db.add(ProductGroup(campaign_id=camp.id, ad_group_id=ag_id, google_criterion_id="PG_ROOT",
+            partition_type="SUBDIVISION", case_value_type=None, case_value=None,
+            clicks=sum(RNG.randint(50, 200) for _ in range(5)), impressions=RNG.randint(5000, 20000),
+            cost_micros=RNG.randint(3000, 8000) * 1_000_000, conversions=round(RNG.uniform(20, 80), 1),
+            conversion_value_micros=RNG.randint(10000, 50000) * 1_000_000, ctr=round(RNG.uniform(2, 6), 2)))
+        for i, brand in enumerate(PRODUCT_BRANDS):
+            clicks = RNG.randint(30, 150)
+            cost = round(clicks * RNG.uniform(1.5, 3.5), 2)
+            convs = round(clicks * RNG.uniform(0.03, 0.12), 1)
+            db.add(ProductGroup(campaign_id=camp.id, ad_group_id=ag_id,
+                google_criterion_id=f"PG_BRAND_{i}", parent_criterion_id="PG_ROOT",
+                partition_type="UNIT", case_value_type="PRODUCT_BRAND", case_value=brand,
+                bid_micros=int(RNG.uniform(1.0, 3.0) * 1_000_000),
+                clicks=clicks, impressions=int(clicks * RNG.uniform(12, 25)),
+                cost_micros=int(cost * 1_000_000), conversions=convs,
+                conversion_value_micros=int(convs * RNG.uniform(100, 300) * 1_000_000),
+                ctr=round(RNG.uniform(3, 7), 2)))
+        for i, ptype in enumerate(PRODUCT_TYPES):
+            clicks = RNG.randint(20, 100)
+            cost = round(clicks * RNG.uniform(1.0, 2.5), 2)
+            convs = round(clicks * RNG.uniform(0.02, 0.10), 1)
+            db.add(ProductGroup(campaign_id=camp.id, ad_group_id=ag_id,
+                google_criterion_id=f"PG_TYPE_{i}", parent_criterion_id="PG_ROOT",
+                partition_type="UNIT", case_value_type="PRODUCT_TYPE", case_value=ptype,
+                bid_micros=int(RNG.uniform(0.8, 2.5) * 1_000_000),
+                clicks=clicks, impressions=int(clicks * RNG.uniform(15, 30)),
+                cost_micros=int(cost * 1_000_000), conversions=convs,
+                conversion_value_micros=int(convs * RNG.uniform(80, 250) * 1_000_000),
+                ctr=round(RNG.uniform(2, 5), 2)))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Placements (Display + Video campaigns)
+    # -----------------------------------------------------------------------
+    PLACEMENT_URLS = [
+        ("onet.pl", "WEBSITE"), ("wp.pl", "WEBSITE"), ("allegro.pl", "WEBSITE"),
+        ("meble-inspiracje.pl", "WEBSITE"), ("domowe-wnetrza.pl", "WEBSITE"),
+        ("youtube.com/channel/UC_meble", "YOUTUBE_CHANNEL"),
+        ("youtube.com/watch?v=abc123", "YOUTUBE_VIDEO"),
+        ("play.google.com/store/apps/details?id=meble.app", "MOBILE_APP"),
+    ]
+    display_video_campaigns = [c for c in campaigns if c.campaign_type in ("DISPLAY", "VIDEO") and c.status == "ENABLED"]
+    for camp in display_video_campaigns:
+        is_video = camp.campaign_type == "VIDEO"
+        for day_offset in range(30):
+            d = date.today() - timedelta(days=day_offset)
+            n_placements = RNG.randint(3, min(6, len(PLACEMENT_URLS)))
+            for url, ptype in RNG.sample(PLACEMENT_URLS, n_placements):
+                clicks = RNG.randint(5, 80)
+                impressions = int(clicks * RNG.uniform(20, 60))
+                cost = round(clicks * RNG.uniform(0.3, 2.0), 2)
+                convs = round(max(0, clicks * RNG.uniform(-0.01, 0.05)), 2)
+                db.add(Placement(campaign_id=camp.id, date=d,
+                    placement_url=url, placement_type=ptype, display_name=url.split("/")[0],
+                    clicks=clicks, impressions=impressions, cost_micros=int(cost * 1_000_000),
+                    conversions=convs, conversion_value_micros=int(convs * RNG.uniform(50, 200) * 1_000_000),
+                    ctr=round(clicks / impressions * 100, 2) if impressions else 0,
+                    video_views=RNG.randint(100, 5000) if is_video else None,
+                    video_view_rate=round(RNG.uniform(15, 45), 1) if is_video else None,
+                    avg_cpv_micros=int(RNG.uniform(0.02, 0.10) * 1_000_000) if is_video else None))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Topics (Display/Video campaigns)
+    # -----------------------------------------------------------------------
+    TOPICS = [
+        ("Arts & Entertainment > Home & Garden", "1001"), ("Shopping > Furniture", "1002"),
+        ("Home & Garden > Home Furnishings", "1003"), ("Real Estate > Property", "1004"),
+        ("Business > Interior Design", "1005"), ("Lifestyle > Home Decor", "1006"),
+    ]
+    for camp in display_video_campaigns:
+        for day_offset in range(0, 30, 3):
+            d = date.today() - timedelta(days=day_offset)
+            for topic_path, topic_id in RNG.sample(TOPICS, RNG.randint(3, len(TOPICS))):
+                clicks = RNG.randint(10, 60)
+                cost = round(clicks * RNG.uniform(0.5, 2.0), 2)
+                convs = round(max(0, clicks * RNG.uniform(-0.01, 0.04)), 2)
+                db.add(TopicPerformance(campaign_id=camp.id, date=d,
+                    topic_id=topic_id, topic_path=topic_path,
+                    bid_modifier=round(RNG.uniform(0.8, 1.5), 2),
+                    clicks=clicks, impressions=int(clicks * RNG.uniform(20, 50)),
+                    cost_micros=int(cost * 1_000_000), conversions=convs,
+                    conversion_value_micros=int(convs * RNG.uniform(60, 200) * 1_000_000),
+                    ctr=round(RNG.uniform(1, 5), 2)))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Bid Modifiers (device + location + schedule for all campaigns)
+    # -----------------------------------------------------------------------
+    for camp in campaigns:
+        if camp.status == "PAUSED":
+            continue
+        # Device modifiers
+        for device, mod in [("MOBILE", round(RNG.uniform(0.7, 1.3), 2)),
+                            ("DESKTOP", 1.0),
+                            ("TABLET", round(RNG.uniform(0.5, 1.0), 2))]:
+            db.add(BidModifier(campaign_id=camp.id, modifier_type="DEVICE",
+                device_type=device, bid_modifier=mod,
+                google_criterion_id=str(RNG.randint(90000, 99999))))
+        # Location modifiers (Warszawa +20%, reszta neutral)
+        db.add(BidModifier(campaign_id=camp.id, modifier_type="LOCATION",
+            location_id="1011078", location_name="Warszawa", bid_modifier=1.2,
+            google_criterion_id=str(RNG.randint(90000, 99999))))
+        db.add(BidModifier(campaign_id=camp.id, modifier_type="LOCATION",
+            location_id="1011053", location_name="Kraków", bid_modifier=1.1,
+            google_criterion_id=str(RNG.randint(90000, 99999))))
+        # Ad schedule (weekdays boost, weekends reduce)
+        for dow in ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]:
+            db.add(BidModifier(campaign_id=camp.id, modifier_type="AD_SCHEDULE",
+                day_of_week=dow, start_hour=9, end_hour=18,
+                bid_modifier=1.15, google_criterion_id=str(RNG.randint(90000, 99999))))
+        for dow in ["SATURDAY", "SUNDAY"]:
+            db.add(BidModifier(campaign_id=camp.id, modifier_type="AD_SCHEDULE",
+                day_of_week=dow, start_hour=10, end_hour=16,
+                bid_modifier=0.75, google_criterion_id=str(RNG.randint(90000, 99999))))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Audiences (remarketing, in-market, affinity)
+    # -----------------------------------------------------------------------
+    AUDIENCE_DATA = [
+        ("Remarketing - Odwiedzający stronę", "REMARKETING", 45000),
+        ("Remarketing - Porzucone koszyki", "REMARKETING", 12000),
+        ("In-market - Meble do salonu", "IN_MARKET", 350000),
+        ("In-market - Wyposażenie domu", "IN_MARKET", 520000),
+        ("Affinity - Entuzjaści designu", "AFFINITY", 1200000),
+        ("Affinity - Właściciele domów", "AFFINITY", 890000),
+        ("Custom - Szukający łóżek 160x200", "CUSTOM_INTENT", 28000),
+    ]
+    for name, atype, members in AUDIENCE_DATA:
+        db.add(Audience(client_id=client.id, google_audience_id=str(RNG.randint(100000, 999999)),
+            name=name, audience_type=atype, status="ENABLED", member_count=members))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Google Recommendations (native Google suggestions)
+    # -----------------------------------------------------------------------
+    RECO_TYPES = [
+        ("KEYWORD", "Branded Search", "Dodaj nowe słowa kluczowe"),
+        ("SITELINK_EXTENSION", "Łóżka - Generic", "Dodaj rozszerzenia sitelink"),
+        ("RESPONSIVE_SEARCH_AD", "Kanapy - Generic", "Dodaj więcej nagłówków RSA"),
+        ("TARGET_CPA_OPT_IN", "Meble Biurowe", "Przejdź na Target CPA"),
+        ("CALLOUT_EXTENSION", "Branded Search", "Dodaj rozszerzenia callout"),
+        ("KEYWORD", "Shopping - Łóżka", "Rozszerz listę słów kluczowych"),
+        ("MAXIMIZE_CONVERSIONS_OPT_IN", "Display - Remarketing", "Włącz Maximize Conversions"),
+        ("VIDEO_OUTSTREAM", "Video - YouTube Meble", "Dodaj reklamy outstream"),
+    ]
+    for rtype, camp_name, desc in RECO_TYPES:
+        camp = next((c for c in campaigns if c.name == camp_name), None)
+        db.add(GoogleRecommendation(client_id=client.id, campaign_id=camp.id if camp else None,
+            google_recommendation_id=str(RNG.randint(100000, 999999)),
+            recommendation_type=rtype, description=desc, campaign_name=camp_name,
+            impact_estimate={"base": {"conversions": RNG.randint(5, 30)},
+                             "potential": {"conversions": RNG.randint(10, 50)}},
+            status="ACTIVE"))
+    db.flush()
+
+    # -----------------------------------------------------------------------
+    # Bidding Strategies (portfolio strategies)
+    # -----------------------------------------------------------------------
+    db.add(BiddingStrategy(client_id=client.id, google_strategy_id="777",
+        resource_name="customers/1234567890/biddingStrategies/777",
+        name="Portfolio Kanapy tCPA", strategy_type="TARGET_CPA",
+        target_cpa_micros=35_000_000, campaign_count=2))
+    db.add(BiddingStrategy(client_id=client.id, google_strategy_id="888",
+        resource_name="customers/1234567890/biddingStrategies/888",
+        name="Portfolio Shopping tROAS", strategy_type="TARGET_ROAS",
+        target_roas=3.5, campaign_count=1))
     db.flush()
 
     # -----------------------------------------------------------------------
