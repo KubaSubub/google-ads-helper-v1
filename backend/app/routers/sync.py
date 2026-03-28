@@ -148,6 +148,19 @@ def trigger_sync(
     if phases["ad_groups"]["status"] == "error":
         total_errors += 1
 
+    ads_synced = 0
+    if phases["ad_groups"]["status"] == "ok":
+        ads_synced = _run_phase(
+            "ads",
+            lambda: google_ads_service.sync_ads(db, cid),
+            phases,
+        )
+        total_synced += ads_synced
+        if phases.get("ads", {}).get("status") == "error":
+            total_errors += 1
+    else:
+        phases["ads"] = {"count": 0, "status": "skipped", "error": "ad_groups failed"}
+
     keywords_synced = 0
     if phases["ad_groups"]["status"] == "ok":
         keywords_synced = _run_phase(
@@ -177,6 +190,15 @@ def trigger_sync(
             "status": "skipped",
             "error": "ad_groups failed",
         }
+
+    neg_lists_synced = _run_phase(
+        "negative_keyword_lists",
+        lambda: google_ads_service.sync_negative_keyword_lists(db, cid),
+        phases,
+    )
+    total_synced += neg_lists_synced
+    if phases["negative_keyword_lists"]["status"] == "error":
+        total_errors += 1
 
     keyword_daily_synced = 0
     if phases.get("keywords", {}).get("status") == "ok":
@@ -618,18 +640,31 @@ def sync_single_phase(
         "campaigns": lambda: google_ads_service.sync_campaigns(db, cid),
         "impression_share": lambda: google_ads_service.sync_campaign_impression_share(db, cid),
         "ad_groups": lambda: google_ads_service.sync_ad_groups(db, cid),
+        "ads": lambda: google_ads_service.sync_ads(db, cid),
         "keywords": lambda: google_ads_service.sync_keywords(db, cid),
         "negative_keywords": lambda: google_ads_service.sync_negative_keywords(db, cid),
+        "negative_keyword_lists": lambda: google_ads_service.sync_negative_keyword_lists(db, cid),
         "keyword_daily": lambda: google_ads_service.sync_keyword_daily(db, cid, date_from, date_to),
         "daily_metrics": lambda: google_ads_service.sync_daily_metrics(db, cid, date_from, date_to),
         "device_metrics": lambda: google_ads_service.sync_device_metrics(db, cid, date_from, date_to),
         "geo_metrics": lambda: google_ads_service.sync_geo_metrics(db, cid, date_from, date_to),
         "search_terms": lambda: google_ads_service.sync_search_terms(db, cid, date_from, date_to),
         "pmax_terms": lambda: google_ads_service.sync_pmax_search_terms(db, cid, date_from, date_to),
+        "auction_insights": lambda: google_ads_service.sync_auction_insights(db, cid, date_from, date_to),
         "change_events": lambda: google_ads_service.sync_change_events(db, cid, client.id, days=days),
         "conversion_actions": lambda: google_ads_service.sync_conversion_actions(db, cid),
         "age_metrics": lambda: google_ads_service.sync_age_metrics(db, cid, date_from, date_to),
         "gender_metrics": lambda: google_ads_service.sync_gender_metrics(db, cid, date_from, date_to),
+        "parental_metrics": lambda: google_ads_service.sync_parental_status_metrics(db, cid, date_from, date_to),
+        "income_metrics": lambda: google_ads_service.sync_income_range_metrics(db, cid, date_from, date_to),
+        "placement_metrics": lambda: google_ads_service.sync_placement_metrics(db, cid, date_from, date_to),
+        "bid_modifiers": lambda: google_ads_service.sync_bid_modifiers(db, cid),
+        "bidding_strategies": lambda: google_ads_service.sync_bidding_strategies(db, cid),
+        "shared_budgets": lambda: google_ads_service.sync_shared_budgets(db, cid),
+        "audiences": lambda: google_ads_service.sync_audiences(db, cid),
+        "topic_metrics": lambda: google_ads_service.sync_topic_metrics(db, cid, date_from, date_to),
+        "google_recommendations": lambda: google_ads_service.sync_google_recommendations(db, cid),
+        "conversion_value_rules": lambda: google_ads_service.sync_conversion_value_rules(db, cid),
         # Phase D
         "pmax_channel_metrics": lambda: google_ads_service.sync_pmax_channel_metrics(db, cid, date_from, date_to),
         "asset_groups": lambda: google_ads_service.sync_asset_groups(db, cid),
@@ -840,14 +875,18 @@ def _build_phase_executor(cid: str, db: Session, date_from: date, date_to: date,
         "campaigns":            lambda: google_ads_service.sync_campaigns(db, cid),
         "impression_share":     lambda: google_ads_service.sync_campaign_impression_share(db, cid),
         "ad_groups":            lambda: google_ads_service.sync_ad_groups(db, cid),
+        "ads":                  lambda: google_ads_service.sync_ads(db, cid),
+        "product_groups":       lambda: google_ads_service.sync_product_groups(db, cid),
         "keywords":             lambda: google_ads_service.sync_keywords(db, cid),
         "negative_keywords":    lambda: google_ads_service.sync_negative_keywords(db, cid),
+        "negative_keyword_lists": lambda: google_ads_service.sync_negative_keyword_lists(db, cid),
         "keyword_daily":        lambda: google_ads_service.sync_keyword_daily(db, cid, date_from, date_to),
         "daily_metrics":        lambda: google_ads_service.sync_daily_metrics(db, cid, date_from, date_to),
         "search_terms":         lambda: google_ads_service.sync_search_terms(db, cid, date_from, date_to),
         "pmax_terms":           lambda: google_ads_service.sync_pmax_search_terms(db, cid, date_from, date_to),
         "device_metrics":       lambda: google_ads_service.sync_device_metrics(db, cid, date_from, date_to),
         "geo_metrics":          lambda: google_ads_service.sync_geo_metrics(db, cid, date_from, date_to),
+        "auction_insights":     lambda: google_ads_service.sync_auction_insights(db, cid, date_from, date_to),
         "change_events":        lambda: google_ads_service.sync_change_events(db, cid, client_id, days=28),
         "conversion_actions":   lambda: google_ads_service.sync_conversion_actions(db, cid),
         "age_metrics":          lambda: google_ads_service.sync_age_metrics(db, cid, date_from, date_to),
@@ -857,6 +896,16 @@ def _build_phase_executor(cid: str, db: Session, date_from: date, date_to: date,
         "asset_group_daily":    lambda: google_ads_service.sync_asset_group_daily(db, cid, date_from, date_to),
         "asset_group_assets":   lambda: google_ads_service.sync_asset_group_assets(db, cid),
         "asset_group_signals":  lambda: google_ads_service.sync_asset_group_signals(db, cid),
+        "parental_metrics":     lambda: google_ads_service.sync_parental_status_metrics(db, cid, date_from, date_to),
+        "income_metrics":       lambda: google_ads_service.sync_income_range_metrics(db, cid, date_from, date_to),
+        "placement_metrics":    lambda: google_ads_service.sync_placement_metrics(db, cid, date_from, date_to),
+        "bid_modifiers":        lambda: google_ads_service.sync_bid_modifiers(db, cid),
+        "bidding_strategies":   lambda: google_ads_service.sync_bidding_strategies(db, cid),
+        "shared_budgets":       lambda: google_ads_service.sync_shared_budgets(db, cid),
+        "audiences":            lambda: google_ads_service.sync_audiences(db, cid),
+        "topic_metrics":        lambda: google_ads_service.sync_topic_metrics(db, cid, date_from, date_to),
+        "google_recommendations": lambda: google_ads_service.sync_google_recommendations(db, cid),
+        "conversion_value_rules": lambda: google_ads_service.sync_conversion_value_rules(db, cid),
         "campaign_audiences":   lambda: google_ads_service.sync_campaign_audiences(db, cid, date_from, date_to),
         "campaign_assets":      lambda: google_ads_service.sync_campaign_assets(db, cid),
     }

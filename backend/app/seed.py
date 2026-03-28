@@ -19,6 +19,8 @@ from app.models.asset_group_asset import AssetGroupAsset
 from app.models.asset_group_signal import AssetGroupSignal
 from app.models.campaign_audience import CampaignAudienceMetric
 from app.models.campaign_asset import CampaignAsset
+from app.models.report import Report
+from app.models.auction_insight import AuctionInsight
 
 
 # Deterministic seed for reproducibility
@@ -766,6 +768,48 @@ def _seed_demo_data_impl(db):
     db.flush()
 
     # -----------------------------------------------------------------------
+    # Auction Insights (competitor visibility — Search campaigns only)
+    # -----------------------------------------------------------------------
+    COMPETITOR_DOMAINS = [
+        "meble-online.pl", "ikea.pl", "brw.com.pl", "agata.pl",
+        "mebleportfolio.pl", "leroymerlin.pl", "empik.com",
+    ]
+    search_campaigns = [c for c in campaigns if c.campaign_type == "SEARCH" and c.status != "PAUSED"]
+    for campaign in search_campaigns:
+        # Each campaign sees 3-5 competitors
+        n_competitors = RNG.randint(3, min(5, len(COMPETITOR_DOMAINS)))
+        camp_competitors = RNG.sample(COMPETITOR_DOMAINS, n_competitors)
+
+        for day_offset in range(30):
+            d = date.today() - timedelta(days=day_offset)
+            # "You" entry
+            db.add(AuctionInsight(
+                campaign_id=campaign.id,
+                date=d,
+                display_domain="demo-meble.pl",
+                impression_share=round(RNG.uniform(0.15, 0.45), 4),
+                overlap_rate=1.0,
+                position_above_rate=0.0,
+                outranking_share=round(RNG.uniform(0.20, 0.55), 4),
+                top_of_page_rate=round(RNG.uniform(0.30, 0.70), 4),
+                abs_top_of_page_rate=round(RNG.uniform(0.10, 0.35), 4),
+            ))
+            # Competitors
+            for domain in camp_competitors:
+                db.add(AuctionInsight(
+                    campaign_id=campaign.id,
+                    date=d,
+                    display_domain=domain,
+                    impression_share=round(RNG.uniform(0.05, 0.60), 4),
+                    overlap_rate=round(RNG.uniform(0.20, 0.80), 4),
+                    position_above_rate=round(RNG.uniform(0.10, 0.60), 4),
+                    outranking_share=round(RNG.uniform(0.10, 0.50), 4),
+                    top_of_page_rate=round(RNG.uniform(0.15, 0.65), 4),
+                    abs_top_of_page_rate=round(RNG.uniform(0.05, 0.30), 4),
+                ))
+    db.flush()
+
+    # -----------------------------------------------------------------------
     # Change Events (external changes — from Google Ads UI / API / scripts)
     # -----------------------------------------------------------------------
     users = ["jan.kowalski@demo-meble.pl", "anna.nowak@demo-meble.pl", "api@agency.pl"]
@@ -1394,6 +1438,136 @@ def _seed_demo_data_impl(db):
                     ctr=round(base_clicks / base_impr * 100, 2) if base_impr else 0,
                 ))
 
+    # -----------------------------------------------------------------------
+    # Reports (seed sample reports so UI isn't empty)
+    # -----------------------------------------------------------------------
+    import json as _json
+    today = date.today()
+
+    seed_reports = []
+
+    # Monthly report — previous month
+    prev_month_start = date(today.year, today.month, 1) - timedelta(days=1)
+    prev_month_start = date(prev_month_start.year, prev_month_start.month, 1)
+    import calendar as _cal
+    prev_month_end = date(prev_month_start.year, prev_month_start.month,
+                          _cal.monthrange(prev_month_start.year, prev_month_start.month)[1])
+
+    seed_reports.append(Report(
+        client_id=client.id,
+        report_type="monthly",
+        period_label=f"{prev_month_start.year}-{prev_month_start.month:02d}",
+        date_from=prev_month_start,
+        date_to=prev_month_end,
+        status="completed",
+        report_data=_json.dumps({
+            "kpis": {"clicks": 4823, "impressions": 98450, "cost_usd": 3245.60,
+                     "conversions": 187, "ctr": 4.9, "roas": 5.2, "cpa": 17.35},
+            "month_comparison": {"clicks_delta": 12.3, "cost_delta": -3.1,
+                                 "conversions_delta": 8.7, "cpa_delta": -10.8},
+            "top_campaigns": [
+                {"name": "Search - Meble Biurowe", "cost_usd": 1240, "conversions": 68, "roas": 6.1},
+                {"name": "PMax - Meble Ogrodowe", "cost_usd": 890, "conversions": 45, "roas": 4.8},
+            ],
+        }),
+        ai_narrative=(
+            "## Podsumowanie miesięczne\n\n"
+            "Konto osiągnęło **187 konwersji** przy budżecie **3 245,60 zł**, "
+            "co daje CPA na poziomie **17,35 zł** — spadek o 10,8% m/m.\n\n"
+            "### Kluczowe obserwacje\n\n"
+            "- **CTR wzrósł do 4,9%** (+0,3pp vs poprzedni miesiąc)\n"
+            "- **ROAS utrzymuje się na 5,2** — powyżej targetu 4,0\n"
+            "- Kampania *Search - Meble Biurowe* generuje najwyższy ROAS (6,1)\n"
+            "- PMax stabilnie dostarcza 24% konwersji przy akceptowalnym CPA\n\n"
+            "### Rekomendacje na następny miesiąc\n\n"
+            "1. Zwiększ budżet kampanii Search - Meble Biurowe o 15% (IS lost budget = 22%)\n"
+            "2. Dodaj 12 nowych negatywów ze search terms (WASTE segment)\n"
+            "3. Przetestuj nowe RSA warianty w kampanii Meble Ogrodowe\n"
+        ),
+        model_name="claude-sonnet-4-6",
+        input_tokens=12400,
+        output_tokens=850,
+        duration_ms=18500,
+        created_at=datetime(prev_month_end.year, prev_month_end.month, prev_month_end.day, 9, 15),
+        completed_at=datetime(prev_month_end.year, prev_month_end.month, prev_month_end.day, 9, 16),
+    ))
+
+    # Weekly report — last week
+    week_start = today - timedelta(days=today.weekday() + 7)
+    week_end = week_start + timedelta(days=6)
+    seed_reports.append(Report(
+        client_id=client.id,
+        report_type="weekly",
+        period_label=f"week-{week_start.isoformat()}",
+        date_from=week_start,
+        date_to=week_end,
+        status="completed",
+        report_data=_json.dumps({
+            "kpis": {"clicks": 1205, "impressions": 24100, "cost_usd": 812.30,
+                     "conversions": 48, "ctr": 5.0, "cpa": 16.92},
+            "top_movers": [
+                {"name": "Biurka regulowane", "change": "+34% konwersji"},
+                {"name": "Krzesła gamingowe", "change": "-18% CTR"},
+            ],
+        }),
+        ai_narrative=(
+            "## Raport tygodniowy\n\n"
+            "W minionym tygodniu konto wygenerowało **48 konwersji** "
+            "przy wydatku **812,30 zł** (CPA = 16,92 zł).\n\n"
+            "### Top zmiany\n\n"
+            "- **Biurka regulowane**: +34% konwersji po dodaniu nowych RSA\n"
+            "- **Krzesła gamingowe**: spadek CTR o 18% — wymaga analizy search terms\n\n"
+            "### Do zrobienia\n\n"
+            "- Przejrzyj search terms dla kampanii Krzesła (15 nowych WASTE)\n"
+            "- Zwiększ bid na top 5 keywords z IS lost > 20%\n"
+        ),
+        model_name="claude-sonnet-4-6",
+        input_tokens=8200,
+        output_tokens=520,
+        duration_ms=12300,
+        created_at=datetime(week_end.year, week_end.month, week_end.day, 8, 30),
+        completed_at=datetime(week_end.year, week_end.month, week_end.day, 8, 31),
+    ))
+
+    # Health report
+    health_start = today - timedelta(days=29)
+    seed_reports.append(Report(
+        client_id=client.id,
+        report_type="health",
+        period_label=f"health-{today.isoformat()}",
+        date_from=health_start,
+        date_to=today,
+        status="completed",
+        report_data=_json.dumps({
+            "health_score": 74,
+            "structure": {"score": 82, "issues": ["2 ad groups z 1 RSA"]},
+            "quality_scores": {"avg": 6.2, "below_5_count": 8},
+            "conversion_health": {"active_actions": 3, "tracking_status": "healthy"},
+        }),
+        ai_narrative=(
+            "## Audyt zdrowia konta\n\n"
+            "**Ogólny wynik: 74/100**\n\n"
+            "### Struktura konta (82/100)\n"
+            "- 2 grupy reklam mają tylko 1 RSA — dodaj warianty\n"
+            "- Ogólna struktura kampanii jest prawidłowa\n\n"
+            "### Quality Score (6,2 avg)\n"
+            "- 8 keywords z QS < 5 generuje 18% kosztów\n"
+            "- Priorytet: popraw landing pages dla keywords z LP score = 'Below Average'\n\n"
+            "### Śledzenie konwersji\n"
+            "- 3 aktywne akcje konwersji — status healthy\n"
+            "- Enhanced conversions włączone\n"
+        ),
+        model_name="claude-sonnet-4-6",
+        input_tokens=15100,
+        output_tokens=680,
+        duration_ms=21000,
+        created_at=datetime(today.year, today.month, today.day, 10, 0),
+        completed_at=datetime(today.year, today.month, today.day, 10, 1),
+    ))
+
+    for r in seed_reports:
+        db.add(r)
+
     db.flush()
     db.commit()
     db.close()
@@ -1416,6 +1590,7 @@ def _seed_demo_data_impl(db):
     print(f"   - {len(asset_groups)} PMax asset groups + daily metrics + assets + signals")
     print("   - Campaign audience metrics (5 segments × 2 campaigns × 90 days)")
     print("   - Campaign extensions (sitelinks, callouts, snippets)")
+    print(f"   - {len(seed_reports)} sample reports (monthly + weekly + health)")
 
 
 if __name__ == "__main__":

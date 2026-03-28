@@ -28,6 +28,17 @@ from .asset_group_signal import AssetGroupSignal
 from .campaign_audience import CampaignAudienceMetric
 from .campaign_asset import CampaignAsset
 from .sync_coverage import SyncCoverage
+from .auction_insight import AuctionInsight
+from .product_group import ProductGroup
+from .placement import Placement
+from .bidding_strategy import BiddingStrategy, SharedBudget
+from .bid_modifier import BidModifier
+from .audience import Audience
+from .topic import TopicPerformance
+from .google_recommendation import GoogleRecommendation
+from .conversion_value_rule import ConversionValueRule
+from .mcc_link import MccLink
+from .offline_conversion import OfflineConversion
 
 __all__ = [
     "Client",
@@ -56,5 +67,17 @@ __all__ = [
     "CampaignAudienceMetric",
     "CampaignAsset",
     "SyncCoverage",
+    "AuctionInsight",
+    "ProductGroup",
+    "Placement",
+    "BiddingStrategy",
+    "SharedBudget",
+    "BidModifier",
+    "Audience",
+    "TopicPerformance",
+    "GoogleRecommendation",
+    "ConversionValueRule",
+    "MccLink",
+    "OfflineConversion",
 ]
 

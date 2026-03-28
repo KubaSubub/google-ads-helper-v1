@@ -67,31 +67,31 @@ export const getKeywords = (params = {}) =>
 
 // Ad Groups (lightweight lookup)
 export const getAdGroups = (params = {}) =>
-    api.get('/keywords/ad-groups/', { params });
+    api.get('/ad-groups/', { params });
 
 // Negative Keywords
 export const getNegativeKeywords = (params = {}) =>
-    api.get('/keywords/negative-keywords/', { params });
+    api.get('/negative-keywords/', { params });
 export const addNegativeKeyword = (data) =>
-    api.post('/keywords/negative-keywords/', data);
+    api.post('/negative-keywords/', data);
 export const removeNegativeKeyword = (id) =>
-    api.delete(`/keywords/negative-keywords/${id}`);
+    api.delete(`/negative-keywords/${id}`);
 
 // Negative Keyword Lists
 export const getNegativeKeywordLists = (params = {}) =>
-    api.get('/keywords/negative-keyword-lists/', { params });
+    api.get('/negative-keyword-lists/', { params });
 export const createNegativeKeywordList = (data) =>
-    api.post('/keywords/negative-keyword-lists/', data);
+    api.post('/negative-keyword-lists/', data);
 export const getNegativeKeywordListDetail = (listId) =>
-    api.get(`/keywords/negative-keyword-lists/${listId}`);
+    api.get(`/negative-keyword-lists/${listId}`);
 export const deleteNegativeKeywordList = (listId) =>
-    api.delete(`/keywords/negative-keyword-lists/${listId}`);
+    api.delete(`/negative-keyword-lists/${listId}`);
 export const addToNegativeKeywordList = (listId, data) =>
-    api.post(`/keywords/negative-keyword-lists/${listId}/items`, data);
+    api.post(`/negative-keyword-lists/${listId}/items`, data);
 export const removeFromNegativeKeywordList = (listId, itemId) =>
-    api.delete(`/keywords/negative-keyword-lists/${listId}/items/${itemId}`);
+    api.delete(`/negative-keyword-lists/${listId}/items/${itemId}`);
 export const applyNegativeKeywordList = (listId, data) =>
-    api.post(`/keywords/negative-keyword-lists/${listId}/apply`, data);
+    api.post(`/negative-keyword-lists/${listId}/apply`, data);
 
 // Search Terms
 export const getSegmentedSearchTerms = (clientId, params = {}) =>
@@ -138,8 +138,8 @@ export const getWoWComparison = (clientId, params = {}) =>
     api.get('/analytics/wow-comparison', { params: { client_id: clientId, ...params } });
 export const getKPIs = (clientId) =>
     api.get('/analytics/kpis', { params: { client_id: clientId } });
-export const getQualityScoreAudit = (clientId) =>
-    api.get('/analytics/quality-score-audit', { params: { client_id: clientId } });
+export const getQualityScoreAudit = (clientId, params = {}) =>
+    api.get('/analytics/quality-score-audit', { params: { client_id: clientId, ...params } });
 export const getForecast = (campaignId, metric = 'cost', forecastDays = 7) =>
     api.get('/analytics/forecast', {
         params: {
@@ -250,6 +250,8 @@ export const getDemographics = (clientId, params = {}) =>
 // Phase D — PMax, Audience, Extensions
 export const getPmaxChannels = (clientId, params = {}) =>
     api.get('/analytics/pmax-channels', { params: { client_id: clientId, ...params } });
+export const getPmaxChannelTrends = (clientId, params = {}) =>
+    api.get('/analytics/pmax-channel-trends', { params: { client_id: clientId, ...params } });
 export const getAssetGroupPerformance = (clientId, params = {}) =>
     api.get('/analytics/asset-group-performance', { params: { client_id: clientId, ...params } });
 export const getPmaxSearchThemes = (clientId, params = {}) =>
@@ -260,6 +262,22 @@ export const getMissingExtensions = (clientId, params = {}) =>
     api.get('/analytics/missing-extensions', { params: { client_id: clientId, ...params } });
 export const getExtensionPerformance = (clientId, params = {}) =>
     api.get('/analytics/extension-performance', { params: { client_id: clientId, ...params } });
+export const getPmaxSearchCannibalization = (clientId, params = {}) =>
+    api.get('/analytics/pmax-search-cannibalization', { params: { client_id: clientId, ...params } });
+export const getAuctionInsights = (clientId, params = {}) =>
+    api.get('/analytics/auction-insights', { params: { client_id: clientId, ...params } });
+export const getShoppingProductGroups = (clientId, params = {}) =>
+    api.get('/analytics/shopping-product-groups', { params: { client_id: clientId, ...params } });
+export const getPlacementPerformance = (clientId, params = {}) =>
+    api.get('/analytics/placement-performance', { params: { client_id: clientId, ...params } });
+export const getBidModifiers = (clientId, params = {}) =>
+    api.get('/analytics/bid-modifiers', { params: { client_id: clientId, ...params } });
+export const getTopicPerformance = (clientId, params = {}) =>
+    api.get('/analytics/topic-performance', { params: { client_id: clientId, ...params } });
+export const getAudiencesList = (clientId) =>
+    api.get('/analytics/audiences-list', { params: { client_id: clientId } });
+export const getGoogleRecommendations = (clientId) =>
+    api.get('/analytics/google-recommendations', { params: { client_id: clientId } });
 
 // AI Agent
 export const getAgentStatus = () => api.get('/agent/status');
@@ -267,8 +285,8 @@ export const getAgentStatus = () => api.get('/agent/status');
 // Reports
 export const getReports = (clientId, params = {}) =>
     api.get('/reports/', { params: { client_id: clientId, ...params } });
-export const getReport = (reportId) =>
-    api.get(`/reports/${reportId}`);
+export const getReport = (reportId, clientId) =>
+    api.get(`/reports/${reportId}`, { params: { client_id: clientId } });
 
 // History
 export const getChangeHistory = (clientId, params = {}) =>

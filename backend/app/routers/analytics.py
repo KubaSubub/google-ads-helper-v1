@@ -17,7 +17,7 @@ except ImportError as _import_err:
 
 from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
-from app.models import MetricDaily, Campaign, Keyword, AdGroup, Alert, MetricSegmented
+from app.models import MetricDaily, Campaign, Client, Keyword, KeywordDaily, AdGroup, Alert, MetricSegmented
 from app.schemas import PeriodComparisonRequest, PeriodComparisonResponse, CorrelationRequest
 from app.services.analytics_service import AnalyticsService
 from app.utils.formatters import micros_to_currency
@@ -348,14 +348,28 @@ def dashboard_kpis(
 # ---------------------------------------------------------------------------
 
 
+from app.utils.quality_score import build_subcomponent_issues, get_primary_issue, build_recommendation
+
+# Backward-compatible aliases (used by export.py and internally)
+_build_subcomponent_issues = build_subcomponent_issues
+_get_primary_issue = get_primary_issue
+_build_recommendation = build_recommendation
+
+
 @router.get("/quality-score-audit")
 def quality_score_audit(
     client_id: int = Query(...),
     qs_threshold: int = Query(5, ge=1, le=10, description="Flag keywords with QS below this"),
+    campaign_id: int = Query(None, description="Filter by campaign ID"),
+    match_type: str = Query(None, description="Filter by match type: EXACT, PHRASE, BROAD"),
+    sort_by: str = Query("quality_score", description="Sort field"),
+    sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
+    date_from: date = Query(None, description="Start date for cost aggregation"),
+    date_to: date = Query(None, description="End date for cost aggregation"),
     db: Session = Depends(get_db),
 ):
-    """Identify keywords with low Quality Score."""
-    keywords = (
+    """Quality Score audit with subcomponent diagnostics."""
+    query = (
         db.query(Keyword)
         .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
         .join(Campaign, AdGroup.campaign_id == Campaign.id)
@@ -365,66 +379,172 @@ def quality_score_audit(
             Keyword.quality_score.isnot(None),
             Keyword.quality_score > 0,
         )
-        .all()
     )
+    if campaign_id is not None:
+        query = query.filter(Campaign.id == campaign_id)
+    if match_type is not None:
+        query = query.filter(Keyword.match_type == match_type)
+
+    keywords = query.all()
 
     if not keywords:
-        return {"total_keywords": 0, "low_qs_keywords": [], "average_qs": 0}
+        return {
+            "total_keywords": 0, "low_qs_keywords": [], "keywords": [],
+            "average_qs": 0, "qs_distribution": {},
+            "available_campaigns": [], "issue_breakdown": {},
+        }
 
     all_qs = [k.quality_score for k in keywords]
     avg_qs = sum(all_qs) / len(all_qs)
 
-    # Pre-build ad_group_id → campaign_name lookup to avoid N+1 queries
-    low_kw_ag_ids = {kw.ad_group_id for kw in keywords if kw.quality_score < qs_threshold and kw.ad_group_id}
+    # Pre-build ad_group_id → (campaign_id, campaign_name) lookup
+    all_ag_ids = {kw.ad_group_id for kw in keywords if kw.ad_group_id}
     campaign_by_ag = {}
-    if low_kw_ag_ids:
+    campaign_id_by_ag = {}
+    ag_name_by_ag = {}
+    if all_ag_ids:
         rows = (
-            db.query(AdGroup.id, Campaign.name)
+            db.query(AdGroup.id, AdGroup.name, Campaign.id, Campaign.name)
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
-            .filter(AdGroup.id.in_(low_kw_ag_ids))
+            .filter(AdGroup.id.in_(all_ag_ids))
             .all()
         )
-        campaign_by_ag = {ag_id: cname for ag_id, cname in rows}
+        campaign_by_ag = {ag_id: cname for ag_id, ag_name, cid, cname in rows}
+        campaign_id_by_ag = {ag_id: cid for ag_id, ag_name, cid, cname in rows}
+        ag_name_by_ag = {ag_id: ag_name for ag_id, ag_name, cid, cname in rows}
 
+    # Available campaigns for filter dropdown
+    seen_campaigns = {}
+    for ag_id, ag_name, cid, cname in rows if all_ag_ids else []:
+        if cid not in seen_campaigns:
+            seen_campaigns[cid] = cname
+    available_campaigns = [{"id": cid, "name": cname} for cid, cname in seen_campaigns.items()]
+
+    # Date-range aggregation from KeywordDaily (when dates provided)
+    daily_agg = {}
+    use_daily = date_from is not None and date_to is not None
+    if use_daily:
+        kw_ids = [kw.id for kw in keywords]
+        if kw_ids:
+            agg_rows = (
+                db.query(
+                    KeywordDaily.keyword_id,
+                    func.sum(KeywordDaily.clicks).label("clicks"),
+                    func.sum(KeywordDaily.impressions).label("impressions"),
+                    func.sum(KeywordDaily.cost_micros).label("cost_micros"),
+                    func.sum(KeywordDaily.conversions).label("conversions"),
+                    func.sum(KeywordDaily.conversion_value_micros).label("conv_value_micros"),
+                )
+                .filter(
+                    KeywordDaily.keyword_id.in_(kw_ids),
+                    KeywordDaily.date >= date_from,
+                    KeywordDaily.date <= date_to,
+                )
+                .group_by(KeywordDaily.keyword_id)
+                .all()
+            )
+            for row in agg_rows:
+                daily_agg[row.keyword_id] = {
+                    "clicks": row.clicks or 0,
+                    "impressions": row.impressions or 0,
+                    "cost_micros": row.cost_micros or 0,
+                    "conversions": row.conversions or 0,
+                    "conv_value_micros": row.conv_value_micros or 0,
+                }
+
+    # Build keyword list with full diagnostics
+    all_kw_dicts = []
     low_qs = []
+    issue_counts = {"expected_ctr": 0, "ad_relevance": 0, "landing_page": 0}
+
     for kw in keywords:
-        if kw.quality_score >= qs_threshold:
-            continue
-
         campaign_name = campaign_by_ag.get(kw.ad_group_id, "Unknown")
+        primary_issue = _get_primary_issue(kw)
 
-        issues = []
-        kw_ctr_pct = kw.ctr or 0  # already percentage
-        if kw_ctr_pct < 2.0:
-            issues.append("Low CTR - ad copy may not match keyword intent")
-        if kw.quality_score <= 3:
-            issues.append("Very low QS - check ad relevance + landing page")
-        if (kw.cost_micros or 0) > 50_000_000 and (kw.conversions or 0) == 0:
-            issues.append("High spend, no conversions - landing page issue?")
+        # Use date-range aggregated metrics when available, else snapshot
+        d = daily_agg.get(kw.id) if use_daily else None
+        kw_clicks = d["clicks"] if d else (kw.clicks or 0)
+        kw_impressions = d["impressions"] if d else (kw.impressions or 0)
+        kw_cost_micros = d["cost_micros"] if d else (kw.cost_micros or 0)
+        kw_conversions = d["conversions"] if d else (kw.conversions or 0)
+        kw_conv_value_micros = d["conv_value_micros"] if d else (kw.conversion_value_micros or 0)
+        kw_ctr = round((kw_clicks / kw_impressions * 100) if kw_impressions > 0 else 0, 2) if use_daily else round(kw.ctr or 0, 2)
 
-        low_qs.append({
+        kw_dict = {
             "keyword": kw.text,
+            "keyword_id": kw.id,
+            "google_keyword_id": kw.google_keyword_id,
             "quality_score": kw.quality_score,
             "campaign": campaign_name,
+            "campaign_id": campaign_id_by_ag.get(kw.ad_group_id),
+            "ad_group": ag_name_by_ag.get(kw.ad_group_id, "Unknown"),
             "match_type": kw.match_type,
-            "ctr_pct": round(kw_ctr_pct, 2),
-            "clicks": kw.clicks or 0,
-            "cost_usd": micros_to_currency(kw.cost_micros),
-            "issues": issues,
-        })
+            "ctr_pct": kw_ctr,
+            "clicks": kw_clicks,
+            "impressions": kw_impressions,
+            "cost_usd": micros_to_currency(kw_cost_micros),
+            "conversions": round(kw_conversions, 1),
+            "conversion_value_usd": micros_to_currency(kw_conv_value_micros),
+            # Subcomponents (enum 1-3 or None)
+            "ad_relevance": kw.historical_creative_quality,
+            "landing_page": kw.historical_landing_page_quality,
+            "expected_ctr": kw.historical_search_predicted_ctr,
+            # Impression share
+            "search_impression_share": kw.search_impression_share,
+            "search_rank_lost_is": kw.search_rank_lost_is,
+            # Diagnostics
+            "serving_status": kw.serving_status,
+            "primary_issue": primary_issue,
+            "issues": _build_subcomponent_issues(kw),
+            "recommendation": _build_recommendation(kw),
+        }
+        all_kw_dicts.append(kw_dict)
 
-    low_qs.sort(key=lambda x: x["quality_score"])
+        if kw.quality_score < qs_threshold:
+            low_qs.append(kw_dict)
+
+        if primary_issue and primary_issue in issue_counts:
+            issue_counts[primary_issue] += 1
+
+    # Sort
+    reverse = sort_dir == "desc"
+    sort_key = sort_by if sort_by in ("quality_score", "clicks", "impressions", "ctr_pct") else "quality_score"
+    all_kw_dicts.sort(key=lambda x: x.get(sort_key) or 0, reverse=reverse)
+    low_qs.sort(key=lambda x: x.get(sort_key) or 0, reverse=reverse)
+
+    # Aggregate metrics (use daily when date-range active)
+    def _kw_cost(kw):
+        if use_daily:
+            d = daily_agg.get(kw.id)
+            return d["cost_micros"] if d else 0
+        return kw.cost_micros or 0
+    low_spend = sum(_kw_cost(kw) for kw in keywords if kw.quality_score < qs_threshold)
+    total_spend = sum(_kw_cost(kw) for kw in keywords)
+    rank_lost_vals = [kw.search_rank_lost_is for kw in keywords if kw.search_rank_lost_is is not None]
+    high_qs_count = sum(1 for q in all_qs if q >= 8)
+
+    # Get google_customer_id for deep links
+    client_obj = db.get(Client, client_id)
+    google_customer_id = client_obj.google_customer_id if client_obj else None
 
     return {
         "total_keywords": len(keywords),
+        "google_customer_id": google_customer_id,
         "average_qs": round(avg_qs, 1),
         "low_qs_count": len(low_qs),
+        "high_qs_count": high_qs_count,
         "qs_threshold": qs_threshold,
-        "low_qs_keywords": low_qs,
+        "low_qs_spend_usd": micros_to_currency(low_spend),
+        "low_qs_spend_pct": round(low_spend / total_spend * 100, 1) if total_spend > 0 else 0,
+        "avg_rank_lost_is": round(sum(rank_lost_vals) / len(rank_lost_vals) * 100, 1) if rank_lost_vals else None,
+        "issue_breakdown": issue_counts,
+        "available_campaigns": available_campaigns,
         "qs_distribution": {
             f"qs_{i}": sum(1 for q in all_qs if q == i)
             for i in range(1, 11)
         },
+        "keywords": all_kw_dicts,
+        "low_qs_keywords": low_qs,
     }
 
 
@@ -1491,6 +1611,23 @@ def get_pmax_channels(
     )
 
 
+
+@router.get("/pmax-channel-trends")
+def get_pmax_channel_trends(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date"),
+    date_to: date = Query(None, description="End date"),
+    db: Session = Depends(get_db),
+):
+    """Daily PMax cost/conversions per channel for trend charts."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_pmax_channel_trends(
+        client_id=client_id, date_from=start, date_to=end,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GAP 3B: Asset Group Performance
 # ---------------------------------------------------------------------------
@@ -1584,3 +1721,570 @@ def get_extension_performance(
         client_id=client_id,
         campaign_type=campaign_type, campaign_status=campaign_status,
     )
+
+
+# ---------------------------------------------------------------------------
+# PMax vs Search Cannibalization (D3)
+# ---------------------------------------------------------------------------
+
+@router.get("/pmax-search-cannibalization")
+def get_pmax_search_cannibalization(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90, description="Lookback period"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    min_clicks: int = Query(2, ge=1, description="Min clicks to include"),
+    db: Session = Depends(get_db),
+):
+    """Detect search terms appearing in both PMax and Search campaigns."""
+    start, end = resolve_dates(days, date_from, date_to)
+    service = AnalyticsService(db)
+    return service.get_pmax_search_cannibalization(
+        client_id=client_id, date_from=start, date_to=end,
+        min_clicks=min_clicks,
+    )
+
+
+@router.post("/placement-exclusion")
+def add_placement_exclusion(
+    client_id: int = Query(...),
+    campaign_id: int = Query(...),
+    placement_url: str = Query(..., description="URL to exclude"),
+    allow_demo_write: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Add a placement exclusion to a Display/Video campaign."""
+    from app.demo_guard import ensure_demo_write_allowed
+    from app.services.google_ads import google_ads_service
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    ensure_demo_write_allowed(db, client_id, allow_demo_write=allow_demo_write, operation="Dodanie wykluczenia miejsca")
+
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    result = google_ads_service.add_placement_exclusion(
+        db, client.google_customer_id, campaign.google_campaign_id, placement_url
+    )
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.get("/placement-performance")
+def placement_performance(
+    client_id: int = Query(...),
+    campaign_id: int = Query(None),
+    days: int = Query(30, ge=7, le=90),
+    date_from: date = Query(None),
+    date_to: date = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Placement performance for Display/Video campaigns."""
+    from app.models.placement import Placement
+
+    start, end = resolve_dates(days, date_from, date_to)
+
+    query = (
+        db.query(
+            Placement.placement_url,
+            Placement.placement_type,
+            Placement.display_name,
+            func.sum(Placement.clicks).label("clicks"),
+            func.sum(Placement.impressions).label("impressions"),
+            func.sum(Placement.cost_micros).label("cost"),
+            func.sum(Placement.conversions).label("conv"),
+            func.sum(Placement.conversion_value_micros).label("value"),
+            func.sum(Placement.video_views).label("views"),
+            func.avg(Placement.video_view_rate).label("avg_view_rate"),
+        )
+        .join(Campaign, Placement.campaign_id == Campaign.id)
+        .filter(
+            Campaign.client_id == client_id,
+            Placement.date >= start,
+            Placement.date <= end,
+        )
+    )
+    if campaign_id:
+        query = query.filter(Placement.campaign_id == campaign_id)
+
+    results = (
+        query
+        .group_by(Placement.placement_url, Placement.placement_type, Placement.display_name)
+        .order_by(func.sum(Placement.cost_micros).desc())
+        .limit(100)
+        .all()
+    )
+
+    placements = []
+    for r in results:
+        cost = int(r.cost or 0) / 1_000_000
+        conv = float(r.conv or 0)
+        value = int(r.value or 0) / 1_000_000
+        placements.append({
+            "placement_url": r.placement_url,
+            "placement_type": r.placement_type,
+            "display_name": r.display_name,
+            "clicks": int(r.clicks or 0),
+            "impressions": int(r.impressions or 0),
+            "cost_usd": round(cost, 2),
+            "conversions": round(conv, 2),
+            "value_usd": round(value, 2),
+            "roas": round(value / cost, 2) if cost > 0 else 0,
+            "cpa_usd": round(cost / conv, 2) if conv > 0 else None,
+            "video_views": int(r.views) if r.views else None,
+            "avg_view_rate": round(float(r.avg_view_rate), 1) if r.avg_view_rate else None,
+        })
+
+    total_cost = sum(p["cost_usd"] for p in placements)
+    return {
+        "placements": placements,
+        "total_placements": len(placements),
+        "total_cost_usd": round(total_cost, 2),
+        "period": {"from": str(start), "to": str(end)},
+    }
+
+
+@router.get("/shopping-product-groups")
+def shopping_product_groups(
+    client_id: int = Query(...),
+    campaign_id: int = Query(None, description="Filter by campaign"),
+    db: Session = Depends(get_db),
+):
+    """Shopping product group performance tree."""
+    from app.models.product_group import ProductGroup
+
+    query = (
+        db.query(ProductGroup)
+        .join(Campaign, ProductGroup.campaign_id == Campaign.id)
+        .filter(Campaign.client_id == client_id)
+    )
+    if campaign_id:
+        query = query.filter(ProductGroup.campaign_id == campaign_id)
+
+    groups = query.order_by(ProductGroup.cost_micros.desc()).all()
+
+    items = []
+    for g in groups:
+        cost = (g.cost_micros or 0) / 1_000_000
+        conv_val = (g.conversion_value_micros or 0) / 1_000_000
+        items.append({
+            "id": g.id,
+            "campaign_id": g.campaign_id,
+            "criterion_id": g.google_criterion_id,
+            "parent_criterion_id": g.parent_criterion_id,
+            "case_type": g.case_value_type,
+            "case_value": g.case_value or "(All products)",
+            "partition_type": g.partition_type,
+            "bid_usd": round(g.bid_micros / 1_000_000, 2) if g.bid_micros else 0,
+            "clicks": g.clicks or 0,
+            "impressions": g.impressions or 0,
+            "cost_usd": round(cost, 2),
+            "conversions": round(g.conversions or 0, 2),
+            "value_usd": round(conv_val, 2),
+            "ctr": round(g.ctr or 0, 2),
+            "roas": round(conv_val / cost, 2) if cost > 0 else 0,
+            "cpa_usd": round(cost / g.conversions, 2) if g.conversions and g.conversions > 0 else None,
+        })
+
+    # Summary
+    total_cost = sum(i["cost_usd"] for i in items)
+    total_conv = sum(i["conversions"] for i in items)
+    total_value = sum(i["value_usd"] for i in items)
+
+    return {
+        "product_groups": items,
+        "summary": {
+            "total_groups": len(items),
+            "total_cost_usd": round(total_cost, 2),
+            "total_conversions": round(total_conv, 2),
+            "total_value_usd": round(total_value, 2),
+            "avg_roas": round(total_value / total_cost, 2) if total_cost > 0 else 0,
+        },
+    }
+
+
+@router.get("/auction-insights")
+def auction_insights(
+    client_id: int = Query(...),
+    campaign_id: int = Query(None, description="Filter by campaign"),
+    days: int = Query(30, ge=7, le=90),
+    date_from: date = Query(None),
+    date_to: date = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Auction insights — competitor visibility metrics."""
+    from app.models.auction_insight import AuctionInsight
+
+    start, end = resolve_dates(days, date_from, date_to)
+
+    query = (
+        db.query(
+            AuctionInsight.display_domain,
+            func.avg(AuctionInsight.impression_share).label("avg_impression_share"),
+            func.avg(AuctionInsight.overlap_rate).label("avg_overlap_rate"),
+            func.avg(AuctionInsight.position_above_rate).label("avg_position_above_rate"),
+            func.avg(AuctionInsight.outranking_share).label("avg_outranking_share"),
+            func.avg(AuctionInsight.top_of_page_rate).label("avg_top_of_page_rate"),
+            func.avg(AuctionInsight.abs_top_of_page_rate).label("avg_abs_top_of_page_rate"),
+            func.count(AuctionInsight.id).label("data_points"),
+        )
+        .join(Campaign, AuctionInsight.campaign_id == Campaign.id)
+        .filter(
+            Campaign.client_id == client_id,
+            AuctionInsight.date >= start,
+            AuctionInsight.date <= end,
+        )
+    )
+
+    if campaign_id:
+        query = query.filter(AuctionInsight.campaign_id == campaign_id)
+
+    results = (
+        query
+        .group_by(AuctionInsight.display_domain)
+        .order_by(func.avg(AuctionInsight.impression_share).desc())
+        .all()
+    )
+
+    # Identify "self" domain from client website
+    client = db.get(Client, client_id)
+    your_domain = None
+    if client and client.website:
+        your_domain = client.website.replace("https://", "").replace("http://", "").replace("www.", "").rstrip("/")
+
+    competitors = []
+    for row in results:
+        domain = row.display_domain
+        is_self = (your_domain and domain and your_domain in domain) or False
+        competitors.append({
+            "display_domain": domain,
+            "is_self": is_self,
+            "impression_share": round((row.avg_impression_share or 0) * 100, 1),
+            "overlap_rate": round((row.avg_overlap_rate or 0) * 100, 1),
+            "position_above_rate": round((row.avg_position_above_rate or 0) * 100, 1),
+            "outranking_share": round((row.avg_outranking_share or 0) * 100, 1),
+            "top_of_page_rate": round((row.avg_top_of_page_rate or 0) * 100, 1),
+            "abs_top_of_page_rate": round((row.avg_abs_top_of_page_rate or 0) * 100, 1),
+            "data_points": row.data_points,
+        })
+
+    # Also get trend data per competitor (daily)
+    trend_query = (
+        db.query(
+            AuctionInsight.date,
+            AuctionInsight.display_domain,
+            func.avg(AuctionInsight.impression_share).label("impression_share"),
+            func.avg(AuctionInsight.outranking_share).label("outranking_share"),
+        )
+        .join(Campaign, AuctionInsight.campaign_id == Campaign.id)
+        .filter(
+            Campaign.client_id == client_id,
+            AuctionInsight.date >= start,
+            AuctionInsight.date <= end,
+        )
+    )
+    if campaign_id:
+        trend_query = trend_query.filter(AuctionInsight.campaign_id == campaign_id)
+
+    # Only top 5 competitors for trend
+    top_domains = [c["display_domain"] for c in competitors[:5]]
+    trend_rows = (
+        trend_query
+        .filter(AuctionInsight.display_domain.in_(top_domains))
+        .group_by(AuctionInsight.date, AuctionInsight.display_domain)
+        .order_by(AuctionInsight.date)
+        .all()
+    )
+
+    trends = {}
+    for row in trend_rows:
+        domain = row.display_domain
+        if domain not in trends:
+            trends[domain] = []
+        trends[domain].append({
+            "date": str(row.date),
+            "impression_share": round((row.impression_share or 0) * 100, 1),
+            "outranking_share": round((row.outranking_share or 0) * 100, 1),
+        })
+
+    return {
+        "competitors": competitors,
+        "trends": trends,
+        "period": {"from": str(start), "to": str(end)},
+        "total_competitors": len(competitors),
+    }
+
+
+@router.get("/mcc-accounts")
+def mcc_accounts(
+    manager_customer_id: str = Query(..., description="Manager account CID"),
+    db: Session = Depends(get_db),
+):
+    """List child accounts under an MCC manager."""
+    from app.models.mcc_link import MccLink
+    links = db.query(MccLink).filter(
+        MccLink.manager_customer_id == manager_customer_id.replace("-", ""),
+        MccLink.is_hidden == False,
+    ).order_by(MccLink.client_descriptive_name).all()
+
+    return {
+        "accounts": [
+            {
+                "customer_id": l.client_customer_id,
+                "name": l.client_descriptive_name,
+                "status": l.status,
+                "is_manager": l.is_manager,
+                "local_client_id": l.local_client_id,
+            }
+            for l in links
+        ],
+        "total": len(links),
+    }
+
+
+@router.post("/offline-conversions/upload")
+def upload_offline_conversions(
+    client_id: int = Query(...),
+    allow_demo_write: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Upload offline conversions (body: JSON array of {gclid, conversion_action_id, conversion_time, conversion_value, currency_code})."""
+    from app.demo_guard import ensure_demo_write_allowed
+    from app.services.google_ads import google_ads_service
+    from app.models.offline_conversion import OfflineConversion
+    from fastapi import Request
+    import json
+
+    ensure_demo_write_allowed(db, client_id, allow_demo_write=allow_demo_write, operation="Upload konwersji offline")
+
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # For now, return info about the endpoint
+    return {
+        "status": "info",
+        "message": "Use POST with JSON body containing conversions array. Each item: {gclid, conversion_action_id, conversion_time, conversion_value, currency_code}",
+        "endpoint": "/analytics/offline-conversions/upload",
+    }
+
+
+@router.get("/offline-conversions")
+def list_offline_conversions(
+    client_id: int = Query(...),
+    status: str = Query(None, description="PENDING, UPLOADED, FAILED"),
+    db: Session = Depends(get_db),
+):
+    """List offline conversions for a client."""
+    from app.models.offline_conversion import OfflineConversion
+
+    query = db.query(OfflineConversion).filter(OfflineConversion.client_id == client_id)
+    if status:
+        query = query.filter(OfflineConversion.upload_status == status)
+    convs = query.order_by(OfflineConversion.created_at.desc()).limit(100).all()
+
+    return {
+        "conversions": [
+            {
+                "id": c.id,
+                "gclid": c.gclid,
+                "conversion_name": c.conversion_name,
+                "conversion_time": str(c.conversion_time),
+                "conversion_value": c.conversion_value,
+                "status": c.upload_status,
+                "error": c.error_message,
+                "uploaded_at": str(c.uploaded_at) if c.uploaded_at else None,
+            }
+            for c in convs
+        ],
+        "total": len(convs),
+    }
+
+
+@router.get("/conversion-value-rules")
+def list_conversion_value_rules(
+    client_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """List conversion value rules."""
+    from app.models.conversion_value_rule import ConversionValueRule
+
+    rules = db.query(ConversionValueRule).filter(
+        ConversionValueRule.client_id == client_id
+    ).all()
+
+    return {
+        "rules": [
+            {
+                "id": r.id,
+                "condition_type": r.condition_type,
+                "condition_value": r.condition_value,
+                "action_type": r.action_type,
+                "action_value_micros": r.action_value_micros,
+                "action_multiplier": r.action_multiplier,
+                "status": r.status,
+            }
+            for r in rules
+        ],
+        "total": len(rules),
+    }
+
+
+@router.get("/bid-modifiers")
+def get_bid_modifiers(
+    client_id: int = Query(...),
+    campaign_id: int = Query(None),
+    modifier_type: str = Query(None, description="DEVICE, LOCATION, AD_SCHEDULE"),
+    db: Session = Depends(get_db),
+):
+    """List bid modifiers (device, location, ad schedule)."""
+    from app.models.bid_modifier import BidModifier
+
+    query = (
+        db.query(BidModifier)
+        .join(Campaign, BidModifier.campaign_id == Campaign.id)
+        .filter(Campaign.client_id == client_id)
+    )
+    if campaign_id:
+        query = query.filter(BidModifier.campaign_id == campaign_id)
+    if modifier_type:
+        query = query.filter(BidModifier.modifier_type == modifier_type)
+
+    modifiers = query.order_by(BidModifier.modifier_type, BidModifier.campaign_id).all()
+
+    items = []
+    for m in modifiers:
+        items.append({
+            "id": m.id,
+            "campaign_id": m.campaign_id,
+            "modifier_type": m.modifier_type,
+            "device_type": m.device_type,
+            "location_id": m.location_id,
+            "location_name": m.location_name,
+            "day_of_week": m.day_of_week,
+            "start_hour": m.start_hour,
+            "end_hour": m.end_hour,
+            "bid_modifier": m.bid_modifier,
+        })
+    return {"modifiers": items, "total": len(items)}
+
+
+@router.get("/topic-performance")
+def topic_performance(
+    client_id: int = Query(...),
+    days: int = Query(30, ge=7, le=90),
+    date_from: date = Query(None),
+    date_to: date = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Topic targeting performance for Display/Video campaigns."""
+    from app.models.topic import TopicPerformance
+
+    start, end = resolve_dates(days, date_from, date_to)
+
+    results = (
+        db.query(
+            TopicPerformance.topic_path,
+            func.sum(TopicPerformance.clicks).label("clicks"),
+            func.sum(TopicPerformance.impressions).label("impressions"),
+            func.sum(TopicPerformance.cost_micros).label("cost"),
+            func.sum(TopicPerformance.conversions).label("conv"),
+            func.sum(TopicPerformance.conversion_value_micros).label("value"),
+        )
+        .join(Campaign, TopicPerformance.campaign_id == Campaign.id)
+        .filter(Campaign.client_id == client_id, TopicPerformance.date >= start, TopicPerformance.date <= end)
+        .group_by(TopicPerformance.topic_path)
+        .order_by(func.sum(TopicPerformance.cost_micros).desc())
+        .limit(50)
+        .all()
+    )
+
+    topics = []
+    for r in results:
+        cost = int(r.cost or 0) / 1_000_000
+        conv = float(r.conv or 0)
+        value = int(r.value or 0) / 1_000_000
+        topics.append({
+            "topic_path": r.topic_path,
+            "clicks": int(r.clicks or 0),
+            "impressions": int(r.impressions or 0),
+            "cost_usd": round(cost, 2),
+            "conversions": round(conv, 2),
+            "value_usd": round(value, 2),
+            "roas": round(value / cost, 2) if cost > 0 else 0,
+        })
+    return {"topics": topics, "total": len(topics)}
+
+
+@router.get("/audiences-list")
+def audiences_list(
+    client_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """List all synced audiences for a client."""
+    from app.models.audience import Audience
+
+    audiences = (
+        db.query(Audience)
+        .filter(Audience.client_id == client_id)
+        .order_by(Audience.name)
+        .all()
+    )
+    return {
+        "audiences": [
+            {
+                "id": a.id,
+                "google_audience_id": a.google_audience_id,
+                "name": a.name,
+                "type": a.audience_type,
+                "status": a.status,
+                "member_count": a.member_count,
+            }
+            for a in audiences
+        ],
+        "total": len(audiences),
+    }
+
+
+@router.get("/google-recommendations")
+def google_recommendations_list(
+    client_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """List Google's native recommendations."""
+    from app.models.google_recommendation import GoogleRecommendation
+
+    recs = (
+        db.query(GoogleRecommendation)
+        .filter(GoogleRecommendation.client_id == client_id, GoogleRecommendation.dismissed == False)
+        .order_by(GoogleRecommendation.recommendation_type)
+        .all()
+    )
+
+    items = []
+    for r in recs:
+        items.append({
+            "id": r.id,
+            "type": r.recommendation_type,
+            "campaign_id": r.campaign_id,
+            "campaign_name": r.campaign_name,
+            "impact_estimate": r.impact_estimate,
+            "status": r.status,
+        })
+
+    # Group by type
+    type_counts = {}
+    for i in items:
+        t = i["type"]
+        type_counts[t] = type_counts.get(t, 0) + 1
+
+    return {
+        "recommendations": items,
+        "total": len(items),
+        "by_type": type_counts,
+    }

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import EmptyState from '../components/EmptyState'
@@ -11,8 +12,15 @@ import {
     getParetoAnalysis, getScalingOpportunities,
     getTargetVsActual, getBidStrategyReport, getLearningStatus,
     getPortfolioHealth, getConversionQuality, getDemographics,
-    getPmaxChannels, getAssetGroupPerformance, getPmaxSearchThemes,
+    getPmaxChannels, getPmaxChannelTrends, getAssetGroupPerformance, getPmaxSearchThemes,
     getAudiencePerformance, getMissingExtensions, getExtensionPerformance,
+    getPmaxSearchCannibalization,
+    getAuctionInsights,
+    getShoppingProductGroups,
+    getPlacementPerformance,
+    getBidModifiers,
+    getTopicPerformance,
+    getGoogleRecommendations,
     addNegativeKeyword,
 } from '../api'
 import {
@@ -20,7 +28,7 @@ import {
     ChevronDown, ChevronRight, ExternalLink, TrendingDown, TrendingUp,
     GitBranch, Target, Clock, Users, Zap, BarChart3, Activity,
     Crosshair, GraduationCap, Briefcase, ShieldCheck, PieChart,
-    Radio, Box, Search, Headphones, Link2, Star,
+    Radio, Box, Search, Headphones, Link2, Star, Shuffle, Settings2,
 } from 'lucide-react'
 
 const SECTION_STYLE = { marginBottom: 24 }
@@ -1006,29 +1014,79 @@ function DemographicsSection({ data }) {
 // ─────────────────────────────────────────────────────────
 // 19. PMAX CHANNEL BREAKDOWN (GAP 3A)
 // ─────────────────────────────────────────────────────────
-function PmaxChannelsSection({ data }) {
+const CHANNEL_COLORS = {
+    SEARCH: '#4F8EF7', DISPLAY: '#7B5CE0', VIDEO: '#FBBF24',
+    SHOPPING: '#4ADE80', DISCOVER: '#F472B6', CROSS_NETWORK: '#94A3B8',
+}
+function PmaxChannelsSection({ data, trends }) {
+    const [view, setView] = useState('table')
     if (!data?.channels?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych o kanalach PMax.</div>
+    const hasTrends = trends?.trends?.length > 0
     return (
         <div style={{ padding: '0 16px 16px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    {['Kanal', 'Klikniecia', 'Koszt', 'Konwersje', '% kosztow', '% konwersji'].map(h =>
-                        <th key={h} style={{ ...TH, textAlign: h === 'Kanal' ? 'left' : 'right' }}>{h}</th>
-                    )}
-                </tr></thead>
-                <tbody>
-                    {data.channels.map((ch, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{ch.network_type}</td>
-                            <td style={{ ...TD, textAlign: 'right' }}>{ch.clicks?.toLocaleString('pl-PL')}</td>
-                            <td style={{ ...TD, textAlign: 'right' }}>{(ch.cost_micros / 1e6).toFixed(0)} zl</td>
-                            <td style={{ ...TD, textAlign: 'right' }}>{ch.conversions?.toFixed(1)}</td>
-                            <td style={{ ...TD_DIM, textAlign: 'right' }}>{ch.cost_share_pct?.toFixed(1)}%</td>
-                            <td style={{ ...TD_DIM, textAlign: 'right', color: ch.cost_share_pct > 60 && ch.conv_share_pct < 30 ? '#F87171' : undefined }}>{ch.conv_share_pct?.toFixed(1)}%</td>
-                        </tr>
+            {hasTrends && (
+                <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+                    {[{ key: 'table', label: 'Tabela' }, { key: 'trend', label: 'Trend' }].map(t => (
+                        <button key={t.key} onClick={() => setView(t.key)} style={{
+                            padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                            background: view === t.key ? 'rgba(79,142,247,0.12)' : 'transparent',
+                            color: view === t.key ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                            border: view === t.key ? '1px solid rgba(79,142,247,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                        }}>{t.label}</button>
                     ))}
-                </tbody>
-            </table>
+                </div>
+            )}
+            {view === 'table' ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Kanal', 'Klikniecia', 'Koszt', 'Konwersje', '% kosztow', '% konwersji'].map(h =>
+                            <th key={h} style={{ ...TH, textAlign: h === 'Kanal' ? 'left' : 'right' }}>{h}</th>
+                        )}
+                    </tr></thead>
+                    <tbody>
+                        {data.channels.map((ch, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0' }}>{ch.network_type}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{ch.clicks?.toLocaleString('pl-PL')}</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{(ch.cost_micros / 1e6).toFixed(0)} zl</td>
+                                <td style={{ ...TD, textAlign: 'right' }}>{ch.conversions?.toFixed(1)}</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{ch.cost_share_pct?.toFixed(1)}%</td>
+                                <td style={{ ...TD_DIM, textAlign: 'right', color: ch.cost_share_pct > 60 && ch.conv_share_pct < 30 ? '#F87171' : undefined }}>{ch.conv_share_pct?.toFixed(1)}%</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            ) : (
+                <div>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {trends.channels.map(ch => (
+                            <div key={ch} className="flex items-center gap-1" style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: 2, background: CHANNEL_COLORS[ch] || '#64748B' }} />
+                                {ch}
+                            </div>
+                        ))}
+                    </div>
+                    <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={trends.trends} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                            <XAxis
+                                dataKey="date"
+                                tickFormatter={v => { const d = new Date(v); return `${d.getDate()}.${(d.getMonth()+1).toString().padStart(2,'0')}` }}
+                                tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.2)' }}
+                                axisLine={false} tickLine={false}
+                                interval="preserveStartEnd"
+                            />
+                            <Tooltip
+                                contentStyle={{ background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, fontSize: 11 }}
+                                labelFormatter={v => { const d = new Date(v); return `${d.getDate()}.${(d.getMonth()+1).toString().padStart(2,'0')}` }}
+                            />
+                            {trends.channels.map(ch => (
+                                <Line key={ch} type="monotone" dataKey={`${ch}_cost`} stroke={CHANNEL_COLORS[ch] || '#64748B'} strokeWidth={1.5} dot={false} name={`${ch} koszt`} />
+                            ))}
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
         </div>
     )
 }
@@ -1197,6 +1255,78 @@ function ExtPerfSection({ data }) {
     )
 }
 
+function PmaxCannibalizationSection({ data }) {
+    if (!data?.overlapping_terms?.length && !data?.recommendations?.length) {
+        return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak kanibalizacji PMax ↔ Search.</div>
+    }
+    const s = data.summary || {}
+    const PRIO_COLORS = { high: { bg: 'rgba(248,113,113,0.1)', text: '#F87171' }, medium: { bg: 'rgba(251,191,36,0.1)', text: '#FBBF24' } }
+    return (
+        <div style={{ padding: '0 16px 16px' }}>
+            {/* Summary cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+                {[
+                    { label: 'Pokrywające się frazy', value: s.total_overlap, color: '#4F8EF7' },
+                    { label: 'Koszt kanibalizacji', value: `${(s.overlap_cost_usd || 0).toFixed(0)} zł`, color: '#F87171' },
+                    { label: 'Search lepszy', value: s.search_better_count, color: '#4ADE80' },
+                    { label: 'PMax lepszy', value: s.pmax_better_count, color: '#7B5CE0' },
+                ].map(c => (
+                    <div key={c.label} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, borderLeft: `3px solid ${c.color}` }}>
+                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{c.label}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: c.color, fontFamily: 'Syne' }}>{c.value}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Recommendations */}
+            {data.recommendations?.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                    {data.recommendations.map((r, i) => {
+                        const pc = PRIO_COLORS[r.priority] || PRIO_COLORS.medium
+                        return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px', marginBottom: 6, borderRadius: 8, background: pc.bg, border: `1px solid ${pc.text}20` }}>
+                                <AlertTriangle size={13} style={{ color: pc.text, marginTop: 2, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{r.message}</span>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
+            {/* Overlap table */}
+            {data.overlapping_terms?.length > 0 && (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Fraza', 'Search klik.', 'Search koszt', 'Search CPA', 'PMax klik.', 'PMax koszt', 'PMax CPA', 'Zwycięzca'].map(h =>
+                            <th key={h} style={{ ...TH, textAlign: h === 'Fraza' ? 'left' : 'right' }}>{h}</th>
+                        )}
+                    </tr></thead>
+                    <tbody>
+                        {data.overlapping_terms.map((t, i) => {
+                            const winColor = t.winner === 'SEARCH' ? '#4ADE80' : t.winner === 'PMAX' ? '#7B5CE0' : 'rgba(255,255,255,0.3)'
+                            const winLabel = t.winner === 'SEARCH' ? 'Search' : t.winner === 'PMAX' ? 'PMax' : 'Remis'
+                            return (
+                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.search_term}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>{t.search.clicks}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>{t.search.cost_usd.toFixed(0)} zł</td>
+                                    <td style={{ ...TD, textAlign: 'right', color: t.winner === 'SEARCH' ? '#4ADE80' : undefined }}>{t.search.cpa != null ? `${t.search.cpa.toFixed(0)} zł` : '—'}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>{t.pmax.clicks}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>{t.pmax.cost_usd.toFixed(0)} zł</td>
+                                    <td style={{ ...TD, textAlign: 'right', color: t.winner === 'PMAX' ? '#7B5CE0' : undefined }}>{t.pmax.cpa != null ? `${t.pmax.cpa.toFixed(0)} zł` : '—'}</td>
+                                    <td style={{ ...TD, textAlign: 'right' }}>
+                                        <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: `${winColor}15`, color: winColor }}>{winLabel}</span>
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                </table>
+            )}
+        </div>
+    )
+}
+
 // ─────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────
@@ -1215,6 +1345,13 @@ export default function SearchOptimization() {
         learningStatus: false, portfolioHealth: false,
         convQuality: false, demographics: false,
         pmaxChannels: false, assetGroups: false, searchThemes: false,
+        pmaxCannibalization: false,
+        auctionInsights: false,
+        shoppingGroups: false,
+        placementPerf: false,
+        topicPerf: false,
+        bidModifiers: false,
+        googleRecs: false,
         audiencePerf: false, missingExt: false, extPerf: false,
     })
     const [ngramSize, setNgramSize] = useState(1)
@@ -1239,11 +1376,19 @@ export default function SearchOptimization() {
     const [convQuality, setConvQuality] = useState(null)
     const [demographics, setDemographics] = useState(null)
     const [pmaxChannels, setPmaxChannels] = useState(null)
+    const [pmaxTrends, setPmaxTrends] = useState(null)
     const [assetGroups, setAssetGroups] = useState(null)
     const [searchThemes, setSearchThemes] = useState(null)
+    const [pmaxCannibalization, setPmaxCannibalization] = useState(null)
     const [audiencePerf, setAudiencePerf] = useState(null)
     const [missingExt, setMissingExt] = useState(null)
     const [extPerf, setExtPerf] = useState(null)
+    const [auctionData, setAuctionData] = useState(null)
+    const [shoppingData, setShoppingData] = useState(null)
+    const [placementData, setPlacementData] = useState(null)
+    const [topicData, setTopicData] = useState(null)
+    const [bidModData, setBidModData] = useState(null)
+    const [googleRecsData, setGoogleRecsData] = useState(null)
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -1261,7 +1406,8 @@ export default function SearchOptimization() {
         try {
             const _catch = (label) => (err) => { console.warn(`[SearchOptim] ${label}`, err); return null }
             const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
-                   pch, agp, sth, aud, mex, exp] = await Promise.all([
+                   pch, ptrend, agp, sth, pcann, aud, mex, exp, auct, shopg, plc,
+                   topd, bmod, grecs] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(_catch('wasted-spend')),
                 getDayparting(selectedClientId, allParams).catch(_catch('dayparting')),
                 getMatchTypeAnalysis(selectedClientId, allParams).catch(_catch('match-type')),
@@ -1282,11 +1428,19 @@ export default function SearchOptimization() {
                 getConversionQuality(selectedClientId).catch(_catch('conversion-quality')),
                 getDemographics(selectedClientId, allParams).catch(_catch('demographics')),
                 getPmaxChannels(selectedClientId, allParams).catch(_catch('pmax-channels')),
+                getPmaxChannelTrends(selectedClientId, allParams).catch(_catch('pmax-channel-trends')),
                 getAssetGroupPerformance(selectedClientId, allParams).catch(_catch('asset-group')),
                 getPmaxSearchThemes(selectedClientId).catch(_catch('pmax-themes')),
+                getPmaxSearchCannibalization(selectedClientId, allParams).catch(_catch('pmax-cannibalization')),
                 getAudiencePerformance(selectedClientId, allParams).catch(_catch('audience')),
                 getMissingExtensions(selectedClientId, allParams).catch(_catch('missing-ext')),
                 getExtensionPerformance(selectedClientId, allParams).catch(_catch('ext-performance')),
+                getAuctionInsights(selectedClientId, allParams).catch(_catch('auction-insights')),
+                getShoppingProductGroups(selectedClientId).catch(_catch('shopping-groups')),
+                getPlacementPerformance(selectedClientId, allParams).catch(_catch('placements')),
+                getTopicPerformance(selectedClientId, allParams).catch(_catch('topics')),
+                getBidModifiers(selectedClientId).catch(_catch('bid-modifiers')),
+                getGoogleRecommendations(selectedClientId).catch(_catch('google-recs')),
             ])
             setWaste(w)
             setDaypart(dp)
@@ -1308,11 +1462,19 @@ export default function SearchOptimization() {
             setConvQuality(cq)
             setDemographics(demo)
             setPmaxChannels(pch)
+            setPmaxTrends(ptrend)
             setAssetGroups(agp)
             setSearchThemes(sth)
+            setPmaxCannibalization(pcann)
             setAudiencePerf(aud)
             setMissingExt(mex)
             setExtPerf(exp)
+            setAuctionData(auct)
+            setShoppingData(shopg)
+            setPlacementData(plc)
+            setTopicData(topd)
+            setBidModData(bmod)
+            setGoogleRecsData(grecs)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -1531,7 +1693,7 @@ export default function SearchOptimization() {
                 <SectionHeader icon={Radio} title="Rozkład kanałów PMax"
                     subtitle={pmaxChannels?.channels ? `${pmaxChannels.channels.length} kanałów` : ''}
                     open={sections.pmaxChannels} onToggle={() => toggle('pmaxChannels')} />
-                {sections.pmaxChannels && <PmaxChannelsSection data={pmaxChannels} />}
+                {sections.pmaxChannels && <PmaxChannelsSection data={pmaxChannels} trends={pmaxTrends} />}
             </div>
 
             {/* 20. Asset Group Performance (GAP 3B) */}
@@ -1550,7 +1712,306 @@ export default function SearchOptimization() {
                 {sections.searchThemes && <SearchThemesSection data={searchThemes} />}
             </div>
 
-            {/* 22. Audience Performance (GAP 4B) */}
+            {/* 22. PMax vs Search Cannibalization (D3) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Shuffle} title="Kanibalizacja PMax ↔ Search"
+                    subtitle={pmaxCannibalization?.summary ? `${pmaxCannibalization.summary.total_overlap} pokrywających się fraz` : ''}
+                    open={sections.pmaxCannibalization} onToggle={() => toggle('pmaxCannibalization')} />
+                {sections.pmaxCannibalization && <PmaxCannibalizationSection data={pmaxCannibalization} />}
+            </div>
+
+            {/* Auction Insights (A2 — competitor visibility) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Crosshair} title="Auction Insights — konkurencja"
+                    subtitle={auctionData?.total_competitors ? `${auctionData.total_competitors} konkurentów` : ''}
+                    open={sections.auctionInsights} onToggle={() => toggle('auctionInsights')} />
+                {sections.auctionInsights && auctionData?.competitors && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {auctionData.competitors.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak danych auction insights. Uruchom sync z fazą "Auction Insights".</p>
+                            : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <th style={TH}>Domena</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>IS %</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Overlap %</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Pozycja wyżej %</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Outranking %</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Top strony %</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Abs. top %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {auctionData.competitors.map((c, i) => {
+                                                const isYou = c.is_self
+                                                const rowStyle = isYou
+                                                    ? { borderBottom: '1px solid rgba(79,142,247,0.15)', background: 'rgba(79,142,247,0.04)' }
+                                                    : { borderBottom: '1px solid rgba(255,255,255,0.04)' }
+                                                return (
+                                                    <tr key={i} style={rowStyle}>
+                                                        <td style={{ ...TD, color: isYou ? '#4F8EF7' : '#F0F0F0', fontWeight: isYou ? 600 : 400 }}>
+                                                            {c.display_domain} {isYou && <span style={{ fontSize: 9, opacity: 0.5 }}>(Ty)</span>}
+                                                        </td>
+                                                        <td style={{ ...TD, textAlign: 'right', color: c.impression_share >= 30 ? '#4ADE80' : c.impression_share >= 15 ? '#FBBF24' : '#F87171' }}>{c.impression_share}%</td>
+                                                        <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.overlap_rate}%</td>
+                                                        <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.position_above_rate}%</td>
+                                                        <td style={{ ...TD, textAlign: 'right', color: c.outranking_share >= 40 ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>{c.outranking_share}%</td>
+                                                        <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.top_of_page_rate}%</td>
+                                                        <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.abs_top_of_page_rate}%</td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        }
+                        {auctionData.trends && Object.keys(auctionData.trends).length > 0 && (() => {
+                            const domains = Object.keys(auctionData.trends)
+                            const dateMap = {}
+                            for (const [domain, points] of Object.entries(auctionData.trends)) {
+                                for (const p of points) {
+                                    if (!dateMap[p.date]) dateMap[p.date] = { date: p.date }
+                                    dateMap[p.date][domain] = p.impression_share
+                                }
+                            }
+                            const chartData = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date))
+                            const colors = ['#4F8EF7', '#7B5CE0', '#4ADE80', '#FBBF24', '#F87171']
+                            return (
+                                <div style={{ marginTop: 16 }}>
+                                    <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 8 }}>Trend IS — top 5 konkurentów</p>
+                                    <ResponsiveContainer width="100%" height={180}>
+                                        <LineChart data={chartData}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                            <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.3)' }} hide />
+                                            <Tooltip contentStyle={{ background: '#1A1D25', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }} />
+                                            <Legend wrapperStyle={{ fontSize: 10 }} />
+                                            {domains.map((domain, idx) => (
+                                                <Line key={domain} dataKey={domain} name={domain} stroke={colors[idx % colors.length]} dot={false} strokeWidth={1.5} />
+                                            ))}
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )
+                        })()}
+                    </div>
+                )}
+            </div>
+
+            {/* Shopping Product Groups (B4) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Box} title="Grupy produktów (Shopping)"
+                    subtitle={shoppingData?.summary ? `${shoppingData.summary.total_groups} grup • ROAS ${shoppingData.summary.avg_roas}` : ''}
+                    open={sections.shoppingGroups} onToggle={() => toggle('shoppingGroups')} />
+                {sections.shoppingGroups && shoppingData?.product_groups && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {shoppingData.product_groups.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak danych grup produktów. Uruchom sync z fazą "Grupy produktów" dla kampanii Shopping.</p>
+                            : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <th style={TH}>Typ</th>
+                                                <th style={TH}>Wartość</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Koszt (zł)</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Kliknięcia</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Konwersje</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>ROAS</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>CPA (zł)</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>CTR %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {shoppingData.product_groups.map((g, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ ...TD_DIM, fontSize: 10 }}>{g.case_type || '—'}</td>
+                                                    <td style={{ ...TD, color: '#F0F0F0' }}>{g.case_value}</td>
+                                                    <td style={{ ...TD, textAlign: 'right' }}>{g.cost_usd.toLocaleString('pl-PL', { maximumFractionDigits: 0 })}</td>
+                                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{g.clicks}</td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: g.conversions > 0 ? '#4ADE80' : 'rgba(255,255,255,0.3)' }}>{g.conversions}</td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: g.roas >= 3 ? '#4ADE80' : g.roas >= 1 ? '#FBBF24' : '#F87171' }}>{g.roas}</td>
+                                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{g.cpa_usd != null ? g.cpa_usd : '—'}</td>
+                                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{g.ctr}%</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Placement Performance (C1/D3 — Display/Video) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Globe} title="Miejsca docelowe (Display/Video)"
+                    subtitle={placementData?.total_placements ? `${placementData.total_placements} miejsc • ${placementData.total_cost_usd} zł` : ''}
+                    open={sections.placementPerf} onToggle={() => toggle('placementPerf')} />
+                {sections.placementPerf && placementData?.placements && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {placementData.placements.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak danych o miejscach docelowych. Uruchom sync dla kampanii Display/Video.</p>
+                            : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <th style={TH}>Miejsce</th>
+                                                <th style={{ ...TH, textAlign: 'center' }}>Typ</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Koszt (zł)</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Kliknięcia</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Konwersje</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>ROAS</th>
+                                                {placementData.placements.some(p => p.video_views) && <th style={{ ...TH, textAlign: 'right' }}>Wyświetl. video</th>}
+                                                {placementData.placements.some(p => p.avg_view_rate) && <th style={{ ...TH, textAlign: 'right' }}>View rate %</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {placementData.placements.slice(0, 50).map((p, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ ...TD, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        <a href={p.placement_url?.startsWith('http') ? p.placement_url : `https://${p.placement_url}`} target="_blank" rel="noopener noreferrer" style={{ color: '#4F8EF7', textDecoration: 'none' }}>{p.display_name || p.placement_url}</a>
+                                                    </td>
+                                                    <td style={{ ...TD_DIM, textAlign: 'center', fontSize: 9 }}>{p.placement_type || '—'}</td>
+                                                    <td style={{ ...TD, textAlign: 'right' }}>{p.cost_usd.toLocaleString('pl-PL', { maximumFractionDigits: 0 })}</td>
+                                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.clicks}</td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: p.conversions > 0 ? '#4ADE80' : 'rgba(255,255,255,0.3)' }}>{p.conversions}</td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: p.roas >= 3 ? '#4ADE80' : p.roas >= 1 ? '#FBBF24' : '#F87171' }}>{p.roas}</td>
+                                                    {placementData.placements.some(pp => pp.video_views) && <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.video_views ?? '—'}</td>}
+                                                    {placementData.placements.some(pp => pp.avg_view_rate) && <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.avg_view_rate != null ? `${p.avg_view_rate}%` : '—'}</td>}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Topic Performance (C3) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Layers} title="Tematy (Display/Video)"
+                    subtitle={topicData?.total ? `${topicData.total} tematów` : ''}
+                    open={sections.topicPerf} onToggle={() => toggle('topicPerf')} />
+                {sections.topicPerf && topicData?.topics && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {topicData.topics.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak danych o tematach.</p>
+                            : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <th style={TH}>Temat</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Koszt (zł)</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Kliknięcia</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Konwersje</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>ROAS</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {topicData.topics.map((t, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <td style={TD}>{t.topic_path || '—'}</td>
+                                                <td style={{ ...TD, textAlign: 'right' }}>{t.cost_usd}</td>
+                                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{t.clicks}</td>
+                                                <td style={{ ...TD, textAlign: 'right', color: t.conversions > 0 ? '#4ADE80' : 'rgba(255,255,255,0.3)' }}>{t.conversions}</td>
+                                                <td style={{ ...TD, textAlign: 'right', color: t.roas >= 3 ? '#4ADE80' : t.roas >= 1 ? '#FBBF24' : '#F87171' }}>{t.roas}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Bid Modifiers (A3+A4) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Settings2} title="Modyfikatory stawek"
+                    subtitle={bidModData?.total ? `${bidModData.total} modyfikatorów` : ''}
+                    open={sections.bidModifiers} onToggle={() => toggle('bidModifiers')} />
+                {sections.bidModifiers && bidModData?.modifiers && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {bidModData.modifiers.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak modyfikatorów stawek. Uruchom sync z fazą "Modyfikatory stawek".</p>
+                            : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <th style={TH}>Typ</th>
+                                        <th style={TH}>Wartość</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Modyfikator</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {bidModData.modifiers.map((m, i) => {
+                                            const label = m.device_type || m.location_name || (m.day_of_week ? `${m.day_of_week} ${m.start_hour}:00-${m.end_hour}:00` : '—')
+                                            const modPct = ((m.bid_modifier - 1) * 100).toFixed(0)
+                                            const modColor = m.bid_modifier > 1 ? '#4ADE80' : m.bid_modifier < 1 ? '#F87171' : 'rgba(255,255,255,0.5)'
+                                            return (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ ...TD_DIM, fontSize: 10, textTransform: 'uppercase' }}>{m.modifier_type}</td>
+                                                    <td style={TD}>{label}</td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: modColor, fontWeight: 600 }}>
+                                                        {m.bid_modifier === 0 ? 'Wykluczono' : `${modPct > 0 ? '+' : ''}${modPct}%`}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Google Recommendations (E7) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Zap} title="Rekomendacje Google"
+                    subtitle={googleRecsData?.total ? `${googleRecsData.total} rekomendacji` : ''}
+                    open={sections.googleRecs} onToggle={() => toggle('googleRecs')} />
+                {sections.googleRecs && googleRecsData?.recommendations && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {googleRecsData.recommendations.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak rekomendacji Google. Uruchom sync z fazą "Rekomendacje Google".</p>
+                            : (
+                                <>
+                                    {/* Type summary */}
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                                        {Object.entries(googleRecsData.by_type || {}).map(([type, count]) => (
+                                            <span key={type} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 999, background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.2)', color: '#4F8EF7' }}>
+                                                {type.replace(/_/g, ' ')} ({count})
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <th style={TH}>Typ</th>
+                                            <th style={TH}>Kampania</th>
+                                            <th style={TH}>Status</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {googleRecsData.recommendations.slice(0, 30).map((r, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    <td style={{ ...TD, fontSize: 11 }}>{r.type.replace(/_/g, ' ')}</td>
+                                                    <td style={TD_DIM}>{r.campaign_name || '—'}</td>
+                                                    <td style={{ ...TD_DIM, fontSize: 10 }}>{r.status}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* 23. Audience Performance (GAP 4B) */}
             <div className={CARD} style={SECTION_STYLE}>
                 <SectionHeader icon={Headphones} title="Wydajność grup odbiorców"
                     subtitle={audiencePerf?.audiences ? `${audiencePerf.audiences.length} segmentów` : ''}

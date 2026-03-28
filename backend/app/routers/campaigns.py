@@ -226,3 +226,57 @@ def get_campaign_kpis(
         "change_pct": change,
         "period_days": days,
     }
+
+
+@router.patch("/{campaign_id}/bidding-target")
+def update_bidding_target(
+    campaign_id: int,
+    field: str = Query(..., description="target_cpa_micros or target_roas"),
+    value: float = Query(..., description="New value (micros for CPA, float for ROAS)"),
+    allow_demo_write: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Update campaign bidding target (target CPA or target ROAS)."""
+    if field not in ("target_cpa_micros", "target_roas"):
+        raise HTTPException(status_code=400, detail="field must be target_cpa_micros or target_roas")
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    client = db.get(Client, campaign.client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    ensure_demo_write_allowed(
+        db, client.id, allow_demo_write=allow_demo_write,
+        operation="Zmiana celu licytacji kampanii",
+    )
+
+    old_value = getattr(campaign, field)
+
+    # Update local DB
+    setattr(campaign, field, int(value) if field == "target_cpa_micros" else float(value))
+    db.commit()
+    db.refresh(campaign)
+
+    # Try to push to Google Ads API (optimistic local write — API failure logged)
+    from app.services.google_ads import google_ads_service
+    import logging
+    api_synced = False
+    api_error = None
+    try:
+        if google_ads_service.is_connected:
+            google_ads_service._mutate_campaign_bidding_target(campaign, db, field, value)
+            api_synced = True
+    except Exception as e:
+        api_error = str(e)
+        logging.getLogger(__name__).warning(f"Bidding target API push failed for campaign {campaign_id}: {e}")
+
+    return {
+        "campaign_id": campaign.id,
+        "field": field,
+        "old_value": old_value,
+        "new_value": getattr(campaign, field),
+        "api_synced": api_synced,
+        "api_error": api_error,
+    }

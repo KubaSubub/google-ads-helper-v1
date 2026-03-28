@@ -18,6 +18,7 @@ from app.models import (
     Client, Campaign, AdGroup, Keyword, SearchTerm, Ad, MetricDaily, MetricSegmented,
     ChangeEvent, ActionLog, KeywordDaily, NegativeKeyword, ConversionAction,
     AssetGroup, AssetGroupDaily, AssetGroupAsset, CampaignAsset,
+    NegativeKeywordList, NegativeKeywordListItem,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.campaign_roles import apply_role_classification
@@ -260,6 +261,27 @@ class GoogleAdsService:
             key = (keyword.ad_group_id, keyword.google_keyword_id)
             if key not in seen_keyword_keys and keyword.status != "REMOVED":
                 keyword.status = "REMOVED"
+                removed += 1
+        return removed
+
+    @staticmethod
+    def _mark_missing_ads_removed(
+        db: Session,
+        client_id: int,
+        seen_ad_keys: set[tuple[int, str]],
+    ) -> int:
+        removed = 0
+        existing_ads = (
+            db.query(Ad)
+            .join(AdGroup)
+            .join(Campaign)
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+        for ad in existing_ads:
+            key = (ad.ad_group_id, ad.google_ad_id)
+            if key not in seen_ad_keys and ad.status != "REMOVED":
+                ad.status = "REMOVED"
                 removed += 1
         return removed
 
@@ -917,6 +939,1367 @@ class GoogleAdsService:
             raise
 
     # -----------------------------------------------------------------------
+    # Ads Sync (RSA inventory from ad_group_ad resource)
+    # -----------------------------------------------------------------------
+
+    def sync_ads(self, db: Session, customer_id: str) -> int:
+        """Fetch all ads from Google Ads API and upsert into local DB."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                ad_group_ad.ad.id,
+                ad_group_ad.ad.type,
+                ad_group_ad.ad.final_urls,
+                ad_group_ad.ad.responsive_search_ad.headlines,
+                ad_group_ad.ad.responsive_search_ad.descriptions,
+                ad_group_ad.status,
+                ad_group_ad.ad_strength,
+                ad_group_ad.policy_summary.approval_status,
+                ad_group.id,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM ad_group_ad
+            WHERE ad_group_ad.status != 'REMOVED'
+              AND campaign.status != 'REMOVED'
+              AND ad_group.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            seen_ad_keys: set[tuple[int, str]] = set()
+
+            for row in response:
+                ad_data = row.ad_group_ad.ad
+                google_ad_group_id = str(row.ad_group.id)
+
+                ad_group = (
+                    db.query(AdGroup)
+                    .join(Campaign)
+                    .filter(
+                        Campaign.client_id == client_record.id,
+                        AdGroup.google_ad_group_id == google_ad_group_id,
+                    )
+                    .first()
+                )
+                if not ad_group:
+                    continue
+
+                google_ad_id = str(ad_data.id)
+                seen_ad_keys.add((ad_group.id, google_ad_id))
+
+                # Parse RSA headlines/descriptions
+                headlines = []
+                for h in ad_data.responsive_search_ad.headlines:
+                    headlines.append({
+                        "text": h.text,
+                        "pinned_position": h.pinned_field.name if h.pinned_field else None,
+                    })
+
+                descriptions = []
+                for d in ad_data.responsive_search_ad.descriptions:
+                    descriptions.append({
+                        "text": d.text,
+                        "pinned_position": d.pinned_field.name if d.pinned_field else None,
+                    })
+
+                # Final URL
+                final_url = ad_data.final_urls[0] if ad_data.final_urls else None
+
+                # Ad strength
+                ad_strength = row.ad_group_ad.ad_strength.name if row.ad_group_ad.ad_strength else None
+                if ad_strength == "UNSPECIFIED":
+                    ad_strength = None
+
+                # Approval status
+                approval = row.ad_group_ad.policy_summary.approval_status.name if row.ad_group_ad.policy_summary.approval_status else None
+
+                data = {
+                    "ad_group_id": ad_group.id,
+                    "google_ad_id": google_ad_id,
+                    "ad_type": ad_data.type_.name if ad_data.type_ else "UNKNOWN",
+                    "status": row.ad_group_ad.status.name,
+                    "approval_status": approval,
+                    "ad_strength": ad_strength,
+                    "final_url": final_url,
+                    "headlines": headlines,
+                    "descriptions": descriptions,
+                    "clicks": row.metrics.clicks,
+                    "impressions": row.metrics.impressions,
+                    "cost_micros": row.metrics.cost_micros,
+                    "conversions": row.metrics.conversions,
+                    "ctr": round(row.metrics.ctr * 100, 2) if row.metrics.ctr else 0.0,
+                }
+
+                existing = db.query(Ad).filter(
+                    Ad.ad_group_id == ad_group.id,
+                    Ad.google_ad_id == google_ad_id,
+                ).first()
+
+                if existing:
+                    for key, value in data.items():
+                        setattr(existing, key, value)
+                else:
+                    db.add(Ad(**data))
+                count += 1
+
+            removed_count = self._mark_missing_ads_removed(
+                db, client_record.id, seen_ad_keys
+            )
+            db.commit()
+            logger.info(
+                f"Synced {count} ads for customer {normalized_customer_id} "
+                f"(marked {removed_count} as REMOVED)"
+            )
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing ads: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # MCC Account Hierarchy Sync (E8)
+    # -----------------------------------------------------------------------
+
+    def sync_mcc_links(self, db: Session, manager_customer_id: str) -> int:
+        """Fetch child accounts from MCC manager account."""
+        from app.models.mcc_link import MccLink
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(manager_customer_id)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                customer_client.client_customer,
+                customer_client.descriptive_name,
+                customer_client.status,
+                customer_client.hidden,
+                customer_client.manager
+            FROM customer_client
+            WHERE customer_client.status = 'ENABLED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                cc = row.customer_client
+                client_rn = cc.client_customer
+                client_cid = client_rn.split("/")[-1] if client_rn else None
+                if not client_cid:
+                    continue
+
+                # Check if we have a local client for this CID
+                from app.models import Client
+                local = db.query(Client).filter(
+                    func.replace(Client.google_customer_id, "-", "") == client_cid
+                ).first()
+
+                data = {
+                    "manager_customer_id": normalized,
+                    "client_customer_id": client_cid,
+                    "client_descriptive_name": cc.descriptive_name or None,
+                    "status": cc.status.name if cc.status else "ENABLED",
+                    "is_hidden": bool(cc.hidden),
+                    "is_manager": bool(cc.manager),
+                    "local_client_id": local.id if local else None,
+                }
+
+                existing = db.query(MccLink).filter(
+                    MccLink.manager_customer_id == normalized,
+                    MccLink.client_customer_id == client_cid,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(MccLink(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} MCC child accounts for manager {normalized}")
+            return count
+
+        except Exception as e:
+            logger.warning(f"MCC sync: {self._format_google_ads_error(e)}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Offline Conversion Upload (E5)
+    # -----------------------------------------------------------------------
+
+    def upload_offline_conversions(self, db: Session, customer_id: str,
+                                    conversions: list[dict]) -> dict:
+        """Upload offline conversions via Google Ads API."""
+        from app.models.offline_conversion import OfflineConversion
+
+        if not self.is_connected:
+            return {"status": "error", "message": "API not connected", "uploaded": 0}
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return {"status": "error", "message": "Client not found", "uploaded": 0}
+
+        service = self.client.get_service("ConversionUploadService")
+        upload_operations = []
+
+        for conv in conversions:
+            click_conversion = self.client.get_type("ClickConversion")
+            click_conversion.gclid = conv["gclid"]
+            click_conversion.conversion_action = self.client.get_service(
+                "ConversionActionService"
+            ).conversion_action_path(normalized, conv.get("conversion_action_id", ""))
+            click_conversion.conversion_date_time = conv["conversion_time"]
+            if conv.get("conversion_value"):
+                click_conversion.conversion_value = float(conv["conversion_value"])
+            if conv.get("currency_code"):
+                click_conversion.currency_code = conv["currency_code"]
+            upload_operations.append(click_conversion)
+
+        try:
+            response = service.upload_click_conversions(
+                customer_id=normalized,
+                conversions=upload_operations,
+                partial_failure=True,
+            )
+
+            uploaded = 0
+            errors = []
+            for i, result in enumerate(response.results):
+                if result.gclid:
+                    uploaded += 1
+                    # Update local record status
+                    local = db.query(OfflineConversion).filter(
+                        OfflineConversion.client_id == client_record.id,
+                        OfflineConversion.gclid == conversions[i]["gclid"],
+                    ).first()
+                    if local:
+                        local.upload_status = "UPLOADED"
+                        from datetime import datetime, timezone
+                        local.uploaded_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            if response.partial_failure_error:
+                errors.append(str(response.partial_failure_error))
+
+            db.commit()
+            return {
+                "status": "success" if uploaded > 0 else "partial",
+                "uploaded": uploaded,
+                "total": len(conversions),
+                "errors": errors,
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": self._format_google_ads_error(e),
+                "uploaded": 0,
+            }
+
+    # -----------------------------------------------------------------------
+    # Conversion Value Rules Sync (E6)
+    # -----------------------------------------------------------------------
+
+    def sync_conversion_value_rules(self, db: Session, customer_id: str) -> int:
+        """Fetch conversion value rules."""
+        from app.models.conversion_value_rule import ConversionValueRule
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                conversion_value_rule.resource_name,
+                conversion_value_rule.id,
+                conversion_value_rule.action.type,
+                conversion_value_rule.action.value,
+                conversion_value_rule.audience_condition.user_lists,
+                conversion_value_rule.device_condition.device_types,
+                conversion_value_rule.geo_location_condition.geo_target_constants,
+                conversion_value_rule.status
+            FROM conversion_value_rule
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                rule = row.conversion_value_rule
+                google_id = str(rule.id)
+
+                # Determine condition type
+                cond_type = None
+                cond_value = None
+                try:
+                    if rule.audience_condition.user_lists:
+                        cond_type = "AUDIENCE"
+                        cond_value = ", ".join(str(ul) for ul in rule.audience_condition.user_lists)
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not cond_type and rule.device_condition.device_types:
+                        cond_type = "DEVICE"
+                        cond_value = ", ".join(dt.name for dt in rule.device_condition.device_types)
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not cond_type and rule.geo_location_condition.geo_target_constants:
+                        cond_type = "GEO_LOCATION"
+                        cond_value = ", ".join(str(g) for g in rule.geo_location_condition.geo_target_constants)
+                except (AttributeError, TypeError):
+                    pass
+
+                data = {
+                    "client_id": client_record.id,
+                    "google_rule_id": google_id,
+                    "resource_name": rule.resource_name,
+                    "condition_type": cond_type,
+                    "condition_value": cond_value,
+                    "action_type": rule.action.type.name if rule.action.type else None,
+                    "action_value_micros": int(rule.action.value * 1_000_000) if rule.action.type and rule.action.type.name == "ADD" and rule.action.value else None,
+                    "action_multiplier": rule.action.value if rule.action.type and rule.action.type.name == "MULTIPLY" and rule.action.value else None,
+                    "status": rule.status.name if rule.status else "ENABLED",
+                }
+
+                existing = db.query(ConversionValueRule).filter(
+                    ConversionValueRule.client_id == client_record.id,
+                    ConversionValueRule.google_rule_id == google_id,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(ConversionValueRule(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} conversion value rules")
+            return count
+
+        except Exception as e:
+            logger.warning(f"Conversion value rules sync: {self._format_google_ads_error(e)}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Placement Exclusions Write (C2)
+    # -----------------------------------------------------------------------
+
+    def add_placement_exclusion(self, db: Session, customer_id: str,
+                                 campaign_google_id: str, placement_url: str) -> dict:
+        """Add a placement exclusion to a campaign."""
+        if not self.client:
+            return {"status": "error", "message": "Google Ads API not connected"}
+
+        client_record = self._find_client_record(db, self.normalize_customer_id(customer_id))
+        if not client_record:
+            return {"status": "error", "message": "Client not found"}
+
+        normalized = client_record.google_customer_id.replace("-", "")
+        service = self.client.get_service("CampaignCriterionService")
+        operation = self.client.get_type("CampaignCriterionOperation")
+
+        criterion = operation.create
+        criterion.campaign = self.client.get_service("CampaignService").campaign_path(
+            normalized, campaign_google_id
+        )
+        criterion.negative = True
+        criterion.placement.url = placement_url
+
+        try:
+            response = service.mutate_campaign_criteria(
+                customer_id=normalized, operations=[operation]
+            )
+            return {"status": "success", "resource_name": response.results[0].resource_name}
+        except Exception as e:
+            return {"status": "error", "message": self._format_google_ads_error(e)}
+
+    # -----------------------------------------------------------------------
+    # Google Native Recommendations Sync (E7)
+    # -----------------------------------------------------------------------
+
+    def sync_google_recommendations(self, db: Session, customer_id: str) -> int:
+        """Fetch Google's native recommendations."""
+        from app.models.google_recommendation import GoogleRecommendation
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                recommendation.resource_name,
+                recommendation.type,
+                recommendation.campaign,
+                recommendation.impact.base_metrics.impressions,
+                recommendation.impact.base_metrics.clicks,
+                recommendation.impact.base_metrics.cost_micros,
+                recommendation.impact.base_metrics.conversions,
+                recommendation.impact.potential_metrics.impressions,
+                recommendation.impact.potential_metrics.clicks,
+                recommendation.impact.potential_metrics.cost_micros,
+                recommendation.impact.potential_metrics.conversions,
+                campaign.name
+            FROM recommendation
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                rec = row.recommendation
+                rn = rec.resource_name
+                rec_id = rn.split("/")[-1] if rn else str(count)
+                rec_type = rec.type.name if rec.type else "UNKNOWN"
+
+                # Resolve campaign
+                campaign_rn = rec.campaign
+                local_campaign_id = None
+                campaign_name = row.campaign.name if row.campaign else None
+                if campaign_rn:
+                    camp_gid = campaign_rn.split("/")[-1]
+                    camp = db.query(Campaign).filter(
+                        Campaign.client_id == client_record.id,
+                        Campaign.google_campaign_id == camp_gid,
+                    ).first()
+                    if camp:
+                        local_campaign_id = camp.id
+
+                impact = {}
+                try:
+                    base = rec.impact.base_metrics
+                    pot = rec.impact.potential_metrics
+                    impact = {
+                        "base": {"impressions": base.impressions, "clicks": base.clicks,
+                                 "cost_micros": base.cost_micros, "conversions": float(base.conversions)},
+                        "potential": {"impressions": pot.impressions, "clicks": pot.clicks,
+                                      "cost_micros": pot.cost_micros, "conversions": float(pot.conversions)},
+                    }
+                except (AttributeError, TypeError):
+                    pass
+
+                data = {
+                    "client_id": client_record.id,
+                    "campaign_id": local_campaign_id,
+                    "google_recommendation_id": rec_id,
+                    "recommendation_type": rec_type,
+                    "impact_estimate": impact if impact else None,
+                    "campaign_name": campaign_name,
+                    "status": "ACTIVE",
+                    "dismissed": False,
+                }
+
+                existing = db.query(GoogleRecommendation).filter(
+                    GoogleRecommendation.client_id == client_record.id,
+                    GoogleRecommendation.google_recommendation_id == rec_id,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(GoogleRecommendation(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} Google recommendations")
+            return count
+
+        except Exception as e:
+            logger.warning(f"Google recommendations sync: {self._format_google_ads_error(e)}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Audiences Sync (C6 — remarketing, in-market, affinity, custom)
+    # -----------------------------------------------------------------------
+
+    def sync_audiences(self, db: Session, customer_id: str) -> int:
+        """Fetch audience lists (user lists + custom audiences)."""
+        from app.models.audience import Audience
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                audience.id,
+                audience.name,
+                audience.description,
+                audience.status,
+                audience.resource_name
+            FROM audience
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                a = row.audience
+                google_id = str(a.id)
+
+                data = {
+                    "client_id": client_record.id,
+                    "google_audience_id": google_id,
+                    "resource_name": a.resource_name,
+                    "name": a.name or f"Audience {google_id}",
+                    "description": a.description or None,
+                    "status": a.status.name if a.status else "ENABLED",
+                }
+
+                existing = db.query(Audience).filter(
+                    Audience.client_id == client_record.id,
+                    Audience.google_audience_id == google_id,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(Audience(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} audiences")
+            return count
+
+        except Exception as e:
+            logger.warning(f"Audiences sync: {self._format_google_ads_error(e)}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Topic Performance Sync (C3 — Display/Video topic targeting)
+    # -----------------------------------------------------------------------
+
+    def sync_topic_metrics(self, db: Session, customer_id: str,
+                            date_from: date = None, date_to: date = None) -> int:
+        """Fetch topic targeting performance for Display/Video campaigns."""
+        from app.models.topic import TopicPerformance
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                topic_view.resource_name,
+                ad_group_criterion.topic.path,
+                ad_group_criterion.topic.topic_constant,
+                ad_group_criterion.bid_modifier,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.ctr
+            FROM topic_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                topic_constant = row.ad_group_criterion.topic.topic_constant
+                topic_id = topic_constant.split("/")[-1] if topic_constant else None
+                topic_path = ""
+                try:
+                    paths = row.ad_group_criterion.topic.path
+                    topic_path = " > ".join(paths) if paths else ""
+                except (AttributeError, TypeError):
+                    pass
+
+                m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(TopicPerformance).filter(
+                    TopicPerformance.campaign_id == campaign.id,
+                    TopicPerformance.date == metric_date,
+                    TopicPerformance.topic_id == topic_id,
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "date": metric_date,
+                    "topic_id": topic_id,
+                    "topic_path": topic_path,
+                    "bid_modifier": row.ad_group_criterion.bid_modifier,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "ctr": round(m.ctr * 100, 2) if m.ctr else 0.0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(TopicPerformance(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} topic performance rows")
+            return count
+
+        except Exception as e:
+            logger.warning(f"Topic metrics sync: {self._format_google_ads_error(e)}")
+            db.rollback()
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Bid Modifiers Sync (device + location + ad_schedule)
+    # -----------------------------------------------------------------------
+
+    def sync_bid_modifiers(self, db: Session, customer_id: str) -> int:
+        """Fetch device, location, and ad schedule bid modifiers."""
+        from app.models.bid_modifier import BidModifier
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        campaign_map = {
+            c.google_campaign_id: c.id
+            for c in db.query(Campaign).filter(Campaign.client_id == client_record.id).all()
+        }
+        if not campaign_map:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        total = 0
+
+        # 1. Device bid modifiers
+        device_query = """
+            SELECT
+                campaign.id,
+                campaign_criterion.criterion_id,
+                campaign_criterion.device.type,
+                campaign_criterion.bid_modifier
+            FROM campaign_criterion
+            WHERE campaign_criterion.type = 'DEVICE'
+              AND campaign.status != 'REMOVED'
+        """
+        try:
+            for row in ga_service.search(customer_id=normalized, query=device_query):
+                gcid = str(row.campaign.id)
+                local_id = campaign_map.get(gcid)
+                if not local_id:
+                    continue
+                device = row.campaign_criterion.device.type.name
+                mod = row.campaign_criterion.bid_modifier or 1.0
+
+                existing = db.query(BidModifier).filter(
+                    BidModifier.campaign_id == local_id,
+                    BidModifier.modifier_type == "DEVICE",
+                    BidModifier.device_type == device,
+                ).first()
+
+                data = {
+                    "campaign_id": local_id,
+                    "google_criterion_id": str(row.campaign_criterion.criterion_id),
+                    "modifier_type": "DEVICE",
+                    "device_type": device,
+                    "bid_modifier": mod,
+                }
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(BidModifier(**data))
+                total += 1
+        except Exception as e:
+            logger.warning(f"Device bid modifiers sync error: {e}")
+
+        # 2. Location bid modifiers
+        location_query = """
+            SELECT
+                campaign.id,
+                campaign_criterion.criterion_id,
+                campaign_criterion.location.geo_target_constant,
+                campaign_criterion.bid_modifier
+            FROM campaign_criterion
+            WHERE campaign_criterion.type = 'LOCATION'
+              AND campaign.status != 'REMOVED'
+        """
+        try:
+            for row in ga_service.search(customer_id=normalized, query=location_query):
+                gcid = str(row.campaign.id)
+                local_id = campaign_map.get(gcid)
+                if not local_id:
+                    continue
+                loc_rn = row.campaign_criterion.location.geo_target_constant
+                loc_id = loc_rn.split("/")[-1] if loc_rn else None
+                mod = row.campaign_criterion.bid_modifier or 1.0
+
+                existing = db.query(BidModifier).filter(
+                    BidModifier.campaign_id == local_id,
+                    BidModifier.modifier_type == "LOCATION",
+                    BidModifier.location_id == loc_id,
+                ).first()
+
+                data = {
+                    "campaign_id": local_id,
+                    "google_criterion_id": str(row.campaign_criterion.criterion_id),
+                    "modifier_type": "LOCATION",
+                    "location_id": loc_id,
+                    "location_name": loc_rn,
+                    "bid_modifier": mod,
+                }
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(BidModifier(**data))
+                total += 1
+        except Exception as e:
+            logger.warning(f"Location bid modifiers sync error: {e}")
+
+        # 3. Ad schedule bid modifiers (A4)
+        schedule_query = """
+            SELECT
+                campaign.id,
+                campaign_criterion.criterion_id,
+                campaign_criterion.ad_schedule.day_of_week,
+                campaign_criterion.ad_schedule.start_hour,
+                campaign_criterion.ad_schedule.end_hour,
+                campaign_criterion.ad_schedule.start_minute,
+                campaign_criterion.ad_schedule.end_minute,
+                campaign_criterion.bid_modifier
+            FROM campaign_criterion
+            WHERE campaign_criterion.type = 'AD_SCHEDULE'
+              AND campaign.status != 'REMOVED'
+        """
+        try:
+            for row in ga_service.search(customer_id=normalized, query=schedule_query):
+                gcid = str(row.campaign.id)
+                local_id = campaign_map.get(gcid)
+                if not local_id:
+                    continue
+                sched = row.campaign_criterion.ad_schedule
+                dow = sched.day_of_week.name if sched.day_of_week else None
+                mod = row.campaign_criterion.bid_modifier or 1.0
+
+                existing = db.query(BidModifier).filter(
+                    BidModifier.campaign_id == local_id,
+                    BidModifier.modifier_type == "AD_SCHEDULE",
+                    BidModifier.day_of_week == dow,
+                    BidModifier.start_hour == sched.start_hour,
+                ).first()
+
+                data = {
+                    "campaign_id": local_id,
+                    "google_criterion_id": str(row.campaign_criterion.criterion_id),
+                    "modifier_type": "AD_SCHEDULE",
+                    "day_of_week": dow,
+                    "start_hour": sched.start_hour,
+                    "end_hour": sched.end_hour,
+                    "start_minute": sched.start_minute.name if sched.start_minute else "ZERO",
+                    "end_minute": sched.end_minute.name if sched.end_minute else "ZERO",
+                    "bid_modifier": mod,
+                }
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(BidModifier(**data))
+                total += 1
+        except Exception as e:
+            logger.warning(f"Ad schedule bid modifiers sync error: {e}")
+
+        db.commit()
+        logger.info(f"Synced {total} bid modifiers for customer {normalized}")
+        return total
+
+    # -----------------------------------------------------------------------
+    # Portfolio Bidding Strategies Sync
+    # -----------------------------------------------------------------------
+
+    def sync_bidding_strategies(self, db: Session, customer_id: str) -> int:
+        """Fetch portfolio bidding strategies."""
+        from app.models.bidding_strategy import BiddingStrategy
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                bidding_strategy.id,
+                bidding_strategy.name,
+                bidding_strategy.type,
+                bidding_strategy.status,
+                bidding_strategy.resource_name,
+                bidding_strategy.target_cpa.target_cpa_micros,
+                bidding_strategy.target_roas.target_roas,
+                bidding_strategy.maximize_conversions.target_cpa_micros,
+                bidding_strategy.campaign_count
+            FROM bidding_strategy
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                bs = row.bidding_strategy
+                google_id = str(bs.id)
+
+                target_cpa = None
+                target_roas_val = None
+                try:
+                    if bs.target_cpa.target_cpa_micros:
+                        target_cpa = bs.target_cpa.target_cpa_micros
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if bs.target_roas.target_roas:
+                        target_roas_val = bs.target_roas.target_roas
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not target_cpa and bs.maximize_conversions.target_cpa_micros:
+                        target_cpa = bs.maximize_conversions.target_cpa_micros
+                except (AttributeError, TypeError):
+                    pass
+
+                data = {
+                    "client_id": client_record.id,
+                    "google_strategy_id": google_id,
+                    "resource_name": bs.resource_name,
+                    "name": bs.name,
+                    "strategy_type": bs.type.name if bs.type else None,
+                    "status": bs.status.name if bs.status else "ENABLED",
+                    "target_cpa_micros": target_cpa,
+                    "target_roas": target_roas_val,
+                    "campaign_count": bs.campaign_count or 0,
+                }
+
+                existing = db.query(BiddingStrategy).filter(
+                    BiddingStrategy.client_id == client_record.id,
+                    BiddingStrategy.google_strategy_id == google_id,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(BiddingStrategy(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} bidding strategies")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing bidding strategies: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Shared Budgets Sync
+    # -----------------------------------------------------------------------
+
+    def sync_shared_budgets(self, db: Session, customer_id: str) -> int:
+        """Fetch shared budgets."""
+        from app.models.bidding_strategy import SharedBudget
+
+        if not self.is_connected:
+            return 0
+
+        normalized = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                campaign_budget.id,
+                campaign_budget.name,
+                campaign_budget.amount_micros,
+                campaign_budget.delivery_method,
+                campaign_budget.status,
+                campaign_budget.resource_name,
+                campaign_budget.reference_count
+            FROM campaign_budget
+            WHERE campaign_budget.explicitly_shared = TRUE
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized, query=query)
+            count = 0
+            for row in response:
+                cb = row.campaign_budget
+                google_id = str(cb.id)
+
+                data = {
+                    "client_id": client_record.id,
+                    "google_budget_id": google_id,
+                    "resource_name": cb.resource_name,
+                    "name": cb.name or f"Budget {google_id}",
+                    "amount_micros": cb.amount_micros,
+                    "delivery_method": cb.delivery_method.name if cb.delivery_method else None,
+                    "status": cb.status.name if cb.status else "ENABLED",
+                    "campaign_count": cb.reference_count or 0,
+                }
+
+                existing = db.query(SharedBudget).filter(
+                    SharedBudget.client_id == client_record.id,
+                    SharedBudget.google_budget_id == google_id,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(SharedBudget(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} shared budgets")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing shared budgets: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Placement Metrics Sync (Display + Video campaigns)
+    # -----------------------------------------------------------------------
+
+    def sync_placement_metrics(self, db: Session, customer_id: str,
+                                date_from: date = None, date_to: date = None) -> int:
+        """Fetch placement performance for Display/Video campaigns."""
+        from app.models.placement import Placement
+
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                detail_placement_view.display_name,
+                detail_placement_view.target_url,
+                detail_placement_view.placement_type,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.ctr,
+                metrics.average_cpc,
+                metrics.video_views,
+                metrics.video_view_rate,
+                metrics.average_cpv
+            FROM detail_placement_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                dpv = row.detail_placement_view
+                placement_url = dpv.target_url or dpv.display_name or "unknown"
+                placement_type = dpv.placement_type.name if dpv.placement_type else None
+                m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(Placement).filter(
+                    Placement.campaign_id == campaign.id,
+                    Placement.date == metric_date,
+                    Placement.placement_url == placement_url,
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "date": metric_date,
+                    "placement_url": placement_url,
+                    "placement_type": placement_type,
+                    "display_name": dpv.display_name or placement_url,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "ctr": round(m.ctr * 100, 2) if m.ctr else 0.0,
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                    "video_views": m.video_views if m.video_views else None,
+                    "video_view_rate": round(m.video_view_rate * 100, 2) if m.video_view_rate else None,
+                    "avg_cpv_micros": int(m.average_cpv * 1_000_000) if m.average_cpv else None,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(Placement(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} placement rows for customer {normalized_customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing placement metrics: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Product Groups Sync (Shopping campaigns — listing_group_filter)
+    # -----------------------------------------------------------------------
+
+    def sync_product_groups(self, db: Session, customer_id: str) -> int:
+        """Fetch product group listing criteria for Shopping campaigns."""
+        from app.models.product_group import ProductGroup
+
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = """
+            SELECT
+                campaign.id,
+                ad_group.id,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.listing_group.parent_ad_group_criterion,
+                ad_group_criterion.listing_group.type,
+                ad_group_criterion.listing_group.case_value.product_brand.value,
+                ad_group_criterion.listing_group.case_value.product_type.value,
+                ad_group_criterion.listing_group.case_value.product_category.category_id,
+                ad_group_criterion.listing_group.case_value.product_channel.channel,
+                ad_group_criterion.listing_group.case_value.product_custom_attribute.value,
+                ad_group_criterion.cpc_bid_micros,
+                ad_group_criterion.status,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.ctr
+            FROM ad_group_criterion
+            WHERE ad_group_criterion.type = 'LISTING_GROUP'
+              AND campaign.status != 'REMOVED'
+              AND campaign.advertising_channel_type IN ('SHOPPING', 'PERFORMANCE_MAX')
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                ad_group_google_id = str(row.ad_group.id)
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                ad_group = db.query(AdGroup).filter(
+                    AdGroup.campaign_id == campaign.id,
+                    AdGroup.google_ad_group_id == ad_group_google_id,
+                ).first()
+
+                criterion = row.ad_group_criterion
+                criterion_id = str(criterion.criterion_id)
+                lg = criterion.listing_group
+
+                # Determine case value type and value
+                case_type = None
+                case_val = None
+                try:
+                    if lg.case_value.product_brand.value:
+                        case_type = "PRODUCT_BRAND"
+                        case_val = lg.case_value.product_brand.value
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not case_type and lg.case_value.product_type.value:
+                        case_type = "PRODUCT_TYPE"
+                        case_val = lg.case_value.product_type.value
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not case_type and lg.case_value.product_category.category_id:
+                        case_type = "PRODUCT_CATEGORY"
+                        case_val = str(lg.case_value.product_category.category_id)
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not case_type and lg.case_value.product_custom_attribute.value:
+                        case_type = "CUSTOM_ATTRIBUTE"
+                        case_val = lg.case_value.product_custom_attribute.value
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    if not case_type and lg.case_value.product_channel.channel:
+                        case_type = "PRODUCT_CHANNEL"
+                        case_val = lg.case_value.product_channel.channel.name
+                except (AttributeError, TypeError):
+                    pass
+
+                # Parent criterion
+                parent_id = None
+                try:
+                    parent_rn = lg.parent_ad_group_criterion
+                    if parent_rn:
+                        parent_id = parent_rn.split("~")[-1] if "~" in parent_rn else None
+                except (AttributeError, TypeError):
+                    pass
+
+                m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "ad_group_id": ad_group.id if ad_group else None,
+                    "google_criterion_id": criterion_id,
+                    "parent_criterion_id": parent_id,
+                    "case_value_type": case_type,
+                    "case_value": case_val,
+                    "partition_type": lg.type.name if lg.type else None,
+                    "bid_micros": criterion.cpc_bid_micros if criterion.cpc_bid_micros else 0,
+                    "status": criterion.status.name if criterion.status else "ENABLED",
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "cost_micros": m.cost_micros,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "ctr": round(m.ctr * 100, 2) if m.ctr else 0.0,
+                }
+
+                existing = db.query(ProductGroup).filter(
+                    ProductGroup.campaign_id == campaign.id,
+                    ProductGroup.ad_group_id == (ad_group.id if ad_group else None),
+                    ProductGroup.google_criterion_id == criterion_id,
+                ).first()
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(ProductGroup(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} product groups for customer {normalized_customer_id}")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing product groups: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Auction Insights Sync (per Search/Shopping campaign)
+    # -----------------------------------------------------------------------
+
+    def sync_auction_insights(self, db: Session, customer_id: str,
+                               date_from: date = None, date_to: date = None) -> int:
+        """Fetch auction insights per Search/Shopping campaign and upsert."""
+        from app.models.auction_insight import AuctionInsight
+
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        # Only Search and Shopping campaigns support auction insights
+        campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.client_id == client_record.id,
+                Campaign.status != "REMOVED",
+                Campaign.campaign_type.in_(["SEARCH", "SHOPPING"]),
+            )
+            .all()
+        )
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        total_count = 0
+
+        for campaign in campaigns:
+            query = f"""
+                SELECT
+                    auction_insight.display_domain,
+                    metrics.auction_insight_search_impression_share,
+                    metrics.auction_insight_search_overlap_rate,
+                    metrics.auction_insight_search_position_above_rate,
+                    metrics.auction_insight_search_outranking_share,
+                    metrics.auction_insight_search_top_impression_percentage,
+                    metrics.auction_insight_search_absolute_top_impression_percentage,
+                    segments.date
+                FROM auction_insight
+                WHERE campaign.id = {campaign.google_campaign_id}
+                  AND segments.date BETWEEN '{date_from}' AND '{date_to}'
+            """
+
+            try:
+                response = ga_service.search(
+                    customer_id=normalized_customer_id, query=query
+                )
+
+                for row in response:
+                    domain = row.auction_insight.display_domain
+                    row_date = date(
+                        row.segments.date.year,
+                        row.segments.date.month,
+                        row.segments.date.day,
+                    )
+
+                    existing = (
+                        db.query(AuctionInsight)
+                        .filter(
+                            AuctionInsight.campaign_id == campaign.id,
+                            AuctionInsight.date == row_date,
+                            AuctionInsight.display_domain == domain,
+                        )
+                        .first()
+                    )
+
+                    data = {
+                        "campaign_id": campaign.id,
+                        "date": row_date,
+                        "display_domain": domain,
+                        "impression_share": row.metrics.auction_insight_search_impression_share,
+                        "overlap_rate": row.metrics.auction_insight_search_overlap_rate,
+                        "position_above_rate": row.metrics.auction_insight_search_position_above_rate,
+                        "outranking_share": row.metrics.auction_insight_search_outranking_share,
+                        "top_of_page_rate": row.metrics.auction_insight_search_top_impression_percentage,
+                        "abs_top_of_page_rate": row.metrics.auction_insight_search_absolute_top_impression_percentage,
+                    }
+
+                    if existing:
+                        for key, value in data.items():
+                            setattr(existing, key, value)
+                    else:
+                        db.add(AuctionInsight(**data))
+                    total_count += 1
+
+            except Exception as e:
+                error_str = self._format_google_ads_error(e)
+                # Empty results are normal for low-volume campaigns
+                if "INSUFFICIENT" in str(error_str).upper() or "NO_DATA" in str(error_str).upper():
+                    logger.debug(f"No auction insight data for campaign {campaign.name}: {error_str}")
+                    continue
+                logger.warning(f"Auction insights error for campaign {campaign.name}: {error_str}")
+                continue
+
+        db.commit()
+        logger.info(f"Synced {total_count} auction insight rows for customer {normalized_customer_id}")
+        return total_count
+
+    # -----------------------------------------------------------------------
     # Keywords Sync (expanded with IS, QS historical, extended conv, top %)
     # -----------------------------------------------------------------------
 
@@ -1297,6 +2680,167 @@ class GoogleAdsService:
 
         except Exception as e:
             logger.error(f"Error syncing negative keywords: {self._format_google_ads_error(e)}")
+            db.rollback()
+            raise
+
+    def sync_negative_keyword_lists(self, db: Session, customer_id: str) -> int:
+        """Fetch shared negative keyword lists and their members from Google Ads API."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        ga_service = self.client.get_service("GoogleAdsService")
+
+        # Step 1: Fetch all NEGATIVE shared sets
+        shared_set_query = """
+            SELECT
+                shared_set.id,
+                shared_set.resource_name,
+                shared_set.name,
+                shared_set.type,
+                shared_set.status,
+                shared_set.member_count
+            FROM shared_set
+            WHERE shared_set.type = NEGATIVE_KEYWORDS
+              AND shared_set.status != 'REMOVED'
+        """
+
+        # Step 2: Fetch all criteria (members) of negative shared sets
+        shared_criterion_query = """
+            SELECT
+                shared_criterion.shared_set,
+                shared_criterion.criterion_id,
+                shared_criterion.type,
+                shared_criterion.keyword.text,
+                shared_criterion.keyword.match_type
+            FROM shared_criterion
+            WHERE shared_criterion.type = KEYWORD
+        """
+
+        try:
+            # Fetch shared sets
+            set_rows = ga_service.search(customer_id=normalized_customer_id, query=shared_set_query)
+            seen_set_ids: set[int] = set()
+            set_map: dict[str, int] = {}  # google resource_name -> local list id
+            count = 0
+
+            for row in set_rows:
+                ss = row.shared_set
+                google_id = ss.id
+                seen_set_ids.add(google_id)
+
+                existing = (
+                    db.query(NegativeKeywordList)
+                    .filter(
+                        NegativeKeywordList.client_id == client_record.id,
+                        NegativeKeywordList.google_shared_set_id == google_id,
+                    )
+                    .first()
+                )
+
+                if existing:
+                    existing.name = ss.name
+                    existing.status = ss.status.name
+                    existing.member_count = ss.member_count
+                    existing.google_resource_name = ss.resource_name
+                    existing.source = "GOOGLE_ADS_SYNC"
+                    set_map[ss.resource_name] = existing.id
+                else:
+                    nkl = NegativeKeywordList(
+                        client_id=client_record.id,
+                        google_shared_set_id=google_id,
+                        google_resource_name=ss.resource_name,
+                        name=ss.name,
+                        source="GOOGLE_ADS_SYNC",
+                        member_count=ss.member_count,
+                        status=ss.status.name,
+                    )
+                    db.add(nkl)
+                    db.flush()
+                    set_map[ss.resource_name] = nkl.id
+                count += 1
+
+            # Mark removed: synced lists no longer in API
+            stale_lists = (
+                db.query(NegativeKeywordList)
+                .filter(
+                    NegativeKeywordList.client_id == client_record.id,
+                    NegativeKeywordList.source == "GOOGLE_ADS_SYNC",
+                    NegativeKeywordList.google_shared_set_id.isnot(None),
+                    ~NegativeKeywordList.google_shared_set_id.in_(seen_set_ids) if seen_set_ids else True,
+                )
+                .all()
+            )
+            for stale in stale_lists:
+                stale.status = "REMOVED"
+
+            # Fetch shared criteria (list members)
+            criterion_rows = ga_service.search(customer_id=normalized_customer_id, query=shared_criterion_query)
+            seen_items: dict[int, set[tuple[str, str]]] = {}  # list_id -> set of (text, match_type)
+
+            for row in criterion_rows:
+                sc = row.shared_criterion
+                shared_set_rn = sc.shared_set
+                local_list_id = set_map.get(shared_set_rn)
+                if not local_list_id:
+                    continue
+
+                text = sc.keyword.text
+                match_type = getattr(sc.keyword.match_type, "name", str(sc.keyword.match_type))
+                criterion_id = sc.criterion_id
+
+                seen_items.setdefault(local_list_id, set()).add((text, match_type))
+
+                existing_item = (
+                    db.query(NegativeKeywordListItem)
+                    .filter(
+                        NegativeKeywordListItem.list_id == local_list_id,
+                        NegativeKeywordListItem.text == text,
+                        NegativeKeywordListItem.match_type == match_type,
+                    )
+                    .first()
+                )
+
+                if existing_item:
+                    existing_item.google_criterion_id = criterion_id
+                else:
+                    db.add(NegativeKeywordListItem(
+                        list_id=local_list_id,
+                        google_criterion_id=criterion_id,
+                        text=text,
+                        match_type=match_type,
+                    ))
+
+            # Remove stale items from synced lists
+            for local_list_id, seen_pairs in seen_items.items():
+                all_items = (
+                    db.query(NegativeKeywordListItem)
+                    .filter(NegativeKeywordListItem.list_id == local_list_id)
+                    .all()
+                )
+                for item in all_items:
+                    if (item.text, item.match_type) not in seen_pairs:
+                        db.delete(item)
+
+            # Also clean items from synced lists that had zero criteria returned
+            for rn, local_list_id in set_map.items():
+                if local_list_id not in seen_items:
+                    db.query(NegativeKeywordListItem).filter(
+                        NegativeKeywordListItem.list_id == local_list_id
+                    ).delete()
+
+            db.commit()
+            logger.info(
+                f"Synced {count} negative keyword lists for customer {normalized_customer_id}"
+            )
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing negative keyword lists: {self._format_google_ads_error(e)}")
             db.rollback()
             raise
 
@@ -2737,6 +4281,35 @@ class GoogleAdsService:
         operation.update_mask.CopyFrom(field_mask)
         budget_service.mutate_campaign_budgets(customer_id=customer_id, operations=[operation])
 
+    def _mutate_campaign_bidding_target(self, campaign, db: Session, field: str, value):
+        """Update campaign target_cpa or target_roas in Google Ads."""
+        if not self.client:
+            return
+        client_record = db.get(Client, campaign.client_id)
+        if not client_record:
+            raise RuntimeError("Client not found for bidding target mutation")
+
+        customer_id = client_record.google_customer_id.replace("-", "")
+        service = self.client.get_service("CampaignService")
+        operation = self.client.get_type("CampaignOperation")
+        campaign_resource = service.campaign_path(customer_id, campaign.google_campaign_id)
+        campaign_obj = operation.update
+        campaign_obj.resource_name = campaign_resource
+
+        field_mask = self.client.get_type("FieldMask")
+
+        if field == "target_cpa_micros":
+            campaign_obj.target_cpa.target_cpa_micros = int(value)
+            field_mask.paths.append("target_cpa.target_cpa_micros")
+        elif field == "target_roas":
+            campaign_obj.target_roas.target_roas = float(value)
+            field_mask.paths.append("target_roas.target_roas")
+        else:
+            raise ValueError(f"Unknown bidding field: {field}")
+
+        operation.update_mask.CopyFrom(field_mask)
+        service.mutate_campaigns(customer_id=customer_id, operations=[operation])
+
     @staticmethod
     def _humanize_google_recommendation(google_type: str) -> str:
         return google_type.replace("_", " ").title()
@@ -3226,6 +4799,206 @@ class GoogleAdsService:
             raise
 
     # -----------------------------------------------------------------------
+    # Parental Status Segmented Metrics Sync
+    # -----------------------------------------------------------------------
+
+    def sync_parental_status_metrics(
+        self, db: Session, customer_id: str,
+        date_from: date = None, date_to: date = None
+    ) -> int:
+        """Fetch parental-status-segmented daily campaign metrics via parental_status_view."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                ad_group_criterion.parental_status.type,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros,
+                metrics.average_cpc
+            FROM parental_status_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+                parental = row.ad_group_criterion.parental_status.type.name
+                m = row.metrics
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(MetricSegmented).filter(
+                    MetricSegmented.campaign_id == campaign.id,
+                    MetricSegmented.date == metric_date,
+                    MetricSegmented.parental_status == parental,
+                    MetricSegmented.device.is_(None),
+                    MetricSegmented.geo_city.is_(None),
+                    MetricSegmented.age_range.is_(None),
+                    MetricSegmented.gender.is_(None),
+                    MetricSegmented.hour_of_day.is_(None),
+                    MetricSegmented.ad_network_type.is_(None),
+                    MetricSegmented.income_range.is_(None),
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "date": metric_date,
+                    "parental_status": parental,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "ctr": m.ctr * 100,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "cost_micros": m.cost_micros,
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(MetricSegmented(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} parental-status-segmented metric rows")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing parental status metrics: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
+    # Income Range Segmented Metrics Sync
+    # -----------------------------------------------------------------------
+
+    def sync_income_range_metrics(
+        self, db: Session, customer_id: str,
+        date_from: date = None, date_to: date = None
+    ) -> int:
+        """Fetch income-range-segmented daily campaign metrics via income_range_view."""
+        if not self.is_connected:
+            return 0
+
+        normalized_customer_id = self.normalize_customer_id(customer_id)
+        client_record = self._find_client_record(db, normalized_customer_id)
+        if not client_record:
+            return 0
+
+        if not date_from:
+            date_from = date.today() - timedelta(days=30)
+        if not date_to:
+            date_to = date.today() - timedelta(days=1)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        query = f"""
+            SELECT
+                campaign.id,
+                segments.date,
+                ad_group_criterion.income_range.type,
+                metrics.clicks,
+                metrics.impressions,
+                metrics.ctr,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.cost_micros,
+                metrics.average_cpc
+            FROM income_range_view
+            WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
+              AND campaign.status != 'REMOVED'
+        """
+
+        try:
+            response = ga_service.search(customer_id=normalized_customer_id, query=query)
+            count = 0
+            for row in response:
+                campaign_google_id = str(row.campaign.id)
+                metric_date = date.fromisoformat(row.segments.date)
+                income = row.ad_group_criterion.income_range.type.name
+                m = row.metrics
+
+                campaign = db.query(Campaign).filter(
+                    Campaign.client_id == client_record.id,
+                    Campaign.google_campaign_id == campaign_google_id,
+                ).first()
+                if not campaign:
+                    continue
+
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
+
+                existing = db.query(MetricSegmented).filter(
+                    MetricSegmented.campaign_id == campaign.id,
+                    MetricSegmented.date == metric_date,
+                    MetricSegmented.income_range == income,
+                    MetricSegmented.device.is_(None),
+                    MetricSegmented.geo_city.is_(None),
+                    MetricSegmented.age_range.is_(None),
+                    MetricSegmented.gender.is_(None),
+                    MetricSegmented.hour_of_day.is_(None),
+                    MetricSegmented.ad_network_type.is_(None),
+                    MetricSegmented.parental_status.is_(None),
+                ).first()
+
+                data = {
+                    "campaign_id": campaign.id,
+                    "date": metric_date,
+                    "income_range": income,
+                    "clicks": m.clicks,
+                    "impressions": m.impressions,
+                    "ctr": m.ctr * 100,
+                    "conversions": float(m.conversions),
+                    "conversion_value_micros": int(conv_value * 1_000_000),
+                    "cost_micros": m.cost_micros,
+                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                }
+
+                if existing:
+                    for k, v in data.items():
+                        setattr(existing, k, v)
+                else:
+                    db.add(MetricSegmented(**data))
+                count += 1
+
+            db.commit()
+            logger.info(f"Synced {count} income-range-segmented metric rows")
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing income range metrics: {e}")
+            db.rollback()
+            raise
+
+    # -----------------------------------------------------------------------
     # PMax Channel (ad_network_type) Segmented Metrics Sync
     # -----------------------------------------------------------------------
 
@@ -3658,10 +5431,19 @@ class GoogleAdsService:
                 asset.type,
                 asset.name,
                 campaign_asset.status,
-                campaign_asset.performance_label,
+                campaign_asset.source,
                 asset.sitelink_asset.link_text,
+                asset.sitelink_asset.description1,
+                asset.sitelink_asset.description2,
+                asset.sitelink_asset.final_urls,
                 asset.callout_asset.callout_text,
                 asset.structured_snippet_asset.header,
+                asset.structured_snippet_asset.values,
+                asset.call_asset.phone_number,
+                asset.call_asset.country_code,
+                asset.promotion_asset.promotion_target,
+                asset.promotion_asset.discount_modifier,
+                asset.price_asset.type,
                 metrics.clicks,
                 metrics.impressions,
                 metrics.cost_micros,
@@ -3671,6 +5453,7 @@ class GoogleAdsService:
         """
 
         try:
+            import json as _json
             response = ga_service.search(customer_id=normalized, query=query)
             count = 0
             for row in response:
@@ -3682,26 +5465,63 @@ class GoogleAdsService:
                 google_asset_id = str(row.asset.id)
                 asset_type = row.asset.type.name if hasattr(row.asset.type, 'name') else str(row.asset.type)
                 asset_status = row.campaign_asset.status.name if hasattr(row.campaign_asset.status, 'name') else str(row.campaign_asset.status)
-                perf_label = row.campaign_asset.performance_label.name if hasattr(row.campaign_asset.performance_label, 'name') else str(row.campaign_asset.performance_label)
-                source = None
+                perf_label = None
+                source_val = row.campaign_asset.source.name if hasattr(row.campaign_asset.source, 'name') else str(row.campaign_asset.source)
 
-                # Extract asset_name from type-specific fields
+                # Extract asset_name and structured detail from type-specific fields
                 asset_name = row.asset.name or None
+                detail_dict = {}
                 try:
-                    if row.asset.sitelink_asset.link_text:
-                        asset_name = row.asset.sitelink_asset.link_text
+                    sl = row.asset.sitelink_asset
+                    if sl.link_text:
+                        asset_name = sl.link_text
+                        detail_dict = {
+                            "link_text": sl.link_text,
+                            "description1": sl.description1 or "",
+                            "description2": sl.description2 or "",
+                            "final_urls": list(sl.final_urls) if sl.final_urls else [],
+                        }
                 except (AttributeError, TypeError):
                     pass
                 try:
-                    if row.asset.callout_asset.callout_text:
-                        asset_name = row.asset.callout_asset.callout_text
+                    co = row.asset.callout_asset
+                    if co.callout_text:
+                        asset_name = co.callout_text
+                        detail_dict = {"callout_text": co.callout_text}
                 except (AttributeError, TypeError):
                     pass
                 try:
-                    if row.asset.structured_snippet_asset.header:
-                        asset_name = row.asset.structured_snippet_asset.header
+                    ss = row.asset.structured_snippet_asset
+                    if ss.header:
+                        asset_name = ss.header
+                        detail_dict = {
+                            "header": ss.header,
+                            "values": list(ss.values) if ss.values else [],
+                        }
                 except (AttributeError, TypeError):
                     pass
+                try:
+                    ca = row.asset.call_asset
+                    if ca.phone_number:
+                        asset_name = ca.phone_number
+                        detail_dict = {
+                            "phone_number": ca.phone_number,
+                            "country_code": ca.country_code or "",
+                        }
+                except (AttributeError, TypeError):
+                    pass
+                try:
+                    pr = row.asset.promotion_asset
+                    if pr.promotion_target:
+                        asset_name = pr.promotion_target
+                        detail_dict = {
+                            "promotion_target": pr.promotion_target,
+                            "discount_modifier": pr.discount_modifier.name if hasattr(pr.discount_modifier, 'name') else str(pr.discount_modifier),
+                        }
+                except (AttributeError, TypeError):
+                    pass
+
+                asset_detail = _json.dumps(detail_dict, ensure_ascii=False) if detail_dict else None
 
                 m = row.metrics
 
@@ -3713,9 +5533,10 @@ class GoogleAdsService:
 
                 data = {
                     "asset_name": asset_name,
+                    "asset_detail": asset_detail,
                     "status": asset_status,
                     "performance_label": perf_label,
-                    "source": source,
+                    "source": source_val,
                     "clicks": m.clicks,
                     "impressions": m.impressions,
                     "cost_micros": m.cost_micros,
@@ -3753,16 +5574,17 @@ class GoogleAdsService:
         from app.models.asset_group import AssetGroup
 
         if not self.is_connected:
-            raise RuntimeError("Google Ads API not connected")
+            return 0
 
         try:
             query = """
                 SELECT
                     asset_group.id,
                     asset_group_signal.resource_name,
-                    asset_group_signal.audience.audience
-            FROM asset_group_signal
-            WHERE asset_group.campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+                    asset_group_signal.audience.audience,
+                    asset_group_signal.search_theme.text
+                FROM asset_group_signal
+                WHERE campaign.advertising_channel_type = 'PERFORMANCE_MAX'
             """
 
             response = self._execute_query(customer_id, query)
@@ -3786,19 +5608,22 @@ class GoogleAdsService:
 
                 resource_name = row.asset_group_signal.resource_name
 
-                # Parse search themes from audience resource
+                # Parse signal type from audience / search_theme fields
                 audience_rn = ""
                 audience_name = ""
                 signal_type = "SEARCH_THEME"
                 search_theme_text = ""
 
                 try:
-                    audience_rn = row.asset_group_signal.audience.audience or ""
-                    if "searchThemeInfo" in resource_name or not audience_rn:
+                    theme_text = row.asset_group_signal.search_theme.text or ""
+                    if theme_text:
                         signal_type = "SEARCH_THEME"
+                        search_theme_text = theme_text
                     else:
-                        signal_type = "AUDIENCE"
-                        audience_name = audience_rn.split("/")[-1] if audience_rn else ""
+                        audience_rn = row.asset_group_signal.audience.audience or ""
+                        if audience_rn:
+                            signal_type = "AUDIENCE"
+                            audience_name = audience_rn.split("/")[-1] if audience_rn else ""
                 except Exception:
                     pass
 

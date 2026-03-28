@@ -19,6 +19,8 @@ class MetricSegmented(Base):
     # GAP 4A: Demographic segments
     age_range = Column(String(30), nullable=True)  # AGE_RANGE_18_24, AGE_RANGE_25_34, etc.
     gender = Column(String(20), nullable=True)     # MALE, FEMALE, UNDETERMINED
+    parental_status = Column(String(30), nullable=True)  # PARENT, NOT_A_PARENT, UNDETERMINED
+    income_range = Column(String(50), nullable=True)     # INCOME_RANGE_0_50, INCOME_RANGE_50_60, etc.
     ad_network_type = Column(String(30), nullable=True)
 
     # Core metrics

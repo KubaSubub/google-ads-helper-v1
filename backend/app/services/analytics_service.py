@@ -3299,8 +3299,50 @@ class AnalyticsService:
                 })
             return items, avg_cpa
 
+        # Parental status breakdown
+        parental_data = (
+            self.db.query(
+                MetricSegmented.parental_status,
+                func.sum(MetricSegmented.clicks).label("clicks"),
+                func.sum(MetricSegmented.impressions).label("impressions"),
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+                func.sum(MetricSegmented.conversion_value_micros).label("value"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.parental_status.isnot(None),
+            )
+            .group_by(MetricSegmented.parental_status)
+            .all()
+        )
+
+        # Income range breakdown
+        income_data = (
+            self.db.query(
+                MetricSegmented.income_range,
+                func.sum(MetricSegmented.clicks).label("clicks"),
+                func.sum(MetricSegmented.impressions).label("impressions"),
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+                func.sum(MetricSegmented.conversion_value_micros).label("value"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.income_range.isnot(None),
+            )
+            .group_by(MetricSegmented.income_range)
+            .all()
+        )
+
         age_items, age_avg_cpa = _build_breakdown(age_data)
         gender_items, gender_avg_cpa = _build_breakdown(gender_data)
+        parental_items, _ = _build_breakdown(parental_data)
+        income_items, _ = _build_breakdown(income_data)
 
         # Detect anomalies: CPA > 2x average
         anomalies = []
@@ -3319,6 +3361,8 @@ class AnalyticsService:
         return {
             "age_breakdown": sorted(age_items, key=lambda x: x["cost_usd"], reverse=True),
             "gender_breakdown": sorted(gender_items, key=lambda x: x["cost_usd"], reverse=True),
+            "parental_breakdown": sorted(parental_items, key=lambda x: x["cost_usd"], reverse=True),
+            "income_breakdown": sorted(income_items, key=lambda x: x["cost_usd"], reverse=True),
             "anomalies": anomalies,
             "avg_cpa_usd": age_avg_cpa,
             "period_days": (date_to - date_from).days,
@@ -3384,6 +3428,68 @@ class AnalyticsService:
             "total_cost_micros": total_cost,
             "total_conversions": round(total_conv, 2),
         }
+
+    def get_pmax_channel_trends(
+        self,
+        client_id: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        campaign_type: str | None = None,
+        campaign_status: str | None = None,
+    ) -> dict:
+        """Daily breakdown of PMax cost/conversions per channel (ad_network_type)."""
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(None, date_from, date_to)
+        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if not campaign_ids:
+            return {"trends": [], "channels": []}
+
+        rows = (
+            self.db.query(
+                MetricSegmented.date,
+                MetricSegmented.ad_network_type,
+                func.sum(MetricSegmented.clicks).label("clicks"),
+                func.sum(MetricSegmented.cost_micros).label("cost"),
+                func.sum(MetricSegmented.conversions).label("conv"),
+            )
+            .filter(
+                MetricSegmented.campaign_id.in_(campaign_ids),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.ad_network_type.isnot(None),
+            )
+            .group_by(MetricSegmented.date, MetricSegmented.ad_network_type)
+            .order_by(MetricSegmented.date)
+            .all()
+        )
+
+        # Pivot into {date: {channel: metrics}} structure
+        from collections import OrderedDict
+        by_date: OrderedDict = OrderedDict()
+        all_channels = set()
+        for r in rows:
+            d = str(r.date)
+            ch = r.ad_network_type
+            all_channels.add(ch)
+            if d not in by_date:
+                by_date[d] = {}
+            by_date[d][ch] = {
+                "clicks": int(r.clicks or 0),
+                "cost": round(int(r.cost or 0) / 1_000_000, 2),
+                "conversions": round(float(r.conv or 0), 2),
+            }
+
+        channels = sorted(all_channels)
+        trends = []
+        for d, ch_map in by_date.items():
+            entry = {"date": d}
+            for ch in channels:
+                m = ch_map.get(ch, {"clicks": 0, "cost": 0, "conversions": 0})
+                entry[f"{ch}_cost"] = m["cost"]
+                entry[f"{ch}_conv"] = m["conversions"]
+            trends.append(entry)
+
+        return {"trends": trends, "channels": channels}
 
     # -----------------------------------------------------------------------
     # Asset Group Performance
@@ -3737,4 +3843,199 @@ class AnalyticsService:
         return {
             "by_type": by_type,
             "extensions": sorted(extensions, key=lambda x: x["clicks"], reverse=True),
+        }
+
+    # ------------------------------------------------------------------
+    # PMax vs Search Cannibalization (D3)
+    # ------------------------------------------------------------------
+
+    def get_pmax_search_cannibalization(
+        self,
+        client_id: int,
+        days: int = 30,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        min_clicks: int = 2,
+    ) -> dict:
+        """Detect search terms appearing in both PMax and Search campaigns.
+
+        Compares CPA/ROAS per source and recommends negatives for PMax.
+        """
+        from app.models.search_term import SearchTerm
+        from app.models.campaign import Campaign
+        from app.utils.date_utils import resolve_dates as _rd
+
+        date_from, date_to = _rd(days, date_from, date_to)
+
+        # Get all search terms for this client with source info
+        terms = (
+            self.db.query(SearchTerm)
+            .join(Campaign, SearchTerm.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                SearchTerm.date_from >= date_from,
+            )
+            .all()
+        )
+
+        if not terms:
+            return {
+                "overlapping_terms": [],
+                "summary": {
+                    "total_overlap": 0,
+                    "overlap_cost_usd": 0,
+                    "pmax_only": 0,
+                    "search_only": 0,
+                    "pmax_better_count": 0,
+                    "search_better_count": 0,
+                },
+                "recommendations": [],
+            }
+
+        # Build campaign name lookup from joined Campaign
+        campaign_name_map: dict[int, str] = {}
+        for t in terms:
+            if t.campaign_id and t.campaign_id not in campaign_name_map:
+                campaign_name_map[t.campaign_id] = t.campaign.name if t.campaign else f"Campaign #{t.campaign_id}"
+
+        # Build per-source aggregation: term_text -> {SEARCH: {...}, PMAX: {...}}
+        term_agg: dict[str, dict] = {}
+
+        for t in terms:
+            text = t.text.lower().strip()
+            source = t.source or "SEARCH"
+            if text not in term_agg:
+                term_agg[text] = {}
+            if source not in term_agg[text]:
+                term_agg[text][source] = {
+                    "clicks": 0, "impressions": 0, "cost_micros": 0,
+                    "conversions": 0.0, "campaign_ids": set(),
+                }
+            agg = term_agg[text][source]
+            agg["clicks"] += t.clicks or 0
+            agg["impressions"] += t.impressions or 0
+            agg["cost_micros"] += t.cost_micros or 0
+            agg["conversions"] += t.conversions or 0
+            agg["campaign_ids"].add(t.campaign_id)
+
+        # Find overlapping terms (present in both SEARCH and PMAX)
+        overlapping = []
+        pmax_only = 0
+        search_only = 0
+        pmax_better = 0
+        search_better = 0
+        total_overlap_cost = 0
+
+        for text, sources in term_agg.items():
+            has_search = "SEARCH" in sources
+            has_pmax = "PMAX" in sources
+
+            if has_search and has_pmax:
+                s = sources["SEARCH"]
+                p = sources["PMAX"]
+
+                # Skip low-volume terms
+                total_clicks = s["clicks"] + p["clicks"]
+                if total_clicks < min_clicks:
+                    continue
+
+                s_cost = s["cost_micros"] / 1_000_000
+                p_cost = p["cost_micros"] / 1_000_000
+                s_cpa = s_cost / s["conversions"] if s["conversions"] > 0 else None
+                p_cpa = p_cost / p["conversions"] if p["conversions"] > 0 else None
+                s_conv_rate = s["conversions"] / s["clicks"] * 100 if s["clicks"] > 0 else 0
+                p_conv_rate = p["conversions"] / p["clicks"] * 100 if p["clicks"] > 0 else 0
+
+                # Determine winner
+                winner = "tie"
+                if s_cpa is not None and p_cpa is not None:
+                    if s_cpa < p_cpa * 0.8:
+                        winner = "SEARCH"
+                        search_better += 1
+                    elif p_cpa < s_cpa * 0.8:
+                        winner = "PMAX"
+                        pmax_better += 1
+                elif s["conversions"] > 0 and p["conversions"] == 0:
+                    winner = "SEARCH"
+                    search_better += 1
+                elif p["conversions"] > 0 and s["conversions"] == 0:
+                    winner = "PMAX"
+                    pmax_better += 1
+
+                overlap_cost = s_cost + p_cost
+                total_overlap_cost += overlap_cost
+
+                overlapping.append({
+                    "search_term": text,
+                    "search": {
+                        "clicks": s["clicks"],
+                        "cost_usd": round(s_cost, 2),
+                        "conversions": round(s["conversions"], 2),
+                        "cpa": round(s_cpa, 2) if s_cpa is not None else None,
+                        "conv_rate": round(s_conv_rate, 2),
+                        "campaigns": [campaign_name_map.get(cid, str(cid)) for cid in s["campaign_ids"]],
+                    },
+                    "pmax": {
+                        "clicks": p["clicks"],
+                        "cost_usd": round(p_cost, 2),
+                        "conversions": round(p["conversions"], 2),
+                        "cpa": round(p_cpa, 2) if p_cpa is not None else None,
+                        "conv_rate": round(p_conv_rate, 2),
+                        "campaigns": [campaign_name_map.get(cid, str(cid)) for cid in p["campaign_ids"]],
+                    },
+                    "winner": winner,
+                    "total_cost_usd": round(overlap_cost, 2),
+                })
+            elif has_pmax and not has_search:
+                pmax_only += 1
+            elif has_search and not has_pmax:
+                search_only += 1
+
+        # Sort by total cost descending
+        overlapping.sort(key=lambda x: x["total_cost_usd"], reverse=True)
+
+        # Generate recommendations
+        recommendations = []
+        search_wins = [o for o in overlapping if o["winner"] == "SEARCH"]
+        pmax_wins = [o for o in overlapping if o["winner"] == "PMAX"]
+
+        if search_wins:
+            top_terms = ", ".join(f'"{o["search_term"]}"' for o in search_wins[:3])
+            recommendations.append({
+                "type": "add_negative_pmax",
+                "priority": "high" if len(search_wins) >= 3 else "medium",
+                "message": f"Dodaj {len(search_wins)} terminów jako negative w PMax — Search osiąga lepsze CPA. "
+                           f"Np. {top_terms}",
+                "count": len(search_wins),
+            })
+
+        if pmax_wins:
+            recommendations.append({
+                "type": "review_search_keywords",
+                "priority": "medium",
+                "message": f"{len(pmax_wins)} terminów ma lepsze wyniki w PMax niż Search — "
+                           f"rozważ obniżenie stawek lub pauzę tych keywords w Search.",
+                "count": len(pmax_wins),
+            })
+
+        if total_overlap_cost > 50:
+            recommendations.append({
+                "type": "overlap_cost_alert",
+                "priority": "high" if total_overlap_cost > 200 else "medium",
+                "message": f"Kanibalizacja PMax ↔ Search kosztuje {total_overlap_cost:.0f} zł. "
+                           f"Rozważ rozdzielenie budżetów lub dodanie negatywów.",
+                "count": len(overlapping),
+            })
+
+        return {
+            "overlapping_terms": overlapping[:30],
+            "summary": {
+                "total_overlap": len(overlapping),
+                "overlap_cost_usd": round(total_overlap_cost, 2),
+                "pmax_only": pmax_only,
+                "search_only": search_only,
+                "pmax_better_count": pmax_better,
+                "search_better_count": search_better,
+            },
+            "recommendations": recommendations,
         }

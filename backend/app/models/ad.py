@@ -23,6 +23,13 @@ class Ad(Base):
     headlines = Column(JSON, default=list)  # [{"text": "...", "pinned_position": null}, ...]
     descriptions = Column(JSON, default=list)
 
+    # Responsive Display Ad fields (C4)
+    marketing_images = Column(JSON, nullable=True)   # [{"url": "...", "width": 1200, "height": 628}]
+    square_images = Column(JSON, nullable=True)      # [{"url": "..."}]
+    logo_images = Column(JSON, nullable=True)        # [{"url": "..."}]
+    long_headline = Column(String(500), nullable=True)
+    business_name = Column(String(200), nullable=True)
+
     # Metrics
     clicks = Column(Integer, default=0)
     impressions = Column(Integer, default=0)

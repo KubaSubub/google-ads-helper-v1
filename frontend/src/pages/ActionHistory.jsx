@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { getActionHistory, revertAction, getChangeHistory, getUnifiedTimeline, getHistoryFilters, getChangeImpact, getBidStrategyImpact } from '../api';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -7,16 +8,18 @@ import DiffView from '../components/DiffView';
 import EmptyState from '../components/EmptyState';
 import DarkSelect from '../components/DarkSelect';
 import {
-    Undo2, Loader2, ChevronDown, ChevronRight,
+    Undo2, Loader2, ChevronDown, ChevronRight, Download,
     Megaphone, KeyRound, Search, Users, Zap, Globe, Settings2, LayoutGrid
 } from 'lucide-react';
 
+const PAGE_SIZE = 50;
+
 const TABS = [
-    { key: 'helper', label: 'Helper' },
+    { key: 'helper', label: 'Nasze akcje' },
     { key: 'external', label: 'Zewnętrzne' },
     { key: 'unified', label: 'Wszystko' },
     { key: 'impact', label: 'Wpływ zmian' },
-    { key: 'strategy', label: 'Wpływ strategii' },
+    { key: 'strategy', label: 'Wpływ strategii licytacji' },
 ];
 
 const RESOURCE_ICONS = {
@@ -68,7 +71,18 @@ const STATUS_COLORS = {
     REVERTED: 'rgba(255,255,255,0.35)',
 };
 
+const STATUS_TOOLTIPS = {
+    SUCCESS: 'Akcja wykonana pomyślnie',
+    FAILED: 'Błąd podczas wykonywania akcji',
+    BLOCKED: 'Akcja zablokowana przez walidację bezpieczeństwa',
+    DRY_RUN: 'Symulacja — akcja nie została wykonana',
+    REVERTED: 'Akcja cofnięta do poprzedniego stanu',
+};
+
 function groupByDate(entries) {
+    const empty = { today: [], yesterday: [], thisWeek: [], older: [] };
+    if (!Array.isArray(entries)) return empty;
+
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
@@ -77,13 +91,25 @@ function groupByDate(entries) {
     const groups = { today: [], yesterday: [], thisWeek: [], older: [] };
     for (const entry of entries) {
         const ts = entry.timestamp || entry.change_date_time || entry.executed_at;
+        if (!ts) { groups.older.push(entry); continue; }
         const d = new Date(ts);
+        if (isNaN(d.getTime())) { groups.older.push(entry); continue; }
         if (d >= today) groups.today.push(entry);
         else if (d >= yesterday) groups.yesterday.push(entry);
         else if (d >= weekAgo) groups.thisWeek.push(entry);
         else groups.older.push(entry);
     }
     return groups;
+}
+
+function getEntityLink(entry) {
+    const name = entry.entity_name;
+    if (!name) return null;
+    const type = (entry.resource_type || entry.entity_type || '').toLowerCase();
+    if (type === 'keyword' || type === 'ad_group_criterion') return `/keywords?search=${encodeURIComponent(name)}`;
+    if (type === 'campaign') return '/campaigns';
+    if (type === 'search_term') return `/search-terms?search=${encodeURIComponent(name)}`;
+    return null;
 }
 
 function buildDescription(entry) {
@@ -101,6 +127,7 @@ function buildDescription(entry) {
 // â”€â”€â”€ Timeline Entry Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
     const Icon = RESOURCE_ICONS[entry.resource_type] || Zap;
+    const entityLink = getEntityLink(entry);
     const src = entry.client_type || 'GOOGLE_ADS_HELPER';
     const srcColor = SOURCE_COLORS[src] || SOURCE_COLORS.GOOGLE_ADS_API;
     const srcLabel = SOURCE_LABELS[src] || src;
@@ -154,10 +181,13 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
 
                 {/* Status (helper only) */}
                 {entry.status && (
-                    <span style={{
-                        fontSize: 10, fontWeight: 600,
-                        color: STATUS_COLORS[entry.status] || 'rgba(255,255,255,0.4)',
-                    }}>
+                    <span
+                        title={STATUS_TOOLTIPS[entry.status]}
+                        style={{
+                            fontSize: 10, fontWeight: 600,
+                            color: STATUS_COLORS[entry.status] || 'rgba(255,255,255,0.4)',
+                        }}
+                    >
                         {entry.status}
                     </span>
                 )}
@@ -366,7 +396,7 @@ export default function ActionHistory() {
     const { selectedClientId, showToast } = useApp();
 
     // Tabs
-    const [activeTab, setActiveTab] = useState('unified');
+    const [activeTab, setActiveTab] = useState('helper');
 
     // Data
     const [helperActions, setHelperActions] = useState([]);
@@ -375,14 +405,18 @@ export default function ActionHistory() {
     const [loading, setLoading] = useState(true);
 
     // Filters
-    const [filterOptions, setFilterOptions] = useState({ resource_types: [], user_emails: [], client_types: [] });
+    const [filterOptions, setFilterOptions] = useState({ resource_types: [], user_emails: [], client_types: [], campaign_names: [] });
     const [filters, setFilters] = useState({
-        dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '',
+        dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '', actionType: '', campaignName: '',
     });
 
     // Impact data (GAP 6A/6B)
     const [impactData, setImpactData] = useState(null);
     const [strategyData, setStrategyData] = useState(null);
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
 
     // UI
     const [expandedId, setExpandedId] = useState(null);
@@ -395,6 +429,9 @@ export default function ActionHistory() {
         getHistoryFilters(selectedClientId).then(setFilterOptions).catch((err) => console.error('[ActionHistory] filters load failed', err));
     }, [selectedClientId]);
 
+    // Reset page on tab/filter change
+    useEffect(() => { setCurrentPage(1); }, [activeTab, filters]);
+
     // Fetch data
     useEffect(() => {
         if (!selectedClientId) return;
@@ -403,35 +440,42 @@ export default function ActionHistory() {
             await fetchData(cancelled);
         })();
         return () => { cancelled = true; };
-    }, [selectedClientId, activeTab, filters]);
+    }, [selectedClientId, activeTab, filters, currentPage]);
 
     const fetchData = async (cancelled = false) => {
         if (!selectedClientId) return;
         setLoading(true);
         setExpandedId(null);
+        const offset = (currentPage - 1) * PAGE_SIZE;
         try {
             const params = {};
             if (filters.dateFrom) params.date_from = filters.dateFrom;
             if (filters.dateTo) params.date_to = filters.dateTo;
             if (filters.resourceType) params.resource_type = filters.resourceType;
+            if (filters.campaignName) params.campaign_name = filters.campaignName;
 
             if (activeTab === 'helper') {
-                const data = await getActionHistory(selectedClientId, { limit: 200 });
+                const data = await getActionHistory(selectedClientId, { limit: PAGE_SIZE, offset, ...params });
                 setHelperActions(data.actions || []);
+                setTotalCount(data.total || 0);
             } else if (activeTab === 'external') {
                 if (filters.userEmail) params.user_email = filters.userEmail;
                 if (filters.clientType) params.client_type = filters.clientType;
-                const data = await getChangeHistory(selectedClientId, { limit: 200, ...params });
+                const data = await getChangeHistory(selectedClientId, { limit: PAGE_SIZE, offset, ...params });
                 setExternalEvents(data.events || []);
+                setTotalCount(data.total || 0);
             } else if (activeTab === 'impact') {
                 const data = await getChangeImpact(selectedClientId, { days: 60 });
                 setImpactData(data);
+                setTotalCount(0);
             } else if (activeTab === 'strategy') {
                 const data = await getBidStrategyImpact(selectedClientId, { days: 90 });
                 setStrategyData(data);
+                setTotalCount(0);
             } else {
-                const data = await getUnifiedTimeline(selectedClientId, { limit: 200, ...params });
+                const data = await getUnifiedTimeline(selectedClientId, { limit: PAGE_SIZE, offset, ...params });
                 setUnifiedEntries(data.entries || []);
+                setTotalCount(data.total || 0);
             }
         } catch (err) {
             showToast?.('Błąd ładowania historii', 'error');
@@ -485,6 +529,12 @@ export default function ActionHistory() {
         return groupByDate(entries);
     }, [activeTab, externalEvents, unifiedEntries]);
 
+    // Filtered helper actions
+    const filteredHelperActions = useMemo(() => {
+        if (!filters.actionType) return helperActions;
+        return helperActions.filter(a => a.action_type === filters.actionType);
+    }, [helperActions, filters.actionType]);
+
     // Helper tab columns
     const helperColumns = [
         {
@@ -492,14 +542,26 @@ export default function ActionHistory() {
             header: 'Data',
             cell: ({ getValue }) => new Date(getValue()).toLocaleString('pl-PL'),
         },
-        { accessorKey: 'action_type', header: 'Akcja' },
+        {
+            accessorKey: 'action_type',
+            header: 'Akcja',
+            cell: ({ getValue }) => OP_LABELS[getValue()] || getValue(),
+        },
         {
             accessorKey: 'entity_name',
             header: 'Encja',
             cell: ({ row }) => {
                 const name = row.original.entity_name;
                 const type = row.original.entity_type;
-                return <span>{name || `${type} #${row.original.entity_id}`}</span>;
+                const label = name || `${type} #${row.original.entity_id}`;
+                const linkTo = type === 'keyword' ? `/keywords?search=${encodeURIComponent(name || '')}`
+                    : type === 'campaign' ? '/campaigns'
+                    : type === 'search_term' ? `/search-terms?search=${encodeURIComponent(name || '')}`
+                    : null;
+                if (linkTo && name) {
+                    return <Link to={linkTo} style={{ color: '#4F8EF7', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{label}</Link>;
+                }
+                return <span>{label}</span>;
             },
         },
         {
@@ -513,7 +575,10 @@ export default function ActionHistory() {
             accessorKey: 'status',
             header: 'Status',
             cell: ({ getValue }) => (
-                <span style={{ color: STATUS_COLORS[getValue()] || 'rgba(255,255,255,0.4)' }}>
+                <span
+                    title={STATUS_TOOLTIPS[getValue()]}
+                    style={{ color: STATUS_COLORS[getValue()] || 'rgba(255,255,255,0.4)', cursor: 'help' }}
+                >
                     {getValue()}
                 </span>
             ),
@@ -538,18 +603,62 @@ export default function ActionHistory() {
         },
     ];
 
+    // Quick stats computed from helper actions
+    const quickStats = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayActions = helperActions.filter(a => new Date(a.executed_at) >= today);
+        const success = todayActions.filter(a => a.status === 'SUCCESS').length;
+        const reverted = helperActions.filter(a => a.status === 'REVERTED').length;
+        const blocked = helperActions.filter(a => a.status === 'BLOCKED').length;
+        return { today: todayActions.length, success, reverted, blocked, total: helperActions.length };
+    }, [helperActions]);
+
+    const applyDatePreset = (days) => {
+        const to = new Date();
+        const from = new Date();
+        from.setDate(from.getDate() - days);
+        setFilters(f => ({
+            ...f,
+            dateFrom: from.toISOString().slice(0, 10),
+            dateTo: to.toISOString().slice(0, 10),
+        }));
+    };
+
+    const DATE_PRESETS = [
+        { label: 'Dzisiaj', days: 0 },
+        { label: '7 dni', days: 7 },
+        { label: '30 dni', days: 30 },
+    ];
+
     if (!selectedClientId) return <EmptyState message="Wybierz klienta" />;
 
     return (
         <div style={{ maxWidth: 1100 }}>
             {/* Header */}
-            <div style={{ marginBottom: 20 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
-                    Historia zmian
-                </h1>
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                    Rejestr wszystkich zmian na koncie Google Ads — z Helpera i zewnętrznych
-                </p>
+            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                        Historia zmian
+                    </h1>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                        Rejestr wszystkich zmian na koncie Google Ads — z Helpera i zewnętrznych
+                    </p>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                        onClick={() => { window.location.href = `/api/v1/export/actions?client_id=${selectedClientId}&format=csv`; }}
+                        style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                        <Download size={11} />CSV
+                    </button>
+                    <button
+                        onClick={() => { window.location.href = `/api/v1/export/actions?client_id=${selectedClientId}&format=xlsx`; }}
+                        style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                        <Download size={11} />XLSX
+                    </button>
+                </div>
             </div>
 
             {/* Tab bar */}
@@ -578,15 +687,55 @@ export default function ActionHistory() {
                 })}
             </div>
 
-            {/* Filter bar (external / unified tabs) */}
-            {activeTab !== 'helper' && activeTab !== 'impact' && activeTab !== 'strategy' && (
+            {/* Quick stats banner */}
+            {activeTab === 'helper' && helperActions.length > 0 && (
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {[
+                        { label: 'Dzisiaj', value: quickStats.today, color: '#4F8EF7' },
+                        { label: 'Łącznie', value: quickStats.total, color: 'rgba(255,255,255,0.6)' },
+                        { label: 'Cofnięte', value: quickStats.reverted, color: '#FBBF24' },
+                        { label: 'Zablokowane', value: quickStats.blocked, color: '#F87171' },
+                    ].map(s => (
+                        <div key={s.label} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '6px 14px', borderRadius: 10,
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.07)',
+                        }}>
+                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{s.label}</span>
+                            <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: s.color }}>{s.value}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Filter bar */}
+            {activeTab !== 'impact' && activeTab !== 'strategy' && (
                 <div style={{
                     display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16,
                     padding: '10px 14px',
                     background: 'rgba(255,255,255,0.02)',
                     border: '1px solid rgba(255,255,255,0.06)',
                     borderRadius: 10,
+                    alignItems: 'center',
                 }}>
+                    {/* Date presets */}
+                    {DATE_PRESETS.map(p => (
+                        <button
+                            key={p.label}
+                            onClick={() => applyDatePreset(p.days)}
+                            style={{
+                                padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+                                color: 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(79,142,247,0.4)'; e.currentTarget.style.color = '#4F8EF7'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+                        >
+                            {p.label}
+                        </button>
+                    ))}
+                    <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
                     <input
                         type="date"
                         value={filters.dateFrom}
@@ -601,16 +750,44 @@ export default function ActionHistory() {
                         style={filterInputStyle}
                         placeholder="Do"
                     />
-                    <DarkSelect
-                        value={filters.resourceType}
-                        onChange={(v) => setFilters(f => ({ ...f, resourceType: v }))}
-                        options={[
-                            { value: '', label: 'Typ zasobu' },
-                            ...filterOptions.resource_types.map(t => ({ value: t, label: t.replace(/_/g, ' ') })),
-                        ]}
-                        placeholder="Typ zasobu"
-                        style={{ minWidth: 140 }}
-                    />
+                    {activeTab !== 'helper' && (
+                        <>
+                            <DarkSelect
+                                value={filters.campaignName}
+                                onChange={(v) => setFilters(f => ({ ...f, campaignName: v }))}
+                                options={[
+                                    { value: '', label: 'Kampania' },
+                                    ...(filterOptions.campaign_names || []).map(c => ({ value: c, label: c })),
+                                ]}
+                                placeholder="Kampania"
+                                style={{ minWidth: 180 }}
+                            />
+                            <DarkSelect
+                                value={filters.resourceType}
+                                onChange={(v) => setFilters(f => ({ ...f, resourceType: v }))}
+                                options={[
+                                    { value: '', label: 'Typ zasobu' },
+                                    ...(filterOptions.resource_types || []).map(t => ({ value: t, label: t.replace(/_/g, ' ') })),
+                                ]}
+                                placeholder="Typ zasobu"
+                                style={{ minWidth: 140 }}
+                            />
+                        </>
+                    )}
+                    {activeTab === 'helper' && (
+                        <DarkSelect
+                            value={filters.actionType}
+                            onChange={(v) => setFilters(f => ({ ...f, actionType: v }))}
+                            options={[
+                                { value: '', label: 'Typ akcji' },
+                                ...Object.entries(OP_LABELS)
+                                    .filter(([k]) => !['CREATE', 'UPDATE', 'REMOVE'].includes(k))
+                                    .map(([k, v]) => ({ value: k, label: v })),
+                            ]}
+                            placeholder="Typ akcji"
+                            style={{ minWidth: 160 }}
+                        />
+                    )}
                     {activeTab === 'external' && (
                         <>
                             <DarkSelect
@@ -618,7 +795,7 @@ export default function ActionHistory() {
                                 onChange={(v) => setFilters(f => ({ ...f, userEmail: v }))}
                                 options={[
                                     { value: '', label: 'Użytkownik' },
-                                    ...filterOptions.user_emails.map(e => ({ value: e, label: e })),
+                                    ...(filterOptions.user_emails || []).map(e => ({ value: e, label: e })),
                                 ]}
                                 placeholder="Użytkownik"
                                 style={{ minWidth: 140 }}
@@ -628,16 +805,16 @@ export default function ActionHistory() {
                                 onChange={(v) => setFilters(f => ({ ...f, clientType: v }))}
                                 options={[
                                     { value: '', label: 'Źródło' },
-                                    ...filterOptions.client_types.map(t => ({ value: t, label: SOURCE_LABELS[t] || t })),
+                                    ...(filterOptions.client_types || []).map(t => ({ value: t, label: SOURCE_LABELS[t] || t })),
                                 ]}
                                 placeholder="Źródło"
                                 style={{ minWidth: 120 }}
                             />
                         </>
                     )}
-                    {(filters.dateFrom || filters.dateTo || filters.resourceType || filters.userEmail || filters.clientType) && (
+                    {(filters.dateFrom || filters.dateTo || filters.resourceType || filters.userEmail || filters.clientType || filters.actionType || filters.campaignName) && (
                         <button
-                            onClick={() => setFilters({ dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '' })}
+                            onClick={() => setFilters({ dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '', actionType: '', campaignName: '' })}
                             style={{
                                 fontSize: 11, color: '#F87171', background: 'none',
                                 border: 'none', cursor: 'pointer', padding: '4px 8px',
@@ -659,7 +836,7 @@ export default function ActionHistory() {
             {/* Helper tab — existing DataTable */}
             {!loading && activeTab === 'helper' && (
                 <DataTable
-                    data={helperActions}
+                    data={filteredHelperActions}
                     columns={helperColumns}
                     searchable
                     emptyMessage="Brak wykonanych akcji Helper"
@@ -712,6 +889,49 @@ export default function ActionHistory() {
                         <EmptyState message="Brak zdarzeń dla wybranych filtrów" />
                     )}
                 </>
+            )}
+
+            {/* Pagination */}
+            {!loading && totalCount > PAGE_SIZE && activeTab !== 'impact' && activeTab !== 'strategy' && (
+                <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    marginTop: 16, padding: '8px 14px',
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 10,
+                }}>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                        {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalCount)} z {totalCount}
+                    </span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1}
+                            style={{
+                                padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+                                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+                                color: currentPage <= 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
+                                cursor: currentPage <= 1 ? 'default' : 'pointer',
+                            }}
+                        >
+                            ← Poprzednia
+                        </button>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', padding: '0 6px' }}>
+                            {currentPage} / {Math.ceil(totalCount / PAGE_SIZE)}
+                        </span>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalCount / PAGE_SIZE), p + 1))}
+                            disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE)}
+                            style={{
+                                padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+                                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+                                color: currentPage >= Math.ceil(totalCount / PAGE_SIZE) ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
+                                cursor: currentPage >= Math.ceil(totalCount / PAGE_SIZE) ? 'default' : 'pointer',
+                            }}
+                        >
+                            Następna →
+                        </button>
+                    </div>
+                </div>
             )}
 
             {/* Revert modal */}
