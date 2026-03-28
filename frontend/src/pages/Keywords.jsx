@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, List, Loader2, Minus, PauseCircle, Plus, Lightbulb, Shield, Trash2, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { ArrowUpDown, Award, ChevronLeft, ChevronRight, Download, List, Loader2, Minus, PauseCircle, Plus, Lightbulb, Shield, Trash2, TrendingDown, TrendingUp, X } from 'lucide-react'
 
 import EmptyState from '../components/EmptyState'
 import { MetricTooltip } from '../components/MetricTooltip'
@@ -690,7 +690,12 @@ function NegativeKeywordListsTab({ selectedClientId, showToast }) {
                                     <div className="flex items-center gap-3">
                                         <List size={16} style={{ color: '#7B5CE0' }} />
                                         <div>
-                                            <div style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0' }}>{list.name}</div>
+                                            <div className="flex items-center gap-2">
+                                                <span style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0' }}>{list.name}</span>
+                                                {list.source === 'GOOGLE_ADS_SYNC' && (
+                                                    <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 999, background: 'rgba(79,142,247,0.1)', color: '#4F8EF7', border: '1px solid rgba(79,142,247,0.25)' }}>Google Ads</span>
+                                                )}
+                                            </div>
                                             {list.description && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{list.description}</div>}
                                         </div>
                                     </div>
@@ -698,14 +703,18 @@ function NegativeKeywordListsTab({ selectedClientId, showToast }) {
                                         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', padding: '3px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.08)' }}>
                                             {list.item_count} słów
                                         </span>
-                                        <button onClick={e => { e.stopPropagation(); setShowAddItemsModal(list.id) }} title="Dodaj słowa" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.2)', color: '#4F8EF7', cursor: 'pointer' }}>
-                                            <Plus size={12} />
-                                        </button>
+                                        {list.source !== 'GOOGLE_ADS_SYNC' && (
+                                            <>
+                                                <button onClick={e => { e.stopPropagation(); setShowAddItemsModal(list.id) }} title="Dodaj słowa" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.2)', color: '#4F8EF7', cursor: 'pointer' }}>
+                                                    <Plus size={12} />
+                                                </button>
+                                                <button onClick={e => { e.stopPropagation(); handleDeleteList(list.id) }} title="Usun liste" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', cursor: 'pointer' }}>
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </>
+                                        )}
                                         <button onClick={e => { e.stopPropagation(); setShowApplyModal(list.id) }} title="Zastosuj" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer' }}>
                                             <Shield size={12} />
-                                        </button>
-                                        <button onClick={e => { e.stopPropagation(); handleDeleteList(list.id) }} title="Usun liste" style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', cursor: 'pointer' }}>
-                                            <Trash2 size={12} />
                                         </button>
                                     </div>
                                 </div>
@@ -731,9 +740,11 @@ function NegativeKeywordListsTab({ selectedClientId, showToast }) {
                                                         <td style={{ padding: '8px 12px' }}><MatchBadge matchType={item.match_type} /></td>
                                                         <td style={{ padding: '8px 12px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{item.created_at ? new Date(item.created_at).toLocaleDateString('pl') : '-'}</td>
                                                         <td style={{ padding: '8px 12px' }}>
-                                                            <button onClick={() => handleDeleteItem(list.id, item.id)} style={{ padding: '2px 5px', borderRadius: 5, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', cursor: 'pointer' }}>
-                                                                <Minus size={10} />
-                                                            </button>
+                                                            {list.source !== 'GOOGLE_ADS_SYNC' && (
+                                                                <button onClick={() => handleDeleteItem(list.id, item.id)} style={{ padding: '2px 5px', borderRadius: 5, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', cursor: 'pointer' }}>
+                                                                    <Minus size={10} />
+                                                                </button>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -985,6 +996,7 @@ export default function Keywords() {
     const { filters } = useFilter()
     const [searchParams, setSearchParams] = useSearchParams()
     const [activeTab, setActiveTab] = useState('positive')
+    const navigate = useNavigate()
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
 
@@ -1006,6 +1018,9 @@ export default function Keywords() {
                     </button>
                     <button onClick={() => setActiveTab('expansion')} style={TAB_STYLE(activeTab === 'expansion')}>
                         <Lightbulb size={13} /> Ekspansja
+                    </button>
+                    <button onClick={() => navigate('/quality-score')} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 500, background: 'rgba(123,92,224,0.08)', border: '1px solid rgba(123,92,224,0.2)', color: '#7B5CE0', cursor: 'pointer', marginLeft: 8 }}>
+                        <Award size={12} /> Audyt QS
                     </button>
                 </div>
             </div>

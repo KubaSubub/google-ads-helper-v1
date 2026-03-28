@@ -51,7 +51,7 @@ const NAV_GROUPS = [
         label: 'DZIAŁANIA',
         items: [
             { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb },
-            { to: '/action-history', label: 'Historia akcji', icon: History },
+            { to: '/action-history', label: 'Historia zmian', icon: History },
         ],
     },
     {
@@ -63,7 +63,7 @@ const NAV_GROUPS = [
     {
         label: 'AI',
         items: [
-            { to: '/agent', label: 'Raport AI', icon: Sparkles },
+            { to: '/agent', label: 'Asystent AI', icon: Sparkles },
             { to: '/reports', label: 'Raporty', icon: FileBarChart2 },
         ],
     },

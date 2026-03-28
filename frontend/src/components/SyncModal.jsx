@@ -45,6 +45,7 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
     const [coverage, setCoverage] = useState(null)
     const [selectedPreset, setSelectedPreset] = useState('incremental')
     const [showAdvanced, setShowAdvanced] = useState(false)
+    const [excludedPhases, setExcludedPhases] = useState(new Set())
 
     // Load presets and coverage when modal opens
     useEffect(() => {
@@ -52,6 +53,7 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
         stream.reset()
         setSelectedPreset('incremental')
         setShowAdvanced(false)
+        setExcludedPhases(new Set())
         getSyncPresets().then(setPresetData).catch(() => {})
         getSyncCoverage(clientId).then(setCoverage).catch(() => {})
     }, [isOpen, clientId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -59,7 +61,15 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
     if (!isOpen) return null
 
     const handleStart = () => {
-        stream.startSync(clientId, { preset: selectedPreset })
+        const preset = presets[selectedPreset]
+        if (excludedPhases.size > 0 && preset) {
+            // Send explicit phase list instead of preset
+            const presetPhases = preset.phases || Object.keys(phasesInfo)
+            const selectedPhases = presetPhases.filter(p => !excludedPhases.has(p))
+            stream.startSync(clientId, { phases: selectedPhases })
+        } else {
+            stream.startSync(clientId, { preset: selectedPreset })
+        }
     }
 
     const handleClose = () => {
@@ -73,6 +83,30 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
     const presets = presetData?.presets || {}
     const phasesInfo = presetData?.phases || {}
     const groups = presetData?.groups || {}
+
+    const togglePhase = (phaseName) => {
+        setExcludedPhases(prev => {
+            const next = new Set(prev)
+            if (next.has(phaseName)) next.delete(phaseName)
+            else next.add(phaseName)
+            return next
+        })
+    }
+
+    const toggleGroup = (groupKey) => {
+        const groupPhaseNames = Object.entries(phasesInfo)
+            .filter(([, v]) => v.group === groupKey)
+            .map(([k]) => k)
+        const allExcluded = groupPhaseNames.every(p => excludedPhases.has(p))
+        setExcludedPhases(prev => {
+            const next = new Set(prev)
+            for (const p of groupPhaseNames) {
+                if (allExcluded) next.delete(p)
+                else next.add(p)
+            }
+            return next
+        })
+    }
 
     // ─── CONFIGURE VIEW ───
     if (stream.state === 'idle') {
@@ -131,7 +165,7 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                         }}
                     >
                         <ChevronDown size={12} style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-                        Pokaż pokrycie danych
+                        Wybierz fazy do synchronizacji
                     </button>
 
                     {showAdvanced && coverage && (
@@ -139,21 +173,46 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                             {Object.entries(groups).map(([groupKey, groupLabel]) => {
                                 const groupPhases = Object.entries(phasesInfo).filter(([, v]) => v.group === groupKey)
                                 if (groupPhases.length === 0) return null
+                                const allExcluded = groupPhases.every(([k]) => excludedPhases.has(k))
+                                const someExcluded = groupPhases.some(([k]) => excludedPhases.has(k))
                                 return (
                                     <div key={groupKey} style={{ marginBottom: 10 }}>
-                                        <div style={{ fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+                                        <div
+                                            onClick={() => toggleGroup(groupKey)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4, userSelect: 'none' }}
+                                        >
+                                            <span style={{
+                                                width: 12, height: 12, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                border: `1px solid ${allExcluded ? 'rgba(255,255,255,0.12)' : '#4F8EF7'}`,
+                                                background: allExcluded ? 'transparent' : someExcluded ? 'rgba(79,142,247,0.3)' : '#4F8EF7',
+                                                fontSize: 9, color: 'white', lineHeight: 1, flexShrink: 0,
+                                            }}>
+                                                {!allExcluded && (someExcluded ? '–' : '✓')}
+                                            </span>
                                             {groupLabel}
                                         </div>
                                         {groupPhases.map(([phaseName, phaseInfo]) => {
                                             const cov = coverage[phaseName]
+                                            const checked = !excludedPhases.has(phaseName)
                                             return (
-                                                <div key={phaseName} style={{
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                    padding: '4px 8px', borderRadius: 5, fontSize: 11,
-                                                    background: 'rgba(255,255,255,0.02)',
-                                                    marginBottom: 2,
-                                                }}>
-                                                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>{phaseInfo.label}</span>
+                                                <div key={phaseName}
+                                                    onClick={() => togglePhase(phaseName)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 8,
+                                                        padding: '4px 8px', borderRadius: 5, fontSize: 11,
+                                                        background: checked ? 'rgba(255,255,255,0.02)' : 'transparent',
+                                                        marginBottom: 2, cursor: 'pointer', userSelect: 'none',
+                                                        opacity: checked ? 1 : 0.4,
+                                                    }}>
+                                                    <span style={{
+                                                        width: 12, height: 12, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                        border: `1px solid ${checked ? '#4F8EF7' : 'rgba(255,255,255,0.15)'}`,
+                                                        background: checked ? '#4F8EF7' : 'transparent',
+                                                        fontSize: 8, color: 'white', lineHeight: 1, flexShrink: 0,
+                                                    }}>
+                                                        {checked && '✓'}
+                                                    </span>
+                                                    <span style={{ flex: 1, color: 'rgba(255,255,255,0.5)' }}>{phaseInfo.label}</span>
                                                     <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>
                                                         {cov
                                                             ? cov.data_to

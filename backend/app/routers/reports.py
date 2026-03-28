@@ -19,7 +19,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
-_reports_lock = asyncio.Lock()
+_client_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_client_lock(client_id: int) -> asyncio.Lock:
+    if client_id not in _client_locks:
+        _client_locks[client_id] = asyncio.Lock()
+    return _client_locks[client_id]
 
 
 class ReportGenerateRequest(BaseModel):
@@ -84,12 +90,13 @@ async def generate_report(
         period_label = f"{year}-{month:02d}"
 
     async def event_stream():
-        if _reports_lock.locked():
+        lock = _get_client_lock(client_id)
+        if lock.locked():
             yield _sse_event("error", "Generowanie raportu jest juz w toku — poczekaj na zakonczenie.")
             yield _sse_event("done", "")
             return
 
-        await _reports_lock.acquire()
+        await lock.acquire()
         try:
             # Create report row
             report = Report(
@@ -223,7 +230,7 @@ async def generate_report(
 
             yield _sse_event("done", "")
         finally:
-            _reports_lock.release()
+            lock.release()
 
     return StreamingResponse(
         event_stream(),

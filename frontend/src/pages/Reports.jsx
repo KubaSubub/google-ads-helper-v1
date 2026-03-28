@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { getReports, getReport, getAgentStatus } from '../api';
 import {
@@ -397,8 +397,28 @@ export default function Reports() {
     const [modelName, setModelName] = useState(null);
     const [tokenUsage, setTokenUsage] = useState(null);
     const [reportType, setReportType] = useState('monthly');
+    const [selectedPeriod, setSelectedPeriod] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
     const streamRef = useRef(null);
     const abortRef = useRef(null);
+
+    // Last 12 months for period selector
+    const periodOptions = useMemo(() => {
+        const opts = [];
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            opts.push({
+                value: `${y}-${String(m).padStart(2, '0')}`,
+                label: `${MONTH_NAMES[d.getMonth()]} ${y}`,
+            });
+        }
+        return opts;
+    }, []);
 
     // Cleanup SSE stream on unmount
     useEffect(() => {
@@ -412,13 +432,13 @@ export default function Reports() {
     const loadReport = useCallback(async (reportId) => {
         setLoadingReport(true);
         try {
-            const data = await getReport(reportId);
+            const data = await getReport(reportId, selectedClientId);
             setActiveReport(data);
         } catch (err) {
             showToast('Nie udalo sie zaladowac raportu', 'error');
         }
         setLoadingReport(false);
-    }, [showToast]);
+    }, [showToast, selectedClientId]);
 
     // Load report list (and auto-select most recent on first load)
     const loadReports = useCallback(async (autoSelect = false) => {
@@ -469,7 +489,13 @@ export default function Reports() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ report_type: reportType }),
+                body: JSON.stringify({
+                    report_type: reportType,
+                    ...(reportType === 'monthly' && {
+                        year: parseInt(selectedPeriod.split('-')[0]),
+                        month: parseInt(selectedPeriod.split('-')[1]),
+                    }),
+                }),
                 signal: abortRef.current.signal,
             });
 
@@ -607,6 +633,25 @@ export default function Reports() {
                             );
                         })}
                     </div>
+                    {/* Period selector for monthly reports */}
+                    {reportType === 'monthly' && (
+                        <select
+                            value={selectedPeriod}
+                            onChange={e => setSelectedPeriod(e.target.value)}
+                            disabled={generating}
+                            style={{
+                                padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)',
+                                cursor: generating ? 'not-allowed' : 'pointer',
+                                outline: 'none',
+                            }}
+                        >
+                            {periodOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    )}
                     <button
                         onClick={handleGenerate}
                         disabled={generating}
@@ -624,7 +669,7 @@ export default function Reports() {
                             <><Sparkles size={14} /> Generuj</>
                         )}
                     </button>
-                    {selectedReport && !generating && (
+                    {activeReport && !generating && (
                         <button
                             onClick={() => window.print()}
                             style={{
@@ -778,11 +823,14 @@ export default function Reports() {
                                 </div>
                             )}
 
-                            {/* Token usage (appears after AI finishes) */}
+                            {/* Token usage (appears after AI finishes) — collapsed by default */}
                             {tokenUsage && (
-                                <div style={{ marginTop: 12 }}>
-                                    <TokenUsageBadge usage={tokenUsage} model={modelName} />
-                                </div>
+                                <details style={{ marginTop: 12 }}>
+                                    <summary style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', userSelect: 'none' }}>Szczegóły techniczne</summary>
+                                    <div style={{ marginTop: 6 }}>
+                                        <TokenUsageBadge usage={tokenUsage} model={modelName} />
+                                    </div>
+                                </details>
                             )}
                         </div>
                     )}
@@ -852,20 +900,23 @@ export default function Reports() {
                                 </div>
                             )}
 
-                            {/* Token usage from saved report */}
+                            {/* Token usage from saved report — collapsed */}
                             {(activeReport.input_tokens || activeReport.model_name) && (
-                                <div style={{ marginTop: 12 }}>
-                                    <TokenUsageBadge
-                                        usage={activeReport.input_tokens ? {
-                                            input_tokens: activeReport.input_tokens,
-                                            output_tokens: activeReport.output_tokens,
-                                            cache_read_tokens: activeReport.cache_read_tokens,
-                                            total_cost_usd: activeReport.total_cost_usd,
-                                            duration_ms: activeReport.duration_ms,
-                                        } : null}
-                                        model={activeReport.model_name}
-                                    />
-                                </div>
+                                <details style={{ marginTop: 12 }}>
+                                    <summary style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', userSelect: 'none' }}>Szczegóły techniczne</summary>
+                                    <div style={{ marginTop: 6 }}>
+                                        <TokenUsageBadge
+                                            usage={activeReport.input_tokens ? {
+                                                input_tokens: activeReport.input_tokens,
+                                                output_tokens: activeReport.output_tokens,
+                                                cache_read_tokens: activeReport.cache_read_tokens,
+                                                total_cost_usd: activeReport.total_cost_usd,
+                                                duration_ms: activeReport.duration_ms,
+                                            } : null}
+                                            model={activeReport.model_name}
+                                        />
+                                    </div>
+                                </details>
                             )}
 
                             {/* Error message */}

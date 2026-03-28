@@ -434,7 +434,10 @@ def list_negative_keyword_lists(
             func.count(NegativeKeywordListItem.id).label("item_count"),
         )
         .outerjoin(NegativeKeywordListItem, NegativeKeywordList.id == NegativeKeywordListItem.list_id)
-        .filter(NegativeKeywordList.client_id == client_id)
+        .filter(
+            NegativeKeywordList.client_id == client_id,
+            NegativeKeywordList.status != "REMOVED",
+        )
         .group_by(NegativeKeywordList.id)
         .order_by(NegativeKeywordList.name.asc())
         .all()
@@ -443,8 +446,12 @@ def list_negative_keyword_lists(
         NegativeKeywordListResponse(
             id=nkl.id,
             client_id=nkl.client_id,
+            google_shared_set_id=nkl.google_shared_set_id,
             name=nkl.name,
             description=nkl.description,
+            source=nkl.source or "LOCAL",
+            status=nkl.status or "ENABLED",
+            member_count=nkl.member_count or 0,
             item_count=item_count,
             created_at=nkl.created_at,
             updated_at=nkl.updated_at,

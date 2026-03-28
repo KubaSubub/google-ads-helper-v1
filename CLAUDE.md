@@ -9,6 +9,50 @@ If there is any mismatch, follow `AGENTS.md`.
 - User communication: Polish.
 - Code, identifiers, and commit messages: English.
 
+## 1a) Execution Style
+
+- Execute tasks immediately without asking for permission or confirmation.
+- Do not pause to ask questions mid-implementation — just do the work.
+- If ambiguity exists, pick the most likely interpretation and proceed. Mention assumptions briefly after delivery.
+- EXCEPTION — always ask before deleting files, removing functions, or dropping significant blocks of code. Adding and editing freely, deleting only with approval.
+
+## 1b) Project Structure Map
+
+Use this to navigate the codebase — do not explore aimlessly:
+```
+backend/
+  app/
+    routers/    → API endpoints (analytics, campaigns, keywords_ads, search_terms, sync, history, export, ...)
+    services/   → Business logic (google_ads, analytics_service, recommendations, sync_config, ...)
+    models/     → SQLAlchemy models
+    schemas/    → Pydantic schemas
+  tests/        → pytest tests (test_{router/service}.py)
+
+frontend/
+  src/
+    pages/      → Route pages (Dashboard, Keywords, SearchTerms, QualityScore, Campaigns, ...)
+    components/ → Shared UI (Sidebar, SyncModal, DataTable, GlobalFilterBar, TrendExplorer, ...)
+    contexts/   → React contexts (AppContext, FilterContext)
+    api.js      → All API calls
+  e2e/          → Playwright tests
+```
+
+## 1c) UI Verification Checklist
+
+After ANY frontend change, verify before reporting "done":
+1. Component is exported from its file (named export or default).
+2. Component is imported in parent (page or App.jsx).
+3. Component is rendered in JSX tree (not just imported).
+4. Props match what parent passes (no undefined data).
+5. No console errors — run `npm run build` to catch compile issues.
+
+## 1d) Pattern Matching Rule
+
+Before building new UI features:
+1. Find 2-3 similar existing components in `frontend/src/` (use Grep/Glob).
+2. Follow the same patterns (state management, API calls, styling, filters).
+3. If existing features have controls (checkboxes, dropdowns, toggles) — new features in the same area should have them too.
+
 ## 2) Core Rules (Do Not Break)
 
 - Keep import flow one-way:

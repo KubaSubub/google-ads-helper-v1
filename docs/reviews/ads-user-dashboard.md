@@ -1,70 +1,78 @@
-# Notatki usera: Pulpit (Dashboard) — RE-TEST
+# Notatki usera: Pulpit (Dashboard) — RE-TEST #2
 
 **Kto:** Marek, specjalista GAds, 6 lat doswiadczenia, 8 kont
 **Testowane na:** seed data / client widoczny w sidebar
-**Data:** 2026-03-26 (re-test po poprawkach)
+**Data:** 2026-03-27 (re-test po sprincie poprawek)
 
 ---
 
 ## Co widze po wejsciu
 
-Ciemny, elegancki kokpit. Pierwszy rzut oka: po lewej duzy Health Score z okraglym gaugemem i lista problemow. Po prawej dwa rzedy KPI kart — 8 sztuk: Klikniecia, Koszt, Konwersje, ROAS (gorny rzad), Wyswietlenia, CTR, CPA, Wasted Spend (dolny). Kazda karta ma wartosc + procent zmiany z kolorowa strzalka. Pod spodem rozwijany panel "Automatyczne insighty", Trend Explorer (multi-metric chart), "Porownanie okresow" (WoW), tabela kampanii, Budget Pacing, Device + Geo breakdown, Impression Share.
+Dashboard wygląda profesjonalnie. Ciemny motyw, czytelny layout. Na górze nagłówek "Pulpit" z okresem + link "Poranny przegląd →". Poniżej dwuczęściowy rząd: po lewej Health Score z gaugemem i listą problemów, po prawej 2 rzędy po 4 karty KPI (Kliknięcia, Koszt, Konwersje, ROAS / Wyświetlenia, CTR, CPA, Wasted Spend). Każdy KPI ma ikonę, wartość i % zmianę z kolorową strzałką. Pod KPI: widget Quality Score (kliknięcie → /quality-score), InsightsFeed (rozwijany), Trend Explorer, WoW comparison, tabela kampanii z sortowaniem, Budget Pacing, PMax channels (pie chart), Device + Geo breakdown, Impression Share, Ostatnie akcje.
 
-Duzo tego — ale wszystko jest czytelne i logicznie ulozne. Nic nie jest zbedne.
+Ogromna ilość danych ale nic nie jest zbędne. Wszystko służy mojemu porannemu workflow.
 
 ## Co moge zrobic
 
-- **Zmienic okres i filtry** — globalny bar u gory: zakres dat, typ kampanii, status
-- **Kliknac Health Score** — przenosi do Monitoringu (/alerts)
-- **Rozwinac Insighty** — lista rekomendacji z priorytetami, przycisk "Przejdz" do /recommendations
-- **Trend Explorer** — dodawac/usuwac metryki (do 5), porownywac na jednym wykresie, widac korelacje miedzy nimi. Dual Y-axis jak metryki maja rozne jednostki
-- **Porownanie okresow** — wybieram metryke z dropdown, widze biezacy vs poprzedni okres nakladane na wykresie. Os X teraz pokazuje DATY (np. "25.03") zamiast nazw dni — nareszcie widac kiedy dokladnie co sie dzialo
-- **Tabela kampanii** — klikam wiersz, ide na /campaigns. Link "Wszystkie →". Kolumny: Nazwa, Status, Typ, Budzet/dzien, Koszt, Konwersje, ROAS (kolorowany), Trend sparkline, Strategia
-- **Budget Pacing** — karteczki per kampania z progress barem i "Na torze"/"Przekroczenie"/"Niedostateczne"
-- **Device breakdown** — klikam urzadzenie → rozwija sie mini-chart z trendem clicks/cost/conversions + avg/dzien
-- **Geo breakdown** — top 8 miast z klikniecami, kosztem, % kosztu, ROAS
-- **Impression Share** — 3 wskazniki z progress barami: IS, Lost Budget, Lost Rank
+- **Filtry globalne** — okres, typ kampanii, status (z GlobalFilterBar)
+- **Health Score** — klikam → /alerts
+- **QS widget** — klikam → /quality-score, widzę średni QS i ile słów z niskim QS
+- **Wasted Spend** — klikam → /search-terms?segment=WASTE
+- **InsightsFeed** — rozwijam, filtruję po priorytecie (ALL/HIGH/MEDIUM/LOW), klikam "Przejdź"
+- **Trend Explorer** — dodaję/usuwam do 5 metryk, widzę korelacje, dual Y-axis
+- **WoW chart** — wybieram metrykę, widzę bieżący vs poprzedni okres z datami na osi X
+- **Tabela kampanii** — sortuję po Budżet/Koszt/Konwersje/ROAS/IS, klikam wiersz → /campaigns?campaign_id=X
+- **Budget Pacing** — progress bary per kampania
+- **Device breakdown** — klikam urządzenie → rozwija trend chart
+- **Geo breakdown** — top 8 miast z sortowalnymi nagłówkami
+- **Impression Share** — 3 metryki Search z progress barami
+- **Ostatnie akcje** — 5 ostatnich z linkiem "Wszystkie"
+- **Link "Poranny przegląd →"** — jeden klik do /daily-audit
 
 ## Co mam WIECEJ niz w Google Ads UI
 
-1. **Health Score** — nie ma nic takiego w GAds. Mam liczbe 0-100 + liste problemow. Klikam i ide glebiej. Rano otwieram, widze 72 — OK, nic sie nie pali. Widze 38 — o kurde, co sie stalo.
-2. **Wasted Spend jako KPI na dashboardzie** — w GAds musze reczenie filtrowac search terms bez konwersji i sumowac. Tu mam to jako karte z automatycznym kolorowaniem (zielony/zolty/czerwony).
-3. **Trend Explorer z korelacjami** — to jest absolutny killer. W GAds moge dac max 2 metryki na jednym charcie. Tu daje 5 naraz i widze "korelacja cost vs conversions: +0.85 silna dodatnia". To jest cos czego nie daje ZADNE narzedzie na rynku.
-4. **Porownanie okresow z datami** — teraz na osi X widze "20.03", "21.03" zamiast "Pon", "Wt". W koncu widze dokladnie ktory dzien mial peak. W GAds "Compare" daje tabelke procentowa, nie nakladany chart.
-5. **Budget Pacing zbiorczy** — widze wszystkie kampanie naraz. W GAds musze klikac w kazda kampanie osobno.
-6. **Device breakdown z rozwijalnym trendem** — klikam "MOBILE" i widze chart z 3 liniami. W GAds to wymaga przejscia do Reports > Devices.
-7. **Insighty z wlasnych regul** — nie z algorytmow Google ktore chca zeby wydawal wiecej, ale z playbooka ktory mowi co faktycznie optymalizowac.
+1. **Health Score 0-100** — w GAds nie ma nic takiego. Rano otwieram, widzę 72 — spoko. Widzę 38 — idę kopać.
+2. **Wasted Spend jako KPI z deep-linkiem** — klikam kartę i od razu widzę waste terms. W GAds muszę ręcznie filtrować search terms → brak konwersji → sumować.
+3. **Trend Explorer z korelacjami** — 5 metryk na jednym charcie z liczoną korelacją. W GAds max 2 metryki. To killer feature.
+4. **WoW chart z datami** — nakładany chart bieżący vs poprzedni z konkretnymi datami. GAds "Compare" daje suchą tabelkę.
+5. **Budget Pacing zbiorczy** — wszystkie kampanie naraz. GAds wymaga klikania w każdą osobno.
+6. **QS widget na dashboardzie** — średni QS + liczba słów z niskim QS + % budżetu na nie. W GAds muszę iść do Keywords → dodać kolumnę Quality Score → filtrować.
+7. **PMax channel split** — pie chart z rozkładem kosztów po kanałach PMax + alert gdy kanał je koszty bez konwersji. W GAds Insights nie daje tego tak przejrzyście.
+8. **InsightsFeed z filtrem priorytetu** — HIGH/MEDIUM/LOW pille, widzę tylko pilne. Rekomendacje Google to spam — tu są z playbooka.
+9. **Device breakdown z trendem** — klikam MOBILE → widzę chart. W GAds Reports > Devices wymaga 3 kliknięć.
 
 ## Czego MI BRAKUJE vs Google Ads UI
 
-1. **Sortowanie tabeli kampanii** — NADAL nie moge kliknac naglowek "Koszt" zeby posortowac. To jest moj #1 workflow: "pokaz najdrozsze". W GAds to jest standard.
-2. **Klikniecie kampanii nie prowadzi do DETALU** — klikam wiersz i ide na /campaigns (liste ogolna), nie na detail tej konkretnej kampanii. W GAds klikam kampanie i od razu widze jej metryki.
-3. **Brak filtra search terms z dashboardu** — karta Wasted Spend mowi mi ze 2000 zl poszlo w bloto, ale nie moge kliknac zeby zobaczyc KTORE frazy to generuja. W GAds tez tego nie ma na overview, ale tutaj mogloby byc bo mamy dane.
-4. **Sparkline bez tooltipa** — widze maly wykresik trendu w tabeli, ale na hover nic sie nie pokazuje. Nie wiem jaka wartosc jest na gorce.
-5. **Kolumna Strategia ucina tekst** — dlugie nazwy jak "Target ROAS: Maximize conversion value" sa uciete bez tooltipa. Nie widze co to za strategia.
+1. **Urządzenia po angielsku** — widzę "MOBILE", "DESKTOP", "TABLET" zamiast polskich nazw. Reszta UI jest po polsku, to razi.
+2. **PMax kanały po angielsku** — "SEARCH", "DISPLAY", "VIDEO" — powinno być po polsku jak reszta dashboardu.
+3. **Brak morning briefing** — nagłówek mówi "Pulpit" i "Ostatnie 30 dni". Chciałbym jedno zdanie: "Wczoraj 3 kampanie przekroczyły budżet, Health Score -5 vs tydzień temu". Coś co mówi mi CZY jest pożar.
+4. **Brak eksportu** — klient chce cotygodniowy raport. Przycisk "Eksport PDF" zaoszczędziłby mi 30 min na screenshotach.
+5. **Tabela kampanii — brak kolumny CPA** — mam Koszt, Konwersje, ROAS, IS ale nie mam CPA. Przy lead gen CPA to moja najważniejsza metryka.
 
 ## Co mnie irytuje / myli
 
-1. **InsightsFeed nie ma filtra po priorytecie** — widze mieszanke HIGH/MEDIUM/LOW. Rano chce TYLKO HIGH. Mam 15 insightow, z czego 3 sa pilne — ale musze je sam odszukac wsrod reszty.
-2. **Brak linku do Porannego przegladu** — w sidebarze jest "Poranny przeglad" (/daily-audit) ale z dashboardu nie moge tam przejsc jednym kliknieciem. Naturalnie: otwieram Pulpit, widze ze cos nie gra, chce przejsc do szybkich akcji.
-3. **Geo tabelka — brak sortowania** — 8 miast wyswietlonych losowo (?). Chcialbym posortowac po ROAS zeby zobaczyc ktore miasto daje najlepszy zwrot.
+1. **Angielskie labele w Device i PMax** — niespójność. Sidebar, KPI, tabele — wszystko po polsku. A tu nagle MOBILE, DESKTOP, SEARCH, DISPLAY. Jak robię screenshota dla klienta to wygląda dziwnie.
+2. **"Ostatnie akcje" widget jest minimalistyczny** — widzę status + nazwę + datę. Nie wiem CO zmieniono (jaka wartość?). W Historia zmian mam pełne info, ale tu na dashboardzie za mało.
+3. **InsightsFeed "Automatyczne insighty" — nazwa** — brzmi jak coś technicznego. Wolałbym "Co wymaga uwagi" albo "Problemy do sprawdzenia".
 
 ## Co bym chcial
 
-1. **Klikalna karta Wasted Spend** — klikam → przenosi do /search-terms z filtrem na waste terms. One-click "pokaz mi co marnuje pieniadze".
-2. **Morning briefing jednym zdaniem** — np. "Wczoraj 3 kampanie przekroczyly budzet, 12 nowych waste terms, Health Score -5 vs tydzien temu". Jedno zdanie pod tytulem "Pulpit" zamiast suchego "Ostatnie 30 dni".
-3. **Eksport dashboardu** — przycisk "Generuj raport" ktory daje PDF z aktualnym stanem. Moj klient chce to co tydzien.
+1. **Morning briefing** — jedno zdanie pod nagłówkiem: "3 kampanie over-budget, 12 nowych waste terms, QS spadł o 2 pkt". Oszczędziłoby mi 30 sekund scrollowania.
+2. **Eksport PDF** — przycisk generujący raport z aktualnym dashboardem. Moi klienci tego chcą co tydzień.
+3. **Kolumna CPA w tabeli kampanii** — dla lead gen to krytyczna metryka.
+4. **Polskie nazwy urządzeń i kanałów** — Mobile → Telefony, Desktop → Komputery, Tablet → Tablety. SEARCH → Wyszukiwarka, DISPLAY → Sieć reklamowa, VIDEO → YouTube.
 
 ## Verdykt
 
-Wchodzilbym tu CODZIENNIE rano zamiast do Google Ads Overview. Serio. Health Score + 8 KPIs + Trend Explorer z korelacjami + Budget Pacing + WoW z datami — to jest cos czego Google Ads nie daje w jednym widoku. Poprawka dat w WoW chart to byl dobry ruch, teraz ten widget jest uzyteczny. Dwa blokery do pelnego zastapienia Google Ads Overview: sortowanie tabeli kampanii i deep-link do kampanii. Reszta to nice-to-have.
+Ten dashboard ZASTĘPUJE mi Google Ads Overview na co dzień. Serio. Health Score + 8 KPI + Trend Explorer + WoW + Budget Pacing + PMax channels + QS widget — tego nigdzie nie dostanę w jednym widoku. Wszystkie problemy z poprzedniego testu (sortowanie, deep-link, sparkline tooltip, geo sort, InsightsFeed filter, Wasted Spend click, IS kolumna) zostały naprawione. Teraz to jest dojrzały produkt. Pozostałe uwagi to polish — angielskie labele urządzeń/kanałów i brak morning briefing. Nic nie blokuje codziennego użycia.
+
+**Ocena: 9/10** — z 7/10 w pierwszym teście. Ogromny postęp.
 
 ---
 
 ## Pytania do @ads-expert
 
-1. Sortowanie tabeli kampanii — to byl zgłoszony w pierwszym review i nadal nie ma. Jak to priorytetyzujecie? Dla mnie to deal-breaker przy 20+ kampaniach.
-2. Czy jest plan na klikalna karte Wasted Spend → /search-terms z filtrem waste? To by zamknelo petla "widze problem → robie cos z nim" bez nawigowania po 3 zakladkach.
-3. InsightsFeed — filtr HIGH/MEDIUM/LOW byl w planie ads-verify. Kiedy?
-4. Sparkline tooltip — drobnostka ale irytujaca. Na hover chce widziec wartosc + date.
-5. Geo tabelka — czy jest plan na sortowanie? 8 miast bez mozliwosci posortowania po ROAS to stracona szansa.
+1. Angielskie nazwy urządzeń (MOBILE/DESKTOP) i kanałów PMax (SEARCH/DISPLAY) — to świadoma decyzja czy niedopatrzenie? Reszta UI jest po polsku.
+2. Morning briefing — czy jest to w planach? Jedno zdanie "co się zmieniło od wczoraj" pod nagłówkiem Pulpit oszczędziłoby czas.
+3. Eksport PDF — na ile to realistyczne w obecnej architekturze?
+4. Kolumna CPA w tabeli kampanii — łatwa do dodania? Mam koszt i konwersje, CPA to po prostu koszt/konwersje.

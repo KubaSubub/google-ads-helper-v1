@@ -240,7 +240,7 @@ export default function DailyAudit() {
     const [scriptCounts, setScriptCounts] = useState({})
     const [scriptLoading, setScriptLoading] = useState({})
     const [scriptResults, setScriptResults] = useState({})
-    const [scriptsExpanded, setScriptsExpanded] = useState(false)
+    const [scriptsExpanded, setScriptsExpanded] = useState(null) // null = auto, true/false = manual
     const [resultModal, setResultModal] = useState(null) // { category, result }
 
     const loadAudit = useCallback(async () => {
@@ -264,6 +264,8 @@ export default function DailyAudit() {
             } catch { counts[cat] = 0 }
         }
         setScriptCounts(counts)
+        const total = Object.values(counts).reduce((a, b) => a + b, 0)
+        if (total > 0) setScriptsExpanded(prev => prev === null ? true : prev)
     }, [selectedClientId])
 
     useEffect(() => { loadAudit(); loadScriptCounts() }, [loadAudit, loadScriptCounts])
@@ -415,7 +417,7 @@ export default function DailyAudit() {
             {/* ROW 2: Quick Optimization Scripts — collapsed by default */}
             <div style={{ marginBottom: 16 }}>
                 <div
-                    onClick={() => setScriptsExpanded(!scriptsExpanded)}
+                    onClick={() => setScriptsExpanded(prev => !prev)}
                     style={{ ...SECTION_TITLE, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}
                 >
                     <span>Szybkie skrypty optymalizacji</span>

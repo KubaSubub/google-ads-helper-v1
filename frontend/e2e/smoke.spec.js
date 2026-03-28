@@ -34,9 +34,9 @@ test('sidebar navigation links are present', async ({ page }) => {
     const expectedLabels = [
         'Pulpit', 'Codzienny audyt', 'Klienci',
         'Kampanie', 'Słowa kluczowe', 'Wyszukiwane frazy',
-        'Rekomendacje', 'Historia akcji',
+        'Rekomendacje', 'Historia zmian',
         'Monitoring',
-        'Raport AI', 'Raporty',
+        'Asystent AI', 'Raporty',
         'Optymalizacja', 'Inteligencja', 'Wynik jakości',
         'Ustawienia',
     ];
@@ -60,7 +60,7 @@ const PAGES = [
     { path: '/recommendations',   heading: 'Rekomendacje' },
     { path: '/action-history',    heading: 'Historia zmian' },
     { path: '/alerts',            heading: 'Alerty' },
-    { path: '/agent',             heading: 'Raport AI' },
+    { path: '/agent',             heading: 'Asystent AI' },
     { path: '/reports',           heading: 'Raport' },
     { path: '/clients',           heading: 'Klienci' },
     { path: '/settings',          heading: 'Ustawienia' },

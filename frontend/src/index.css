@@ -113,3 +113,64 @@ body {
 .shadow-dropdown {
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
+
+/* Print styles — clean output for Reports PDF/Print */
+@media print {
+  /* Hide navigation, sidebar, controls */
+  nav, aside,
+  [data-sidebar], [data-global-filter],
+  button, select,
+  .animate-spin {
+    display: none !important;
+  }
+
+  /* White background, dark text */
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    font-size: 12pt;
+  }
+
+  /* Reset dark cards */
+  .v2-card, .glass {
+    background: #fff !important;
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+  }
+
+  /* Ensure tables print well */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    color: #111 !important;
+    background: #fff !important;
+  }
+  th {
+    background: #f5f5f5 !important;
+    font-weight: 600;
+  }
+
+  /* Full width content */
+  main, [role="main"], #root > div > div:last-child {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Keep markdown content readable */
+  h1, h2, h3, h4 { color: #111 !important; }
+  p, li, span { color: #333 !important; }
+  a { color: #2563eb !important; text-decoration: underline; }
+
+  /* Hide scrollbars */
+  ::-webkit-scrollbar { display: none; }
+
+  /* Page breaks */
+  h2 { page-break-before: auto; page-break-after: avoid; }
+  table, pre { page-break-inside: avoid; }
+}

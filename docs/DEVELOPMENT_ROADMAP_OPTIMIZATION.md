@@ -141,13 +141,15 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## D. PMAX (Performance Max) — rozszerzenia kanału Search
 
-### D1. 🟡 PMax Channel Performance Breakdown
-> **Częściowo:** SearchTerm model ma pole `source` (SEARCH/PMAX), bulk actions wspierają PMax search terms. Brakuje channel-level breakdown i budget allocation per channel.
+### D1. ✅ PMax Channel Performance Breakdown
+> **Gotowe:** Pełny channel breakdown: endpoint `/analytics/pmax-channels` + `/analytics/pmax-channel-trends`, donut chart na Dashboard, tabela + trend chart w SearchOptimization, alerting (rule_28) + wizualny alert.
 
-**Co:** Obecnie: sync `pmax_search_terms`. Brakuje:
-- Breakdown wydatków per channel (Search vs Display vs YouTube vs Discover vs Shopping)
-- Porównanie: ile % budżetu PMax idzie na Search vs inne kanały
-- Alerting: "80% budżetu PMax idzie na Display, a konwersje generuje Search"
+**Zrealizowane:**
+- ✅ Breakdown wydatków per channel (Search vs Display vs YouTube vs Discover vs Shopping)
+- ✅ Porównanie: ile % budżetu PMax idzie na Search vs inne kanały
+- ✅ Alerting: "80% budżetu PMax idzie na Display, a konwersje generuje Search"
+- ✅ Dashboard widget (donut chart + imbalance alert)
+- ✅ Trend chart (daily per channel) w SearchOptimization
 
 **API:** `segments.ad_network_type` na campaign/asset_group performance
 
@@ -166,7 +168,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Duży — nowe modele, sync, UI.
 
-### D3. ❌ PMax vs Search Cannibalization
+### D3. ✅ PMax vs Search Cannibalization
+> **Wdrożone:** `GET /analytics/pmax-search-cannibalization` — wykrywanie search terms matchujących zarówno PMax jak i Search, porównanie CPA per source, rekomendacje (add negative w PMax). Frontend: sekcja "Kanibalizacja PMax ↔ Search" w SearchOptimization.jsx.
 **Co:**
 - Wykrywanie, gdy PMax i kampanie Search walczą o te same zapytania
 - Analiza: CPA/ROAS per search term w PMax vs Search
@@ -361,8 +364,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | # | Feature | Nakład | Impact | Status |
 |---|---------|--------|--------|--------|
 | 5 | **A2** Change History Monitor | Średni | 🟠 Wysoki | ✅ DONE |
-| 6 | **D1** PMax Channel Breakdown | Średni | 🟠 Wysoki | 🟡 PARTIAL |
-| 7 | **D3** PMax vs Search Cannibalization | Średni | 🟠 Wysoki | ❌ |
+| 6 | **D1** PMax Channel Breakdown | Średni | 🟠 Wysoki | ✅ DONE |
+| 7 | **D3** PMax vs Search Cannibalization | Średni | 🟠 Wysoki | ✅ DONE |
 | 8 | **B3** Close Variant Analysis | Średni | 🟠 Wysoki | ✅ DONE |
 | 9 | **G2** Keyword Expansion Suggestions | Średni | 🟠 Wysoki | ✅ DONE |
 
@@ -399,7 +402,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
-**Stan na 2026-03-20: 10 DONE, 2 PARTIAL, 14 NOT DONE (z 26 feature'ów)**
+**Stan na 2026-03-27: 12 DONE, 2 PARTIAL, 12 NOT DONE (z 26 feature'ów)**
 
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast

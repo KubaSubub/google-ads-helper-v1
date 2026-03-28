@@ -122,6 +122,8 @@ export default function SearchTerms() {
     const [variantsData, setVariantsData] = useState(null)
     const [trendsLoading, setTrendsLoading] = useState(false)
     const [variantsLoading, setVariantsLoading] = useState(false)
+    const [segSortBy, setSegSortBy] = useState('cost')
+    const [segSortDir, setSegSortDir] = useState('desc')
 
     const toggleSelect = (id) => {
         setSelectedIds(prev => {
@@ -133,7 +135,7 @@ export default function SearchTerms() {
     }
 
     const toggleSelectAll = (items) => {
-        const ids = items.map(t => t.id).filter(Boolean)
+        const ids = items.filter(t => !t.already_negative).map(t => t.id).filter(Boolean)
         const allSelected = ids.every(id => selectedIds.has(id))
         if (allSelected) {
             setSelectedIds(prev => {
@@ -252,9 +254,18 @@ export default function SearchTerms() {
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (error) return <ErrorMessage message={error} onRetry={() => viewMode === 'list' ? loadListData() : loadSegmentedData()} />
 
-    const segmentItems = segData && activeSegment !== 'ALL'
+    const segmentItemsRaw = segData && activeSegment !== 'ALL'
         ? segData.segments?.[activeSegment] || []
         : segData ? Object.values(segData.segments || {}).flat() : []
+
+    const segmentItems = useMemo(() => {
+        if (!segSortBy || segmentItemsRaw.length === 0) return segmentItemsRaw
+        return [...segmentItemsRaw].sort((a, b) => {
+            const vA = a[segSortBy] ?? 0
+            const vB = b[segSortBy] ?? 0
+            return segSortDir === 'desc' ? vB - vA : vA - vB
+        })
+    }, [segmentItemsRaw, segSortBy, segSortDir])
 
     // Pre-compute id → segment key map to avoid O(n²) lookup in render
     const segmentMap = useMemo(() => {
@@ -390,7 +401,14 @@ export default function SearchTerms() {
                                     Zmarnowany budżet: {segData.summary.waste_cost.toFixed(2)} zł
                                 </span>
                                 <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.6)', marginLeft: 8 }}>
-                                    Rozważ dodanie fraz WASTE jako wykluczenia.
+                                    {(() => {
+                                        const wasteTerms = segData?.segments?.WASTE || []
+                                        const alreadyNeg = wasteTerms.filter(t => t.already_negative).length
+                                        const notNeg = wasteTerms.length - alreadyNeg
+                                        if (alreadyNeg === wasteTerms.length) return 'Wszystkie frazy WASTE są już wykluczone.'
+                                        if (alreadyNeg > 0) return `${alreadyNeg} z ${wasteTerms.length} już wykluczone. Rozważ wykluczenie pozostałych ${notNeg}.`
+                                        return 'Rozważ dodanie fraz WASTE jako wykluczenia.'
+                                    })()}
                                 </span>
                             </div>
                         </div>
@@ -423,15 +441,28 @@ export default function SearchTerms() {
                                                         : <Square size={13} />}
                                                 </button>
                                             </th>
-                                            <th style={TH_STYLE}>Segment</th>
-                                            <th style={TH_STYLE}>Fraza</th>
-                                            <th style={TH_STYLE}>Kampania</th>
-                                            <th style={TH_STYLE}>Kliknięcia</th>
-                                            <th style={TH_STYLE}>Koszt</th>
-                                            <th style={TH_STYLE}>Konwersje</th>
-                                            <th style={TH_STYLE}><MetricTooltip term="CVR" inline>CVR</MetricTooltip></th>
-                                            <th style={TH_STYLE}>Powód</th>
-                                            <th style={TH_STYLE}>Akcje</th>
+                                            {[
+                                                { f: null, label: 'Segment' },
+                                                { f: 'text', label: 'Fraza' },
+                                                { f: null, label: 'Kampania' },
+                                                { f: 'clicks', label: 'Kliknięcia' },
+                                                { f: 'cost', label: 'Koszt' },
+                                                { f: 'conversions', label: 'Konwersje' },
+                                                { f: 'cvr', label: 'CVR', metric: true },
+                                                { f: null, label: 'Powód' },
+                                                { f: null, label: 'Akcje' },
+                                            ].map(h => (
+                                                <th key={h.label}
+                                                    style={{ ...TH_STYLE, cursor: h.f ? 'pointer' : 'default', color: h.f && segSortBy === h.f ? '#4F8EF7' : undefined }}
+                                                    onClick={h.f ? () => {
+                                                        if (segSortBy === h.f) setSegSortDir(d => d === 'desc' ? 'asc' : 'desc')
+                                                        else { setSegSortBy(h.f); setSegSortDir('desc') }
+                                                    } : undefined}
+                                                >
+                                                    {h.metric ? <MetricTooltip term="CVR" inline>{h.label}</MetricTooltip> : h.label}
+                                                    {h.f && segSortBy === h.f && <ArrowUpDown size={10} style={{ marginLeft: 3, verticalAlign: 'middle', color: '#4F8EF7' }} />}
+                                                </th>
+                                            ))}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -453,7 +484,7 @@ export default function SearchTerms() {
                                                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                                                 >
                                                     <td style={{ padding: '10px 6px', textAlign: 'center', width: 36 }}>
-                                                        <button onClick={() => toggleSelect(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'rgba(255,255,255,0.3)' }}>
+                                                        <button onClick={() => !t.already_negative && toggleSelect(t.id)} style={{ background: 'none', border: 'none', cursor: t.already_negative ? 'default' : 'pointer', padding: 2, color: 'rgba(255,255,255,0.3)', opacity: t.already_negative ? 0.25 : 1 }}>
                                                             {isSelected ? <CheckSquare size={13} style={{ color: '#4F8EF7' }} /> : <Square size={13} />}
                                                         </button>
                                                     </td>
@@ -481,11 +512,27 @@ export default function SearchTerms() {
                                                                 />
                                                             )}
                                                             {showAddNeg && (
-                                                                <InlineAction
-                                                                    icon={MinusCircle} label="Wyklucz"
-                                                                    color="#F87171" bg="rgba(248,113,113,0.08)" border="rgba(248,113,113,0.2)"
-                                                                    onClick={() => showToast(`"${t.text}" → przejdź do Rekomendacje, aby wykluczyć`, 'info')}
-                                                                />
+                                                                t.already_negative ? (
+                                                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>Już wykluczone</span>
+                                                                ) : (
+                                                                    <InlineAction
+                                                                        icon={MinusCircle} label="Wyklucz"
+                                                                        color="#F87171" bg="rgba(248,113,113,0.08)" border="rgba(248,113,113,0.2)"
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                const res = await bulkAddNegative({
+                                                                                    search_term_ids: [t.id],
+                                                                                    level: 'campaign',
+                                                                                    match_type: 'EXACT',
+                                                                                    client_id: selectedClientId,
+                                                                                })
+                                                                                showToast(`Wyklucz "${t.text}" — dodano ${res.added} negatyw`, 'success')
+                                                                                if (viewMode === 'segments') loadSegmentedData()
+                                                                                else loadListData()
+                                                                            } catch (err) { showToast(`Błąd: ${err.message}`, 'error') }
+                                                                        }}
+                                                                    />
+                                                                )
                                                             )}
                                                         </div>
                                                     </td>

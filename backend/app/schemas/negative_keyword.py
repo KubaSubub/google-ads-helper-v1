@@ -39,8 +39,12 @@ class NegativeKeywordCreate(BaseModel):
 class NegativeKeywordListResponse(BaseModel):
     id: int
     client_id: int
+    google_shared_set_id: Optional[int] = None
     name: str
     description: Optional[str] = None
+    source: str = "LOCAL"
+    status: str = "ENABLED"
+    member_count: int = 0
     item_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

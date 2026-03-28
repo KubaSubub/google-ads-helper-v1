@@ -1,12 +1,17 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts'
-import { AlertTriangle, CheckCircle, HelpCircle, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
+import {
+    AlertTriangle, CheckCircle, HelpCircle, ArrowRight, RefreshCw, Loader2,
+    ChevronUp, ChevronDown, DollarSign, TrendingDown, Award, Download, ExternalLink
+} from 'lucide-react'
 import { getQualityScoreAudit } from '../api'
 import { useApp } from '../contexts/AppContext'
+import { useFilter } from '../contexts/FilterContext'
 import { useNavigateTo } from '../hooks/useNavigateTo'
 import EmptyState from '../components/EmptyState'
+import DarkSelect from '../components/DarkSelect'
 
 const QS_COLORS = { low: '#F87171', mid: '#FBBF24', high: '#4ADE80' }
 
@@ -16,28 +21,157 @@ function getQSColor(score) {
     return QS_COLORS.high
 }
 
+const TH_STYLE = {
+    padding: '10px 12px',
+    fontSize: 10,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.35)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    whiteSpace: 'nowrap',
+    textAlign: 'left',
+    cursor: 'pointer',
+    userSelect: 'none',
+}
+
+const SUBCOMP_LABELS = { 1: 'Poniżej średniej', 2: 'Średnia', 3: 'Powyżej średniej' }
+
+function SubcomponentDot({ value, label }) {
+    const color = value === 1 ? '#F87171' : value === 2 ? '#FBBF24' : value === 3 ? '#4ADE80' : 'rgba(255,255,255,0.15)'
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={`${label}: ${SUBCOMP_LABELS[value] || 'Brak danych'}`}>
+            <div style={{
+                width: 8, height: 8, borderRadius: '50%', background: color,
+                boxShadow: value && value <= 2 ? `0 0 4px ${color}40` : 'none',
+            }} />
+        </div>
+    )
+}
+
+const ISSUE_LABELS = {
+    expected_ctr: { label: 'Oczekiwany CTR', color: '#4F8EF7' },
+    ad_relevance: { label: 'Trafność reklamy', color: '#7B5CE0' },
+    landing_page: { label: 'Strona docelowa', color: '#FBBF24' },
+}
+
+const QS_VIEWS = [
+    { value: 'all', label: 'Wszystkie' },
+    { value: 'low', label: 'Niski QS' },
+    { value: 'high', label: 'Wysoki QS' },
+]
+
 export default function QualityScore() {
     const { selectedClientId } = useApp()
+    const { filters } = useFilter()
     const navigateTo = useNavigateTo()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
+
+    // Filters
+    const [campaignId, setCampaignId] = useState('')
+    const [matchType, setMatchType] = useState('')
+    const [issueFilter, setIssueFilter] = useState('')
+    const [qsView, setQsView] = useState('all')
+    const [qsThreshold, setQsThreshold] = useState('5')
+    const [groupByAg, setGroupByAg] = useState(false)
+
+    // Sort
+    const [sortBy, setSortBy] = useState('quality_score')
+    const [sortDir, setSortDir] = useState('asc')
 
     const loadData = useCallback(async () => {
         if (!selectedClientId) return
         setLoading(true)
         setError(null)
         try {
-            const res = await getQualityScoreAudit(selectedClientId)
+            const params = {}
+            if (campaignId) params.campaign_id = campaignId
+            if (matchType) params.match_type = matchType
+            if (qsThreshold && qsThreshold !== '5') params.qs_threshold = qsThreshold
+            if (filters.dateFrom) params.date_from = filters.dateFrom
+            if (filters.dateTo) params.date_to = filters.dateTo
+            const res = await getQualityScoreAudit(selectedClientId, params)
             setData(res)
         } catch (err) {
             setError(err.message)
         } finally {
             setLoading(false)
         }
-    }, [selectedClientId])
+    }, [selectedClientId, campaignId, matchType, qsThreshold, filters.dateFrom, filters.dateTo])
 
     useEffect(() => { loadData() }, [loadData])
+
+    // Reset filters when client changes
+    useEffect(() => {
+        setCampaignId('')
+        setMatchType('')
+        setIssueFilter('')
+        setQsView('all')
+        setQsThreshold('5')
+    }, [selectedClientId])
+
+    const toggleSort = (field) => {
+        if (sortBy === field) {
+            setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortBy(field)
+            setSortDir('asc')
+        }
+    }
+
+    const SortHeader = ({ field, children, align }) => (
+        <th
+            style={{ ...TH_STYLE, textAlign: align || 'left' }}
+            onClick={() => toggleSort(field)}
+        >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                {children}
+                {sortBy === field && (
+                    sortDir === 'asc'
+                        ? <ChevronUp size={10} style={{ color: '#4F8EF7' }} />
+                        : <ChevronDown size={10} style={{ color: '#4F8EF7' }} />
+                )}
+            </span>
+        </th>
+    )
+
+    // Filtered & sorted keywords
+    const displayKeywords = useMemo(() => {
+        if (!data?.keywords) return []
+        let kws = [...data.keywords]
+
+        // QS view filter
+        if (qsView === 'low') kws = kws.filter(k => k.quality_score < (data.qs_threshold || 5))
+        else if (qsView === 'high') kws = kws.filter(k => k.quality_score >= 8)
+
+        // Issue filter (client-side)
+        if (issueFilter) kws = kws.filter(k => k.primary_issue === issueFilter)
+
+        // Sort
+        kws.sort((a, b) => {
+            const av = a[sortBy] ?? 0
+            const bv = b[sortBy] ?? 0
+            return sortDir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
+        })
+
+        return kws
+    }, [data, qsView, issueFilter, sortBy, sortDir])
+
+    // Ad group grouping
+    const adGroupGroups = useMemo(() => {
+        if (!groupByAg || !displayKeywords.length) return []
+        const groups = {}
+        for (const kw of displayKeywords) {
+            const key = `${kw.campaign}||${kw.ad_group || 'Unknown'}`
+            if (!groups[key]) groups[key] = { campaign: kw.campaign, ad_group: kw.ad_group || 'Unknown', keywords: [], totalQs: 0 }
+            groups[key].keywords.push(kw)
+            groups[key].totalQs += kw.quality_score
+        }
+        return Object.values(groups)
+            .map(g => ({ ...g, avgQs: g.totalQs / g.keywords.length, count: g.keywords.length }))
+            .sort((a, b) => a.avgQs - b.avgQs)
+    }, [displayKeywords, groupByAg])
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
 
@@ -69,7 +203,27 @@ export default function QualityScore() {
         }
     })
 
-    const highQSCount = chartData.filter(d => parseInt(d.score) >= 8).reduce((a, c) => a + c.count, 0)
+    const campaignOptions = [
+        { value: '', label: 'Wszystkie kampanie' },
+        ...(data.available_campaigns || []).map(c => ({ value: String(c.id), label: c.name })),
+    ]
+
+    const matchTypeOptions = [
+        { value: '', label: 'Wszystkie typy' },
+        { value: 'EXACT', label: 'Dokładne' },
+        { value: 'PHRASE', label: 'Do wyrażenia' },
+        { value: 'BROAD', label: 'Przybliżone' },
+    ]
+
+    const issueOptions = [
+        { value: '', label: 'Wszystkie problemy' },
+        { value: 'expected_ctr', label: 'Oczekiwany CTR' },
+        { value: 'ad_relevance', label: 'Trafność reklamy' },
+        { value: 'landing_page', label: 'Strona docelowa' },
+    ]
+
+    const issueBreakdown = data.issue_breakdown || {}
+    const maxIssueCount = Math.max(...Object.values(issueBreakdown), 1)
 
     return (
         <div style={{ maxWidth: 1200 }}>
@@ -88,6 +242,14 @@ export default function QualityScore() {
                         <HelpCircle size={12} />
                         Cel: średni QS powyżej 7.0
                     </div>
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => { window.location.href = `/api/v1/export/quality-score?client_id=${selectedClientId}&format=csv` }} style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Download size={11} />CSV
+                        </button>
+                        <button onClick={() => { window.location.href = `/api/v1/export/quality-score?client_id=${selectedClientId}&format=xlsx` }} style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Download size={11} />XLSX
+                        </button>
+                    </div>
                     <button
                         onClick={loadData}
                         style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 7, fontSize: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}
@@ -98,8 +260,9 @@ export default function QualityScore() {
                 </div>
             </div>
 
-            {/* Summary row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+            {/* KPI Row — 5 cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+                {/* Średni QS */}
                 <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #4F8EF7' }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                         Średni QS
@@ -109,6 +272,8 @@ export default function QualityScore() {
                     </span>
                     <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>/10</span>
                 </div>
+
+                {/* Niski QS */}
                 <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #F87171' }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                         Niski QS (&lt;{data.qs_threshold})
@@ -118,23 +283,100 @@ export default function QualityScore() {
                     </span>
                     <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.5)', marginLeft: 6 }}>wymaga uwagi</span>
                 </div>
+
+                {/* Wysoki QS */}
                 <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #4ADE80' }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                         Wysoki QS (8-10)
                     </div>
                     <span style={{ fontSize: 26, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>
-                        {highQSCount}
+                        {data.high_qs_count ?? 0}
                     </span>
+                </div>
+
+                {/* Wydatki na niski QS */}
+                <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #FBBF24' }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                        Wydatki na niski QS
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                        <span style={{ fontSize: 22, fontWeight: 700, color: '#FBBF24', fontFamily: 'Syne' }}>
+                            {data.low_qs_spend_pct != null ? `${data.low_qs_spend_pct}%` : '—'}
+                        </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+                        {data.low_qs_spend_usd != null ? `${data.low_qs_spend_usd.toFixed(2)} zł` : '—'} z budżetu
+                    </div>
+                </div>
+
+                {/* IS utracony (ranking) */}
+                <div className="v2-card" style={{ padding: '14px 18px', borderLeft: '3px solid #7B5CE0' }} title="Impression Share utracony z powodu niskiego rankingu reklamy (Quality Score + bid)">
+                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                        IS utracony (ranking)
+                    </div>
+                    <span style={{ fontSize: 26, fontWeight: 700, color: '#7B5CE0', fontFamily: 'Syne' }}>
+                        {data.avg_rank_lost_is != null ? `${data.avg_rank_lost_is}%` : '—'}
+                    </span>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+                        średnia utrata z powodu QS + bid
+                    </div>
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
-                {/* Chart */}
+            {/* Filter bar */}
+            <div className="v2-card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    Filtry
+                </div>
+                <DarkSelect value={campaignId} onChange={setCampaignId} options={campaignOptions} style={{ minWidth: 180 }} />
+                <DarkSelect value={matchType} onChange={setMatchType} options={matchTypeOptions} style={{ minWidth: 140 }} />
+                <DarkSelect value={issueFilter} onChange={setIssueFilter} options={issueOptions} style={{ minWidth: 160 }} />
+                <DarkSelect value={qsThreshold} onChange={setQsThreshold} options={[
+                    { value: '3', label: 'QS < 3' },
+                    { value: '4', label: 'QS < 4' },
+                    { value: '5', label: 'QS < 5' },
+                    { value: '6', label: 'QS < 6' },
+                    { value: '7', label: 'QS < 7' },
+                ]} style={{ minWidth: 100 }} />
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                    {QS_VIEWS.map(v => (
+                        <button
+                            key={v.value}
+                            onClick={() => setQsView(v.value)}
+                            style={{
+                                padding: '5px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                background: qsView === v.value ? 'rgba(79,142,247,0.15)' : 'transparent',
+                                color: qsView === v.value ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                                border: qsView === v.value ? '1px solid rgba(79,142,247,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {v.label}
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => setGroupByAg(g => !g)}
+                        style={{
+                            padding: '5px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                            background: groupByAg ? 'rgba(123,92,224,0.15)' : 'transparent',
+                            color: groupByAg ? '#7B5CE0' : 'rgba(255,255,255,0.4)',
+                            border: groupByAg ? '1px solid rgba(123,92,224,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                            cursor: 'pointer', marginLeft: 4,
+                        }}
+                    >
+                        Grupuj
+                    </button>
+                </div>
+            </div>
+
+            {/* Charts row: QS Distribution + Issue Breakdown */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                {/* QS Distribution chart */}
                 <div className="v2-card" style={{ padding: '18px' }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 16 }}>
                         Rozkład QS
                     </div>
-                    <div style={{ height: 220 }}>
+                    <div style={{ height: 200 }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
@@ -173,86 +415,211 @@ export default function QualityScore() {
                     </div>
                 </div>
 
-                {/* Issues table */}
-                <div className="v2-card" style={{ overflow: 'hidden' }}>
+                {/* Issue Breakdown */}
+                <div className="v2-card" style={{ padding: '18px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 16 }}>
+                        Główne problemy
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+                        {Object.entries(ISSUE_LABELS).map(([key, cfg]) => {
+                            const count = issueBreakdown[key] || 0
+                            const pct = maxIssueCount > 0 ? (count / maxIssueCount) * 100 : 0
+                            return (
+                                <div key={key}>
+                                    <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>{cfg.label}</span>
+                                        <span style={{ fontSize: 13, fontWeight: 700, color: cfg.color, fontFamily: 'Syne' }}>{count}</span>
+                                    </div>
+                                    <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%', borderRadius: 3, background: cfg.color,
+                                            width: `${pct}%`, transition: 'width 0.4s ease',
+                                            opacity: 0.7,
+                                        }} />
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 12 }}>
+                        Słowa z subkomponentem poniżej średniej lub na średnim poziomie
+                    </div>
+                </div>
+            </div>
+
+            {/* Ad Group grouped view */}
+            {groupByAg && adGroupGroups.length > 0 && (
+                <div className="v2-card" style={{ overflow: 'hidden', marginBottom: 16 }}>
                     <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
-                            Słowa wymagające optymalizacji
+                            Grupy reklam ({adGroupGroups.length})
                         </div>
                         <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
-                            Wynik jakości poniżej {data.qs_threshold} — popraw je, aby obniżyć CPC.
+                            Średni QS per ad group — posortowane od najsłabszego
                         </p>
                     </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, padding: 14 }}>
+                        {adGroupGroups.map((g, i) => (
+                            <div key={i} className="v2-card" style={{ padding: '12px 16px', borderLeft: `3px solid ${getQSColor(g.avgQs)}` }}>
+                                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#F0F0F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
+                                        {g.ad_group}
+                                    </div>
+                                    <span style={{
+                                        fontSize: 14, fontWeight: 700, color: getQSColor(g.avgQs), fontFamily: 'Syne',
+                                    }}>
+                                        {g.avgQs.toFixed(1)}
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 4 }}>{g.campaign}</div>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                                    {g.count} słów kluczowych
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
-                    {data.low_qs_keywords.length === 0 ? (
-                        <div style={{ padding: '40px', textAlign: 'center' }}>
-                            <CheckCircle size={32} style={{ color: '#4ADE80', margin: '0 auto 10px' }} />
-                            <div style={{ fontSize: 14, fontWeight: 500, color: '#F0F0F0', marginBottom: 4 }}>Brak problemów!</div>
-                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Wszystkie aktywne słowa mają QS ≥ {data.qs_threshold}.</div>
-                        </div>
-                    ) : (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                        {['Słowo kluczowe', 'QS', 'Diagnostyka', 'Rekomendacja'].map(h => (
-                                            <th key={h} style={{
-                                                padding: '10px 14px', textAlign: h === 'QS' ? 'center' : 'left',
-                                                fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)',
-                                                textTransform: 'uppercase', letterSpacing: '0.08em',
-                                            }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.low_qs_keywords.map((item, i) => (
-                                        <tr key={i}
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s', cursor: 'pointer' }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                            onClick={() => navigateTo('keywords')}
-                                        >
-                                            <td style={{ padding: '12px 14px' }}>
-                                                <div style={{ fontSize: 13, fontWeight: 500, color: '#F0F0F0' }}>{item.keyword}</div>
-                                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{item.campaign}</div>
-                                            </td>
-                                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                                                <span style={{
-                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                    width: 30, height: 30, borderRadius: 8, fontWeight: 700, fontSize: 13,
-                                                    background: `${getQSColor(item.quality_score)}15`,
-                                                    color: getQSColor(item.quality_score),
-                                                }}>
-                                                    {item.quality_score}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '12px 14px' }}>
-                                                {item.issues?.length > 0 ? (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                                        {item.issues.map((issue, idx) => (
-                                                            <div key={idx} className="flex items-start gap-1.5" style={{ fontSize: 11, color: 'rgba(248,113,113,0.7)' }}>
-                                                                <AlertTriangle size={10} style={{ marginTop: 2, flexShrink: 0 }} />
-                                                                <span>{issue}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Brak wyraźnych problemów</span>
-                                                )}
-                                            </td>
-                                            <td style={{ padding: '12px 14px' }}>
+            {/* Main table */}
+            <div className="v2-card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        Słowa kluczowe ({displayKeywords.length})
+                    </div>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
+                        Kliknij wiersz, aby przejść do zarządzania słowami kluczowymi
+                    </p>
+                </div>
+
+                {displayKeywords.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center' }}>
+                        <CheckCircle size={32} style={{ color: '#4ADE80', margin: '0 auto 10px' }} />
+                        <div style={{ fontSize: 14, fontWeight: 500, color: '#F0F0F0', marginBottom: 4 }}>Brak wyników</div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Zmień filtry, aby zobaczyć słowa kluczowe.</div>
+                    </div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                    <SortHeader field="keyword">Słowo kluczowe</SortHeader>
+                                    <SortHeader field="quality_score" align="center">QS</SortHeader>
+                                    <th style={{ ...TH_STYLE, cursor: 'default', textAlign: 'center' }} title="Oczekiwany CTR / Trafność reklamy / Strona docelowa">
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
+                                            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>CTR</span>
+                                            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>Ad</span>
+                                            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>LP</span>
+                                        </div>
+                                    </th>
+                                    <SortHeader field="ctr_pct" align="right">CTR%</SortHeader>
+                                    <SortHeader field="cost_usd" align="right">Koszt (zł)</SortHeader>
+                                    <SortHeader field="impressions" align="right">Impr.</SortHeader>
+                                    <SortHeader field="conversions" align="right">Konw.</SortHeader>
+                                    <SortHeader field="search_rank_lost_is" align="right">IS lost</SortHeader>
+                                    <th style={{ ...TH_STYLE, cursor: 'default' }}>Rekomendacja</th>
+                                    <th style={{ ...TH_STYLE, cursor: 'default', textAlign: 'center', width: 36 }} title="Otwórz w Google Ads"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {displayKeywords.map((item, i) => (
+                                    <tr key={item.keyword_id || i}
+                                        style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s', cursor: 'pointer' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                        onClick={() => navigateTo('keywords')}
+                                    >
+                                        {/* Keyword + campaign */}
+                                        <td style={{ padding: '10px 12px', maxWidth: 220 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 500, color: '#F0F0F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {item.keyword}
+                                            </div>
+                                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {item.campaign} {item.ad_group && item.ad_group !== 'Unknown' && <span style={{ color: 'rgba(255,255,255,0.2)' }}>/ {item.ad_group}</span>}
+                                                {item.match_type && <span style={{ marginLeft: 6, padding: '1px 5px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', fontSize: 9 }}>{item.match_type}</span>}
+                                            </div>
+                                        </td>
+
+                                        {/* QS badge */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                            <span style={{
+                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                width: 30, height: 30, borderRadius: 8, fontWeight: 700, fontSize: 13,
+                                                background: `${getQSColor(item.quality_score)}15`,
+                                                color: getQSColor(item.quality_score),
+                                            }}>
+                                                {item.quality_score}
+                                            </span>
+                                        </td>
+
+                                        {/* Subcomponent dots */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                                                <SubcomponentDot value={item.expected_ctr} label="CTR" />
+                                                <SubcomponentDot value={item.ad_relevance} label="Reklama" />
+                                                <SubcomponentDot value={item.landing_page} label="Strona" />
+                                            </div>
+                                        </td>
+
+                                        {/* CTR% */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                                            {item.ctr_pct != null ? `${item.ctr_pct}%` : '—'}
+                                        </td>
+
+                                        {/* Cost */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                                            {item.cost_usd != null ? `${item.cost_usd.toFixed(2)}` : '—'}
+                                        </td>
+
+                                        {/* Impressions */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                                            {item.impressions?.toLocaleString() ?? '—'}
+                                        </td>
+
+                                        {/* Conversions */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                                            {item.conversions != null ? item.conversions : '—'}
+                                        </td>
+
+                                        {/* IS lost */}
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: item.search_rank_lost_is > 0.2 ? '#F87171' : 'rgba(255,255,255,0.5)' }}>
+                                            {item.search_rank_lost_is != null ? `${(item.search_rank_lost_is * 100).toFixed(1)}%` : '—'}
+                                        </td>
+
+                                        {/* Recommendation */}
+                                        <td style={{ padding: '10px 12px', maxWidth: 240 }}>
+                                            {item.issues?.length > 0 ? (
                                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.03)', padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.06)' }}>
                                                     <ArrowRight size={10} style={{ color: '#4F8EF7', marginTop: 2, flexShrink: 0 }} />
-                                                    {item.recommendation}
+                                                    <span>{item.recommendation}</span>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
+                                            ) : (
+                                                <CheckCircle size={14} style={{ color: 'rgba(74,222,128,0.4)' }} />
+                                            )}
+                                        </td>
+
+                                        {/* Deep link to Google Ads */}
+                                        <td style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                            {data.google_customer_id && item.google_keyword_id && (
+                                                <a
+                                                    href={`https://ads.google.com/aw/keywords?ocid=${data.google_customer_id}&keywordId=${item.google_keyword_id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={e => e.stopPropagation()}
+                                                    title="Otwórz w Google Ads"
+                                                    style={{ color: 'rgba(255,255,255,0.25)', display: 'inline-flex' }}
+                                                    className="hover:text-white/60"
+                                                >
+                                                    <ExternalLink size={12} />
+                                                </a>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     )

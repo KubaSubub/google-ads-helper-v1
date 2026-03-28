@@ -246,12 +246,13 @@ def bulk_add_negative(
             # Determine ad_group_id for the negative keyword
             neg_ad_group_id = term.ad_group_id if body.level == "ad_group" else None
 
-            # Check for duplicates
+            # Check for duplicates (only ENABLED — REMOVED should not block re-add)
             dup_query = db.query(NegativeKeyword).filter(
                 NegativeKeyword.text == term.text,
                 NegativeKeyword.campaign_id == campaign_id,
                 NegativeKeyword.match_type == body.match_type,
                 NegativeKeyword.client_id == body.client_id,
+                NegativeKeyword.status != "REMOVED",
             )
             if neg_ad_group_id is not None:
                 dup_query = dup_query.filter(NegativeKeyword.ad_group_id == neg_ad_group_id)

@@ -23,7 +23,7 @@ async function mockReportsApi(page) {
     );
 }
 
-// ─── Sekcja 16 — Agent (Raport AI) ─────────────────────────────────
+// ─── Sekcja 16 — Agent (Asystent AI) ────────────────────────────────
 
 test.describe('Sekcja 16 — Agent', () => {
     test.beforeEach(async ({ page }) => {
@@ -37,12 +37,12 @@ test.describe('Sekcja 16 — Agent', () => {
 
     test('Sekcja 16.1 — Agent page renderuje się', async ({ page }) => {
         await page.goto('/agent');
-        await expect(page.locator('text=/Raport AI/i').first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('text=/Asystent AI/i').first()).toBeVisible({ timeout: 10_000 });
     });
 
     test('Sekcja 16.2 — 6 quick action buttons obecnych', async ({ page }) => {
         await page.goto('/agent');
-        await expect(page.locator('text=/Raport AI/i').first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('text=/Asystent AI/i').first()).toBeVisible({ timeout: 10_000 });
 
         // Quick actions: Raport tygodniowy, Analiza kampanii, Analiza budżetów,
         // Wyszukiwane frazy, Słowa kluczowe, Alerty i anomalie
@@ -60,7 +60,7 @@ test.describe('Sekcja 16 — Agent', () => {
 
     test('Sekcja 16.3 — Textarea input + Send button', async ({ page }) => {
         await page.goto('/agent');
-        await expect(page.locator('text=/Raport AI/i').first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('text=/Asystent AI/i').first()).toBeVisible({ timeout: 10_000 });
         // Textarea
         const textarea = page.locator('textarea').first();
         await expect(textarea).toBeVisible();
@@ -75,7 +75,7 @@ test.describe('Sekcja 16 — Agent', () => {
         const errors = [];
         page.on('pageerror', (err) => errors.push(err.message));
         await page.goto('/agent');
-        await expect(page.locator('text=/Raport AI/i').first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('text=/Asystent AI/i').first()).toBeVisible({ timeout: 10_000 });
         await page.waitForTimeout(1000);
         expect(errors).toEqual([]);
     });

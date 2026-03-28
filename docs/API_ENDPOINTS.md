@@ -82,7 +82,7 @@ Base API URL: `/api/v1`
 - `POST /negative-keywords/` — create one or more negative keywords (body: `NegativeKeywordCreate`; `allow_demo_write` enforced)
 - `DELETE /negative-keywords/{negative_keyword_id}` — soft-delete (sets status to REMOVED; `allow_demo_write` enforced)
 - `GET /ad-groups/?client_id=X&campaign_id=` — lightweight ad group list for dropdowns
-- `GET /ads/?client_id=X&campaign_id=&ad_group_id=&status=&sort_by=cost&sort_order=desc&page=&page_size=50`
+- `GET /ads/?client_id=X&campaign_id=&ad_group_id=&status=&sort_by=cost&sort_order=desc&page=1&page_size=50`
 
 ### Negative Keyword Lists
 - `GET /negative-keyword-lists/?client_id=X` — list all negative keyword lists with item counts
@@ -238,8 +238,8 @@ Base API URL: `/api/v1`
 - `GET /semantic/clusters?client_id=X&days=30&top_n=1000&threshold=1.0`
 
 ## History (Change Events)
-- `GET /history/?client_id=X&date_from=&date_to=&resource_type=&user_email=&client_type=&operation=&limit=50&offset=0`
-- `GET /history/unified?client_id=X&date_from=&date_to=&resource_type=&limit=50&offset=0`
+- `GET /history/?client_id=X&date_from=&date_to=&resource_type=&user_email=&client_type=&operation=&campaign_name=&limit=50&offset=0`
+- `GET /history/unified?client_id=X&date_from=&date_to=&resource_type=&campaign_name=&limit=50&offset=0`
 - `GET /history/filters?client_id=X`
 
 ## AI Agent

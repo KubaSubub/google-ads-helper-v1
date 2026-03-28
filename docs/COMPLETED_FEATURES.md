@@ -177,5 +177,43 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `sync_config.py` + `sync_coverage.py` backend modules.
 - `DarkSelect` and `GlobalDatePicker` reusable components.
 
+## Dashboard Overhaul + Cross-App Navigation
+- Dashboard: CTR, Impressions, CPA, Wasted Spend KPI cards; geo share_cost_pct; Health→Alerts nav; campaign row click→/campaigns; "Wszystkie →" links.
+- New `GET /analytics/campaigns-summary` endpoint — per-campaign aggregated metrics (clicks, impressions, cost_usd, conversions, ctr, roas) for a given period.
+- New `GET /analytics/wow-comparison` endpoint — current vs previous period with day-of-week alignment for overlay chart.
+- `WoWChart.jsx` — WoW period comparison chart with metric selector.
+- `useNavigateTo` hook for centralized cross-tab navigation (Alerts→Campaigns, QualityScore→Keywords, Forecast→Campaigns, etc.).
+- Forecast: horizon selector (7/14/30d), FilterContext integration.
+- Semantic: FilterContext integration, search input for clusters, bulk negative per waste cluster.
+- Settings: form validation (min/max on safety_limits + business_rules), dirty state tracking with beforeunload.
+- Agent: chat history persistence via localStorage (max 50 messages, "Wyczyść historię" button).
+- Reports: PDF/Print button (window.print, zero new dependencies).
+
+## Dashboard Polish Sprint
+- Sortable campaign table — click Budżet/Koszt/Konwersje/ROAS headers to sort.
+- Deep-link campaign rows → `/campaigns?campaign_id=X`.
+- Clickable Wasted Spend card → `/search-terms?segment=WASTE`.
+- "Poranny przegląd →" link in dashboard header → `/daily-audit`.
+- InsightsFeed priority filter pills (Pilne/Średnie/Info).
+- Sparkline tooltip on hover.
+- Tooltip on truncated bidding strategy column.
+- Sortable geo table (click any column header).
+- IS (Impression Share) per campaign column in dashboard table.
+- WoW chart X-axis shows dates (25.03) instead of day names.
+
+## Campaigns Sort/Filter Enhancements
+- Sort dropdown + metric filter in sidebar campaign tiles.
+- Mini-metrics (cost, conversions, ROAS) visible in campaign sidebar tiles.
+
+## Google Ads Coverage Expansion (Wave A-E)
+- 12 new models: AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion.
+- 13 new sync phases (35 total): product_groups, placement_metrics, bid_modifiers, bidding_strategies, shared_budgets, audiences, topic_metrics, google_recommendations, conversion_value_rules, pmax_channel_metrics, campaign_audiences, campaign_assets, asset_group_signals + existing asset_groups/asset_group_daily/asset_group_assets.
+- Wave A: Auction Insights, Bid Modifiers, Target CPA/ROAS write, Extension details, Demographics (parental + income).
+- Wave B: Shopping Product Group model + sync + analytics endpoint.
+- Wave C: Placement model + sync + exclusion write, Topic Targeting, Audience Management.
+- Wave D: Video metrics merged into Placement model.
+- Wave E: Portfolio Bid Strategies, Shared Budgets, Google Recommendations, Conversion Value Rules, MCC Multi-Account, Offline Conversions.
+- Frontend: new analysis sections in SearchOptimization.jsx for each wave.
+
 ## Schema Auto-Migration
 - `database.py` auto-migration adds missing columns (labels, target_cpa_micros, target_roas, primary_status, bidding_strategy_resource_name, portfolio_bid_strategy_id, age_range, gender) without requiring DB delete + reseed.

@@ -488,8 +488,8 @@ function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onT
                             }}
                         >
                             {isApplying
-                                ? <><Loader2 size={12} className="animate-spin" /> Running...</>
-                                : <><Play size={12} style={{ fill: rec.executable ? 'white' : 'transparent' }} /> {rec.executable ? 'Apply' : 'Manual review'}</>
+                                ? <><Loader2 size={12} className="animate-spin" /> Wykonuję...</>
+                                : <><Play size={12} style={{ fill: rec.executable ? 'white' : 'transparent' }} /> {rec.executable ? 'Zastosuj' : 'Ręczna weryfikacja'}</>
                             }
                         </button>
                         <button
@@ -507,7 +507,7 @@ function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onT
                                 border: '1px solid rgba(255,255,255,0.1)',
                             }}
                         >
-                            <XCircle size={12} /> Dismiss
+                            <XCircle size={12} /> Odrzuć
                         </button>
                     </div>
                 </div>
@@ -586,7 +586,7 @@ export default function Recommendations() {
 
     async function handleApply(rec) {
         if (!rec.executable) {
-            showToast('Ta rekomendacja jest alertem i wymaga recznej weryfikacji.', 'info')
+            showToast('Ta rekomendacja jest alertem i wymaga ręcznej weryfikacji.', 'info')
             return
         }
         setApplyingId(rec.id)
@@ -595,7 +595,7 @@ export default function Recommendations() {
             setDryRunData(preview)
             setConfirmModal(rec)
         } catch (err) {
-            showToast('Blad podgladu: ' + err.message, 'error')
+            showToast('Błąd podglądu: ' + err.message, 'error')
         } finally {
             setApplyingId(null)
         }
@@ -606,13 +606,14 @@ export default function Recommendations() {
         setApplyingId(confirmModal.id)
         try {
             await apply(confirmModal.id, false)
-            showToast('Akcja wykonana', 'success')
+            showToast('Akcja wykonana — zobacz zakładkę Historia zmian', 'success')
+
             setConfirmModal(null)
             setDryRunData(null)
             setSelectedIds(new Set())
             await refetch()
         } catch (err) {
-            showToast('Blad wykonania: ' + err.message, 'error')
+            showToast('Błąd wykonania: ' + err.message, 'error')
         } finally {
             setApplyingId(null)
         }
@@ -628,7 +629,7 @@ export default function Recommendations() {
             })
             showToast('Rekomendacja odrzucona', 'info')
         } catch (err) {
-            showToast('Blad: ' + err.message, 'error')
+            showToast('Błąd: ' + err.message, 'error')
         }
     }
 
@@ -668,7 +669,7 @@ export default function Recommendations() {
         setBulkApplying(false)
         setSelectedIds(new Set())
         await refetch()
-        showToast(`Applied ${success} action(s)${failed ? `, failed ${failed}` : ''}`, success ? 'success' : 'error')
+        showToast(`Wykonano ${success} akcji${failed ? `, błędów: ${failed}` : ''}`, success ? 'success' : 'error')
     }
 
     async function handleBulkDismiss() {
@@ -685,7 +686,7 @@ export default function Recommendations() {
         setBulkApplying(false)
         setSelectedIds(new Set())
         await refetch()
-        showToast('Selected recommendations dismissed', 'info')
+        showToast('Zaznaczone rekomendacje odrzucone', 'info')
     }
 
     const sourceOptions = ['ALL', 'PLAYBOOK_RULES', 'ANALYTICS', 'GOOGLE_ADS_API', 'HYBRID']
@@ -695,10 +696,10 @@ export default function Recommendations() {
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
-                        Recommendations
+                        Rekomendacje
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        {(summary && summary.total) || (recommendations && recommendations.length) || 0} active recommendations
+                        {(summary && summary.total) || (recommendations && recommendations.length) || 0} aktywnych rekomendacji
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -714,7 +715,7 @@ export default function Recommendations() {
                             color: '#4ADE80', cursor: 'pointer',
                         }}
                     >
-                        <Download size={11} /> Export
+                        <Download size={11} /> Eksport
                     </button>
                     <button
                         onClick={() => refetch()}
@@ -725,7 +726,7 @@ export default function Recommendations() {
                             color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
                         }}
                     >
-                        <RefreshCw size={12} /> Refresh
+                        <RefreshCw size={12} /> Odśwież
                     </button>
                 </div>
             </div>
@@ -733,23 +734,23 @@ export default function Recommendations() {
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div className="flex items-center gap-3 flex-wrap">
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Łącznie</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>{summary?.total || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Executable</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Do wykonania</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>{summary?.executable_total || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>High</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Pilne</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: '#F87171', fontFamily: 'Syne' }}>{summary?.high_priority || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Action</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Akcje</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>{summary?.by_context_outcome?.ACTION || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Blocked</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Zablokowane</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: '#FBBF24', fontFamily: 'Syne' }}>{summary?.by_context_outcome?.BLOCKED_BY_CONTEXT || 0}</span>
                     </div>
                 </div>
@@ -786,7 +787,7 @@ export default function Recommendations() {
                                 cursor: 'pointer',
                             }}
                         >
-                            {source === 'ALL' ? 'All sources' : SOURCE_LABELS[source] || source}
+                            {source === 'ALL' ? 'Wszystkie źródła' : SOURCE_LABELS[source] || source}
                         </button>
                     ))}
                     {['ALL', 'EXECUTABLE', 'ALERTS'].map(mode => (
@@ -836,7 +837,7 @@ export default function Recommendations() {
                             color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
                         }}
                     >
-                        {selectedIds.size === executableItems.length ? 'Unselect executable' : 'Select executable'}
+                        {selectedIds.size === executableItems.length ? 'Odznacz wykonalne' : 'Zaznacz wykonalne'}
                     </button>
                     {selectedIds.size > 0 && (
                         <>

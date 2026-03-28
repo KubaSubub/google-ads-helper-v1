@@ -147,6 +147,16 @@ class SearchTermsService:
         for c in campaigns:
             campaign_names[c.id] = c.name
 
+        # Build set of already-excluded texts (ENABLED negatives only)
+        from app.models.negative_keyword import NegativeKeyword
+        neg_texts = set(
+            row[0].lower()
+            for row in self.db.query(NegativeKeyword.text)
+            .filter(NegativeKeyword.client_id == client_id, NegativeKeyword.status != "REMOVED")
+            .all()
+            if row[0]
+        )
+
         segment_names = ["HIGH_PERFORMER", "WASTE", "IRRELEVANT", "OTHER"]
         segments = {}
         counts = {}
@@ -178,6 +188,7 @@ class SearchTermsService:
                     "campaign_name": campaign_names.get(
                         t.campaign_id or (t.ad_group.campaign_id if t.ad_group else None), ""
                     ),
+                    "already_negative": (t.text or "").lower() in neg_texts,
                 }
                 for t in seg_terms
             ]

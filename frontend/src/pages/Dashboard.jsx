@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useMemo, useCallback } from 'react'
-import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
 import {
-    MousePointerClick, DollarSign, Target, BarChart3,
+    MousePointerClick, DollarSign, Target, BarChart3, Award,
     TrendingUp, TrendingDown, ChevronRight, ChevronUp, ChevronDown,
     Eye, Percent, ShoppingCart, Trash2,
 } from 'lucide-react'
@@ -10,7 +10,8 @@ import {
     getDashboardKPIs, getCampaigns, getCampaignsSummary,
     getHealthScore, getCampaignTrends, getRecommendations,
     getBudgetPacing, getDeviceBreakdown, getGeoBreakdown,
-    getWastedSpend, getImpressionShare,
+    getWastedSpend, getImpressionShare, getActionHistory,
+    getQualityScoreAudit, getPmaxChannels,
 } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
@@ -191,6 +192,9 @@ export default function Dashboard() {
     const [wastedSpend, setWastedSpend]     = useState(null)
     const [campaignMetrics, setCampaignMetrics] = useState(null)
     const [impressionShare, setImpressionShare] = useState(null)
+    const [recentActions, setRecentActions] = useState([])
+    const [qsAudit, setQsAudit]           = useState(null)
+    const [pmaxChannels, setPmaxChannels] = useState(null)
 
     const [expandedDevice, setExpandedDevice] = useState(null)
     const [sortBy, setSortBy] = useState('cost_usd')
@@ -233,6 +237,9 @@ export default function Dashboard() {
             _catch(getWastedSpend(selectedClientId, allParams)),
             _catch(getCampaignsSummary(selectedClientId, allParams)),
             _catch(getImpressionShare(selectedClientId, allParams)),
+            _catch(getActionHistory(selectedClientId, { limit: 5 })),
+            _catch(getQualityScoreAudit(selectedClientId)),
+            _catch(getPmaxChannels(selectedClientId, allParams)),
         ])
     }, [selectedClientId, allParams, campaignParams])
 
@@ -242,7 +249,7 @@ export default function Dashboard() {
         if (promise) {
             promise.then(results => {
                 if (cancelled || !results) return
-                const [hs, ct, recs, bp, dev, geo, ws, cm, is_] = results
+                const [hs, ct, recs, bp, dev, geo, ws, cm, is_, actionsData, qsData, pmaxCh] = results
                 setHealthScore(hs)
                 setCampaignTrends(ct)
                 setRecs(recs?.recommendations || recs?.items || [])
@@ -252,6 +259,9 @@ export default function Dashboard() {
                 setWastedSpend(ws)
                 setCampaignMetrics(cm?.campaigns || null)
                 setImpressionShare(is_)
+                setRecentActions(actionsData?.actions || [])
+                setQsAudit(qsData)
+                setPmaxChannels(pmaxCh)
                 setHealthLoading(false)
             })
         }
@@ -271,8 +281,9 @@ export default function Dashboard() {
             result = [...result].sort((a, b) => {
                 const mA = campaignMetrics[String(a.id)]
                 const mB = campaignMetrics[String(b.id)]
-                const vA = sortBy === 'budget_usd' ? (a.budget_usd ?? 0) : (mA?.[sortBy] ?? 0)
-                const vB = sortBy === 'budget_usd' ? (b.budget_usd ?? 0) : (mB?.[sortBy] ?? 0)
+                const getCpaVal = (m) => m && m.conversions > 0 ? m.cost_usd / m.conversions : 0
+                const vA = sortBy === 'budget_usd' ? (a.budget_usd ?? 0) : sortBy === 'cpa' ? getCpaVal(mA) : (mA?.[sortBy] ?? 0)
+                const vB = sortBy === 'budget_usd' ? (b.budget_usd ?? 0) : sortBy === 'cpa' ? getCpaVal(mB) : (mB?.[sortBy] ?? 0)
                 return sortDir === 'desc' ? vB - vA : vA - vB
             })
         }
@@ -410,6 +421,30 @@ export default function Dashboard() {
                 </div>
             </div>
 
+            {/* —— QS Health Widget —— */}
+            {qsAudit && qsAudit.total_keywords > 0 && (
+                <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16, cursor: 'pointer' }} onClick={() => navigate('/quality-score')}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(123,92,224,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Award size={16} style={{ color: '#7B5CE0' }} />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#F0F0F0' }}>
+                                    Quality Score: <span style={{ color: qsAudit.average_qs >= 7 ? '#4ADE80' : qsAudit.average_qs >= 5 ? '#FBBF24' : '#F87171', fontFamily: 'Syne' }}>{qsAudit.average_qs}/10</span>
+                                </div>
+                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+                                    {qsAudit.low_qs_count > 0
+                                        ? `${qsAudit.low_qs_count} słów z niskim QS • ${qsAudit.low_qs_spend_pct}% budżetu`
+                                        : 'Wszystkie słowa powyżej progu'}
+                                </div>
+                            </div>
+                        </div>
+                        <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                    </div>
+                </div>
+            )}
+
             {/* â"€â"€ Insights Feed â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             <div style={{ marginBottom: 16 }}>
                 <InsightsFeed
@@ -460,6 +495,7 @@ export default function Dashboard() {
                                         { label: 'Koszt', key: 'cost_usd', right: true },
                                         { label: 'Konwersje', key: 'conversions', right: true },
                                         { label: 'ROAS', key: 'roas', right: true },
+                                        { label: 'CPA', key: 'cpa', right: true },
                                         { label: 'IS', key: 'impression_share', right: true },
                                         { label: `Trend (${days}d)`, key: null },
                                         { label: 'Strategia', key: null },
@@ -497,7 +533,7 @@ export default function Dashboard() {
                             <tbody>
                                 {filteredCampaigns.length === 0 ? (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                                        <td colSpan={11} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
                                             Brak kampanii dla wybranych filtrów
                                         </td>
                                     </tr>
@@ -538,6 +574,9 @@ export default function Dashboard() {
                                             </td>
                                             <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics ? ((metrics.roas >= 3) ? '#4ADE80' : (metrics.roas >= 1) ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
                                                 {metrics ? `${metrics.roas.toFixed(2)}×` : '—'}
+                                            </td>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.6)' }}>
+                                                {metrics && metrics.conversions > 0 ? `${(metrics.cost_usd / metrics.conversions).toFixed(0)} zł` : '—'}
                                             </td>
                                             <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics?.impression_share != null ? (metrics.impression_share > 0.5 ? '#4ADE80' : metrics.impression_share > 0.3 ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
                                                 {metrics?.impression_share != null ? `${(metrics.impression_share * 100).toFixed(0)}%` : '—'}
@@ -603,6 +642,84 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* —— PMax Channel Split —— */}
+            {pmaxChannels?.channels?.length > 0 && (
+                <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                            PMax — rozkład kanałów
+                        </span>
+                        <span onClick={() => navigate('/search-optimization')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                            Szczegóły →
+                        </span>
+                    </div>
+                    {(() => {
+                        const CHANNEL_COLORS = {
+                            SEARCH: '#4F8EF7', DISPLAY: '#7B5CE0', VIDEO: '#FBBF24',
+                            SHOPPING: '#4ADE80', DISCOVER: '#F472B6', CROSS_NETWORK: '#94A3B8',
+                        }
+                        const CHANNEL_LABELS = {
+                            SEARCH: 'Wyszukiwarka', DISPLAY: 'Sieć reklamowa', VIDEO: 'YouTube',
+                            SHOPPING: 'Zakupy', DISCOVER: 'Discover', CROSS_NETWORK: 'Cross-network',
+                        }
+                        const channels = pmaxChannels.channels
+                        const imbalance = channels.find(c => c.cost_share_pct > 60 && c.conv_share_pct < 30)
+                        return (
+                            <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 16, alignItems: 'center' }}>
+                                <div style={{ width: 140, height: 140 }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={channels}
+                                                dataKey="cost_share_pct"
+                                                nameKey="network_type"
+                                                cx="50%" cy="50%"
+                                                innerRadius={36} outerRadius={60}
+                                                strokeWidth={0}
+                                            >
+                                                {channels.map((ch, i) => (
+                                                    <Cell key={i} fill={CHANNEL_COLORS[ch.network_type] || '#64748B'} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{ background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, fontSize: 11, padding: '6px 10px' }}
+                                                formatter={(v, name) => [`${v}%`, name]}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {channels.map(ch => {
+                                        const color = CHANNEL_COLORS[ch.network_type] || '#64748B'
+                                        const isAlert = ch.cost_share_pct > 60 && ch.conv_share_pct < 30
+                                        return (
+                                            <div key={ch.network_type} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                                                    <span style={{ fontSize: 12, color: '#F0F0F0' }}>{CHANNEL_LABELS[ch.network_type] || ch.network_type}</span>
+                                                </div>
+                                                <div className="flex items-center gap-3" style={{ fontSize: 11 }}>
+                                                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>{(ch.cost_micros / 1e6).toFixed(0)} zł</span>
+                                                    <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 40, textAlign: 'right' }}>{ch.cost_share_pct}%</span>
+                                                    <span style={{ color: isAlert ? '#F87171' : 'rgba(255,255,255,0.35)', minWidth: 50, textAlign: 'right', fontWeight: isAlert ? 600 : 400 }}>
+                                                        {ch.conv_share_pct}% conv
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                    {imbalance && (
+                                        <div style={{ marginTop: 4, padding: '6px 10px', borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', fontSize: 11, color: '#F87171' }}>
+                                            ⚠ {imbalance.network_type}: {imbalance.cost_share_pct}% kosztów, tylko {imbalance.conv_share_pct}% konwersji
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })()}
+                </div>
+            )}
+
             {/* â"€â"€ Device + Geo Breakdown â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
             {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -635,7 +752,7 @@ export default function Dashboard() {
                                                             }}
                                                         />
                                                     )}
-                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
+                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{{ MOBILE: 'Telefony', DESKTOP: 'Komputery', TABLET: 'Tablety' }[d.device] || d.device}</span>
                                                 </div>
                                                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
                                             </div>
@@ -813,6 +930,43 @@ export default function Dashboard() {
                                 </div>
                             )
                         })}
+                    </div>
+                </div>
+            )}
+
+            {/* Recent actions widget */}
+            {recentActions.length > 0 && (
+                <div className="v2-card" style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <h3 style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', margin: 0 }}>Ostatnie akcje</h3>
+                        <button
+                            onClick={() => navigate('/action-history')}
+                            style={{ fontSize: 11, color: '#4F8EF7', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+                        >
+                            Wszystkie <ChevronRight size={12} />
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {recentActions.slice(0, 5).map((a, i) => (
+                            <div key={a.id || i} style={{
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '6px 10px', borderRadius: 8,
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(255,255,255,0.04)',
+                                fontSize: 12,
+                            }}>
+                                <span style={{
+                                    fontSize: 10, fontWeight: 600,
+                                    color: a.status === 'SUCCESS' ? '#4ADE80' : a.status === 'REVERTED' ? 'rgba(255,255,255,0.35)' : '#F87171',
+                                }}>{a.status}</span>
+                                <span style={{ color: 'rgba(255,255,255,0.7)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {a.entity_name || a.action_type}
+                                </span>
+                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, flexShrink: 0 }}>
+                                    {a.executed_at ? new Date(a.executed_at).toLocaleDateString('pl-PL') : ''}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}

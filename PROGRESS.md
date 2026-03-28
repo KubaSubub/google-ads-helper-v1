@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-28 (docs-sync)
+# Updated: 2026-03-28 (docs-sync — endpoint audit)
 
 ## Status
 - Backend: 477 tests passing (`pytest --tb=short -q`)

@@ -88,7 +88,7 @@ const ALL_PAGES = [
     { path: '/recommendations',     name: 'Recommendations',      heading: 'Rekomendacje' },
     { path: '/action-history',      name: 'Action History',       heading: 'Historia' },
     { path: '/alerts',              name: 'Alerts',               heading: 'Alerty' },
-    { path: '/agent',               name: 'AI Report',            heading: 'Raport AI' },
+    { path: '/agent',               name: 'AI Report',            heading: 'Asystent AI' },
     { path: '/reports',             name: 'Reports',              heading: 'Raport' },
     { path: '/clients',             name: 'Clients',              heading: 'Klienci' },
     { path: '/settings',            name: 'Settings',             heading: 'Ustawienia' },

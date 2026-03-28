@@ -81,6 +81,7 @@ def list_change_events(
     user_email: Optional[str] = Query(None, description="Filter by user email"),
     client_type: Optional[str] = Query(None, description="Filter by client type (source)"),
     operation: Optional[str] = Query(None, description="CREATE, UPDATE, or REMOVE"),
+    campaign_name: Optional[str] = Query(None, description="Filter by campaign name"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -101,6 +102,8 @@ def list_change_events(
         query = query.filter(ChangeEvent.client_type == client_type)
     if operation:
         query = query.filter(ChangeEvent.resource_change_operation == operation)
+    if campaign_name:
+        query = query.filter(ChangeEvent.campaign_name == campaign_name)
 
     query = query.order_by(ChangeEvent.change_date_time.desc())
     total = query.count()
@@ -120,6 +123,7 @@ def unified_timeline(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     resource_type: Optional[str] = Query(None),
+    campaign_name: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -149,6 +153,8 @@ def unified_timeline(
         event_q = event_q.filter(ChangeEvent.change_date_time < dt_to)
     if resource_type:
         event_q = event_q.filter(ChangeEvent.change_resource_type == resource_type.upper())
+    if campaign_name:
+        event_q = event_q.filter(ChangeEvent.campaign_name == campaign_name)
     events = event_q.all()
 
     # --- Build unified list ---
@@ -243,10 +249,17 @@ def get_available_filters(
         .distinct().all()
     ]
 
+    campaign_names = [
+        r[0] for r in db.query(ChangeEvent.campaign_name)
+        .filter(ChangeEvent.client_id == client_id, ChangeEvent.campaign_name.isnot(None))
+        .distinct().all()
+    ]
+
     return {
         "resource_types": sorted(resource_types),
         "user_emails": sorted(user_emails),
         "client_types": sorted(client_types),
+        "campaign_names": sorted(campaign_names),
     }
 
 

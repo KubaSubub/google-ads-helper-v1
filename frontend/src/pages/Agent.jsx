@@ -218,7 +218,7 @@ export default function Agent() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                 <Sparkles size={22} style={{ color: '#7B5CE0' }} />
                 <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#fff', margin: 0 }}>
-                    Raport AI
+                    Asystent AI
                 </h1>
                 {agentAvailable !== null && (
                     <span

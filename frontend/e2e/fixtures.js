@@ -694,6 +694,8 @@ export const MOCK_HISTORY_FILTERS = {
     resource_types: ['keyword', 'campaign', 'search_term', 'ad'],
     operations: ['PAUSE_KEYWORD', 'UPDATE_BID', 'ADD_NEGATIVE', 'INCREASE_BUDGET'],
     statuses: ['SUCCESS', 'FAILED', 'REVERTED', 'DRY_RUN'],
+    user_emails: ['marek@agency.pl', 'jan@agency.pl'],
+    client_types: ['GOOGLE_ADS_WEB_CLIENT', 'GOOGLE_ADS_API', 'GOOGLE_ADS_HELPER'],
 };
 
 // ─── Search Optimization — generic empty/minimal responses ─────────
