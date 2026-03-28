@@ -1,17 +1,57 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-26 (docs-sync)
+# Updated: 2026-03-28 (docs-sync)
 
 ## Status
-- Backend: 474 tests passing (`pytest --tb=short -q`)
-- Frontend: unified global filtering (Category A/B) + Playwright E2E (19 smoke + 20 full-app + 104 comprehensive + 42 edge-case = 185 total)
-- Roadmap features delivered: Weekly/Health reports, search-term-trends, close-variants, conversion-health, keyword-expansion
-- GAP Analysis: Phase A+B+C + Phase D (34 recommendation rules, 49 analytics endpoints, 7 new models, PMax/audiences/extensions)
-- Filtering: `date_from`/`date_to` + `campaign_type`/`campaign_status` unified across ~30 analytics endpoints
-- Sync: 22 total phases (15 prior + 7 new Phase D phases), SSE streaming sync modal with presets and per-resource coverage
-- Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation improvements
-- Dashboard polish: sortable campaign table, IS column, deep-links, InsightsFeed priority filter, geo sorting, sparkline tooltips
-- Campaigns: sort/filter sidebar by metrics (cost, conversions, ROAS), mini-metrics in campaign tiles
-- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check (documented in CLAUDE.md 7b)
+- Backend: 477 tests passing (`pytest --tb=short -q`)
+- Frontend: build OK, unified global filtering + Playwright E2E
+- DB: 38 tables (26 original + 12 new from coverage expansion)
+- Sync: 35 total phases (22 prior + 13 new from Wave A-E)
+- Analytics endpoints: ~65 total
+- Models: 38 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion)
+- Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation
+- Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
+- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check
+
+## Google Ads Coverage Expansion (2026-03-28)
+
+### Wave A — Search + PMax Gaps
+- Ad Sync: `sync_ads()` method, RSA inventory from `ad_group_ad` resource
+- Auction Insights: model + sync per campaign + analytics endpoint + UI section with competitor table + IS trend chart
+- Bid Modifiers: model + sync (device/location/ad_schedule campaign criteria)
+- Target CPA/ROAS Write: `PATCH /campaigns/{id}/bidding-target` + Google Ads API mutation
+- Extension Details: expanded GAQL for sitelink URLs/descriptions, snippet values, call phone, promotion details
+- Demographics: parental_status + income_range added to MetricSegmented + analytics
+
+### Wave B — Shopping Campaigns
+- Product Group model: tree structure (parent/child), case_value_type, bid_micros, metrics
+- Product Group Sync: `sync_product_groups()` via ad_group_criterion LISTING_GROUP
+- Shopping Reports: `GET /analytics/shopping-product-groups` with ROAS color-coding
+- Shopping UI: "Grupy produktów" section in SearchOptimization
+
+### Wave C — Display Campaigns
+- Placement model: URL, type, metrics + video-specific fields (views, view_rate, avg_cpv)
+- Placement Sync: `sync_placement_metrics()` via detail_placement_view
+- Placement Exclusion Write: `POST /analytics/placement-exclusion`
+- Topic Targeting: model TopicPerformance + sync + endpoint + UI section
+- Audience Management: model Audience + `sync_audiences()` + endpoint
+- Display/Video UI: "Miejsca docelowe" + "Tematy" sections in SearchOptimization
+
+### Wave D — Video Campaigns
+- Video metrics merged into Placement model (video_views, video_view_rate, avg_cpv_micros)
+
+### Wave E — Advanced Features
+- Portfolio Bid Strategies: model BiddingStrategy + sync
+- Shared Budgets: model SharedBudget + sync
+- Google Recommendations: model GoogleRecommendation + sync + endpoint + UI section
+- Conversion Value Rules: model ConversionValueRule + sync + endpoint
+- MCC Multi-Account: model MccLink + `sync_mcc_links()`
+- Offline Conversions: model OfflineConversion + upload method + endpoints
+
+### Review Fixes
+- Micros compliance: offline_conversion.conversion_value → conversion_value_micros
+- Import hierarchy: moved QS helpers from analytics router to utils/quality_score.py
+- Silent catch: campaigns.py bidding target → logger.warning + api_error in response
+- Frontend: Settings2 import, hardcoded domain → is_self flag, LineChart data flatten, helper tab filter params
 
 ## Frontend Filtering Iteration 1
 - Added a shared top-level global filter bar in `frontend/src/components/GlobalFilterBar.jsx`

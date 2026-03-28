@@ -32,7 +32,7 @@ Base API URL: `/api/v1`
 - `GET /sync/debug/keywords?client_id=X&search=term&search=term2&include_removed=true&limit=50` -> helper debug comparing keyword_view API rows with local positive/negative SQLite rows
 - `GET /sync/debug/keyword-source-of-truth?client_id=X&criterion_id=Y` -> authoritative debug for one criterion across Google Ads `keyword_view`, `ad_group_criterion`, local SQLite, and request context
 - `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase (`allow_demo_write=true` required for DEMO)
-  - Available phases (22 total): `campaigns`, `impression_share`, `ad_groups`, `keywords`, `negative_keywords`, `keyword_daily`, `daily_metrics`, `device_metrics`, `geo_metrics`, `search_terms`, `pmax_terms`, `change_events`, `conversion_actions`, `age_metrics`, `gender_metrics`, `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
+  - Available phases (35 total): `campaigns`, `impression_share`, `ad_groups`, `ads`, `product_groups`, `keywords`, `negative_keywords`, `negative_keyword_lists`, `keyword_daily`, `daily_metrics`, `search_terms`, `pmax_terms`, `device_metrics`, `geo_metrics`, `auction_insights`, `change_events`, `conversion_actions`, `age_metrics`, `gender_metrics`, `parental_metrics`, `income_metrics`, `placement_metrics`, `bid_modifiers`, `bidding_strategies`, `shared_budgets`, `audiences`, `topic_metrics`, `google_recommendations`, `conversion_value_rules`, `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
 - `GET /sync/data-coverage?client_id=X` -> date range of synced data and last sync info for a client
 - `GET /sync/presets` -> sync presets and phase registry for the configuration modal (phases, groups, max_days, patterns)
 - `GET /sync/coverage?client_id=X` -> per-resource sync coverage for a client
@@ -72,6 +72,7 @@ Base API URL: `/api/v1`
 - `GET /campaigns/?client_id=X&page=1&page_size=50&campaign_type=&status=`
 - `GET /campaigns/{id}`
 - `PATCH /campaigns/{id}` -> patch campaign role override / reset (`allow_demo_write=true` required for DEMO)
+- `PATCH /campaigns/{id}/bidding-target?field=target_cpa_micros|target_roas&value=X` -> update bidding target (local + API push; `allow_demo_write` enforced)
 - `GET /campaigns/{id}/kpis?days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
@@ -181,7 +182,21 @@ Base API URL: `/api/v1`
 - `GET /analytics/change-impact?client_id=X&days=60` — post-change performance delta, 7-day before/after comparison (GAP 6A)
 - `GET /analytics/ad-group-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — ad group structural health: ad count, keyword count, zero-conv groups (GAP 8)
 - `GET /analytics/conversion-quality?client_id=X` — conversion action configuration audit for data quality issues (GAP 2A-2D)
-- `GET /analytics/demographics?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — aggregate metrics by age/gender, flag CPA anomalies (GAP 4A)
+- `GET /analytics/demographics?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — aggregate metrics by age/gender/parental/income, flag CPA anomalies (GAP 4A)
+
+## Analytics - Google Ads Coverage Expansion (Wave A-E)
+- `GET /analytics/auction-insights?client_id=X&campaign_id=&days=30&date_from=&date_to=` — competitor visibility metrics (IS, overlap, position above, outranking, top of page)
+- `GET /analytics/shopping-product-groups?client_id=X&campaign_id=` — Shopping product group performance tree
+- `GET /analytics/placement-performance?client_id=X&campaign_id=&days=30&date_from=&date_to=` — Display/Video placement performance (top 100)
+- `POST /analytics/placement-exclusion?client_id=X&campaign_id=X&placement_url=X` — add placement exclusion to campaign (`allow_demo_write` enforced)
+- `GET /analytics/bid-modifiers?client_id=X&campaign_id=&modifier_type=DEVICE|LOCATION|AD_SCHEDULE` — bid modifier list
+- `GET /analytics/topic-performance?client_id=X&days=30&date_from=&date_to=` — Display/Video topic targeting performance
+- `GET /analytics/audiences-list?client_id=X` — synced audience segments
+- `GET /analytics/google-recommendations?client_id=X` — Google's native recommendations
+- `GET /analytics/mcc-accounts?manager_customer_id=X` — MCC child accounts
+- `GET /analytics/offline-conversions?client_id=X&status=PENDING|UPLOADED|FAILED` — offline conversion upload history
+- `POST /analytics/offline-conversions/upload?client_id=X` — upload offline conversions (body: JSON array)
+- `GET /analytics/conversion-value-rules?client_id=X` — conversion value adjustment rules
 
 ## Analytics - PMax, Audiences & Extensions (Phase D)
 - `GET /analytics/pmax-channels?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — PMax channel breakdown (Search, Display, YouTube, etc.) via ad_network_type segmented metrics
@@ -190,6 +205,8 @@ Base API URL: `/api/v1`
 - `GET /analytics/audience-performance?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — audience segment performance across campaigns (segment_type, audience_name, metrics)
 - `GET /analytics/missing-extensions?client_id=X&campaign_type=&campaign_status=` — detect campaigns missing recommended extensions (sitelinks, callouts, structured snippets, etc.)
 - `GET /analytics/extension-performance?client_id=X&campaign_type=&campaign_status=` — extension type performance metrics (clicks, impressions, cost aggregated by extension type)
+- `GET /analytics/pmax-search-cannibalization?client_id=X&days=30&date_from=&date_to=&min_clicks=2` — PMax vs Search overlap detection
+- `GET /analytics/pmax-channel-trends?client_id=X&days=30&date_from=&date_to=` — daily PMax channel cost/conversion trends
 
 ## Daily Audit
 - `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
@@ -214,6 +231,8 @@ Base API URL: `/api/v1`
 - `GET /export/keywords?client_id=X&campaign_id=&include_removed=false&format=xlsx`
 - `GET /export/metrics?campaign_id=X&days=30&format=xlsx` (note: `campaign_id` is required, not `client_id`)
 - `GET /export/recommendations?client_id=X&format=xlsx&days=30`
+- `GET /export/quality-score?client_id=X&qs_threshold=5&format=csv|xlsx`
+- `GET /export/actions?client_id=X&format=csv|xlsx` — export action history (CSV/XLSX)
 
 ## Semantic
 - `GET /semantic/clusters?client_id=X&days=30&top_n=1000&threshold=1.0`
