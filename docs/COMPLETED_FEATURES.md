@@ -217,3 +217,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## Schema Auto-Migration
 - `database.py` auto-migration adds missing columns (labels, target_cpa_micros, target_roas, primary_status, bidding_strategy_resource_name, portfolio_bid_strategy_id, age_range, gender) without requiring DB delete + reseed.
+
+## Visual Verification Pipeline
+- `/visual-check` command: Playwright screenshots of all 15 pages against live backend.
+- `visual-audit.spec.js`: automated screenshot test suite.
+- `VISUAL_AUDIT_REPORT.md`: per-page analysis + design system compliance check.
+- Integrated into `/ceo`, `/done`, `/ads-user` pipelines as required verification step.

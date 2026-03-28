@@ -240,6 +240,7 @@ Base API URL: `/api/v1`
 ## History (Change Events)
 - `GET /history/?client_id=X&date_from=&date_to=&resource_type=&user_email=&client_type=&operation=&campaign_name=&limit=50&offset=0`
 - `GET /history/unified?client_id=X&date_from=&date_to=&resource_type=&campaign_name=&limit=50&offset=0`
+- `GET /history/filters?client_id=X` — available filter values (resource types, user emails, client types, operations, campaign names)
 - `GET /history/filters?client_id=X`
 
 ## AI Agent

@@ -1,8 +1,8 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-28 (docs-sync — endpoint audit)
+# Updated: 2026-03-28 (docs-sync)
 
 ## Status
-- Backend: 477 tests passing (`pytest --tb=short -q`)
+- Backend: 528 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, unified global filtering + Playwright E2E
 - DB: 38 tables (26 original + 12 new from coverage expansion)
 - Sync: 35 total phases (22 prior + 13 new from Wave A-E)
@@ -694,4 +694,11 @@
   - `test_sprint3_bidding.py`: 11 tests for bidding advisor and smart bidding endpoints
   - `test_data_coverage.py`: 7 tests for sync data coverage and presets endpoints
 - Backend test count: 466 → 528 tests
+
+## Visual Verification Pipeline (2026-03-28 — commit 5a77a17)
+- New `/visual-check` command: Playwright screenshots of all pages against live backend
+- `visual-audit.spec.js`: automated screenshot test for all 15 pages
+- `VISUAL_AUDIT_REPORT.md`: full audit with per-page analysis + design system check
+- 15/15 pages render correctly, 0 JS errors, 0 crashes, 9/10 visual score
+- Updated `/ceo`, `/done`, `/ads-user` pipelines to require visual verification step
 
