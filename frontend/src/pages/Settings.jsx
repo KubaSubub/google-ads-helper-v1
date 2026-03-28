@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState, useRef } from 'react'
 import { BarChart3, Building2, Loader2, Plus, Save, ShieldAlert, Target, X } from 'lucide-react'
 
-import api, { getClient, updateClient } from '../api'
+import api, { getClient, updateClient, getMccAccounts } from '../api'
 import EmptyState from '../components/EmptyState'
 import { useApp } from '../contexts/AppContext'
 
@@ -28,6 +28,7 @@ export default function Settings() {
     const [formData, setFormData] = useState(null)
     const [originalData, setOriginalData] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [mccAccounts, setMccAccounts] = useState(null)
     const [saving, setSaving] = useState(false)
     const [resetting, setResetting] = useState(false)
     const [resetConfirmation, setResetConfirmation] = useState('')
@@ -47,6 +48,12 @@ export default function Settings() {
             setFormData(data)
             setOriginalData(JSON.parse(JSON.stringify(data)))
             setResetConfirmation('')
+            // Load MCC accounts if client has a customer ID
+            if (data.google_customer_id) {
+                getMccAccounts(data.google_customer_id.replace(/-/g, ''))
+                    .then(setMccAccounts)
+                    .catch(() => setMccAccounts(null))
+            }
         } catch (err) {
             setError(err.message)
         } finally {
@@ -444,6 +451,45 @@ export default function Settings() {
                     </div>
                 </section>
             </div>
+
+            {/* MCC Accounts */}
+            {mccAccounts && mccAccounts.accounts && mccAccounts.accounts.length > 0 && (
+                <div style={{ maxWidth: 800 }}>
+                    <section className="v2-card" style={{ padding: '18px 22px' }}>
+                        <h2 style={{ fontSize: 15, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                            <Building2 size={16} style={{ color: '#7B5CE0' }} />
+                            Konta MCC ({mccAccounts.total})
+                        </h2>
+                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>
+                            Konta podrzędne pod menadżerem Google Ads
+                        </p>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left' }}>ID konta</th>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left' }}>Nazwa</th>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'center' }}>Status</th>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'center' }}>W aplikacji</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {mccAccounts.accounts.map((acc, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                            <td style={{ padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' }}>{acc.customer_id}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: 12, color: '#F0F0F0' }}>{acc.name || '—'}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: 10, textAlign: 'center', color: acc.status === 'ENABLED' ? '#4ADE80' : 'rgba(255,255,255,0.4)' }}>{acc.status}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: 10, textAlign: 'center', color: acc.local_client_id ? '#4ADE80' : 'rgba(255,255,255,0.25)' }}>
+                                                {acc.local_client_id ? '✓ Połączony' : '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            )}
         </div>
     )
 }
