@@ -207,7 +207,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## Google Ads Coverage Expansion (Wave A-E)
 - 12 new models: AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion.
-- 13 new sync phases (35 total): product_groups, placement_metrics, bid_modifiers, bidding_strategies, shared_budgets, audiences, topic_metrics, google_recommendations, conversion_value_rules, pmax_channel_metrics, campaign_audiences, campaign_assets, asset_group_signals + existing asset_groups/asset_group_daily/asset_group_assets.
+- 14 new sync phases (36 total): product_groups, placement_metrics, bid_modifiers, bidding_strategies, shared_budgets, audiences, topic_metrics, google_recommendations, conversion_value_rules, pmax_channel_metrics, campaign_audiences, campaign_assets, asset_group_signals + existing asset_groups/asset_group_daily/asset_group_assets.
 - Wave A: Auction Insights, Bid Modifiers, Target CPA/ROAS write, Extension details, Demographics (parental + income).
 - Wave B: Shopping Product Group model + sync + analytics endpoint.
 - Wave C: Placement model + sync + exclusion write, Topic Targeting, Audience Management.

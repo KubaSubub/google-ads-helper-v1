@@ -5,7 +5,7 @@
 - Backend: 528 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, unified global filtering + Playwright E2E
 - DB: 38 tables (26 original + 12 new from coverage expansion)
-- Sync: 35 total phases (22 prior + 13 new from Wave A-E)
+- Sync: 36 total phases (22 prior + 14 new from Wave A-E)
 - API endpoints: 139 total across 15 routers (63 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 38 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion)
 - Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation
