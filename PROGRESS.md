@@ -2,7 +2,7 @@
 # Updated: 2026-03-28 (docs-sync)
 
 ## Status
-- Backend: 477 tests passing (`pytest --tb=short -q`)
+- Backend: 528 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, unified global filtering + Playwright E2E
 - DB: 38 tables (26 original + 12 new from coverage expansion)
 - Sync: 35 total phases (22 prior + 13 new from Wave A-E)

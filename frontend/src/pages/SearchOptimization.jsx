@@ -22,6 +22,8 @@ import {
     getTopicPerformance,
     getGoogleRecommendations,
     getConversionValueRules,
+    getOfflineConversions,
+    getAudiencesList,
     addNegativeKeyword,
     addPlacementExclusion,
 } from '../api'
@@ -1355,6 +1357,8 @@ export default function SearchOptimization() {
         bidModifiers: false,
         googleRecs: false,
         convValueRules: false,
+        offlineConversions: false,
+        audiencesList: false,
         audiencePerf: false, missingExt: false, extPerf: false,
     })
     const [ngramSize, setNgramSize] = useState(1)
@@ -1393,6 +1397,8 @@ export default function SearchOptimization() {
     const [bidModData, setBidModData] = useState(null)
     const [googleRecsData, setGoogleRecsData] = useState(null)
     const [convValueRulesData, setConvValueRulesData] = useState(null)
+    const [offlineConvData, setOfflineConvData] = useState(null)
+    const [audiencesListData, setAudiencesListData] = useState(null)
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -1411,7 +1417,7 @@ export default function SearchOptimization() {
             const _catch = (label) => (err) => { console.warn(`[SearchOptim] ${label}`, err); return null }
             const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
                    pch, ptrend, agp, sth, pcann, aud, mex, exp, auct, shopg, plc,
-                   topd, bmod, grecs, cvr] = await Promise.all([
+                   topd, bmod, grecs, cvr, oconv, audl] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(_catch('wasted-spend')),
                 getDayparting(selectedClientId, allParams).catch(_catch('dayparting')),
                 getMatchTypeAnalysis(selectedClientId, allParams).catch(_catch('match-type')),
@@ -1446,6 +1452,8 @@ export default function SearchOptimization() {
                 getBidModifiers(selectedClientId).catch(_catch('bid-modifiers')),
                 getGoogleRecommendations(selectedClientId).catch(_catch('google-recs')),
                 getConversionValueRules(selectedClientId).catch(_catch('conv-value-rules')),
+                getOfflineConversions(selectedClientId).catch(_catch('offline-conversions')),
+                getAudiencesList(selectedClientId).catch(_catch('audiences-list')),
             ])
             setWaste(w)
             setDaypart(dp)
@@ -1481,6 +1489,8 @@ export default function SearchOptimization() {
             setBidModData(bmod)
             setGoogleRecsData(grecs)
             setConvValueRulesData(cvr)
+            setOfflineConvData(oconv)
+            setAudiencesListData(audl)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -2061,6 +2071,76 @@ export default function SearchOptimization() {
                                                     {r.action_type === 'MULTIPLY' && r.action_multiplier != null ? `×${r.action_multiplier}` : ''}
                                                 </td>
                                                 <td style={{ ...TD_DIM, fontSize: 10 }}>{r.status}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Offline Conversions (E5) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Target} title="Konwersje offline"
+                    subtitle={offlineConvData?.total ? `${offlineConvData.total} uploadów` : ''}
+                    open={sections.offlineConversions} onToggle={() => toggle('offlineConversions')} />
+                {sections.offlineConversions && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {!offlineConvData?.conversions || offlineConvData.conversions.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak uploadowanych konwersji offline. Użyj API endpoint POST /analytics/offline-conversions/upload do importu GCLID.</p>
+                            : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <th style={TH}>GCLID</th>
+                                        <th style={TH}>Konwersja</th>
+                                        <th style={TH}>Data</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Wartość</th>
+                                        <th style={{ ...TH, textAlign: 'center' }}>Status</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {offlineConvData.conversions.map((c, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <td style={{ ...TD, fontSize: 10, fontFamily: 'monospace', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.gclid}</td>
+                                                <td style={TD}>{c.conversion_name || '—'}</td>
+                                                <td style={TD_DIM}>{c.conversion_time}</td>
+                                                <td style={{ ...TD, textAlign: 'right' }}>{c.conversion_value != null ? `${c.conversion_value} zł` : '—'}</td>
+                                                <td style={{ ...TD, textAlign: 'center', fontSize: 10, color: c.status === 'UPLOADED' ? '#4ADE80' : c.status === 'FAILED' ? '#F87171' : '#FBBF24' }}>{c.status}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Audiences List (C6) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={Users} title="Lista odbiorców"
+                    subtitle={audiencesListData?.total ? `${audiencesListData.total} segmentów` : ''}
+                    open={sections.audiencesList} onToggle={() => toggle('audiencesList')} />
+                {sections.audiencesList && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {!audiencesListData?.audiences || audiencesListData.audiences.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak zsynchronizowanych odbiorców. Uruchom sync z fazą "Grupy odbiorców".</p>
+                            : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <th style={TH}>Nazwa</th>
+                                        <th style={TH}>Typ</th>
+                                        <th style={{ ...TH, textAlign: 'center' }}>Status</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Członków</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {audiencesListData.audiences.map((a, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <td style={{ ...TD, color: '#F0F0F0' }}>{a.name}</td>
+                                                <td style={{ ...TD_DIM, fontSize: 10, textTransform: 'uppercase' }}>{a.type || '—'}</td>
+                                                <td style={{ ...TD, textAlign: 'center', fontSize: 10, color: a.status === 'ENABLED' ? '#4ADE80' : 'rgba(255,255,255,0.4)' }}>{a.status}</td>
+                                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.member_count != null ? a.member_count.toLocaleString('pl-PL') : '—'}</td>
                                             </tr>
                                         ))}
                                     </tbody>
