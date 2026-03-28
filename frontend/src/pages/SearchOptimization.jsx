@@ -21,7 +21,9 @@ import {
     getBidModifiers,
     getTopicPerformance,
     getGoogleRecommendations,
+    getConversionValueRules,
     addNegativeKeyword,
+    addPlacementExclusion,
 } from '../api'
 import {
     Loader2, CalendarDays, FileText, Hash, Layers, Globe, AlertTriangle,
@@ -1352,6 +1354,7 @@ export default function SearchOptimization() {
         topicPerf: false,
         bidModifiers: false,
         googleRecs: false,
+        convValueRules: false,
         audiencePerf: false, missingExt: false, extPerf: false,
     })
     const [ngramSize, setNgramSize] = useState(1)
@@ -1389,6 +1392,7 @@ export default function SearchOptimization() {
     const [topicData, setTopicData] = useState(null)
     const [bidModData, setBidModData] = useState(null)
     const [googleRecsData, setGoogleRecsData] = useState(null)
+    const [convValueRulesData, setConvValueRulesData] = useState(null)
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -1407,7 +1411,7 @@ export default function SearchOptimization() {
             const _catch = (label) => (err) => { console.warn(`[SearchOptim] ${label}`, err); return null }
             const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
                    pch, ptrend, agp, sth, pcann, aud, mex, exp, auct, shopg, plc,
-                   topd, bmod, grecs] = await Promise.all([
+                   topd, bmod, grecs, cvr] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(_catch('wasted-spend')),
                 getDayparting(selectedClientId, allParams).catch(_catch('dayparting')),
                 getMatchTypeAnalysis(selectedClientId, allParams).catch(_catch('match-type')),
@@ -1441,6 +1445,7 @@ export default function SearchOptimization() {
                 getTopicPerformance(selectedClientId, allParams).catch(_catch('topics')),
                 getBidModifiers(selectedClientId).catch(_catch('bid-modifiers')),
                 getGoogleRecommendations(selectedClientId).catch(_catch('google-recs')),
+                getConversionValueRules(selectedClientId).catch(_catch('conv-value-rules')),
             ])
             setWaste(w)
             setDaypart(dp)
@@ -1475,6 +1480,7 @@ export default function SearchOptimization() {
             setTopicData(topd)
             setBidModData(bmod)
             setGoogleRecsData(grecs)
+            setConvValueRulesData(cvr)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -1883,6 +1889,21 @@ export default function SearchOptimization() {
                                                     <td style={{ ...TD, textAlign: 'right', color: p.roas >= 3 ? '#4ADE80' : p.roas >= 1 ? '#FBBF24' : '#F87171' }}>{p.roas}</td>
                                                     {placementData.placements.some(pp => pp.video_views) && <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.video_views ?? '—'}</td>}
                                                     {placementData.placements.some(pp => pp.avg_view_rate) && <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.avg_view_rate != null ? `${p.avg_view_rate}%` : '—'}</td>}
+                                                    <td style={{ ...TD, textAlign: 'right' }}>
+                                                        {p.cost_usd > 10 && p.conversions === 0 && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await addPlacementExclusion(selectedClientId, null, p.placement_url)
+                                                                        showToast?.(`Wykluczone: ${p.display_name}`, 'success')
+                                                                    } catch (err) {
+                                                                        showToast?.('Błąd wykluczania placement', 'error')
+                                                                    }
+                                                                }}
+                                                                style={{ fontSize: 10, color: '#F87171', background: 'none', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}
+                                                            >Wyklucz</button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -2005,6 +2026,45 @@ export default function SearchOptimization() {
                                         </tbody>
                                     </table>
                                 </>
+                            )
+                        }
+                    </div>
+                )}
+            </div>
+
+            {/* Conversion Value Rules (E6) */}
+            <div className={CARD} style={SECTION_STYLE}>
+                <SectionHeader icon={ShieldCheck} title="Reguły wartości konwersji"
+                    subtitle={convValueRulesData?.total ? `${convValueRulesData.total} reguł` : ''}
+                    open={sections.convValueRules} onToggle={() => toggle('convValueRules')} />
+                {sections.convValueRules && convValueRulesData?.rules && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                        {convValueRulesData.rules.length === 0
+                            ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak reguł wartości konwersji. Uruchom sync z fazą "Reguły wartości konwersji".</p>
+                            : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <th style={TH}>Warunek</th>
+                                        <th style={TH}>Wartość warunku</th>
+                                        <th style={TH}>Typ akcji</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Wartość</th>
+                                        <th style={TH}>Status</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {convValueRulesData.rules.map((r, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <td style={{ ...TD_DIM, fontSize: 10, textTransform: 'uppercase' }}>{r.condition_type || '—'}</td>
+                                                <td style={TD}>{r.condition_value || '—'}</td>
+                                                <td style={{ ...TD_DIM }}>{r.action_type || '—'}</td>
+                                                <td style={{ ...TD, textAlign: 'right' }}>
+                                                    {r.action_type === 'ADD' && r.action_value_micros != null ? `+${(r.action_value_micros / 1000000).toFixed(2)} zł` : ''}
+                                                    {r.action_type === 'MULTIPLY' && r.action_multiplier != null ? `×${r.action_multiplier}` : ''}
+                                                </td>
+                                                <td style={{ ...TD_DIM, fontSize: 10 }}>{r.status}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             )
                         }
                     </div>

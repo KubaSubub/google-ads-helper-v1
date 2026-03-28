@@ -929,6 +929,8 @@ export default function Campaigns() {
                                 {selected.bidding_strategy && (
                                     <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
                                         {selected.bidding_strategy}
+                                        {selected.target_cpa_micros ? ` · CPA ${(selected.target_cpa_micros / 1000000).toFixed(2)} zł` : ''}
+                                        {selected.target_roas ? ` · ROAS ${selected.target_roas}` : ''}
                                     </span>
                                 )}
                             </div>

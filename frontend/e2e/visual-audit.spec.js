@@ -5,8 +5,15 @@ import path from 'path';
  * Visual Audit — screenshot every page against LIVE backend.
  * Requires: backend on :8000, frontend on :5173, seeded DB.
  *
- * Run: npx playwright test e2e/visual-audit.spec.js --reporter=list
- * Screenshots saved to: frontend/e2e-screenshots/
+ * Modes:
+ *   npx playwright test e2e/visual-audit.spec.js --reporter=list
+ *     → First run: creates baseline snapshots in e2e/visual-audit.spec.js-snapshots/
+ *     → Next runs: compares with baseline, fails if diff > 5%
+ *
+ *   npx playwright test e2e/visual-audit.spec.js --update-snapshots
+ *     → Updates baseline snapshots (after intentional UI changes)
+ *
+ * Manual screenshots also saved to: frontend/e2e-screenshots/ (for audit reports)
  */
 
 const BASE = 'http://localhost:5173';
@@ -33,14 +40,13 @@ const PAGES = [
 
 test.describe('Visual Audit — all pages', () => {
     test.beforeEach(async ({ page }) => {
-        // Select client in localStorage
         await page.addInitScript((cid) => {
             localStorage.setItem('selectedClientId', cid);
         }, CLIENT_ID);
     });
 
     for (const pg of PAGES) {
-        test(`${pg.name} — renders without crash`, async ({ page }) => {
+        test(`${pg.name} — renders and matches baseline`, async ({ page }) => {
             const errors = [];
             page.on('pageerror', err => errors.push(err.message));
 
@@ -50,13 +56,13 @@ test.describe('Visual Audit — all pages', () => {
             try {
                 await page.waitForSelector('.animate-spin', { state: 'hidden', timeout: 10000 });
             } catch {
-                // No spinner found or already gone — OK
+                // No spinner found or already gone
             }
 
             // Extra wait for async data
             await page.waitForTimeout(2000);
 
-            // Screenshot
+            // Manual screenshot for audit reports
             await page.screenshot({
                 path: path.join(SCREENSHOT_DIR, `${pg.name}.png`),
                 fullPage: true,
@@ -68,6 +74,14 @@ test.describe('Visual Audit — all pages', () => {
             // Verify page has meaningful content (not blank)
             const bodyText = await page.textContent('body');
             expect(bodyText.length, `${pg.name} body should have content`).toBeGreaterThan(50);
+
+            // Visual regression — compare with baseline snapshot
+            // First run creates baseline, subsequent runs compare (diff threshold 5%)
+            await expect(page).toHaveScreenshot(`${pg.name}.png`, {
+                fullPage: true,
+                maxDiffPixelRatio: 0.05,
+                threshold: 0.3,
+            });
         });
     }
 });

@@ -278,6 +278,16 @@ export const getAudiencesList = (clientId) =>
     api.get('/analytics/audiences-list', { params: { client_id: clientId } });
 export const getGoogleRecommendations = (clientId) =>
     api.get('/analytics/google-recommendations', { params: { client_id: clientId } });
+export const getMccAccounts = (managerCustomerId) =>
+    api.get('/analytics/mcc-accounts', { params: { manager_customer_id: managerCustomerId } });
+export const getOfflineConversions = (clientId, params = {}) =>
+    api.get('/analytics/offline-conversions', { params: { client_id: clientId, ...params } });
+export const getConversionValueRules = (clientId) =>
+    api.get('/analytics/conversion-value-rules', { params: { client_id: clientId } });
+export const updateBiddingTarget = (campaignId, field, value) =>
+    api.patch(`/campaigns/${campaignId}/bidding-target`, null, { params: { field, value } });
+export const addPlacementExclusion = (clientId, campaignId, placementUrl) =>
+    api.post('/analytics/placement-exclusion', null, { params: { client_id: clientId, campaign_id: campaignId, placement_url: placementUrl } });
 
 // AI Agent
 export const getAgentStatus = () => api.get('/agent/status');
