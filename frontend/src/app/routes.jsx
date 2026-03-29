@@ -27,6 +27,7 @@ const Competitive = lazy(() => import('../features/competitive'))
 const CrossCampaign = lazy(() => import('../features/cross-campaign'))
 const Benchmarks = lazy(() => import('../features/benchmarks'))
 const TaskQueue = lazy(() => import('../features/task-queue'))
+const Rules = lazy(() => import('../features/rules'))
 
 export const GLOBAL_FILTER_ROUTES = [
     '/', '/campaigns', '/keywords', '/search-terms', '/audit-center',
@@ -63,6 +64,7 @@ export function AppRoutes() {
             <Route path="/cross-campaign" element={<CrossCampaign />} />
             <Route path="/benchmarks" element={<Benchmarks />} />
             <Route path="/tasks" element={<TaskQueue />} />
+            <Route path="/rules" element={<Rules />} />
         </Routes>
     )
 }

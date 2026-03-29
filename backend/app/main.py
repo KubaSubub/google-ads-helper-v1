@@ -52,6 +52,7 @@ from app.routers import (
     keywords_ads,
     recommendations,
     reports,
+    rules,
     scheduled_sync,
     search_terms,
     semantic,
@@ -115,6 +116,7 @@ app.include_router(history.router, prefix=API_PREFIX, tags=["history"], dependen
 app.include_router(agent.router, prefix=API_PREFIX, tags=["agent"], dependencies=protected)
 app.include_router(reports.router, prefix=API_PREFIX, tags=["reports"], dependencies=protected)
 app.include_router(daily_audit.router, prefix=API_PREFIX, tags=["daily-audit"], dependencies=protected)
+app.include_router(rules.router, prefix=API_PREFIX, tags=["automated-rules"], dependencies=protected)
 
 
 @app.get("/health", tags=["System"])

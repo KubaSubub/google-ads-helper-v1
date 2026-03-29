@@ -384,7 +384,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 ### Fala 4: "Automation & Scale"
 | # | Feature | Nakład | Impact | Status |
 |---|---------|--------|--------|--------|
-| 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki | ❌ |
+| 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki | ✅ DONE |
 | 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni | ❌ |
 | 17 | **D2** Asset Group Performance | Duży | 🟡 Średni | ✅ DONE |
 | 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni | ✅ DONE |
@@ -394,9 +394,9 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | # | Feature | Nakład | Impact | Status |
 |---|---------|--------|--------|--------|
 | 20 | **H1** Task Queue / Action Plan | Średni | 🟡 Średni | ✅ DONE |
-| 21 | **G4** Cross-Campaign Analysis | Średni | 🟡 Średni | ❌ |
+| 21 | **G4** Cross-Campaign Analysis | Średni | 🟡 Średni | ✅ DONE |
 | 22 | **E2** Monthly Deep Dive Report | Średni | 🟡 Średni | ✅ DONE |
-| 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have | ❌ |
+| 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have | ✅ DONE |
 | 24 | **H3** Keyboard Shortcuts | Mały | 🟢 Nice-to-have | ✅ DONE |
 | 25 | **C2** DSA Headlines Audit | Średni | 🟢 Nice-to-have | ❌ |
 | 26 | **C3** DSA ↔ Search Overlap | Średni | 🟢 Nice-to-have | ❌ |
@@ -405,7 +405,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
-**Stan na 2026-03-29: 19 DONE, 1 PARTIAL, 6 NOT DONE (z 26 feature'ów = 73%)**
+**Stan na 2026-03-29: 22 DONE, 1 PARTIAL, 3 NOT DONE (z 26 feature'ów = 85%)**
 
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast

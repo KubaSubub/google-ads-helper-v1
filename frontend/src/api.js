@@ -314,6 +314,22 @@ export const getCampaignComparison = (clientId, campaignIds, params = {}) =>
         params: { client_id: clientId, campaign_ids: campaignIds.join(','), ...params },
     });
 
+// Automated Rules (F3)
+export const getRules = (clientId) =>
+    api.get('/rules/', { params: { client_id: clientId } });
+export const createRule = (data) =>
+    api.post('/rules/', data);
+export const getRule = (ruleId, clientId) =>
+    api.get(`/rules/${ruleId}`, { params: { client_id: clientId } });
+export const updateRule = (ruleId, data, clientId) =>
+    api.put(`/rules/${ruleId}`, data, { params: { client_id: clientId } });
+export const deleteRule = (ruleId, clientId) =>
+    api.delete(`/rules/${ruleId}`, { params: { client_id: clientId } });
+export const dryRunRule = (ruleId, clientId) =>
+    api.post(`/rules/${ruleId}/dry-run`, null, { params: { client_id: clientId } });
+export const executeRule = (ruleId, clientId) =>
+    api.post(`/rules/${ruleId}/execute`, null, { params: { client_id: clientId } });
+
 // History
 export const getChangeHistory = (clientId, params = {}) =>
     api.get('/history/', { params: { client_id: clientId, ...params } });

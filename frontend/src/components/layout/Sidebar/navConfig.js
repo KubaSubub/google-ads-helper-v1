@@ -16,6 +16,7 @@ import {
     Megaphone,
     Monitor,
     Search,
+    Settings2,
     ShoppingCart,
     Sparkles,
     Youtube,
@@ -49,6 +50,7 @@ export const NAV_GROUPS = [
         items: [
             { to: '/tasks', label: 'Plan dnia', icon: ListChecks },
             { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb },
+            { to: '/rules', label: 'Reguły', icon: Settings2 },
             { to: '/action-history', label: 'Historia zmian', icon: History },
         ],
     },

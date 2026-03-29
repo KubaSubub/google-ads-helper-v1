@@ -40,6 +40,7 @@ from .conversion_value_rule import ConversionValueRule
 from .mcc_link import MccLink
 from .offline_conversion import OfflineConversion
 from .scheduled_sync import ScheduledSyncConfig
+from .automated_rule import AutomatedRule, AutomatedRuleLog
 
 __all__ = [
     "Client",
@@ -81,5 +82,7 @@ __all__ = [
     "MccLink",
     "OfflineConversion",
     "ScheduledSyncConfig",
+    "AutomatedRule",
+    "AutomatedRuleLog",
 ]
 
