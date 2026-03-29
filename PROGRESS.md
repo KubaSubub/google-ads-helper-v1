@@ -1,16 +1,75 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-28 (docs-sync)
+# Updated: 2026-03-29 (docs-sync — sprint 2 complete)
 
 ## Status
 - Backend: 528 tests passing (`pytest --tb=short -q`)
-- Frontend: build OK, unified global filtering + Playwright E2E
+- Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 38 tables (26 original + 12 new from coverage expansion)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E)
 - API endpoints: 139 total across 15 routers (63 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 38 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion)
+- Frontend pages: 20 routes (15 original + Shopping, PMax, Display, Video, Competitive) — all with enriched UX
 - Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
-- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check
+- AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
+- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — all plans closed (0 MISSING)
+
+## Ads-Verify Sprint 2 — Full-App Polish (2026-03-29)
+
+### Codebase Cleanup
+- Deleted `SearchOptimization.jsx` (2014 lines dead code) — replaced by `features/audit-center/AuditCenterPage.jsx`
+- AuditCenter refactored: removed 7 type-specific bento cards, 8 redundant API calls removed from `useAuditData.js`
+- Fixed PERFORMANCE_MAX vs PMAX naming inconsistency across frontend (unified in `constants/campaignTypes.js`)
+- Removed duplicate campaign type filter from `GlobalFilterBar.jsx` (now: Status, Label, Name only; campaign type handled by sidebar pills)
+
+### AuditCenter Enhancements
+- Added period comparison (% change) to bento cards via `prevData` in `useAuditData` + `changePct` prop in `BentoCard.jsx`
+- Added card pinning with localStorage persistence (`audit-center-pinned` key, pin/unpin UI on hover)
+
+### Cross-App Navigation & UX
+- Added keyboard shortcuts: 1-9 for page navigation, Esc for back, `/` for search focus, `?` tooltip (`useKeyboardShortcuts.js`, `ShortcutsHint.jsx`)
+- Added `useNavigateTo` hook (`frontend/src/hooks/useNavigateTo.js`) + cross-nav links in Alerts, QualityScore, Forecast
+
+### Page-Level Improvements
+- **Forecast**: smart retry on error, horizon selector (7/14/30d), FilterContext integration for global date range
+- **Semantic**: FilterContext integration, search input for clusters, bulk waste exclude (select waste clusters + floating action bar)
+- **Settings**: form validation (min/max on safety_limits + business_rules), dirty state tracking with `beforeunload` navigation warning
+- **Shopping** (`features/shopping/ShoppingPage.jsx`): KPIs row, performance tabs, ROAS color-coding, search input
+- **Video** (`features/video/VideoPage.jsx`): 3 tabs (placements, topics, exclusions), CPV metrics, high-CPV highlighting
+- **Competitive** (`features/competitive/CompetitivePage.jsx`): KPIs row, competitor ranking, visual bars for IS/outranking
+
+### Ads Review Pipeline Closure
+- All ads-verify plans closed: 0 MISSING items across `ads-verify-full-app.md` (DONE: 10, PARTIAL: 1, NOT_NEEDED: 3)
+
+## Frontend Modular Architecture (2026-03-29 — commit 5b36e3a)
+- Extracted monolithic page components into feature modules under `frontend/src/features/`:
+  - `audit-center/` — AuditCenterPage (replaces SearchOptimization, 25 analysis sections with bento card layout)
+  - `campaigns/` — CampaignsPage + CampaignKpiRow + CampaignTrendExplorer
+  - `dashboard/` — DashboardPage + HealthScoreCard + MiniKpiGrid + QsHealthWidget
+  - `keywords/` — KeywordsPage + PositiveKeywordsTab + NegativeKeywordsTab + NegativeKeywordListsTab + KeywordExpansionTab + AddNegativeModal
+  - `shopping/` — ShoppingPage (product group performance, ROAS color-coding)
+  - `pmax/` — PMaxPage (channel breakdown, asset groups, search themes, cannibalization)
+  - `display/` — DisplayPage (placements, topics, exclusions)
+  - `video/` — VideoPage (video placements, view metrics)
+  - `competitive/` — CompetitivePage (auction insights, competitor visibility)
+- Extracted sidebar into `frontend/src/components/layout/Sidebar/` (SidebarContent, ClientSelector, ClientDrawer, NavItem, CampaignTypePills, navConfig)
+- Added shared components: `MatchBadge`, `MetricPill`, `SectionHeader` in `frontend/src/components/shared/`
+- Added constants: `designTokens.js`, `campaignTypes.js` in `frontend/src/constants/`
+- Extracted route config into `frontend/src/app/routes.jsx` with lazy loading
+- SearchOptimization route redirects to `/audit-center` (backward compat)
+- GLOBAL_FILTER_ROUTES expanded to include new campaign-type pages
+- Sidebar nav reorganized: PRZEGLĄD, DANE KAMPANII (with campaign-type filtering), DZIAŁANIA, MONITORING, AI, ANALIZA
+- Campaign-type nav items show/hide based on `types` filter (e.g. Keywords shows only for SEARCH)
+
+### New Files (98 files changed, +10141/-4635 lines)
+- `frontend/src/app/routes.jsx` — centralized route configuration
+- `frontend/src/features/` — 9 feature modules with 40+ component files
+- `frontend/src/components/layout/Sidebar/` — 6 sidebar sub-components
+- `frontend/src/components/shared/` — 3 shared components
+- `frontend/src/constants/` — 2 constants files
+- `docs/reviews/ads-{user,expert,verify}-full-app.md` — full-app ads review pipeline
+- `docs/GOOGLE_ADS_EXPERT_AUDIT.md` — comprehensive expert audit document
+- `frontend/e2e-screenshots/` — 16 page screenshots for visual audit baseline
 
 ## Google Ads Coverage Expansion (2026-03-28)
 
@@ -200,7 +259,9 @@
 - Add backend coverage for Google-native cache invalidation edge cases
 - Decide future executable allowlist for Google-native recommendation types after safety review
 - Address one npm audit high-severity dependency warning in frontend toolchain
-- Consider code-splitting frontend bundle (current build warning > 500 kB)
+- ~~Consider code-splitting frontend bundle (current build warning > 500 kB)~~ → DONE: lazy loading via `routes.jsx` for all 20 pages
+- ~~SearchOptimization.jsx dead code removal~~ → DONE: deleted 2014-line file, replaced by `features/audit-center/`
+- ~~Ads-verify plans open items~~ → DONE: 0 MISSING across all plans
 
 ## Keyword Lifecycle Cleanup and Canonical SQLite (2026-03-12)
 - Added successful-sync cleanup for campaigns, ad groups, and keywords so stale local rows are marked `REMOVED` instead of lingering forever.

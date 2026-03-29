@@ -17,7 +17,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Backend: `resolve_dates()` in `backend/app/utils/date_utils.py` — central date resolution (`date_from`/`date_to` override `days`).
 - Backend: `_filter_campaigns()` / `_filter_campaign_ids()` in AnalyticsService — reusable campaign filtering by type/status.
 - ~20 analytics endpoints accept `date_from`, `date_to`, `campaign_type`, `campaign_status` (additive — `days` still works).
-- Category A pages (Dashboard, Campaigns, Keywords, SearchTerms, SearchOptimization, Recommendations) use `allParams` from FilterContext.
+- Category A pages (Dashboard, Campaigns, Keywords, SearchTerms, AuditCenter, Recommendations) use `allParams` from FilterContext.
 - Category B pages (DailyAudit, ActionHistory, Alerts, QualityScore, Reports, Forecast) have independent or no filtering.
 - GlobalFilterBar is conditionally rendered only on Category A routes.
 - Campaigns list now uses server-side filtering via API params (was in-memory).
@@ -39,11 +39,12 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Seed: 90 days per keyword with trend + dow + noise factors
 - Summable metrics in KeywordDaily; snapshot metrics (quality_score, impression_share, bid) stay on Keyword model
 
-## SEARCH Optimization Page
-- `SearchOptimization.jsx` — 25 collapsible analysis sections (6 base + 7 Phase A + 6 Phase B+C + 6 Phase D)
+## Audit Center (formerly Search Optimization)
+- `AuditCenterPage.jsx` (in `features/audit-center/`) — 25 analysis sections with bento card layout, extracted into individual section components
 - Endpoints: dayparting, rsa-analysis, ngram-analysis, match-type-analysis, landing-pages, wasted-spend, search-term-trends, close-variants, conversion-health, keyword-expansion, smart-bidding-health, learning-status, target-vs-actual, portfolio-health, pareto-analysis, scaling-opportunities, ad-group-health, bid-strategy-report, demographics, pmax-channels, asset-group-performance, pmax-search-themes, audience-performance, missing-extensions, extension-performance
 - Backend: analytics_service.py methods + analytics.py routes
-- Sidebar nav: "Optymalizacja" (Zap icon) in ANALIZA group
+- Sidebar nav: "Centrum audytu" (Zap icon) in ANALIZA group
+- Old `/search-optimization` route redirects to `/audit-center`
 
 ## Keyword Lifecycle Cleanup + Canonical SQLite
 - Successful sync of campaigns, ad groups, and keywords now marks unseen local rows as `REMOVED`.
@@ -147,7 +148,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - 6 new models: AssetGroup, AssetGroupDaily, AssetGroupAsset, AssetGroupSignal, CampaignAudienceMetric, CampaignAsset.
 - MetricSegmented model extended with ad_network_type column for channel-level breakdowns.
 - 7 new sync methods (22 total phases): sync_pmax_channel_metrics, sync_asset_groups, sync_asset_group_daily, sync_asset_group_assets, sync_asset_group_signals, sync_campaign_audiences, sync_campaign_assets.
-- Frontend: 6 new analysis sections in SearchOptimization.jsx (25 total tools).
+- Frontend: 6 new analysis sections in AuditCenterPage.jsx (25 total tools).
 
 ## Campaign Roles + Context-Aware Budget Guardrails + Explanation Layer
 - Deterministic campaign role service (`campaign_roles.py`) with `campaign_role_auto`, `campaign_role_final`, `role_confidence`, `protection_level`, `role_source`.
@@ -213,7 +214,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Wave C: Placement model + sync + exclusion write, Topic Targeting, Audience Management.
 - Wave D: Video metrics merged into Placement model.
 - Wave E: Portfolio Bid Strategies, Shared Budgets, Google Recommendations, Conversion Value Rules, MCC Multi-Account, Offline Conversions.
-- Frontend: new analysis sections in SearchOptimization.jsx for each wave.
+- Frontend: new analysis sections in AuditCenterPage.jsx for each wave.
 
 ## Schema Auto-Migration
 - `database.py` auto-migration adds missing columns (labels, target_cpa_micros, target_roas, primary_status, bidding_strategy_resource_name, portfolio_bid_strategy_id, age_range, gender) without requiring DB delete + reseed.
@@ -223,3 +224,84 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `visual-audit.spec.js`: automated screenshot test suite.
 - `VISUAL_AUDIT_REPORT.md`: per-page analysis + design system compliance check.
 - Integrated into `/ceo`, `/done`, `/ads-user` pipelines as required verification step.
+
+## Frontend Modular Architecture
+- Monolithic page components (Dashboard 977→768 LOC, Campaigns 1180→779, Keywords 1035→55) refactored into feature modules under `frontend/src/features/`.
+- 9 feature modules: audit-center, campaigns, dashboard, keywords, shopping, pmax, display, video, competitive.
+- Sidebar extracted into `components/layout/Sidebar/` with data-driven `navConfig.js`.
+- Routes centralized in `app/routes.jsx` with lazy loading for all pages.
+- Shared UI: `MatchBadge`, `MetricPill`, `SectionHeader` in `components/shared/`.
+- Design tokens and campaign type constants extracted into `constants/`.
+
+## Campaign-Type Specific Pages
+- 5 new campaign-type pages with dedicated UIs:
+  - `/shopping` — ShoppingPage: product group performance tree, ROAS color-coding.
+  - `/pmax` — PMaxPage: channel breakdown, asset groups, search themes, PMax vs Search cannibalization.
+  - `/display` — DisplayPage: placement performance, topic targeting, placement exclusions.
+  - `/video` — VideoPage: video placement metrics (views, view_rate, avg_cpv).
+  - `/competitive` — CompetitivePage: auction insights, competitor visibility (IS, overlap, position above, outranking).
+- Sidebar nav items filtered by campaign type (e.g., Keywords visible only for SEARCH).
+- SearchOptimization renamed to "Centrum audytu" (`/audit-center`), old route redirects preserved.
+
+## Audit Center Refactor + Bento Enhancements
+- `SearchOptimization.jsx` removed from `pages/`; all audit logic lives in `features/audit-center/AuditCenterPage.jsx`.
+- 25 type-specific section cards extracted into dedicated components under `features/audit-center/components/sections/`.
+- `BentoCard.jsx` — reusable bento card wrapper with pin toggle and period comparison display.
+- Period comparison on bento cards: `comparisonDefs` extracts numeric values and shows `% change vs previous period` badge per card.
+- Card pinning: `pinnedKeys` state backed by `localStorage` (`audit-center-pinned` key), pinned cards sorted first in grid.
+- Clear all pins button when any cards are pinned.
+
+## Keyboard Shortcuts
+- `useKeyboardShortcuts` hook (`frontend/src/hooks/useKeyboardShortcuts.js`) — global hotkeys for page navigation.
+- `ShortcutsHint` component (`frontend/src/components/ShortcutsHint.jsx`) — floating hint overlay.
+- Integrated in `App.jsx`.
+
+## Cross-Navigation Hook (useNavigateTo)
+- `useNavigateTo` hook (`frontend/src/hooks/useNavigateTo.js`) — centralized cross-tab navigation helper.
+- Used in `Alerts.jsx`, `QualityScore.jsx`, `Forecast.jsx` for contextual deep-links (e.g., alert row -> campaign, keyword row -> keywords page).
+
+## Forecast FilterContext Integration + Horizon Selector + Smart Retry
+- `Forecast.jsx` uses `useFilter()` from FilterContext to sync initial horizon with global date range.
+- Horizon selector pill buttons (7/14/30 days) with `forecastDays` state synced from FilterContext `days`.
+- Smart retry: `retryCount` state triggers re-fetch on user action without full page reload.
+
+## Semantic FilterContext + Search Input + Bulk Waste Exclude
+- `Semantic.jsx` uses `useFilter()` for `days` parameter.
+- `searchTerm` state with text input for filtering clusters by name or item text.
+- Bulk waste exclude: `selectedWaste` set + `bulkExcluding` state; multi-select clusters and batch-add as negative keywords via `addNegativeKeyword` API.
+- Floating bulk action toolbar appears when clusters are selected, showing count and total phrase count.
+
+## Settings Form Validation + Dirty State Tracking
+- `Settings.jsx` — `validate()` function checks safety_limits and business_rules fields against min/max constraints.
+- `validationErrors` state with `hasErrors` gate on save button.
+- `isDirty` computed from `JSON.stringify(formData) !== JSON.stringify(originalData)`.
+- `beforeunload` event listener warns on unsaved changes; `popstate` listener covers in-app navigation.
+
+## Shopping Page Enriched
+- `ShoppingPage.jsx` (`features/shopping/`) — 3 tabs: Product Groups, Performance, Feed Health.
+- KPI cards row: Clicks, Cost, Conversions, ROAS with aggregated data from all product groups.
+- `roasColor()` helper for ROAS color-coding (red < 1, yellow 1-3, green > 3).
+- Performance tab: top 5 and bottom 5 product groups ranked by ROAS.
+
+## Video Page Enriched
+- `VideoPage.jsx` (`features/video/`) — 3 tabs: Placements, Topics, Audiences.
+- KPI cards: Views, View Rate, Avg CPV (PLN), Cost.
+- CPV metrics with median-based high-CPV highlighting (>1.5x median flagged).
+- Placement exclusion: `handleExclude()` per-row action to block underperforming placements.
+
+## Competitive Page Enriched
+- `CompetitivePage.jsx` (`features/competitive/`) — KPI cards for IS, overlap, position above, outranking share.
+- `MetricBar` component for inline visual bars in table cells (overlap rate, outranking share).
+- Competitive position summary section with self-metrics extracted from auction insights.
+- Sortable table with per-competitor metrics.
+
+## GlobalFilterBar Campaign Type Filter Removal
+- `GlobalFilterBar.jsx` no longer renders a campaign type dropdown (was duplicate of Sidebar campaign type pills).
+- Remaining filters: Status, Label (conditional), Campaign Name search.
+- Campaign type filtering is handled exclusively by Sidebar `CampaignTypePills`.
+
+## PERFORMANCE_MAX / PMAX Naming Consistency
+- `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
+- Display label: `PMax` (short, user-facing).
+- `CAMP_TYPES` array and `CAMP_TYPE_LABELS` map both use `PERFORMANCE_MAX` consistently.
+- `globalFilters.js` campaign type options also use `PERFORMANCE_MAX` value.
