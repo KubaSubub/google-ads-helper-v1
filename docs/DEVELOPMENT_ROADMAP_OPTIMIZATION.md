@@ -386,14 +386,14 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 |---|---------|--------|--------|--------|
 | 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki | ❌ |
 | 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni | ❌ |
-| 17 | **D2** Asset Group Performance | Duży | 🟡 Średni | ❌ |
+| 17 | **D2** Asset Group Performance | Duży | 🟡 Średni | ✅ DONE |
 | 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni | ✅ DONE |
 | 19 | **G3** Landing Page Audit | Duży | 🟡 Średni | 🟡 PARTIAL |
 
 ### Fala 5: "Polish & UX"
 | # | Feature | Nakład | Impact | Status |
 |---|---------|--------|--------|--------|
-| 20 | **H1** Task Queue / Action Plan | Średni | 🟡 Średni | ❌ |
+| 20 | **H1** Task Queue / Action Plan | Średni | 🟡 Średni | ✅ DONE |
 | 21 | **G4** Cross-Campaign Analysis | Średni | 🟡 Średni | ❌ |
 | 22 | **E2** Monthly Deep Dive Report | Średni | 🟡 Średni | ✅ DONE |
 | 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have | ❌ |
@@ -405,7 +405,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
-**Stan na 2026-03-29: 17 DONE, 1 PARTIAL, 8 NOT DONE (z 26 feature'ów = 65%)**
+**Stan na 2026-03-29: 19 DONE, 1 PARTIAL, 6 NOT DONE (z 26 feature'ów = 73%)**
 
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast
