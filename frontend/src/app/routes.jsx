@@ -1,0 +1,62 @@
+import { lazy } from 'react'
+import { Route, Navigate } from 'react-router-dom'
+
+// Lazy-loaded page components
+const Dashboard = lazy(() => import('../pages/Dashboard'))
+const DailyAudit = lazy(() => import('../pages/DailyAudit'))
+const Campaigns = lazy(() => import('../pages/Campaigns'))
+const SearchTerms = lazy(() => import('../pages/SearchTerms'))
+const Keywords = lazy(() => import('../pages/Keywords'))
+const Semantic = lazy(() => import('../pages/Semantic'))
+const Recommendations = lazy(() => import('../pages/Recommendations'))
+const QualityScore = lazy(() => import('../pages/QualityScore'))
+const Forecast = lazy(() => import('../pages/Forecast'))
+const ActionHistory = lazy(() => import('../pages/ActionHistory'))
+const Alerts = lazy(() => import('../pages/Alerts'))
+const AuditCenter = lazy(() => import('../features/audit-center'))
+const Agent = lazy(() => import('../pages/Agent'))
+const Reports = lazy(() => import('../pages/Reports'))
+const Settings = lazy(() => import('../pages/Settings'))
+
+// New campaign-type pages
+const Shopping = lazy(() => import('../features/shopping'))
+const PMax = lazy(() => import('../features/pmax'))
+const Display = lazy(() => import('../features/display'))
+const Video = lazy(() => import('../features/video'))
+const Competitive = lazy(() => import('../features/competitive'))
+
+export const GLOBAL_FILTER_ROUTES = [
+    '/', '/campaigns', '/keywords', '/search-terms', '/audit-center',
+    '/recommendations', '/shopping', '/pmax', '/display', '/video', '/competitive',
+]
+
+export function AppRoutes() {
+    return (
+        <>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/daily-audit" element={<DailyAudit />} />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/search-terms" element={<SearchTerms />} />
+            <Route path="/keywords" element={<Keywords />} />
+            <Route path="/anomalies" element={<Navigate to="/alerts" replace />} />
+            <Route path="/semantic" element={<Semantic />} />
+            <Route path="/recommendations" element={<Recommendations />} />
+            <Route path="/quality-score" element={<QualityScore />} />
+            <Route path="/forecast" element={<Forecast />} />
+            <Route path="/clients" element={<Navigate to="/" replace />} />
+            <Route path="/action-history" element={<ActionHistory />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/audit-center" element={<AuditCenter />} />
+            <Route path="/search-optimization" element={<Navigate to="/audit-center" replace />} />
+            <Route path="/agent" element={<Agent />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
+            {/* New campaign-type pages */}
+            <Route path="/shopping" element={<Shopping />} />
+            <Route path="/pmax" element={<PMax />} />
+            <Route path="/display" element={<Display />} />
+            <Route path="/video" element={<Video />} />
+            <Route path="/competitive" element={<Competitive />} />
+        </>
+    )
+}
