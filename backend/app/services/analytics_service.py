@@ -4039,3 +4039,579 @@ class AnalyticsService:
             },
             "recommendations": recommendations,
         }
+
+    # -----------------------------------------------------------------------
+    # G4: Cross-Campaign Analysis — keyword overlap
+    # -----------------------------------------------------------------------
+
+    def get_keyword_overlap(self, client_id: int) -> dict:
+        """Find keywords that appear in multiple campaigns (same text).
+
+        Returns overlapping keyword texts with per-campaign breakdown of
+        clicks, cost, conversions, match type, and campaign name.
+        """
+        from app.models.ad_group import AdGroup
+
+        campaigns = (
+            self.db.query(Campaign)
+            .filter(Campaign.client_id == client_id)
+            .all()
+        )
+        campaign_map = {c.id: c.name for c in campaigns}
+        campaign_ids = list(campaign_map.keys())
+        if not campaign_ids:
+            return {"overlapping_keywords": [], "total_overlaps": 0, "total_wasted_cost_usd": 0}
+
+        # Load all keywords joined through ad_groups to campaigns
+        keywords = (
+            self.db.query(Keyword, AdGroup.campaign_id)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .filter(AdGroup.campaign_id.in_(campaign_ids))
+            .all()
+        )
+
+        # Group by normalized keyword text
+        text_groups: dict[str, list[dict]] = {}
+        for kw, camp_id in keywords:
+            normalized = kw.text.strip().lower()
+            if normalized not in text_groups:
+                text_groups[normalized] = []
+            text_groups[normalized].append({
+                "keyword_id": kw.id,
+                "campaign_id": camp_id,
+                "campaign_name": campaign_map.get(camp_id, "Unknown"),
+                "match_type": kw.match_type,
+                "status": kw.status,
+                "clicks": kw.clicks or 0,
+                "impressions": kw.impressions or 0,
+                "cost_usd": round((kw.cost_micros or 0) / 1_000_000, 2),
+                "conversions": round(kw.conversions or 0, 2),
+                "quality_score": kw.quality_score or 0,
+            })
+
+        # Filter to keywords appearing in more than one distinct campaign
+        overlapping = []
+        total_wasted = 0.0
+        for text, entries in text_groups.items():
+            unique_campaigns = set(e["campaign_id"] for e in entries)
+            if len(unique_campaigns) < 2:
+                continue
+            total_cost = sum(e["cost_usd"] for e in entries)
+            total_clicks = sum(e["clicks"] for e in entries)
+            total_conversions = sum(e["conversions"] for e in entries)
+
+            # Sort entries: highest cost first
+            entries.sort(key=lambda e: e["cost_usd"], reverse=True)
+
+            # Estimate waste: cost in all campaigns except the best-performing one
+            if len(entries) > 1:
+                best_cpa = None
+                best_idx = 0
+                for i, e in enumerate(entries):
+                    if e["conversions"] > 0:
+                        cpa = e["cost_usd"] / e["conversions"]
+                        if best_cpa is None or cpa < best_cpa:
+                            best_cpa = cpa
+                            best_idx = i
+                wasted = sum(e["cost_usd"] for j, e in enumerate(entries) if j != best_idx)
+                total_wasted += wasted
+            else:
+                wasted = 0
+
+            overlapping.append({
+                "keyword_text": text,
+                "campaign_count": len(unique_campaigns),
+                "total_clicks": total_clicks,
+                "total_cost_usd": round(total_cost, 2),
+                "total_conversions": round(total_conversions, 2),
+                "estimated_waste_usd": round(wasted, 2),
+                "campaigns": entries,
+            })
+
+        # Sort by estimated waste descending
+        overlapping.sort(key=lambda x: x["estimated_waste_usd"], reverse=True)
+
+        return {
+            "overlapping_keywords": overlapping[:50],
+            "total_overlaps": len(overlapping),
+            "total_wasted_cost_usd": round(total_wasted, 2),
+        }
+
+    # -----------------------------------------------------------------------
+    # G4: Cross-Campaign Analysis — budget allocation
+    # -----------------------------------------------------------------------
+
+    def get_budget_allocation(self, client_id: int, days: int = 30,
+                              date_from: date | None = None, date_to: date | None = None) -> dict:
+        """Compare CPA/ROAS across campaigns and suggest budget reallocation.
+
+        Identifies donor campaigns (high CPA, low ROAS) and recipient campaigns
+        (low CPA, high ROAS) and builds reallocation suggestions.
+        """
+        from app.utils.date_utils import resolve_dates as _rd
+        start, end = _rd(days, date_from, date_to)
+
+        campaigns = (
+            self.db.query(Campaign)
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .all()
+        )
+        if not campaigns:
+            return {"campaigns": [], "suggestions": [], "period_days": (end - start).days}
+
+        campaign_map = {c.id: c for c in campaigns}
+        campaign_ids = list(campaign_map.keys())
+
+        # Aggregate MetricDaily per campaign in the date range
+        rows = (
+            self.db.query(
+                MetricDaily.campaign_id,
+                func.sum(MetricDaily.clicks).label("clicks"),
+                func.sum(MetricDaily.impressions).label("impressions"),
+                func.sum(MetricDaily.cost_micros).label("cost_micros"),
+                func.sum(MetricDaily.conversions).label("conversions"),
+                func.sum(MetricDaily.conversion_value_micros).label("conv_value_micros"),
+            )
+            .filter(
+                MetricDaily.campaign_id.in_(campaign_ids),
+                MetricDaily.date >= start,
+                MetricDaily.date <= end,
+            )
+            .group_by(MetricDaily.campaign_id)
+            .all()
+        )
+
+        campaign_metrics = []
+        for r in rows:
+            c = campaign_map.get(r.campaign_id)
+            if not c:
+                continue
+
+            clicks = r.clicks or 0
+            impressions = r.impressions or 0
+            cost_micros = r.cost_micros or 0
+            conversions = r.conversions or 0
+            conv_value_micros = r.conv_value_micros or 0
+
+            cost_usd = cost_micros / 1_000_000
+            conv_value_usd = conv_value_micros / 1_000_000
+            ctr = (clicks / impressions * 100) if impressions > 0 else 0
+            cpc = (cost_usd / clicks) if clicks > 0 else 0
+            cpa = (cost_usd / conversions) if conversions > 0 else 0
+            roas = (conv_value_usd / cost_usd) if cost_usd > 0 else 0
+            cvr = (conversions / clicks * 100) if clicks > 0 else 0
+
+            budget_daily_usd = round((c.budget_micros or 0) / 1_000_000, 2)
+            budget_lost = c.search_budget_lost_is
+
+            campaign_metrics.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "campaign_type": c.campaign_type,
+                "budget_daily_usd": budget_daily_usd,
+                "cost_usd": round(cost_usd, 2),
+                "clicks": clicks,
+                "impressions": impressions,
+                "conversions": round(conversions, 2),
+                "conversion_value_usd": round(conv_value_usd, 2),
+                "ctr": round(ctr, 2),
+                "cpc_usd": round(cpc, 2),
+                "cpa_usd": round(cpa, 2),
+                "roas": round(roas, 2),
+                "cvr": round(cvr, 2),
+                "impression_share_lost_budget": round((budget_lost or 0) * 100, 1),
+            })
+
+        # Build suggestions: donor/recipient pairs
+        suggestions = []
+        if len(campaign_metrics) >= 2:
+            # Separate into campaigns with conversions (rankable) and without
+            with_conv = [cm for cm in campaign_metrics if cm["conversions"] > 0]
+
+            if len(with_conv) >= 2:
+                # Sort by CPA: lowest CPA = best recipient, highest CPA = potential donor
+                sorted_by_cpa = sorted(with_conv, key=lambda x: x["cpa_usd"])
+
+                # Top recipients: low CPA, especially with budget-lost IS
+                recipients = sorted_by_cpa[:max(1, len(sorted_by_cpa) // 3)]
+                donors = sorted_by_cpa[-max(1, len(sorted_by_cpa) // 3):]
+
+                # Only suggest if there's a meaningful CPA gap
+                for donor in donors:
+                    for recipient in recipients:
+                        if donor["campaign_id"] == recipient["campaign_id"]:
+                            continue
+                        if donor["cpa_usd"] <= recipient["cpa_usd"] * 1.3:
+                            continue  # CPA gap too small
+
+                        # Calculate suggested reallocation (10-20% of donor budget)
+                        move_pct = 0.15
+                        if recipient["impression_share_lost_budget"] > 20:
+                            move_pct = 0.20
+                        move_amount = round(donor["budget_daily_usd"] * move_pct, 2)
+
+                        # Estimate impact
+                        saved_cpa = donor["cpa_usd"] - recipient["cpa_usd"]
+
+                        suggestions.append({
+                            "type": "reallocation",
+                            "priority": "high" if saved_cpa > 10 else "medium",
+                            "donor_campaign_id": donor["campaign_id"],
+                            "donor_campaign_name": donor["campaign_name"],
+                            "donor_cpa_usd": donor["cpa_usd"],
+                            "recipient_campaign_id": recipient["campaign_id"],
+                            "recipient_campaign_name": recipient["campaign_name"],
+                            "recipient_cpa_usd": recipient["cpa_usd"],
+                            "recipient_budget_lost_is": recipient["impression_share_lost_budget"],
+                            "suggested_move_usd": move_amount,
+                            "estimated_cpa_savings_usd": round(saved_cpa, 2),
+                            "reason": (
+                                f"CPA {donor['campaign_name']}: ${donor['cpa_usd']:.2f} vs "
+                                f"{recipient['campaign_name']}: ${recipient['cpa_usd']:.2f}. "
+                                f"Move ~${move_amount:.2f}/day to improve overall CPA."
+                            ),
+                        })
+
+            # Also flag zero-conversion campaigns with significant spend
+            for cm in campaign_metrics:
+                if cm["conversions"] == 0 and cm["cost_usd"] > 10:
+                    suggestions.append({
+                        "type": "review_spend",
+                        "priority": "high" if cm["cost_usd"] > 50 else "medium",
+                        "campaign_id": cm["campaign_id"],
+                        "campaign_name": cm["campaign_name"],
+                        "cost_usd": cm["cost_usd"],
+                        "reason": (
+                            f"{cm['campaign_name']} spent ${cm['cost_usd']:.2f} with 0 conversions "
+                            f"in {(end - start).days} days. Review or pause."
+                        ),
+                    })
+
+        # Sort campaign_metrics by cost descending for display
+        campaign_metrics.sort(key=lambda x: x["cost_usd"], reverse=True)
+
+        return {
+            "campaigns": campaign_metrics,
+            "suggestions": suggestions,
+            "period_days": (end - start).days,
+            "total_cost_usd": round(sum(cm["cost_usd"] for cm in campaign_metrics), 2),
+            "avg_cpa_usd": round(
+                sum(cm["cost_usd"] for cm in campaign_metrics) /
+                max(sum(cm["conversions"] for cm in campaign_metrics), 0.01), 2
+            ),
+        }
+
+    # -----------------------------------------------------------------------
+    # G4: Cross-Campaign Analysis — campaign comparison
+    # -----------------------------------------------------------------------
+
+    def get_campaign_comparison(self, client_id: int, campaign_ids: list[int],
+                                 days: int = 30,
+                                 date_from: date | None = None,
+                                 date_to: date | None = None) -> dict:
+        """Side-by-side comparison of selected campaigns with all key metrics.
+
+        For each campaign: aggregates MetricDaily in the date range and
+        calculates derived metrics (CTR, CPC, CPA, ROAS, CVR).
+        """
+        from app.utils.date_utils import resolve_dates as _rd
+        start, end = _rd(days, date_from, date_to)
+
+        # Validate campaigns belong to client
+        campaigns = (
+            self.db.query(Campaign)
+            .filter(Campaign.client_id == client_id, Campaign.id.in_(campaign_ids))
+            .all()
+        )
+        if not campaigns:
+            return {"campaigns": [], "period_days": (end - start).days}
+
+        campaign_map = {c.id: c for c in campaigns}
+        valid_ids = list(campaign_map.keys())
+
+        # Aggregate MetricDaily per campaign
+        rows = (
+            self.db.query(
+                MetricDaily.campaign_id,
+                func.sum(MetricDaily.clicks).label("clicks"),
+                func.sum(MetricDaily.impressions).label("impressions"),
+                func.sum(MetricDaily.cost_micros).label("cost_micros"),
+                func.sum(MetricDaily.conversions).label("conversions"),
+                func.sum(MetricDaily.conversion_value_micros).label("conv_value_micros"),
+                func.avg(MetricDaily.search_impression_share).label("avg_impression_share"),
+                func.avg(MetricDaily.search_budget_lost_is).label("avg_budget_lost_is"),
+                func.avg(MetricDaily.search_rank_lost_is).label("avg_rank_lost_is"),
+            )
+            .filter(
+                MetricDaily.campaign_id.in_(valid_ids),
+                MetricDaily.date >= start,
+                MetricDaily.date <= end,
+            )
+            .group_by(MetricDaily.campaign_id)
+            .all()
+        )
+
+        metrics_map = {r.campaign_id: r for r in rows}
+
+        result = []
+        for cid in valid_ids:
+            c = campaign_map[cid]
+            r = metrics_map.get(cid)
+
+            if r:
+                clicks = r.clicks or 0
+                impressions = r.impressions or 0
+                cost_micros = r.cost_micros or 0
+                conversions = r.conversions or 0
+                conv_value_micros = r.conv_value_micros or 0
+
+                cost_usd = cost_micros / 1_000_000
+                conv_value_usd = conv_value_micros / 1_000_000
+                ctr = (clicks / impressions * 100) if impressions > 0 else 0
+                cpc = (cost_usd / clicks) if clicks > 0 else 0
+                cpa = (cost_usd / conversions) if conversions > 0 else 0
+                roas = (conv_value_usd / cost_usd) if cost_usd > 0 else 0
+                cvr = (conversions / clicks * 100) if clicks > 0 else 0
+
+                avg_is = r.avg_impression_share
+                avg_budget_lost = r.avg_budget_lost_is
+                avg_rank_lost = r.avg_rank_lost_is
+            else:
+                clicks = impressions = 0
+                cost_usd = conv_value_usd = 0
+                conversions = ctr = cpc = cpa = roas = cvr = 0
+                avg_is = avg_budget_lost = avg_rank_lost = None
+
+            result.append({
+                "campaign_id": c.id,
+                "campaign_name": c.name,
+                "campaign_type": c.campaign_type,
+                "status": c.status,
+                "budget_daily_usd": round((c.budget_micros or 0) / 1_000_000, 2),
+                "bidding_strategy": c.bidding_strategy,
+                "clicks": clicks,
+                "impressions": impressions,
+                "cost_usd": round(cost_usd, 2),
+                "conversions": round(conversions, 2),
+                "conversion_value_usd": round(conv_value_usd, 2),
+                "ctr": round(ctr, 2),
+                "cpc_usd": round(cpc, 2),
+                "cpa_usd": round(cpa, 2),
+                "roas": round(roas, 2),
+                "cvr": round(cvr, 2),
+                "avg_impression_share": round((avg_is or 0) * 100, 1),
+                "avg_budget_lost_is": round((avg_budget_lost or 0) * 100, 1),
+                "avg_rank_lost_is": round((avg_rank_lost or 0) * 100, 1),
+            })
+
+        return {
+            "campaigns": result,
+            "period_days": (end - start).days,
+            "date_from": str(start),
+            "date_to": str(end),
+        }
+
+    # ------------------------------------------------------------------
+    # H2: Industry Benchmarks
+    # ------------------------------------------------------------------
+
+    def get_benchmarks(self, client_id: int, days: int = 30) -> dict:
+        """Compare client metrics against industry benchmarks.
+
+        Returns client's actual CTR/CPC/CPA/CVR/ROAS alongside industry
+        averages, with per-metric verdict (above / below / on_par).
+        """
+        from app.models.client import Client
+
+        client = self.db.get(Client, client_id)
+        if not client:
+            return {"error": "Client not found"}
+
+        industry = client.industry or "default"
+        bench = INDUSTRY_BENCHMARKS.get(industry, INDUSTRY_BENCHMARKS["default"])
+
+        # Aggregate client metrics from MetricDaily
+        today = date.today()
+        start = today - timedelta(days=days)
+
+        campaign_ids = [
+            c.id for c in
+            self.db.query(Campaign).filter(Campaign.client_id == client_id).all()
+        ]
+
+        if not campaign_ids:
+            return {
+                "industry": industry,
+                "days": days,
+                "client_metrics": {},
+                "benchmark_metrics": bench,
+                "comparison": [],
+            }
+
+        row = self.db.query(
+            func.sum(MetricDaily.clicks).label("clicks"),
+            func.sum(MetricDaily.impressions).label("impressions"),
+            func.sum(MetricDaily.cost_micros).label("cost_micros"),
+            func.sum(MetricDaily.conversions).label("conversions"),
+            func.sum(MetricDaily.conversion_value_micros).label("conv_value_micros"),
+        ).filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= start,
+        ).first()
+
+        clicks = row.clicks or 0
+        impressions = row.impressions or 0
+        cost_micros = row.cost_micros or 0
+        conversions = row.conversions or 0.0
+        conv_value_micros = row.conv_value_micros or 0
+
+        cost = cost_micros / 1_000_000
+        conv_value = conv_value_micros / 1_000_000
+
+        client_metrics = {
+            "ctr": round((clicks / impressions * 100) if impressions else 0, 2),
+            "cpc": round((cost / clicks) if clicks else 0, 2),
+            "cpa": round((cost / conversions) if conversions else 0, 2),
+            "cvr": round((conversions / clicks * 100) if clicks else 0, 2),
+            "roas": round((conv_value / cost) if cost else 0, 2),
+        }
+
+        comparison = []
+        for metric_key in ("ctr", "cpc", "cpa", "cvr", "roas"):
+            client_val = client_metrics[metric_key]
+            bench_val = bench[metric_key]
+
+            if bench_val == 0:
+                pct_diff = 0.0
+            else:
+                pct_diff = round((client_val - bench_val) / bench_val * 100, 1)
+
+            # For CPC and CPA lower is better; for CTR, CVR, ROAS higher is better
+            if metric_key in ("cpc", "cpa"):
+                if pct_diff < -10:
+                    verdict = "above"   # spending less = good
+                elif pct_diff > 10:
+                    verdict = "below"   # spending more = bad
+                else:
+                    verdict = "on_par"
+            else:
+                if pct_diff > 10:
+                    verdict = "above"
+                elif pct_diff < -10:
+                    verdict = "below"
+                else:
+                    verdict = "on_par"
+
+            comparison.append({
+                "metric": metric_key,
+                "client_value": client_val,
+                "benchmark_value": bench_val,
+                "pct_diff": pct_diff,
+                "verdict": verdict,
+            })
+
+        return {
+            "industry": industry,
+            "days": days,
+            "client_metrics": client_metrics,
+            "benchmark_metrics": bench,
+            "comparison": comparison,
+        }
+
+    def get_client_comparison(self, days: int = 30) -> list:
+        """MCC view: compare ALL clients' KPIs side-by-side.
+
+        Returns a list of clients with their aggregated metrics,
+        sorted by ROAS descending.
+        """
+        from app.models.client import Client
+
+        today = date.today()
+        start = today - timedelta(days=days)
+
+        clients = self.db.query(Client).all()
+        results = []
+
+        for client in clients:
+            campaign_ids = [
+                c.id for c in
+                self.db.query(Campaign).filter(Campaign.client_id == client.id).all()
+            ]
+
+            if not campaign_ids:
+                results.append({
+                    "client_id": client.id,
+                    "client_name": client.name,
+                    "industry": client.industry or "default",
+                    "clicks": 0,
+                    "impressions": 0,
+                    "cost_usd": 0,
+                    "conversions": 0,
+                    "conversion_value_usd": 0,
+                    "ctr": 0,
+                    "cpc": 0,
+                    "cpa": 0,
+                    "cvr": 0,
+                    "roas": 0,
+                })
+                continue
+
+            row = self.db.query(
+                func.sum(MetricDaily.clicks).label("clicks"),
+                func.sum(MetricDaily.impressions).label("impressions"),
+                func.sum(MetricDaily.cost_micros).label("cost_micros"),
+                func.sum(MetricDaily.conversions).label("conversions"),
+                func.sum(MetricDaily.conversion_value_micros).label("conv_value_micros"),
+            ).filter(
+                MetricDaily.campaign_id.in_(campaign_ids),
+                MetricDaily.date >= start,
+            ).first()
+
+            clicks = row.clicks or 0
+            impressions = row.impressions or 0
+            cost_micros = row.cost_micros or 0
+            conversions = row.conversions or 0.0
+            conv_value_micros = row.conv_value_micros or 0
+
+            cost = cost_micros / 1_000_000
+            conv_value = conv_value_micros / 1_000_000
+
+            results.append({
+                "client_id": client.id,
+                "client_name": client.name,
+                "industry": client.industry or "default",
+                "clicks": clicks,
+                "impressions": impressions,
+                "cost_usd": round(cost, 2),
+                "conversions": round(conversions, 2),
+                "conversion_value_usd": round(conv_value, 2),
+                "ctr": round((clicks / impressions * 100) if impressions else 0, 2),
+                "cpc": round((cost / clicks) if clicks else 0, 2),
+                "cpa": round((cost / conversions) if conversions else 0, 2),
+                "cvr": round((conversions / clicks * 100) if clicks else 0, 2),
+                "roas": round((conv_value / cost) if cost else 0, 2),
+            })
+
+        # Sort by ROAS descending
+        results.sort(key=lambda x: x["roas"], reverse=True)
+
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Industry Benchmarks (hardcoded averages)
+# ---------------------------------------------------------------------------
+
+INDUSTRY_BENCHMARKS = {
+    "E-commerce": {"ctr": 2.69, "cpc": 1.16, "cpa": 45.27, "cvr": 2.81, "roas": 4.0},
+    "Food": {"ctr": 3.11, "cpc": 0.78, "cpa": 29.42, "cvr": 3.65, "roas": 5.5},
+    "Legal": {"ctr": 1.35, "cpc": 6.75, "cpa": 86.02, "cvr": 1.95, "roas": 2.0},
+    "Finance": {"ctr": 2.65, "cpc": 3.44, "cpa": 56.76, "cvr": 3.23, "roas": 3.5},
+    "Health": {"ctr": 3.27, "cpc": 2.62, "cpa": 78.09, "cvr": 2.89, "roas": 3.0},
+    "Education": {"ctr": 3.78, "cpc": 2.40, "cpa": 72.70, "cvr": 3.39, "roas": 3.2},
+    "Technology": {"ctr": 2.09, "cpc": 3.80, "cpa": 133.52, "cvr": 2.18, "roas": 3.8},
+    "Real Estate": {"ctr": 3.71, "cpc": 2.37, "cpa": 116.61, "cvr": 2.47, "roas": 2.5},
+    "Travel": {"ctr": 4.68, "cpc": 1.53, "cpa": 44.73, "cvr": 3.55, "roas": 5.0},
+    "Automotive": {"ctr": 4.00, "cpc": 2.46, "cpa": 33.52, "cvr": 3.45, "roas": 4.5},
+    "default": {"ctr": 3.17, "cpc": 2.69, "cpa": 48.96, "cvr": 3.75, "roas": 4.0},
+}

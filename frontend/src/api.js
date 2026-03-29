@@ -298,6 +298,22 @@ export const getReports = (clientId, params = {}) =>
 export const getReport = (reportId, clientId) =>
     api.get(`/reports/${reportId}`, { params: { client_id: clientId } });
 
+// Benchmarks (H2)
+export const getBenchmarks = (clientId, params = {}) =>
+    api.get('/analytics/benchmarks', { params: { client_id: clientId, ...params } });
+export const getClientComparison = (params = {}) =>
+    api.get('/analytics/client-comparison', { params });
+
+// Cross-Campaign Analysis (G4)
+export const getKeywordOverlap = (clientId) =>
+    api.get('/analytics/keyword-overlap', { params: { client_id: clientId } });
+export const getBudgetAllocation = (clientId, params = {}) =>
+    api.get('/analytics/budget-allocation', { params: { client_id: clientId, ...params } });
+export const getCampaignComparison = (clientId, campaignIds, params = {}) =>
+    api.get('/analytics/campaign-comparison', {
+        params: { client_id: clientId, campaign_ids: campaignIds.join(','), ...params },
+    });
+
 // History
 export const getChangeHistory = (clientId, params = {}) =>
     api.get('/history/', { params: { client_id: clientId, ...params } });

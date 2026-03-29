@@ -1,11 +1,13 @@
 import {
     Award,
+    BarChart3,
     Bell,
     Brain,
     Calendar,
     ClipboardCheck,
     Crosshair,
     FileBarChart2,
+    GitCompare,
     History,
     KeyRound,
     Layers,
@@ -68,6 +70,8 @@ export const NAV_GROUPS = [
         items: [
             { to: '/audit-center', label: 'Centrum audytu', icon: Zap },
             { to: '/competitive', label: 'Konkurencja', icon: Crosshair },
+            { to: '/cross-campaign', label: 'Analiza cross', icon: GitCompare },
+            { to: '/benchmarks', label: 'Benchmarki', icon: BarChart3 },
             { to: '/forecast', label: 'Prognoza', icon: Calendar, types: ['SEARCH'] },
             { to: '/semantic', label: 'Inteligencja', icon: Brain, types: ['SEARCH'] },
             { to: '/quality-score', label: 'Wynik jakości', icon: Award, types: ['SEARCH'] },

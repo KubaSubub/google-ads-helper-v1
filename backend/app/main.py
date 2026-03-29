@@ -52,11 +52,13 @@ from app.routers import (
     keywords_ads,
     recommendations,
     reports,
+    scheduled_sync,
     search_terms,
     semantic,
     sync,
 )
 from app.security import require_session
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -66,7 +68,9 @@ async def lifespan(app: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     init_db()
     logger.info(f"Database ready: {settings.database_url}")
+    start_scheduler()
     yield
+    stop_scheduler()
     logger.info("Shutting down...")
 
 
@@ -102,6 +106,7 @@ app.include_router(search_terms.router, prefix=API_PREFIX, tags=["search-terms"]
 app.include_router(keywords_ads.router, prefix=API_PREFIX, tags=["keywords", "ads"], dependencies=protected)
 app.include_router(analytics.router, prefix=API_PREFIX, tags=["analytics"], dependencies=protected)
 app.include_router(sync.router, prefix=API_PREFIX, tags=["sync"], dependencies=protected)
+app.include_router(scheduled_sync.router, prefix=API_PREFIX, tags=["scheduled-sync"], dependencies=protected)
 app.include_router(export.router, prefix=API_PREFIX, tags=["export"], dependencies=protected)
 app.include_router(semantic.router, prefix=API_PREFIX, tags=["semantic"], dependencies=protected)
 app.include_router(recommendations.router, prefix=API_PREFIX, tags=["recommendations"], dependencies=protected)

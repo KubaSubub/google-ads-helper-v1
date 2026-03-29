@@ -2288,3 +2288,105 @@ def google_recommendations_list(
         "total": len(items),
         "by_type": type_counts,
     }
+
+
+# ---------------------------------------------------------------------------
+# G4: Cross-Campaign Analysis — keyword overlap, budget allocation, comparison
+# ---------------------------------------------------------------------------
+
+
+@router.get("/keyword-overlap")
+def get_keyword_overlap(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """Find keywords that appear in multiple campaigns (same text).
+
+    Returns overlapping keyword texts with per-campaign breakdown
+    and estimated waste from cannibalization.
+    """
+    service = AnalyticsService(db)
+    return service.get_keyword_overlap(client_id)
+
+
+@router.get("/budget-allocation")
+def get_budget_allocation(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=365, description="Lookback period in days"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    db: Session = Depends(get_db),
+):
+    """Compare CPA/ROAS across campaigns and suggest budget reallocation.
+
+    Identifies donor (high CPA) and recipient (low CPA) campaigns,
+    suggests budget moves to optimize overall account CPA.
+    """
+    service = AnalyticsService(db)
+    return service.get_budget_allocation(
+        client_id=client_id, days=days, date_from=date_from, date_to=date_to,
+    )
+
+
+@router.get("/campaign-comparison")
+def get_campaign_comparison(
+    client_id: int = Query(..., description="Client ID"),
+    campaign_ids: str = Query(..., description="Comma-separated campaign IDs (e.g. 1,2,3)"),
+    days: int = Query(30, ge=7, le=365, description="Lookback period in days"),
+    date_from: date = Query(None, description="Start date (overrides days)"),
+    date_to: date = Query(None, description="End date (overrides days)"),
+    db: Session = Depends(get_db),
+):
+    """Side-by-side comparison of selected campaigns.
+
+    Aggregates MetricDaily for each campaign in date range,
+    calculates derived metrics (CTR, CPC, CPA, ROAS, CVR).
+    """
+    # Parse campaign_ids from comma-separated string
+    try:
+        ids = [int(x.strip()) for x in campaign_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="campaign_ids must be comma-separated integers")
+
+    if not ids:
+        raise HTTPException(status_code=400, detail="At least one campaign_id is required")
+    if len(ids) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 campaigns for comparison")
+
+    service = AnalyticsService(db)
+    return service.get_campaign_comparison(
+        client_id=client_id, campaign_ids=ids, days=days,
+        date_from=date_from, date_to=date_to,
+    )
+
+
+# ---------------------------------------------------------------------------
+# H2: Industry Benchmarks
+# ---------------------------------------------------------------------------
+
+@router.get("/benchmarks")
+def get_benchmarks(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=365, description="Lookback period in days"),
+    db: Session = Depends(get_db),
+):
+    """Compare client metrics against industry benchmarks.
+
+    Returns client CTR/CPC/CPA/CVR/ROAS vs hardcoded industry averages,
+    with per-metric verdict (above / below / on_par).
+    """
+    service = AnalyticsService(db)
+    return service.get_benchmarks(client_id=client_id, days=days)
+
+
+@router.get("/client-comparison")
+def get_client_comparison(
+    days: int = Query(30, ge=7, le=365, description="Lookback period in days"),
+    db: Session = Depends(get_db),
+):
+    """MCC view: compare ALL clients' KPIs side-by-side.
+
+    Returns list of clients with aggregated metrics, sorted by ROAS desc.
+    """
+    service = AnalyticsService(db)
+    return service.get_client_comparison(days=days)
