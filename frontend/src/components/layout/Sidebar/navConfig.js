@@ -17,6 +17,7 @@ import {
     ShoppingCart,
     Sparkles,
     Youtube,
+    ListChecks,
     Zap,
 } from 'lucide-react'
 
@@ -44,6 +45,7 @@ export const NAV_GROUPS = [
     {
         label: 'DZIAŁANIA',
         items: [
+            { to: '/tasks', label: 'Plan dnia', icon: ListChecks },
             { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb },
             { to: '/action-history', label: 'Historia zmian', icon: History },
         ],

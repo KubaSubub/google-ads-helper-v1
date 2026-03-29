@@ -24,6 +24,7 @@ const PMax = lazy(() => import('../features/pmax'))
 const Display = lazy(() => import('../features/display'))
 const Video = lazy(() => import('../features/video'))
 const Competitive = lazy(() => import('../features/competitive'))
+const TaskQueue = lazy(() => import('../features/task-queue'))
 
 export const GLOBAL_FILTER_ROUTES = [
     '/', '/campaigns', '/keywords', '/search-terms', '/audit-center',
@@ -56,6 +57,7 @@ export function AppRoutes() {
             <Route path="/display" element={<Display />} />
             <Route path="/video" element={<Video />} />
             <Route path="/competitive" element={<Competitive />} />
+            <Route path="/tasks" element={<TaskQueue />} />
         </Routes>
     )
 }
