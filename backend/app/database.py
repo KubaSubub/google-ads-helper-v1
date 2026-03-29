@@ -104,6 +104,7 @@ def _ensure_sqlite_columns():
 
     schema_updates = {
         "campaigns": {
+            "campaign_subtype": "TEXT",
             "campaign_role_auto": "TEXT",
             "campaign_role_final": "TEXT",
             "role_confidence": "FLOAT",

@@ -208,6 +208,24 @@ Base API URL: `/api/v1`
 - `GET /analytics/pmax-search-cannibalization?client_id=X&days=30&date_from=&date_to=&min_clicks=2` — PMax vs Search overlap detection
 - `GET /analytics/pmax-channel-trends?client_id=X&days=30&date_from=&date_to=` — daily PMax channel cost/conversion trends
 
+## Analytics - Cross-Campaign & Benchmarks (G4, H2)
+- `GET /analytics/keyword-overlap?client_id=X` — keyword overlap analysis across campaigns (shared keywords, unique keywords, overlap %)
+- `GET /analytics/budget-allocation?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — budget allocation analysis (spend distribution, efficiency per campaign)
+- `GET /analytics/campaign-comparison?client_id=X&campaign_ids=1,2,3&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — side-by-side campaign comparison (metrics, trends)
+- `GET /analytics/benchmarks?client_id=X&days=30` — account benchmarks (KPI percentiles, industry comparison baselines)
+- `GET /analytics/client-comparison?days=30` — cross-client comparison (all clients KPIs side-by-side)
+
+## Analytics - DSA (Dynamic Search Ads) (C1/C2/C3)
+- `GET /analytics/dsa-targets?client_id=X&campaign_type=&campaign_status=` — DSA auto-targets per campaign with performance metrics
+- `GET /analytics/dsa-coverage?client_id=X` — DSA coverage: which campaigns are DSA, target counts
+- `GET /analytics/dsa-headlines?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — DSA headline performance analysis
+- `GET /analytics/dsa-search-overlap?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — DSA search term overlap with manual keywords
+
+## Scheduled Sync (F1)
+- `GET /sync/schedule?client_id=X` — get sync schedule for a client
+- `POST /sync/schedule` — create/update sync schedule (body: `{client_id, enabled, interval_hours}`)
+- `DELETE /sync/schedule?client_id=X` — disable and remove schedule
+
 ## Daily Audit
 - `GET /daily-audit/?client_id=X` — single aggregated morning audit view:
   - `budget_pacing`: enabled campaigns with daily budget, today's spend, pacing %, budget-limited flag
@@ -247,6 +265,15 @@ Base API URL: `/api/v1`
 - `POST /agent/chat?client_id=X` -> SSE stream: report generation via Claude Code headless
   - Body: `{message: str, report_type: "weekly"|"campaigns"|"keywords"|"search_terms"|"budget"|"alerts"|"freeform"}`
   - SSE events: `status` (progress), `delta` (content chunk), `error`, `done`
+
+## Automated Rules Engine (F3)
+- `GET /rules/?client_id=X` — list all automated rules for a client
+- `POST /rules/` — create a new automated rule (body: rule config)
+- `GET /rules/{rule_id}?client_id=X` — get a single rule
+- `PUT /rules/{rule_id}` — update a rule
+- `DELETE /rules/{rule_id}` — delete a rule
+- `POST /rules/{rule_id}/dry-run?client_id=X` — dry-run a rule (simulate execution without applying)
+- `POST /rules/{rule_id}/execute?client_id=X` — execute a rule
 
 ## Health
 - `GET /health` -> `{status: "ok", version, env}` (outside `/api/v1`)

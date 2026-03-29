@@ -4,15 +4,64 @@
 ## Status
 - Backend: 528 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
-- DB: 38 tables (26 original + 12 new from coverage expansion)
-- Sync: 36 total phases (22 prior + 14 new from Wave A-E)
-- API endpoints: 139 total across 15 routers (63 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
-- Models: 38 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion)
-- Frontend pages: 20 routes (15 original + Shopping, PMax, Display, Video, Competitive) — all with enriched UX
+- DB: 42 tables (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + DsaTarget + DsaHeadline)
+- Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (APScheduler)
+- API endpoints: 158 total across 17 routers (72 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- Models: 42 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, DsaTarget, DsaHeadline)
+- Frontend pages: 23 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks) — all with enriched UX
 - Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
 - Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — all plans closed (0 MISSING)
+- Roadmap: 22/26 DONE (85%)
+
+## DSA Support — C1/C2/C3 (2026-03-29)
+- 4 new analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`
+- 2 new models: `DsaTarget`, `DsaHeadline`
+- Seed data: DSA targets + headlines per client
+- C1: DSA target performance (auto-targets per campaign)
+- C2: DSA headline performance analysis (top/worst headlines by CTR/conversions)
+- C3: DSA vs manual keyword overlap detection
+
+## Automated Rules Engine (F3) (2026-03-29)
+- New router: `rules.py` — 7 endpoints (CRUD + dry-run + execute)
+- New model: `AutomatedRule` — per-client rule definition with conditions, actions, schedule
+- New service: `rules_engine.py` — rule evaluation and execution engine
+- Route: `/rules/`, registered in `main.py` (17 routers total)
+
+## Cross-Campaign Analysis (G4) + Benchmarks (H2) + Scheduled Sync (F1) (2026-03-29)
+
+### Cross-Campaign Analysis (G4)
+- 3 new analytics endpoints: `keyword-overlap`, `budget-allocation`, `campaign-comparison`
+- New page: `features/cross-campaign/CrossCampaignPage.jsx` — keyword overlap matrix, budget allocation chart, side-by-side campaign comparison
+- Route: `/cross-campaign`, sidebar nav in ANALIZA group
+
+### Benchmarks (H2)
+- 2 new analytics endpoints: `benchmarks`, `client-comparison`
+- New page: `features/benchmarks/BenchmarksPage.jsx` — account KPI benchmarks and cross-client comparison
+- Route: `/benchmarks`, sidebar nav in ANALIZA group
+
+### Scheduled Sync (F1)
+- New model: `ScheduledSync` — per-client sync schedule (enabled, interval_hours)
+- New service: `scheduler.py` — APScheduler-based background sync runner
+- New router: `scheduled_sync.py` — 3 endpoints (GET/POST/DELETE `/sync/schedule`)
+- Registered in `main.py` as protected router (16 routers total)
+
+## PMax Asset Groups Enrichment (D2) + Task Queue Page (H1) (2026-03-29)
+
+### PMax Asset Groups (D2)
+- Enriched `PMaxPage.jsx` with asset group KPI summary (total groups, avg strength, top/bottom performer)
+- Asset strength distribution with colored pills
+- Sortable columns (clicks, cost, conversions, ROAS)
+- ROAS color-coding (green >4, yellow 2-4, red <2)
+- Expandable rows with detail view
+
+### Task Queue / Plan dnia (H1)
+- New page: `features/task-queue/TaskQueuePage.jsx` — aggregates actionable items from recommendations, alerts, wasted spend
+- Priority badges (HIGH/MEDIUM/LOW) with sorting
+- Progress bar with localStorage persistence
+- Quick action buttons per task type
+- Route: `/tasks`, sidebar: "Plan dnia" in DZIAŁANIA group
 
 ## Ads-Verify Sprint 2 — Full-App Polish (2026-03-29)
 

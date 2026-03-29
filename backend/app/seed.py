@@ -28,6 +28,8 @@ from app.models.audience import Audience
 from app.models.topic import TopicPerformance
 from app.models.bidding_strategy import BiddingStrategy, SharedBudget
 from app.models.google_recommendation import GoogleRecommendation
+from app.models.dsa_target import DsaTarget
+from app.models.dsa_headline import DsaHeadline
 
 
 # Deterministic seed for reproducibility
@@ -1757,6 +1759,162 @@ def _seed_demo_data_impl(db):
         db.add(r)
 
     db.flush()
+
+    # -----------------------------------------------------------------------
+    # DSA Campaign + Targets + Headlines + Overlapping Search Terms (C1, C2, C3)
+    # -----------------------------------------------------------------------
+    dsa_campaign = Campaign(
+        client_id=client.id,
+        google_campaign_id="1099",
+        name="DSA - Meble Ogólne",
+        status="ENABLED",
+        campaign_type="SEARCH",
+        campaign_subtype="SEARCH_DYNAMIC_ADS",
+        budget_micros=int(200 * 1_000_000),
+        budget_type="DAILY",
+        bidding_strategy="TARGET_CPA",
+        target_cpa_micros=int(25 * 1_000_000),
+        primary_status="ELIGIBLE",
+        start_date=date(2025, 6, 1),
+        search_impression_share=_rand_is(RNG, 0.25, 0.65),
+        search_top_impression_share=_rand_is(RNG, 0.15, 0.50),
+        search_abs_top_impression_share=_rand_is(RNG, 0.08, 0.35),
+        search_budget_lost_is=_rand_is(RNG, 0.02, 0.12),
+        search_rank_lost_is=_rand_is(RNG, 0.05, 0.25),
+    )
+    db.add(dsa_campaign)
+    db.flush()
+    campaigns.append(dsa_campaign)
+
+    # C1: DSA Targets (5 targets, mix of types)
+    dsa_targets_data = [
+        ("URL_CONTAINS", "/lozka", "ENABLED", 320, 8500, 480.0, 18.5),
+        ("URL_CONTAINS", "/kanapy", "ENABLED", 210, 5600, 310.0, 11.2),
+        ("CATEGORY", "Meble > Łóżka i materace", "ENABLED", 185, 4900, 275.0, 9.8),
+        ("CATEGORY", "Meble > Sofy i narożniki", "ENABLED", 150, 3800, 220.0, 7.5),
+        ("ALL_WEBPAGES", "*", "PAUSED", 45, 1200, 85.0, 1.2),
+    ]
+    dsa_target_objects = []
+    for target_type, target_value, status, clicks, impr, cost, conv in dsa_targets_data:
+        t = DsaTarget(
+            client_id=client.id,
+            campaign_id=dsa_campaign.id,
+            target_type=target_type,
+            target_value=target_value,
+            status=status,
+            clicks=clicks,
+            impressions=impr,
+            cost_micros=int(cost * 1_000_000),
+            conversions=conv,
+        )
+        db.add(t)
+        dsa_target_objects.append(t)
+    db.flush()
+
+    # C2: DSA Headlines (10 auto-generated headlines with metrics)
+    dsa_headline_data = [
+        ("łóżko drewniane 160x200", "Łóżka Drewniane - Darmowa Dostawa", "https://demo-meble.pl/lozka/drewniane"),
+        ("kanapa narożna rozkładana", "Kanapy Narożne w Super Cenach", "https://demo-meble.pl/kanapy/narozne"),
+        ("sofa do salonu skórzana", "Sofy Skórzane - Gwarancja 10 Lat", "https://demo-meble.pl/sofy/skorzane"),
+        ("meble biurowe do domu", "Meble Biurowe - Ergonomiczne Biurka", "https://demo-meble.pl/biurka"),
+        ("łóżko tapicerowane z pojemnikiem", "Łóżka Tapicerowane - Szeroki Wybór", "https://demo-meble.pl/lozka/tapicerowane"),
+        ("stolik kawowy nowoczesny", "Nowoczesne Stoliki Kawowe", "https://demo-meble.pl/stoliki"),
+        ("regał na książki drewniany", "Regały Drewniane - Raty 0%", "https://demo-meble.pl/regaly"),
+        ("fotel obrotowy biurowy", "Fotele Biurowe - Ergonomia i Styl", "https://demo-meble.pl/fotele"),
+        ("materac piankowy 140x200", "Materace Piankowe - Darmowy Zwrot", "https://demo-meble.pl/materace"),
+        ("szafa przesuwna z lustrem", "Szafy Przesuwne - Montaż Gratis", "https://demo-meble.pl/szafy"),
+    ]
+    dsa_headline_objects = []
+    for term, headline, url in dsa_headline_data:
+        for day_offset in range(30):
+            d = today - timedelta(days=day_offset)
+            dow_factor = 0.7 if d.weekday() >= 5 else 1.0
+            day_impr = max(1, int(RNG.gauss(80, 20) * dow_factor))
+            day_ctr = RNG.uniform(0.03, 0.08)
+            day_clicks = max(0, int(day_impr * day_ctr))
+            day_cost = day_clicks * RNG.uniform(1.2, 3.5)
+            day_conv = round(max(0, day_clicks * RNG.uniform(0.04, 0.12)), 2)
+
+            h = DsaHeadline(
+                client_id=client.id,
+                campaign_id=dsa_campaign.id,
+                search_term_text=term,
+                generated_headline=headline,
+                landing_page_url=url,
+                clicks=day_clicks,
+                impressions=day_impr,
+                cost_micros=int(day_cost * 1_000_000),
+                conversions=day_conv,
+                date=d,
+            )
+            db.add(h)
+            dsa_headline_objects.append(h)
+
+        if (day_offset + 1) % 10 == 0:
+            db.flush()
+
+    db.flush()
+
+    # C3: Overlapping search terms — add DSA search terms that overlap with existing ones
+    # Some terms from "Branded Search" and "Łóżka - Generic" campaigns also appear in DSA
+    overlapping_dsa_terms = [
+        "łóżko drewniane",         # exists in Łóżka - Generic
+        "łóżko drewniane 160x200", # exists in Łóżka - Generic
+        "kanapa narożna",           # exists in Kanapy - Generic
+        "sofa rozkładana",          # exists in Kanapy - Generic
+        "biurko do domu",           # exists in Meble Biurowe
+    ]
+    for term in overlapping_dsa_terms:
+        clicks = RNG.randint(15, 120)
+        impr = RNG.randint(300, 3000)
+        cost = RNG.uniform(20, 200)
+        conv = round(RNG.uniform(0.5, 8), 2)
+        conv_val = round(conv * RNG.uniform(80, 200), 2)
+        db.add(SearchTerm(
+            campaign_id=dsa_campaign.id,
+            text=term,
+            keyword_text=None,
+            match_type=None,
+            segment="OTHER",
+            source="SEARCH",
+            clicks=clicks,
+            impressions=impr,
+            cost_micros=int(cost * 1_000_000),
+            conversions=conv,
+            conversion_value_micros=int(conv_val * 1_000_000),
+            ctr=round(clicks / impr * 100, 2) if impr else 0,
+            date_from=today - timedelta(days=30),
+            date_to=today,
+        ))
+
+    db.flush()
+
+    # Daily metrics for DSA campaign (90 days)
+    for day_offset in range(90):
+        d = today - timedelta(days=day_offset)
+        dow_factor = 0.75 if d.weekday() >= 5 else 1.0
+        base_impr = max(10, int(RNG.gauss(800, 150) * dow_factor))
+        base_ctr = RNG.uniform(0.035, 0.065)
+        base_clicks = max(1, int(base_impr * base_ctr))
+        base_cost = base_clicks * RNG.uniform(1.5, 3.0)
+        base_conv = round(max(0, base_clicks * RNG.uniform(0.05, 0.10)), 2)
+        base_cv = round(base_conv * RNG.uniform(100, 250), 2)
+        db.add(MetricDaily(
+            campaign_id=dsa_campaign.id,
+            date=d,
+            clicks=base_clicks,
+            impressions=base_impr,
+            cost_micros=int(base_cost * 1_000_000),
+            conversions=base_conv,
+            conversion_value_micros=int(base_cv * 1_000_000),
+            ctr=round(base_clicks / base_impr * 100, 2) if base_impr else 0,
+            avg_cpc_micros=int((base_cost / base_clicks) * 1_000_000) if base_clicks else 0,
+        ))
+        if (day_offset + 1) % 30 == 0:
+            db.flush()
+
+    db.flush()
+
     db.commit()
     db.close()
 
@@ -1779,6 +1937,8 @@ def _seed_demo_data_impl(db):
     print("   - Campaign audience metrics (5 segments × 2 campaigns × 90 days)")
     print("   - Campaign extensions (sitelinks, callouts, snippets)")
     print(f"   - {len(seed_reports)} sample reports (monthly + weekly + health)")
+    print(f"   - 1 DSA campaign + {len(dsa_target_objects)} targets + {len(dsa_headline_objects)} headline entries")
+    print(f"   - {len(overlapping_dsa_terms)} overlapping DSA↔Search terms")
 
 
 if __name__ == "__main__":

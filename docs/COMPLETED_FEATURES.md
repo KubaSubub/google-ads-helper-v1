@@ -143,12 +143,12 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Google Ads sync extended with sync_conversion_actions() and sync_demographic_metrics().
 
 ## Phase D GAP Analysis (PMax, Audiences, Extensions)
-- 6 new analytics endpoints: pmax-channels, asset-group-performance, pmax-search-themes, audience-performance, missing-extensions, extension-performance.
+- 8 new analytics endpoints: pmax-channels, pmax-channel-trends, asset-group-performance, pmax-search-themes, audience-performance, missing-extensions, extension-performance, pmax-search-cannibalization.
 - 4 new recommendation rules (R28–R31): PMAX_CHANNEL_IMBALANCE, ASSET_GROUP_AD_STRENGTH, AUDIENCE_PERFORMANCE_ANOMALY, MISSING_EXTENSIONS_ALERT.
 - 6 new models: AssetGroup, AssetGroupDaily, AssetGroupAsset, AssetGroupSignal, CampaignAudienceMetric, CampaignAsset.
 - MetricSegmented model extended with ad_network_type column for channel-level breakdowns.
 - 7 new sync methods (22 total phases): sync_pmax_channel_metrics, sync_asset_groups, sync_asset_group_daily, sync_asset_group_assets, sync_asset_group_signals, sync_campaign_audiences, sync_campaign_assets.
-- Frontend: 6 new analysis sections in AuditCenterPage.jsx (25 total tools).
+- Frontend: 8 new analysis sections in AuditCenterPage.jsx (25 total tools).
 
 ## Campaign Roles + Context-Aware Budget Guardrails + Explanation Layer
 - Deterministic campaign role service (`campaign_roles.py`) with `campaign_role_auto`, `campaign_role_final`, `role_confidence`, `protection_level`, `role_source`.
@@ -299,6 +299,51 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `GlobalFilterBar.jsx` no longer renders a campaign type dropdown (was duplicate of Sidebar campaign type pills).
 - Remaining filters: Status, Label (conditional), Campaign Name search.
 - Campaign type filtering is handled exclusively by Sidebar `CampaignTypePills`.
+
+## PMax Asset Groups Enrichment (D2)
+- `PMaxPage.jsx` enriched with asset group KPI summary row (total groups, avg ad_strength, top/bottom performer).
+- Asset strength distribution with colored pills (EXCELLENT/GOOD/AVERAGE/LOW/UNSPECIFIED).
+- Sortable columns: clicks, cost, conversions, ROAS.
+- ROAS color-coding: green (>4), yellow (2-4), red (<2).
+- Expandable detail rows per asset group.
+
+## Task Queue / Plan dnia (H1)
+- `TaskQueuePage.jsx` (`features/task-queue/`) — aggregates actionable items from recommendations, alerts, and wasted spend.
+- Priority badges (HIGH/MEDIUM/LOW) with sorting by priority.
+- Progress tracking bar with localStorage persistence.
+- Quick action buttons per task type (apply recommendation, resolve alert, exclude search term).
+- Route: `/tasks`, sidebar: "Plan dnia" (ListChecks icon) in DZIAŁANIA group.
+
+## Cross-Campaign Analysis (G4)
+- 3 new analytics endpoints: keyword-overlap, budget-allocation, campaign-comparison.
+- `CrossCampaignPage.jsx` (`features/cross-campaign/`) — keyword overlap matrix, budget allocation chart, side-by-side campaign comparison.
+- Route: `/cross-campaign`, sidebar nav in ANALIZA group.
+
+## Benchmarks (H2)
+- 2 new analytics endpoints: benchmarks, client-comparison.
+- `BenchmarksPage.jsx` (`features/benchmarks/`) — account KPI benchmarks and cross-client comparison.
+- Route: `/benchmarks`, sidebar nav in ANALIZA group.
+
+## Scheduled Sync (F1)
+- `ScheduledSync` model (`scheduled_sync.py`) — per-client sync schedule (enabled, interval_hours).
+- `Scheduler` service (`scheduler.py`) — APScheduler-based background sync runner.
+- 3 endpoints in `scheduled_sync.py`: GET/POST/DELETE `/sync/schedule`.
+- Registered in `main.py` as protected router.
+
+## Automated Rules Engine (F3)
+- New router: `rules.py` — 7 CRUD + execution endpoints.
+- `GET /rules/` — list rules, `POST /rules/` — create, `GET/PUT/DELETE /rules/{rule_id}` — CRUD.
+- `POST /rules/{rule_id}/dry-run` — simulate execution, `POST /rules/{rule_id}/execute` — run rule.
+- Per-client rule definitions with conditions, actions, and scheduling.
+- Registered in `main.py` as protected router (17 routers total).
+
+## DSA Support (C1/C2/C3)
+- 4 new analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`.
+- 2 new models: `DsaTarget` (auto-targets per campaign), `DsaHeadline` (headline performance metrics).
+- C1: DSA target performance — auto-targets per campaign with clicks, cost, conversions.
+- C2: DSA headline performance analysis — top/worst headlines by CTR/conversions.
+- C3: DSA vs manual keyword overlap detection — search terms appearing in both DSA and manual campaigns.
+- Seed data: DSA targets and headlines generated per client.
 
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
