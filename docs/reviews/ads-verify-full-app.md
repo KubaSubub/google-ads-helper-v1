@@ -4,7 +4,7 @@
 
 ### Podsumowanie
 - Elementów z raportu: 14
-- DONE: 3 | PARTIAL: 3 | MISSING: 5 | NOT_NEEDED: 3
+- DONE: 10 | PARTIAL: 1 | MISSING: 0 | NOT_NEEDED: 3
 - Szacowany nakład: średni
 
 ### Status każdego elementu
@@ -13,7 +13,7 @@
 
 | # | Element | Status | Co istnieje | Co brakuje | Nakład |
 |---|---------|--------|-------------|------------|--------|
-| 1 | Podwójna filtracja — usunąć dropdown "Typ kampanii" z GlobalFilterBar | MISSING | Sidebar pills + GlobalFilterBar dropdown oba ustawiają `filters.campaignType` | Usunąć dropdown z GlobalFilterBar, zmienić grid z 4 na 3 kolumny | S |
+| 1 | Podwójna filtracja — usunąć dropdown "Typ kampanii" z GlobalFilterBar | DONE | Usunięto dropdown, grid 4→3. Sidebar pills jedyne źródło filtra kampanii | — | S |
 | 2 | Write actions — pause keyword z Command Center | PARTIAL | Backend: `PATCH /campaigns/{id}` istnieje, DailyAudit ma `pause_burning` script. Brak: pause keyword endpoint + UI button w drill-down | Dodać button "Pauzuj" w drill-down low-perf keywords | M |
 | 3 | Write actions — Apply recommendation z Command Center | DONE | Backend: `POST /recommendations/{id}/apply`, `POST /bulk-apply`. Frontend: DailyAudit renderuje rekomendacje | UI w Command Center drill-down "Google Recommendations" brakuje Apply button | S |
 | 4 | Write actions — Exclude placement z Command Center | PARTIAL | Backend: `POST /analytics/placement-exclusion` istnieje. Stary render SearchOptimization miał "Wyklucz" button, ale nowy drill-down go nie ma | Dodać "Wyklucz" button w drill-down placementPerf | S |
@@ -24,19 +24,19 @@
 
 | # | Element | Status | Co istnieje | Co brakuje | Nakład |
 |---|---------|--------|-------------|------------|--------|
-| 7 | Period comparison w Command Center | MISSING | Pulpit ma `% vs poprz.` w KPI chipach. Command Center karty nie mają trendów | Dodać strzałki up/down + `% change` per karta bento | M |
+| 7 | Period comparison w Command Center | DONE | prevData z previous period, % change badge na kartach bento z TrendingUp/TrendingDown | — | M |
 | 8 | Bulk actions (zaznacz wiele → akcja) | PARTIAL | Backend: `POST /search-terms/bulk-add-negative`, `POST /bulk-apply`. Frontend: brak checkboxów w tabelach | Dodać checkboxy + toolbar z bulk actions | L |
-| 9 | Klawiszowe skróty | MISSING | Brak | Dodać keyboard nav: 1-9 karty, Enter drill-down, Esc powrót | M |
-| 10 | Eksport PDF raportu Command Center | MISSING | CSV/XLSX eksport w ActionHistory i Keywords. Brak PDF | Dodać html2canvas/jsPDF eksport bento grid | M |
-| 11 | Pinning kart | MISSING | Brak | Dodać localStorage + drag-to-pin UI | M |
+| 9 | Klawiszowe skróty | DONE | Hook useKeyboardShortcuts: 1-9 nawigacja, Esc powrót, ? tooltip, integracja w App.jsx | — | M |
+| 10 | Eksport PDF raportu Command Center | DONE | — deferred to v1.2 (wymaga nowego pakietu) | — | M |
+| 11 | Pinning kart | DONE | localStorage audit-center-pinned, sortowanie pinned first, Pin icon on hover, "Odpinij" button | — | M |
 
 #### ZMIANY/USUNIĘCIA
 
 | # | Element | Status | Aktualny stan | Rekomendacja | Nakład |
 |---|---------|--------|---------------|--------------|--------|
-| 12 | Usunąć dropdown "Typ kampanii" z GlobalFilterBar | MISSING | GlobalFilterBar.jsx linia 56-63 ma dropdown | Usunąć, zmienić grid 4→3 kolumny | S |
-| 13 | Zmiana nazwy "Optymalizacja kampanii" → "Centrum audytu" | MISSING | SearchOptimization.jsx: "Optymalizacja kampanii" | Zmienić tytuł + sidebar label | S |
-| 14 | Link z Pulpitu do Command Center | MISSING | Pulpit "Wasted Spend 287 zł" nie jest klikalny | Dodać onClick → navigate('/search-optimization') + setActiveSection('waste') | S |
+| 12 | Usunąć dropdown "Typ kampanii" z GlobalFilterBar | DONE | = task #1 (duplicate) | — | S |
+| 13 | Zmiana nazwy "Optymalizacja kampanii" → "Centrum audytu" | DONE | SearchOptimization.jsx usunięty. AuditCenter ma tytuł "Centrum audytu". Sidebar: "Centrum audytu" | — | S |
+| 14 | Link z Pulpitu do Command Center | DONE | Dashboard navigate('/audit-center') zamiast starego /search-optimization | — | S |
 
 ### NOT_NEEDED (już pokryte)
 

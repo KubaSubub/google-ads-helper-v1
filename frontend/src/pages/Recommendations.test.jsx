@@ -1,6 +1,7 @@
 ﻿import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { FilterProvider } from '../contexts/FilterContext'
 import Recommendations from './Recommendations'
 
 const mockShowToast = vi.fn()
@@ -154,7 +155,7 @@ describe('Recommendations page', () => {
     })
 
     it('renders context outcomes, grouped sections, and explanation copy from reason codes', () => {
-        render(<Recommendations />)
+        render(<FilterProvider><Recommendations /></FilterProvider>)
 
         expect(screen.getByRole('heading', { name: 'Executable' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'Alerts' })).toBeInTheDocument()
@@ -169,16 +170,16 @@ describe('Recommendations page', () => {
     })
 
     it('keeps apply active only for executable cards and disables manual review cards', () => {
-        render(<Recommendations />)
+        render(<FilterProvider><Recommendations /></FilterProvider>)
 
-        expect(screen.getByRole('button', { name: /apply/i })).toBeEnabled()
-        const manualReviewButtons = screen.getAllByRole('button', { name: /manual review/i })
+        expect(screen.getByRole('button', { name: /zastosuj/i })).toBeEnabled()
+        const manualReviewButtons = screen.getAllByRole('button', { name: /ręczna weryfikacja/i })
         expect(manualReviewButtons).toHaveLength(2)
         manualReviewButtons.forEach(button => expect(button).toBeDisabled())
     })
 
     it('initializes recommendation filters with pending status and current UI selections', () => {
-        render(<Recommendations />)
+        render(<FilterProvider><Recommendations /></FilterProvider>)
 
         expect(mockUpdateFilters).toHaveBeenCalledWith({
             status: 'pending',

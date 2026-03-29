@@ -133,9 +133,11 @@ export default function PositiveKeywordsTab({ selectedClientId, showToast, filte
         if (!selectedClientId) return
         if (prevFilterKey.current !== filterKey) {
             prevFilterKey.current = filterKey
-            setPage(1)
-            // loadData will fire on the next render when page is 1
-            return
+            if (page !== 1) {
+                setPage(1)
+                // loadData will fire on the next render when page changes to 1
+                return
+            }
         }
         loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps

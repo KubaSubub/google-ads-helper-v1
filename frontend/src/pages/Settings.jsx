@@ -1,5 +1,6 @@
-﻿import { useEffect, useState, useRef } from 'react'
-import { BarChart3, Building2, Loader2, Plus, Save, ShieldAlert, Target, X } from 'lucide-react'
+﻿import { useEffect, useState, useRef, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
+import { AlertTriangle, BarChart3, Building2, Loader2, Plus, Save, ShieldAlert, Target, X } from 'lucide-react'
 
 import api, { getClient, updateClient, getMccAccounts } from '../api'
 import EmptyState from '../components/EmptyState'
@@ -61,7 +62,66 @@ export default function Settings() {
         }
     }
 
+    const [validationErrors, setValidationErrors] = useState({})
+
     const isDirty = formData && originalData && JSON.stringify(formData) !== JSON.stringify(originalData)
+
+    const validate = useCallback((data) => {
+        if (!data) return {}
+        const errors = {}
+
+        // Required: client name
+        if (!data.name || !data.name.trim()) {
+            errors.name = 'Nazwa klienta jest wymagana'
+        }
+
+        // Business rules — numeric ranges
+        const minRoas = data.business_rules?.min_roas
+        if (minRoas != null && minRoas !== '' && (minRoas < 0 || minRoas > 100)) {
+            errors.min_roas = 'ROAS: 0–100'
+        }
+
+        const maxBudget = data.business_rules?.max_daily_budget
+        if (maxBudget != null && maxBudget !== '' && (maxBudget < 0 || maxBudget > 100000)) {
+            errors.max_daily_budget = 'Budżet: 0–100 000'
+        }
+
+        // Safety limits — validate against SAFETY_FIELDS min/max
+        const sl = data.business_rules?.safety_limits || {}
+        for (const { key, label, multiply, min, max } of SAFETY_FIELDS) {
+            const raw = sl[key]
+            if (raw == null) continue
+            const display = raw * multiply
+            if (display < min || display > max) {
+                errors[`safety_${key}`] = `${min}–${max}`
+            }
+        }
+
+        return errors
+    }, [])
+
+    // Re-validate whenever form data changes
+    useEffect(() => {
+        if (formData) {
+            setValidationErrors(validate(formData))
+        }
+    }, [formData, validate])
+
+    const hasErrors = Object.keys(validationErrors).length > 0
+
+    // Warn on in-app navigation when dirty (via popstate)
+    const location = useLocation()
+    useEffect(() => {
+        if (!isDirty) return
+        const handlePopState = (e) => {
+            if (!window.confirm('Masz niezapisane zmiany. Czy na pewno chcesz opuścić stronę?')) {
+                e.preventDefault()
+                window.history.pushState(null, '', location.pathname)
+            }
+        }
+        window.addEventListener('popstate', handlePopState)
+        return () => window.removeEventListener('popstate', handlePopState)
+    }, [isDirty, location.pathname])
 
     useEffect(() => {
         if (!isDirty) return
@@ -71,6 +131,12 @@ export default function Settings() {
     }, [isDirty])
 
     async function handleSave() {
+        const errors = validate(formData)
+        setValidationErrors(errors)
+        if (Object.keys(errors).length > 0) {
+            showToast('Popraw błędy walidacji przed zapisem', 'error')
+            return
+        }
         setSaving(true)
         try {
             await updateClient(formData.id, formData)
@@ -207,11 +273,44 @@ export default function Settings() {
         marginBottom: 6,
     }
 
+    const errorStyle = {
+        fontSize: 11,
+        color: '#F87171',
+        marginTop: 4,
+    }
+
+    const inputErrorBorder = {
+        borderColor: 'rgba(248,113,113,0.5)',
+    }
+
     const safetyLimits = formData.business_rules?.safety_limits || {}
     const resetReady = resetConfirmation.trim() === (formData.name || '')
 
     return (
         <div style={{ maxWidth: 900, paddingBottom: 48 }}>
+            {isDirty && (
+                <div
+                    className="flex items-center gap-2"
+                    style={{
+                        padding: '8px 14px',
+                        marginBottom: 16,
+                        borderRadius: 8,
+                        fontSize: 12,
+                        background: 'rgba(251,191,36,0.08)',
+                        border: '1px solid rgba(251,191,36,0.2)',
+                        color: '#FBBF24',
+                    }}
+                >
+                    <AlertTriangle size={14} />
+                    Niezapisane zmiany
+                    {hasErrors && (
+                        <span style={{ color: '#F87171', marginLeft: 8 }}>
+                            — popraw błędy walidacji
+                        </span>
+                    )}
+                </div>
+            )}
+
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
@@ -223,7 +322,7 @@ export default function Settings() {
                 </div>
                 <button
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={saving || hasErrors}
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -232,15 +331,15 @@ export default function Settings() {
                         borderRadius: 8,
                         fontSize: 12,
                         fontWeight: 500,
-                        background: 'rgba(79,142,247,0.15)',
-                        border: '1px solid rgba(79,142,247,0.3)',
-                        color: '#4F8EF7',
-                        cursor: 'pointer',
+                        background: hasErrors ? 'rgba(248,113,113,0.1)' : 'rgba(79,142,247,0.15)',
+                        border: `1px solid ${hasErrors ? 'rgba(248,113,113,0.25)' : 'rgba(79,142,247,0.3)'}`,
+                        color: hasErrors ? '#F87171' : '#4F8EF7',
+                        cursor: (saving || hasErrors) ? 'not-allowed' : 'pointer',
                         opacity: saving ? 0.5 : 1,
                     }}
                 >
                     <Save size={14} />
-                    {saving ? 'Zapisywanie...' : isDirty ? 'Zapisz *' : 'Zapisz'}
+                    {saving ? 'Zapisywanie...' : hasErrors ? 'Błędy walidacji' : isDirty ? 'Zapisz *' : 'Zapisz'}
                 </button>
             </div>
 
@@ -253,8 +352,9 @@ export default function Settings() {
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div>
-                                <label style={labelStyle}>Nazwa klienta</label>
-                                <input style={inputStyle} value={formData.name || ''} onChange={e => handleChange('name', e.target.value)} />
+                                <label style={labelStyle}>Nazwa klienta *</label>
+                                <input style={{ ...inputStyle, ...(validationErrors.name ? inputErrorBorder : {}) }} value={formData.name || ''} onChange={e => handleChange('name', e.target.value)} />
+                                {validationErrors.name && <p style={errorStyle}>{validationErrors.name}</p>}
                             </div>
                             <div>
                                 <label style={labelStyle}>Branza</label>
@@ -343,11 +443,13 @@ export default function Settings() {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div>
                                 <label style={labelStyle} title="ROAS = przychód / koszt. Minimalna wartość poniżej której system alarmuje">Minimalny ROAS</label>
-                                <input style={inputStyle} type="number" step="0.1" min="0" max="100" value={formData.business_rules?.min_roas ?? ''} onChange={e => handleBusinessRule('min_roas', e.target.value)} placeholder="np. 2.0" />
+                                <input style={{ ...inputStyle, ...(validationErrors.min_roas ? inputErrorBorder : {}) }} type="number" step="0.1" min="0" max="100" value={formData.business_rules?.min_roas ?? ''} onChange={e => handleBusinessRule('min_roas', e.target.value)} placeholder="np. 2.0" />
+                                {validationErrors.min_roas && <p style={errorStyle}>{validationErrors.min_roas}</p>}
                             </div>
                             <div>
                                 <label style={labelStyle}>Max budżet dzienny (USD)</label>
-                                <input style={inputStyle} type="number" step="1" min="0" max="100000" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
+                                <input style={{ ...inputStyle, ...(validationErrors.max_daily_budget ? inputErrorBorder : {}) }} type="number" step="1" min="0" max="100000" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
+                                {validationErrors.max_daily_budget && <p style={errorStyle}>{validationErrors.max_daily_budget}</p>}
                             </div>
                         </div>
                     </div>
@@ -367,12 +469,13 @@ export default function Settings() {
                                 const clientValue = safetyLimits[key]
                                 const displayValue = clientValue != null ? (clientValue * multiply).toFixed(multiply > 1 ? 0 : 2) : ''
                                 const defaultValue = (GLOBAL_DEFAULTS[key] * multiply).toFixed(multiply > 1 ? 0 : 2)
+                                const errKey = `safety_${key}`
                                 return (
                                     <div key={key}>
                                         <label style={labelStyle} title={tooltip}>{label}</label>
                                         <div style={{ position: 'relative' }}>
                                             <input
-                                                style={inputStyle}
+                                                style={{ ...inputStyle, ...(validationErrors[errKey] ? inputErrorBorder : {}) }}
                                                 type="number"
                                                 step={multiply > 1 ? '1' : '0.01'}
                                                 min={min}
@@ -395,6 +498,7 @@ export default function Settings() {
                                                 </span>
                                             )}
                                         </div>
+                                        {validationErrors[errKey] && <p style={errorStyle}>{validationErrors[errKey]}</p>}
                                     </div>
                                 )
                             })}

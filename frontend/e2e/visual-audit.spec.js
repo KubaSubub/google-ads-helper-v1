@@ -31,7 +31,7 @@ const PAGES = [
     { name: 'alerts',               path: '/alerts',              title: 'Monitoring' },
     { name: 'agent',                path: '/agent',               title: 'Asystent' },
     { name: 'reports',              path: '/reports',             title: 'Raporty' },
-    { name: 'search-optimization',  path: '/search-optimization', title: 'Optymalizacja' },
+    { name: 'audit-center',          path: '/audit-center',        title: 'Centrum' },
     { name: 'forecast',             path: '/forecast',            title: 'Prognoza' },
     { name: 'semantic',             path: '/semantic',            title: 'Inteligencja' },
     { name: 'quality-score',        path: '/quality-score',       title: 'Wynik' },

@@ -81,7 +81,7 @@ async function navigateAndCollect(page, path, waitForSelector = null, timeout = 
 
 const ALL_PAGES = [
     { path: '/',                    name: 'Dashboard',            heading: 'Pulpit' },
-    { path: '/daily-audit',         name: 'Daily Audit',          heading: 'Codzienny' },
+    { path: '/daily-audit',         name: 'Daily Audit',          heading: 'Poranny' },
     { path: '/campaigns',           name: 'Campaigns',            heading: 'Kampanie' },
     { path: '/keywords',            name: 'Keywords',             heading: 'kluczowe' },
     { path: '/search-terms',        name: 'Search Terms',         heading: 'Wyszukiwane' },
@@ -90,9 +90,9 @@ const ALL_PAGES = [
     { path: '/alerts',              name: 'Alerts',               heading: 'Alerty' },
     { path: '/agent',               name: 'AI Report',            heading: 'Asystent AI' },
     { path: '/reports',             name: 'Reports',              heading: 'Raport' },
-    { path: '/clients',             name: 'Clients',              heading: 'Klienci' },
+    { path: '/clients',             name: 'Clients',              heading: 'Pulpit' },  // /clients redirects to /
     { path: '/settings',            name: 'Settings',             heading: 'Ustawienia' },
-    { path: '/search-optimization', name: 'Search Optimization',  heading: 'Optymalizacja' },
+    { path: '/search-optimization', name: 'Search Optimization',  heading: 'Centrum audytu' },  // redirects to /audit-center
     { path: '/semantic',            name: 'Semantic',             heading: 'Inteligencja' },
     { path: '/quality-score',       name: 'Quality Score',        heading: 'Wynik' },
     { path: '/forecast',            name: 'Forecast',             heading: 'Prognoza' },
@@ -318,18 +318,24 @@ test.describe('Full App — Live Backend', () => {
         await page.goto('/', { waitUntil: 'networkidle', timeout: 15_000 });
         await page.waitForTimeout(2000);
 
-        // Find client selector in sidebar
-        const clientSelect = page.locator('select').first();
-        const options = await clientSelect.locator('option').count();
+        // Find client selector button in sidebar (custom dropdown, not <select>)
+        const clientButton = page.locator('button:has-text("Sushi Naka Naka")').first();
+        const isVisible = await clientButton.isVisible().catch(() => false);
 
-        if (options > 1) {
-            // Switch to a different client
-            await clientSelect.selectOption({ index: 1 });
-            await page.waitForTimeout(3000);
+        if (isVisible) {
+            // Open dropdown
+            await clientButton.click();
+            await page.waitForTimeout(1000);
 
-            // Switch back
-            await clientSelect.selectOption({ index: 0 });
-            await page.waitForTimeout(3000);
+            // Check if dropdown options appeared
+            const dropdownButtons = page.locator('button').filter({ hasText: /\w/ });
+            const count = await dropdownButtons.count();
+
+            if (count > 2) {
+                // Click the first non-active client option
+                await dropdownButtons.nth(1).click().catch(() => {});
+                await page.waitForTimeout(2000);
+            }
         }
 
         expect(jsErrors).toEqual([]);

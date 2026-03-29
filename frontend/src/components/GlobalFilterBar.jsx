@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useFilter } from '../contexts/FilterContext'
 import { useApp } from '../contexts/AppContext'
-import { CAMPAIGN_STATUS_OPTIONS, CAMPAIGN_TYPE_OPTIONS } from '../constants/globalFilters'
+import { CAMPAIGN_STATUS_OPTIONS } from '../constants/globalFilters'
 import DarkSelect from './DarkSelect'
 import { Search } from 'lucide-react'
 import { getCampaigns } from '../api'
@@ -52,15 +52,7 @@ export default function GlobalFilterBar() {
                 Filtry kampanii
             </div>
 
-            <div className="grid gap-4" style={{ alignItems: 'start', gridTemplateColumns: hasLabels ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)' }}>
-                <FilterField label="Typ kampanii">
-                    <DarkSelect
-                        value={filters.campaignType}
-                        onChange={(v) => setFilter('campaignType', v)}
-                        options={CAMPAIGN_TYPE_OPTIONS}
-                        style={{ height: 38 }}
-                    />
-                </FilterField>
+            <div className="grid gap-4" style={{ alignItems: 'start', gridTemplateColumns: hasLabels ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)' }}>
                 <FilterField label="Status">
                     <DarkSelect
                         value={filters.status}

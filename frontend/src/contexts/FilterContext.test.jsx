@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { FilterProvider, useFilter } from './FilterContext'
 
@@ -7,16 +7,17 @@ function renderFilter() {
     return renderHook(() => useFilter(), { wrapper: FilterProvider })
 }
 
+function todayStr() {
+    return new Date().toISOString().slice(0, 10)
+}
+
+function daysAgoStr(n) {
+    const d = new Date()
+    d.setDate(d.getDate() - n)
+    return d.toISOString().slice(0, 10)
+}
+
 describe('FilterContext', () => {
-    beforeEach(() => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date('2026-03-16'))
-    })
-
-    afterEach(() => {
-        vi.useRealTimers()
-    })
-
     // --- defaults ---
 
     it('initializes with 30-day period and matching date range', () => {
@@ -25,8 +26,8 @@ describe('FilterContext', () => {
         expect(result.current.filters.period).toBe(30)
         expect(result.current.filters.campaignType).toBe('ALL')
         expect(result.current.filters.status).toBe('ALL')
-        expect(result.current.filters.dateTo).toBe('2026-03-16')
-        expect(result.current.filters.dateFrom).toBe('2026-02-14')
+        expect(result.current.filters.dateTo).toBe(todayStr())
+        expect(result.current.filters.dateFrom).toBe(daysAgoStr(30))
         expect(result.current.days).toBe(30)
     })
 
@@ -38,8 +39,8 @@ describe('FilterContext', () => {
         act(() => result.current.setFilter('period', 7))
 
         expect(result.current.filters.period).toBe(7)
-        expect(result.current.filters.dateFrom).toBe('2026-03-09')
-        expect(result.current.filters.dateTo).toBe('2026-03-16')
+        expect(result.current.filters.dateFrom).toBe(daysAgoStr(7))
+        expect(result.current.filters.dateTo).toBe(todayStr())
         expect(result.current.days).toBe(7)
     })
 
@@ -49,8 +50,8 @@ describe('FilterContext', () => {
         act(() => result.current.setFilter('period', 90))
 
         expect(result.current.filters.period).toBe(90)
-        expect(result.current.filters.dateFrom).toBe('2025-12-16')
-        expect(result.current.filters.dateTo).toBe('2026-03-16')
+        expect(result.current.filters.dateFrom).toBe(daysAgoStr(90))
+        expect(result.current.filters.dateTo).toBe(todayStr())
         expect(result.current.days).toBe(90)
     })
 
@@ -80,17 +81,19 @@ describe('FilterContext', () => {
         const { result } = renderFilter()
 
         act(() => result.current.setFilter('dateFrom', '2026-03-01'))
-        // period is now null, dateTo remains 2026-03-16 => 15 days
+        // period is now null, dateTo remains today() => diff in days
 
+        const expectedDays = Math.max(1, Math.round((new Date(todayStr()) - new Date('2026-03-01')) / 86400000))
         expect(result.current.filters.period).toBeNull()
-        expect(result.current.days).toBe(15)
+        expect(result.current.days).toBe(expectedDays)
     })
 
     it('returns minimum 1 day when dateFrom equals dateTo', () => {
         const { result } = renderFilter()
 
-        act(() => result.current.setFilter('dateFrom', '2026-03-16'))
-        // dateFrom = dateTo = 2026-03-16 => 0 diff, clamped to 1
+        const todayDate = todayStr()
+        act(() => result.current.setFilter('dateFrom', todayDate))
+        // dateFrom = dateTo = today => 0 diff, clamped to 1
 
         expect(result.current.days).toBe(1)
     })
@@ -129,7 +132,7 @@ describe('FilterContext', () => {
 
         expect(result.current.filters.campaignType).toBe('ALL')
         expect(result.current.filters.period).toBe(30)
-        expect(result.current.filters.dateFrom).toBe('2026-02-14')
+        expect(result.current.filters.dateFrom).toBe(daysAgoStr(30))
     })
 
     // --- useFilter outside provider ---

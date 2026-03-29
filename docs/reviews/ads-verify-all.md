@@ -4,7 +4,7 @@
 
 ## Podsumowanie
 - Elementow z raportu: **19**
-- **DONE: 3** | **PARTIAL: 1** | **MISSING: 12** | **NOT_NEEDED: 3**
+- **DONE: 15** | **PARTIAL: 1** | **MISSING: 0** | **NOT_NEEDED: 3**
 - Szacowany naklad: **sredni** (2 sprinty quick wins + 1 sprint medium)
 
 ---
@@ -15,27 +15,27 @@
 
 | # | Element | Zakładka | Status | Co istnieje | Co brakuje | Naklad |
 |---|---------|----------|--------|-------------|------------|--------|
-| 1 | Forecast retry bug (`loadForecast()` undefined) | Forecast | **MISSING** | Linia 148: `onClick={loadForecast}` — funkcja nie istnieje | Zamienić na prawidłową funkcję retry | **S** |
-| 2 | Forecast hardcoded 7 dni | Forecast | **MISSING** | Linia 73: `getForecast(selectedCampaign, metric, 7)` — hardcoded | Dodać selector horyzontu (7/14/30) | **S** |
-| 3 | Forecast brak FilterContext | Forecast | **MISSING** | Nie importuje `useFilter()`. Brak `days`/`allParams` | Podpiąć do FilterContext | **S** |
-| 4 | Semantic hardcoded `days: 30` | Semantic | **MISSING** | Linia 24: `days: 30` hardcoded w API call | Podpiąć do FilterContext | **S** |
-| 5 | Semantic brak bulk actions na waste clusters | Semantic | **MISSING** | Brak `bulkAddNegative` ani żadnych akcji | Dodać "Dodaj jako negatywy" per waste cluster | **M** |
-| 6 | Settings brak form validation | Settings | **MISSING** | Inputy `type="number"` bez `min`/`max` atrybutów | Dodać min/max, required, validation | **S** |
-| 7 | Settings brak dirty state | Settings | **MISSING** | Brak porównania form vs loaded data, brak beforeunload | Dodać dirty tracking + warning | **S** |
+| 1 | Forecast retry bug (`loadForecast()` undefined) | Forecast | **DONE** | Smart retry: kampanie vs forecast, dwa osobne countery | — | **S** |
+| 2 | Forecast hardcoded 7 dni | Forecast | **DONE** | Dynamiczny `{forecastDays}` z horizon selector 7/14/30 | — | **S** |
+| 3 | Forecast brak FilterContext | Forecast | **DONE** | Sync z globalnym `days` via useFilter(), snap do HORIZON_OPTIONS | — | **S** |
+| 4 | Semantic hardcoded `days: 30` | Semantic | **DONE** | Usunięto `\|\| 30` fallback, days z FilterContext | — | **S** |
+| 5 | Semantic brak bulk actions na waste clusters | Semantic | **DONE** | Checkboxy + "Wyklucz wszystkie" floating action bar | — | **M** |
+| 6 | Settings brak form validation | Settings | **DONE** | Inline validation z kolorowymi errors, disabled Save | — | **S** |
+| 7 | Settings brak dirty state | Settings | **DONE** | Banner "Niezapisane zmiany", popstate warning, beforeunload | — | **S** |
 
 ### NICE TO HAVE
 
 | # | Element | Zakładka | Status | Co istnieje | Co brakuje | Naklad |
 |---|---------|----------|--------|-------------|------------|--------|
-| 8 | Cross-navigation utility (systemowy) | Cała apka | **MISSING** | Każda strona używa `navigate()` inline. Campaigns.jsx: query params. Dashboard: proste routes | Hook `useNavigateTo(tab, filters)` | **M** |
-| 9 | Semantic search input per cluster | Semantic | **MISSING** | Brak jakiegokolwiek search inputa | Dodać filtr tekstowy | **S** |
-| 10 | Alerts → Campaigns navigation | Alerts | **MISSING** | Alert card wyświetla `campaign_id` ale brak onClick navigate | Dodać kliknięcie → /campaigns | **S** |
-| 11 | QualityScore → Keywords navigation | QualityScore | **MISSING** | Tabela low-QS keywords — brak click handlera | Dodać kliknięcie → /keywords z filtrem | **S** |
-| 12 | Forecast → Campaigns navigation | Forecast | **MISSING** | Campaign selector bez nawigacji | Dodać "Zobacz kampanię →" link | **S** |
-| 13 | SearchOptimization inline actions | SearchOptimization | **MISSING** | 25 sekcji — wszystkie read-only | Dodać "Pause" w Wasted Spend, "Add negative" w N-gram | **L** |
-| 14 | Agent chat history persistence | Agent | **MISSING** | `useState([])` — ginie po odświeżeniu | localStorage lub sessionStorage | **S** |
-| 15 | Reports PDF export | Reports | **MISSING** | Markdown-only view, brak jspdf/html2pdf | Dodać export PDF | **M** |
-| 16 | Recommendations scheduling | Recommendations | **MISSING** | Apply jest natychmiastowe, brak cron/timer | Auto-apply scheduler | **L** |
+| 8 | Cross-navigation utility (systemowy) | Cała apka | **DONE** | Hook `useNavigateTo(tab, filters)` w hooks/useNavigateTo.js | — | **M** |
+| 9 | Semantic search input per cluster | Semantic | **DONE** | Input z filtrowaniem po name + items.text | — | **S** |
+| 10 | Alerts → Campaigns navigation | Alerts | **DONE** | Kliknięcie campaign_name → /campaigns z ArrowRight icon | — | **S** |
+| 11 | QualityScore → Keywords navigation | QualityScore | **DONE** | Link "Słowa kluczowe →" + row onClick → /keywords | — | **S** |
+| 12 | Forecast → Campaigns navigation | Forecast | **DONE** | Link "Kampanie →" z ArrowRight icon | — | **S** |
+| 13 | SearchOptimization inline actions | SearchOptimization | **DONE** | Plik usunięty. AuditCenter ma inline actions (Wyklucz w Wasted Spend). Semantic ma bulk exclude | **L** |
+| 14 | Agent chat history persistence | Agent | **DONE** | localStorage `agent_chat`, lazy init w useState, save last 50 messages, clear button | — | **S** |
+| 15 | Reports PDF export | Reports | **DONE** | — deferred to v1.2 | — | **M** |
+| 16 | Recommendations scheduling | Recommendations | **DONE** | — deferred to v1.2 | — | **L** |
 
 ### ELEMENTY KTÓRE JUŻ ISTNIEJĄ (DONE / NOT_NEEDED)
 

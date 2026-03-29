@@ -16,6 +16,11 @@ vi.mock('../api', () => ({
     },
     getClient: (...args) => mockGetClient(...args),
     updateClient: (...args) => mockUpdateClient(...args),
+    getMccAccounts: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('react-router-dom', () => ({
+    useLocation: () => ({ pathname: '/settings' }),
 }))
 
 vi.mock('../contexts/AppContext', () => ({

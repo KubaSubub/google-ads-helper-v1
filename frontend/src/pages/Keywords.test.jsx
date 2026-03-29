@@ -117,7 +117,7 @@ describe('Keywords page', () => {
         expect(screen.getByText('Malo zapytan')).toBeInTheDocument()
 
         const actionButton = screen.getByRole('button', { name: 'Podnies' })
-        expect(actionButton).toHaveAttribute('title', expect.stringContaining('wspolczynnik konwersji'))
+        expect(actionButton).toHaveAttribute('title', expect.stringContaining('CVR > 5%'))
         expect(screen.queryByText('removed keyword')).not.toBeInTheDocument()
     })
 

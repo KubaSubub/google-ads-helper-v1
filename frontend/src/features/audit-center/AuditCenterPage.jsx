@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import {
     Loader2, AlertTriangle, Target, Layers, CalendarDays, Hash, FileText, Globe,
     GitBranch, Clock, Users, Zap, BarChart3, Activity, Crosshair, GraduationCap,
-    Briefcase, ShieldCheck, PieChart, Radio, Box, Search, Headphones, Link2, Star,
-    Shuffle, Settings2, ChevronRight,
+    Briefcase, ShieldCheck, PieChart, Headphones, Link2, Star,
+    Shuffle, Settings2, ChevronRight, Pin,
 } from 'lucide-react'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
@@ -33,9 +33,6 @@ import LearningStatusSection from './components/sections/LearningStatusSection'
 import PortfolioHealthSection from './components/sections/PortfolioHealthSection'
 import ConversionQualitySection from './components/sections/ConversionQualitySection'
 import DemographicsSection from './components/sections/DemographicsSection'
-import PmaxChannelsSection from './components/sections/PmaxChannelsSection'
-import AssetGroupsSection from './components/sections/AssetGroupsSection'
-import SearchThemesSection from './components/sections/SearchThemesSection'
 import AudiencePerfSection from './components/sections/AudiencePerfSection'
 import MissingExtSection from './components/sections/MissingExtSection'
 import ExtPerfSection from './components/sections/ExtPerfSection'
@@ -44,31 +41,74 @@ import PmaxCannibalizationSection from './components/sections/PmaxCannibalizatio
 export default function AuditCenterPage() {
     const { selectedClientId, showToast } = useApp()
     const { allParams, days, setFilter } = useFilter()
-    const { data, loading, error, ngramSize, setNgramSize, reload } = useAuditData(selectedClientId, allParams)
+    const { data, prevData, loading, error, ngramSize, setNgramSize, reload } = useAuditData(selectedClientId, allParams)
     const [activeSection, setActiveSection] = useState(null)
+
+    const LS_KEY = 'audit-center-pinned'
+    const [pinnedKeys, setPinnedKeys] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(LS_KEY)) || [] } catch { return [] }
+    })
+    const togglePin = useCallback((key) => {
+        setPinnedKeys(prev => {
+            const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+            localStorage.setItem(LS_KEY, JSON.stringify(next))
+            return next
+        })
+    }, [])
+    const unpinAll = useCallback(() => {
+        setPinnedKeys([])
+        localStorage.removeItem(LS_KEY)
+    }, [])
 
     const campFilter = allParams.campaign_type || 'ALL'
 
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (error) return <ErrorMessage message={error} onRetry={reload} />
 
+    // Extract numeric values for period comparison
+    // Returns { current, previous } or null if not comparable
+    // upIsGood: true = higher is better (scores), false = lower is better (waste, issues)
+    const comparisonDefs = {
+        waste:              { cur: () => data.waste?.total_waste_usd,                     prev: () => prevData.waste?.total_waste_usd,                     upIsGood: false },
+        bidding:            { cur: () => data.bidding?.changes_needed,                    prev: () => prevData.bidding?.changes_needed,                    upIsGood: false },
+        convHealth:         { cur: () => data.convHealth?.score,                          prev: () => prevData.convHealth?.score,                          upIsGood: true },
+        convQuality:        { cur: () => data.convQuality?.quality_score,                 prev: () => prevData.convQuality?.quality_score,                 upIsGood: true },
+        smartBidding:       { cur: () => data.smartBidding?.summary?.critical,            prev: () => prevData.smartBidding?.summary?.critical,            upIsGood: false },
+        learningStatus:     { cur: () => data.learningStatus?.learning_count,             prev: () => prevData.learningStatus?.learning_count,             upIsGood: false },
+        adGroupHealth:      { cur: () => data.adGroupHealth?.details?.length,             prev: () => prevData.adGroupHealth?.details?.length,             upIsGood: false },
+        demographics:       { cur: () => data.demographics?.anomalies?.length,            prev: () => prevData.demographics?.anomalies?.length,            upIsGood: false },
+        pmaxCannibalization:{ cur: () => data.pmaxCannibalization?.summary?.total_overlap, prev: () => prevData.pmaxCannibalization?.summary?.total_overlap, upIsGood: false },
+        missingExt:         { cur: () => data.missingExt?.campaigns?.length,              prev: () => prevData.missingExt?.campaigns?.length,              upIsGood: false },
+    }
+
+    function getChangePct(key) {
+        const def = comparisonDefs[key]
+        if (!def) return null
+        const cur = def.cur()
+        const prev = def.prev()
+        if (cur == null || prev == null || typeof cur !== 'number' || typeof prev !== 'number') return null
+        if (prev === 0 && cur === 0) return null
+        const pct = prev === 0 ? 100 : ((cur - prev) / Math.abs(prev)) * 100
+        return { pct: Math.round(pct), upIsGood: def.upIsGood }
+    }
+
     // Card definitions
     const cards = [
-        { key: 'waste', title: 'Zmarnowany budżet', icon: AlertTriangle, cat: 'budget', types: ['SEARCH','PMAX','SHOPPING'],
+        { key: 'waste', title: 'Zmarnowany budżet', icon: AlertTriangle, cat: 'budget', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING'],
           value: data.waste ? `${data.waste.total_waste_usd?.toFixed(0) || 0} zł` : '—', sub: data.waste ? `${data.waste.waste_pct}% spend · ${data.waste.categories?.length || 0} kategorii` : '',
           status: data.waste ? (data.waste.waste_pct > 3 ? 'danger' : data.waste.waste_pct > 1 ? 'warning' : 'ok') : 'neutral' },
-        { key: 'bidding', title: 'Strategia bidowania', icon: Target, cat: 'budget', types: ['SEARCH','PMAX'],
+        { key: 'bidding', title: 'Strategia bidowania', icon: Target, cat: 'budget', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.bidding ? `${data.bidding.changes_needed || 0} zmian` : '—', sub: data.bidding ? `${data.bidding.total_campaigns || 0} kampanii` : '',
           status: data.bidding ? (data.bidding.changes_needed > 2 ? 'danger' : data.bidding.changes_needed > 0 ? 'warning' : 'ok') : 'neutral' },
-        { key: 'convHealth', title: 'Zdrowie konwersji', icon: AlertTriangle, cat: 'quality', types: ['SEARCH','PMAX','SHOPPING','DISPLAY','VIDEO'],
+        { key: 'convHealth', title: 'Zdrowie konwersji', icon: AlertTriangle, cat: 'quality', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING','DISPLAY','VIDEO'],
           value: data.convHealth ? `${data.convHealth.score}/100` : '—', sub: data.convHealth ? `${data.convHealth.total_campaigns} kampanii` : '',
           status: data.convHealth ? (data.convHealth.score >= 80 ? 'ok' : data.convHealth.score >= 50 ? 'warning' : 'danger') : 'neutral' },
-        { key: 'convQuality', title: 'Jakość konwersji', icon: ShieldCheck, cat: 'quality', types: ['SEARCH','PMAX','SHOPPING'],
+        { key: 'convQuality', title: 'Jakość konwersji', icon: ShieldCheck, cat: 'quality', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING'],
           value: data.convQuality ? `${data.convQuality.quality_score}/100` : '—', sub: data.convQuality ? `${data.convQuality.issues?.length || 0} problemów` : '',
           status: data.convQuality ? (data.convQuality.quality_score >= 80 ? 'ok' : data.convQuality.quality_score >= 50 ? 'warning' : 'danger') : 'neutral' },
-        { key: 'targetVsActual', title: 'Target vs Rzeczywistość', icon: Crosshair, cat: 'budget', types: ['SEARCH','PMAX'],
+        { key: 'targetVsActual', title: 'Target vs Rzeczywistość', icon: Crosshair, cat: 'budget', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.targetVsActual ? `${data.targetVsActual.items?.length || 0} kampanii` : '—', sub: 'Smart Bidding', status: 'info' },
-        { key: 'smartBidding', title: 'Smart Bidding', icon: Zap, cat: 'budget', types: ['SEARCH','PMAX'],
+        { key: 'smartBidding', title: 'Smart Bidding', icon: Zap, cat: 'budget', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.smartBidding ? `${data.smartBidding.summary?.critical || 0} kryt.` : '—', sub: data.smartBidding ? `${data.smartBidding.summary?.low_volume || 0} niski wolumen` : '',
           status: data.smartBidding?.summary?.critical > 0 ? 'danger' : data.smartBidding?.summary?.low_volume > 0 ? 'warning' : 'ok' },
         { key: 'matchType', title: 'Dopasowania', icon: Layers, cat: 'search', types: ['SEARCH'],
@@ -81,56 +121,42 @@ export default function AuditCenterPage() {
           value: data.ngram ? `${data.ngram.total} wyników` : '—', sub: `${ngramSize}-gramy`, status: 'info' },
         { key: 'rsa', title: 'Reklamy RSA', icon: FileText, cat: 'search', types: ['SEARCH'],
           value: data.rsa ? `${data.rsa.ad_groups?.length || 0} grup` : '—', sub: 'Analiza wariantów', status: 'info' },
-        { key: 'landing', title: 'Strony docelowe', icon: Globe, cat: 'search', types: ['SEARCH','PMAX'],
+        { key: 'landing', title: 'Strony docelowe', icon: Globe, cat: 'search', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.landing ? `${data.landing.pages?.length || 0} URL` : '—', sub: 'Wydajność landing pages', status: 'info' },
-        { key: 'structure', title: 'Struktura konta', icon: GitBranch, cat: 'quality', types: ['SEARCH','PMAX','SHOPPING'],
+        { key: 'structure', title: 'Struktura konta', icon: GitBranch, cat: 'quality', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING'],
           value: data.structure?.issues?.length ? `${data.structure.issues.length} problemów` : 'OK', sub: 'Audyt struktury',
           status: data.structure?.issues?.length > 0 ? 'warning' : 'ok' },
         { key: 'adGroupHealth', title: 'Zdrowie grup reklam', icon: Users, cat: 'quality', types: ['SEARCH'],
           value: data.adGroupHealth ? `${data.adGroupHealth.details?.length || 0} prob.` : '—', sub: data.adGroupHealth ? `z ${data.adGroupHealth.total_ad_groups} grup` : '',
           status: data.adGroupHealth?.details?.length > 0 ? 'warning' : 'ok' },
-        { key: 'pareto', title: 'Pareto 80/20', icon: BarChart3, cat: 'search', types: ['SEARCH','PMAX'],
+        { key: 'pareto', title: 'Pareto 80/20', icon: BarChart3, cat: 'search', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.pareto ? `${data.pareto.campaign_pareto?.top_campaigns_for_80pct || '?'} kamp.` : '—', sub: '80% wartości', status: 'info' },
-        { key: 'scaling', title: 'Okazje do skalowania', icon: Activity, cat: 'search', types: ['SEARCH','PMAX'],
+        { key: 'scaling', title: 'Okazje do skalowania', icon: Activity, cat: 'search', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.scaling ? `${data.scaling.opportunities?.length || 0} kampanii` : '—', sub: 'Potencjał wzrostu',
           status: data.scaling?.opportunities?.length > 0 ? 'ok' : 'neutral' },
-        { key: 'learningStatus', title: 'Status nauki', icon: GraduationCap, cat: 'budget', types: ['SEARCH','PMAX'],
+        { key: 'learningStatus', title: 'Status nauki', icon: GraduationCap, cat: 'budget', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.learningStatus ? `${data.learningStatus.learning_count || 0} w nauce` : '—', sub: data.learningStatus ? `z ${data.learningStatus.total_smart_bidding || 0}` : '',
           status: data.learningStatus?.learning_count > 0 ? 'warning' : 'ok' },
-        { key: 'portfolioHealth', title: 'Strategie portfelowe', icon: Briefcase, cat: 'budget', types: ['SEARCH','PMAX'],
+        { key: 'portfolioHealth', title: 'Strategie portfelowe', icon: Briefcase, cat: 'budget', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.portfolioHealth ? `${data.portfolioHealth.total_portfolios || 0} portfeli` : '—', sub: 'Portfolio bidding', status: 'info' },
         { key: 'demographics', title: 'Demografia', icon: PieChart, cat: 'search', types: ['SEARCH','DISPLAY','VIDEO'],
           value: data.demographics ? `${data.demographics.anomalies?.length || 0} anomalii` : '—', sub: 'CPA per segment',
           status: data.demographics?.anomalies?.length > 0 ? 'warning' : 'ok' },
-        { key: 'pmaxChannels', title: 'Kanały PMax', icon: Radio, cat: 'pmax', types: ['PMAX'],
-          value: data.pmaxChannels?.channels ? `${data.pmaxChannels.channels.length} kanałów` : '—', sub: 'Rozkład budżetu', status: 'info' },
-        { key: 'assetGroups', title: 'Grupy zasobów PMax', icon: Box, cat: 'pmax', types: ['PMAX'],
-          value: data.assetGroups?.groups ? `${data.assetGroups.groups.length} grup` : '—', sub: 'Asset groups', status: 'info' },
-        { key: 'searchThemes', title: 'Tematy PMax', icon: Search, cat: 'pmax', types: ['PMAX'],
-          value: 'Sygnały', sub: 'Tematy i odbiorcy', status: 'info' },
-        { key: 'pmaxCannibalization', title: 'Kanibalizacja PMax↔Search', icon: Shuffle, cat: 'pmax', types: ['PMAX','SEARCH'],
+        { key: 'pmaxCannibalization', title: 'Kanibalizacja PMax↔Search', icon: Shuffle, cat: 'pmax', types: ['PERFORMANCE_MAX','SEARCH'],
           value: data.pmaxCannibalization?.summary ? `${data.pmaxCannibalization.summary.total_overlap} fraz` : '—', sub: 'Pokrywające się frazy',
           status: data.pmaxCannibalization?.summary?.total_overlap > 0 ? 'warning' : 'ok' },
-        { key: 'auctionInsights', title: 'Auction Insights', icon: Crosshair, cat: 'cross', types: ['SEARCH'],
-          value: data.auctionData?.total_competitors ? `${data.auctionData.total_competitors} konk.` : '—', sub: 'Widoczność konkurencji', status: 'info' },
-        { key: 'shoppingGroups', title: 'Grupy produktów', icon: Box, cat: 'cross', types: ['SHOPPING'],
-          value: data.shoppingData?.groups ? `${data.shoppingData.groups.length} grup` : '—', sub: 'Shopping hierarchy', status: 'info' },
-        { key: 'placementPerf', title: 'Miejsca docelowe', icon: Globe, cat: 'cross', types: ['DISPLAY','VIDEO'],
-          value: data.placementData?.placements ? `${data.placementData.placements.length} miejsc` : '—', sub: 'Display/Video placements', status: 'info' },
-        { key: 'topicPerf', title: 'Tematy Display/Video', icon: Layers, cat: 'cross', types: ['DISPLAY','VIDEO'],
-          value: data.topicData?.topics ? `${data.topicData.topics.length} tematów` : '—', sub: 'Wydajność tematów', status: 'info' },
         { key: 'bidModifiers', title: 'Modyfikatory stawek', icon: Settings2, cat: 'budget', types: ['SEARCH','DISPLAY','VIDEO'],
           value: data.bidModData?.modifiers ? `${data.bidModData.modifiers.length} aktywnych` : '—', sub: 'Urządzenia, lokalizacje, harmonogram', status: 'info' },
-        { key: 'googleRecs', title: 'Rekomendacje Google', icon: Star, cat: 'quality', types: ['SEARCH','PMAX','SHOPPING','DISPLAY','VIDEO'],
+        { key: 'googleRecs', title: 'Rekomendacje Google', icon: Star, cat: 'quality', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING','DISPLAY','VIDEO'],
           value: data.googleRecsData?.recommendations ? `${data.googleRecsData.recommendations.length} nowych` : '—', sub: 'Natywne sugestie Google',
           status: data.googleRecsData?.recommendations?.length > 3 ? 'warning' : 'info' },
-        { key: 'convValueRules', title: 'Reguły wartości', icon: Settings2, cat: 'cross', types: ['SEARCH','PMAX','SHOPPING'],
+        { key: 'convValueRules', title: 'Reguły wartości', icon: Settings2, cat: 'cross', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING'],
           value: data.convValueRulesData?.rules ? `${data.convValueRulesData.rules.length} reguł` : '—', sub: 'Value rules', status: 'info' },
-        { key: 'offlineConversions', title: 'Konwersje offline', icon: Target, cat: 'cross', types: ['SEARCH','PMAX'],
+        { key: 'offlineConversions', title: 'Konwersje offline', icon: Target, cat: 'cross', types: ['SEARCH','PERFORMANCE_MAX'],
           value: data.offlineConvData?.total ? `${data.offlineConvData.total} uploadów` : '—', sub: 'GCLID imports', status: 'info' },
-        { key: 'audiencesList', title: 'Lista odbiorców', icon: Users, cat: 'cross', types: ['SEARCH','DISPLAY','VIDEO','PMAX'],
+        { key: 'audiencesList', title: 'Lista odbiorców', icon: Users, cat: 'cross', types: ['SEARCH','DISPLAY','VIDEO','PERFORMANCE_MAX'],
           value: data.audiencesListData?.total ? `${data.audiencesListData.total} segm.` : '—', sub: 'Remarketing, in-market, affinity', status: 'info' },
-        { key: 'audiencePerf', title: 'Wydajność odbiorców', icon: Headphones, cat: 'cross', types: ['SEARCH','DISPLAY','VIDEO','PMAX'],
+        { key: 'audiencePerf', title: 'Wydajność odbiorców', icon: Headphones, cat: 'cross', types: ['SEARCH','DISPLAY','VIDEO','PERFORMANCE_MAX'],
           value: data.audiencePerf?.audiences ? `${data.audiencePerf.audiences.length} segm.` : '—', sub: 'Performance per audience', status: 'info' },
         { key: 'missingExt', title: 'Brakujące rozszerzenia', icon: Link2, cat: 'quality', types: ['SEARCH'],
           value: data.missingExt?.campaigns ? `${data.missingExt.campaigns.length} kamp.` : '—', sub: 'Kampanie bez rozszerzeń',
@@ -139,7 +165,12 @@ export default function AuditCenterPage() {
           value: data.extPerf?.types ? `${data.extPerf.types.length} typów` : '—', sub: 'Extension performance', status: 'info' },
     ]
 
-    const filteredCards = campFilter === 'ALL' ? cards : cards.filter(c => c.types.includes(campFilter))
+    const baseFiltered = campFilter === 'ALL' ? cards : cards.filter(c => c.types.includes(campFilter))
+    const filteredCards = [...baseFiltered].sort((a, b) => {
+        const aPinned = pinnedKeys.includes(a.key) ? 0 : 1
+        const bPinned = pinnedKeys.includes(b.key) ? 0 : 1
+        return aPinned - bPinned
+    })
     const alerts = cards.filter(c => c.status === 'danger')
     const warnings = cards.filter(c => c.status === 'warning')
 
@@ -164,9 +195,6 @@ export default function AuditCenterPage() {
             portfolioHealth: <PortfolioHealthSection data={data.portfolioHealth} />,
             convQuality: <ConversionQualitySection data={data.convQuality} />,
             demographics: <DemographicsSection data={data.demographics} />,
-            pmaxChannels: <PmaxChannelsSection data={data.pmaxChannels} trends={data.pmaxTrends} />,
-            assetGroups: <AssetGroupsSection data={data.assetGroups} />,
-            searchThemes: <SearchThemesSection data={data.searchThemes} />,
             pmaxCannibalization: <PmaxCannibalizationSection data={data.pmaxCannibalization} />,
             audiencePerf: <AudiencePerfSection data={data.audiencePerf} />,
             missingExt: <MissingExtSection data={data.missingExt} />,
@@ -203,92 +231,6 @@ export default function AuditCenterPage() {
                             ))}</tbody>
                         </table>
                     )}
-                </div>
-            )
-        }
-        if (key === 'auctionInsights' && data.auctionData?.competitors) {
-            return (
-                <div style={{ padding: '0 16px 16px', overflowX: 'auto' }}>
-                    {data.auctionData.competitors.length === 0
-                        ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '12px 0' }}>Brak danych. Uruchom sync.</p>
-                        : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                {['Domena','IS %','Overlap %','Poz. wyżej %','Outranking %','Top %','Abs. top %'].map(h => <th key={h} style={{ ...TH, textAlign: h === 'Domena' ? 'left' : 'right' }}>{h}</th>)}
-                            </tr></thead>
-                            <tbody>{data.auctionData.competitors.map((c, i) => (
-                                <tr key={i} style={c.is_self ? { borderBottom: '1px solid rgba(79,142,247,0.15)', background: 'rgba(79,142,247,0.04)' } : { borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ ...TD, color: c.is_self ? '#4F8EF7' : '#F0F0F0', fontWeight: c.is_self ? 600 : 400 }}>{c.display_domain} {c.is_self && <span style={{ fontSize: 9, opacity: 0.5 }}>(Ty)</span>}</td>
-                                    <td style={{ ...TD, textAlign: 'right', color: c.impression_share >= 30 ? '#4ADE80' : c.impression_share >= 15 ? '#FBBF24' : '#F87171' }}>{c.impression_share}%</td>
-                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.overlap_rate}%</td>
-                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.position_above_rate}%</td>
-                                    <td style={{ ...TD, textAlign: 'right', color: c.outranking_share >= 40 ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>{c.outranking_share}%</td>
-                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.top_of_page_rate}%</td>
-                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.abs_top_of_page_rate}%</td>
-                                </tr>
-                            ))}</tbody>
-                        </table>
-                    }
-                </div>
-            )
-        }
-        if (key === 'shoppingGroups' && data.shoppingData?.groups) {
-            return (
-                <div style={{ padding: '0 16px 16px' }}>
-                    {data.shoppingData.groups.length === 0 ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Brak grup produktów.</p> : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['Grupa','Typ','Bid','Kliknięcia','Impr.','Koszt','Konw.'].map(h => <th key={h} style={{ ...TH, textAlign: h === 'Grupa' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
-                            <tbody>{data.shoppingData.groups.map((g, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ ...TD, color: '#F0F0F0' }}>{g.case_value || '—'}</td>
-                                    <td style={{ ...TD_DIM, textAlign: 'right', fontSize: 10 }}>{g.case_value_type}</td>
-                                    <td style={{ ...TD, textAlign: 'right' }}>{g.bid_micros != null ? `${(g.bid_micros/1e6).toFixed(2)} zł` : '—'}</td>
-                                    <td style={{ ...TD, textAlign: 'right' }}>{g.clicks}</td>
-                                    <td style={{ ...TD_DIM, textAlign: 'right' }}>{g.impressions}</td>
-                                    <td style={{ ...TD, textAlign: 'right' }}>{g.cost_micros != null ? `${(g.cost_micros/1e6).toFixed(0)} zł` : '—'}</td>
-                                    <td style={{ ...TD, textAlign: 'right' }}>{g.conversions}</td>
-                                </tr>
-                            ))}</tbody>
-                        </table>
-                    )}
-                </div>
-            )
-        }
-        if (key === 'placementPerf' && data.placementData?.placements) {
-            return (
-                <div style={{ padding: '0 16px 16px', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['URL/Placement','Typ','Kliknięcia','Impr.','Koszt','Konw.','Video views'].map(h => <th key={h} style={{ ...TH, textAlign: h.startsWith('URL') ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
-                        <tbody>{data.placementData.placements.slice(0,20).map((p, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td style={{ ...TD, color: '#F0F0F0', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.placement_url || '—'}</td>
-                                <td style={{ ...TD_DIM, textAlign: 'right', fontSize: 10 }}>{p.placement_type}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{p.clicks}</td>
-                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.impressions}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{p.cost_micros != null ? `${(p.cost_micros/1e6).toFixed(0)} zł` : '—'}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{p.conversions}</td>
-                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{p.video_views || '—'}</td>
-                            </tr>
-                        ))}</tbody>
-                    </table>
-                </div>
-            )
-        }
-        if (key === 'topicPerf' && data.topicData?.topics) {
-            return (
-                <div style={{ padding: '0 16px 16px', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['Temat','Bid mod.','Kliknięcia','Impr.','Koszt','Konw.'].map(h => <th key={h} style={{ ...TH, textAlign: h === 'Temat' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
-                        <tbody>{data.topicData.topics.map((t, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td style={{ ...TD, color: '#F0F0F0' }}>{t.topic_path || '—'}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{t.bid_modifier != null ? `${(t.bid_modifier * 100).toFixed(0)}%` : '—'}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{t.clicks}</td>
-                                <td style={{ ...TD_DIM, textAlign: 'right' }}>{t.impressions}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{t.cost_micros != null ? `${(t.cost_micros/1e6).toFixed(0)} zł` : '—'}</td>
-                                <td style={{ ...TD, textAlign: 'right' }}>{t.conversions}</td>
-                            </tr>
-                        ))}</tbody>
-                    </table>
                 </div>
             )
         }
@@ -441,9 +383,23 @@ export default function AuditCenterPage() {
                         Centrum audytu
                     </h1>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
-                        Analiza {days} dni — {filteredCards.length} sekcji
+                        Analiza {days} dni — {filteredCards.length} sekcji{pinnedKeys.length > 0 ? ` · ${pinnedKeys.length} przypiętych` : ''}
                     </p>
                 </div>
+                {pinnedKeys.length > 0 && (
+                    <button onClick={unpinAll} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '5px 12px', borderRadius: 999, fontSize: 11, fontFamily: 'DM Sans', fontWeight: 500,
+                        cursor: 'pointer', border: '1px solid rgba(79,142,247,0.2)', background: 'rgba(79,142,247,0.06)',
+                        color: '#4F8EF7', transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(79,142,247,0.12)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(79,142,247,0.06)' }}
+                    >
+                        <Pin size={11} />
+                        Odpinij wszystkie
+                    </button>
+                )}
             </div>
 
             <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -487,7 +443,9 @@ export default function AuditCenterPage() {
                 gap: 12,
             }}>
                 {filteredCards.map(card => (
-                    <BentoCard key={card.key} card={card} onClick={() => setActiveSection(card.key)} />
+                    <BentoCard key={card.key} card={card} onClick={() => setActiveSection(card.key)}
+                        pinned={pinnedKeys.includes(card.key)} onTogglePin={togglePin}
+                        changePct={getChangePct(card.key)} />
                 ))}
             </div>
         </div>

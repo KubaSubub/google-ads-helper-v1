@@ -47,9 +47,9 @@ async function mockSemanticApi(page) {
     );
 }
 
-// ─── Sekcja 10 — SearchOptimization ────────────────────────────────
+// ─── Sekcja 10 — Centrum audytu (dawniej SearchOptimization) ────────
 
-test.describe('Sekcja 10 — Search Optimization', () => {
+test.describe('Sekcja 10 — Centrum audytu', () => {
     test.beforeEach(async ({ page }) => {
         await mockEmptyApi(page);
         await mockAnalyticsApi(page);
@@ -59,22 +59,20 @@ test.describe('Sekcja 10 — Search Optimization', () => {
         });
     });
 
-    test('Sekcja 10.1 — Search Optimization page renderuje się', async ({ page }) => {
-        await page.goto('/search-optimization');
-        await expect(page.locator('text=/Optymalizacja/i').first()).toBeVisible({ timeout: 10_000 });
+    test('Sekcja 10.1 — Centrum audytu renderuje się', async ({ page }) => {
+        await page.goto('/audit-center');
+        await expect(page.locator('text=/Centrum audytu/i').first()).toBeVisible({ timeout: 10_000 });
     });
 
-    test('Sekcja 10.2 — Narzędzia analityczne obecne jako sekcje/przyciski', async ({ page }) => {
-        await page.goto('/search-optimization');
-        await expect(page.locator('text=/Optymalizacja/i').first()).toBeVisible({ timeout: 10_000 });
+    test('Sekcja 10.2 — Narzędzia analityczne obecne jako karty bento', async ({ page }) => {
+        await page.goto('/audit-center');
+        await expect(page.locator('text=/Centrum audytu/i').first()).toBeVisible({ timeout: 10_000 });
         await page.waitForTimeout(2000);
         const body = await page.textContent('body');
-        // Sprawdzamy obecność kluczowych sekcji analitycznych
-        // Nazwy mogą być po polsku lub angielsku
         const tools = [
-            'N-gram', 'Match', 'Landing', 'RSA', 'Dayparting',
-            'Bidding', 'Pareto', 'Demograf', 'PMax', 'Audien', 'Rozszerz',
-            'Wasted', 'Zmarnowane', 'Device', 'Urządz', 'Geo', 'Struktur',
+            'N-gram', 'Match', 'Landing', 'RSA',
+            'Bidding', 'Pareto', 'Demograf', 'Audien', 'Rozszerz',
+            'Zmarnow', 'Struktur', 'Smart Bidding',
         ];
         let found = 0;
         for (const tool of tools) {
@@ -84,10 +82,9 @@ test.describe('Sekcja 10 — Search Optimization', () => {
     });
 
     test('Sekcja 10.3 — Strona renderuje się bez krytycznych crashy', async ({ page }) => {
-        await page.goto('/search-optimization');
-        await expect(page.locator('text=/Optymalizacja/i').first()).toBeVisible({ timeout: 10_000 });
+        await page.goto('/audit-center');
+        await expect(page.locator('text=/Centrum audytu/i').first()).toBeVisible({ timeout: 10_000 });
         await page.waitForTimeout(1000);
-        // Sprawdź że strona nie pokazuje białego ekranu (heading jest widoczny)
         const heading = page.locator('h1, h2').first();
         await expect(heading).toBeVisible();
     });

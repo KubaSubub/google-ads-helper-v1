@@ -487,8 +487,14 @@ export default function QualityScore() {
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
                         Słowa kluczowe ({displayKeywords.length})
                     </div>
-                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
                         Kliknij wiersz, aby przejść do zarządzania słowami kluczowymi
+                        <span
+                            onClick={() => navigateTo('keywords')}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}
+                        >
+                            Słowa kluczowe <ArrowRight size={12} />
+                        </span>
                     </p>
                 </div>
 

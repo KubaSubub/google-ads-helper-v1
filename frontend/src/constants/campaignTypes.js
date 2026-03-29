@@ -20,12 +20,12 @@ export const STATUS_CONFIG = {
     REMOVED:  { label: 'Usunięta',    color: '#F87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
 }
 
-export const CAMP_TYPES = ['ALL', 'SEARCH', 'PMAX', 'SHOPPING', 'DISPLAY', 'VIDEO']
+export const CAMP_TYPES = ['ALL', 'SEARCH', 'PERFORMANCE_MAX', 'SHOPPING', 'DISPLAY', 'VIDEO']
 
 export const CAMP_LABELS = {
     ALL: 'Wszystkie',
     SEARCH: 'Search',
-    PMAX: 'PMax',
+    PERFORMANCE_MAX: 'PMax',
     SHOPPING: 'Shopping',
     DISPLAY: 'Display',
     VIDEO: 'Video',

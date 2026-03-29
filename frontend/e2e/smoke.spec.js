@@ -23,8 +23,8 @@ test.beforeEach(async ({ page }) => {
 test('app boots past login and shows sidebar', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('nav')).toBeVisible({ timeout: 10_000 });
-    // Sidebar has the client selector (inside a <select>/<option>)
-    await expect(page.locator('option:has-text("Sushi Naka Naka")')).toBeAttached();
+    // Sidebar has the client selector (custom dropdown button showing client name)
+    await expect(page.locator('text=Sushi Naka Naka').first()).toBeVisible({ timeout: 8_000 });
 });
 
 test('sidebar navigation links are present', async ({ page }) => {
@@ -32,12 +32,12 @@ test('sidebar navigation links are present', async ({ page }) => {
     await expect(page.locator('nav')).toBeVisible({ timeout: 10_000 });
 
     const expectedLabels = [
-        'Pulpit', 'Codzienny audyt', 'Klienci',
+        'Pulpit', 'Poranny przegląd',
         'Kampanie', 'Słowa kluczowe', 'Wyszukiwane frazy',
         'Rekomendacje', 'Historia zmian',
         'Monitoring',
         'Asystent AI', 'Raporty',
-        'Optymalizacja', 'Inteligencja', 'Wynik jakości',
+        'Centrum audytu', 'Inteligencja', 'Wynik jakości',
         'Ustawienia',
     ];
 
@@ -53,7 +53,7 @@ test('sidebar navigation links are present', async ({ page }) => {
 
 const PAGES = [
     { path: '/',                  heading: 'Pulpit' },
-    { path: '/daily-audit',       heading: 'Codzienny Audyt' },
+    { path: '/daily-audit',       heading: 'Poranny' },
     { path: '/campaigns',         heading: 'Kampanie' },
     { path: '/keywords',          heading: 'kluczowe' },
     { path: '/search-terms',      heading: 'Wyszukiwane' },
@@ -62,9 +62,9 @@ const PAGES = [
     { path: '/alerts',            heading: 'Alerty' },
     { path: '/agent',             heading: 'Asystent AI' },
     { path: '/reports',           heading: 'Raport' },
-    { path: '/clients',           heading: 'Klienci' },
+    { path: '/clients',           heading: 'Pulpit' },  // /clients redirects to /
     { path: '/settings',          heading: 'Ustawienia' },
-    { path: '/search-optimization', heading: 'Optymalizacja' },
+    { path: '/search-optimization', heading: 'Centrum audytu' },  // redirects to /audit-center
     { path: '/semantic',          heading: 'Inteligencja' },
     { path: '/quality-score',     heading: 'Wynik' },
     // Forecast skipped in smoke — requires campaign data to render past spinner

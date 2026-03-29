@@ -1,12 +1,14 @@
 import { Suspense } from 'react';
-import { Routes, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { FilterProvider } from './contexts/FilterContext';
 import Toast from './components/Toast';
 import Sidebar from './components/Sidebar';
 import GlobalFilterBar from './components/GlobalFilterBar';
 import GlobalDatePicker from './components/GlobalDatePicker';
+import ShortcutsHint from './components/ShortcutsHint';
 import Login from './pages/Login';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { Loader2 } from 'lucide-react';
 import { AppRoutes, GLOBAL_FILTER_ROUTES } from './app/routes';
 
@@ -22,6 +24,7 @@ function AppContent() {
     const { toast, hideToast, authStatus, authChecking, checkAuth } = useApp();
     const location = useLocation();
     const showGlobalFilter = GLOBAL_FILTER_ROUTES.includes(location.pathname);
+    useKeyboardShortcuts();
 
     if (authChecking) {
         return (
@@ -51,14 +54,15 @@ function AppContent() {
                         background: '#0D0F14',
                     }}
                 >
-                    <GlobalDatePicker />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <ShortcutsHint />
+                        <GlobalDatePicker />
+                    </div>
                 </header>
                 <main className="flex-1 overflow-y-auto p-6 lg:p-8 pt-16 lg:pt-8">
                     {showGlobalFilter && <GlobalFilterBar />}
                     <Suspense fallback={<LoadingFallback />}>
-                        <Routes>
-                            <AppRoutes />
-                        </Routes>
+                        <AppRoutes />
                     </Suspense>
                 </main>
             </div>

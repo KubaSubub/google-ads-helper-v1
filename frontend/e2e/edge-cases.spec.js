@@ -22,7 +22,7 @@ test.describe('Sekcja 27 — Edge Cases: Empty state', () => {
         { path: '/recommendations',   heading: 'Rekomendacje' },
         { path: '/action-history',    heading: 'Historia' },
         { path: '/alerts',            heading: 'Monitoring' },
-        { path: '/search-optimization', heading: 'Optymalizacja' },
+        { path: '/audit-center',         heading: 'Centrum' },
         { path: '/quality-score',     heading: 'Wynik' },
         { path: '/semantic',          heading: 'Inteligencja' },
         { path: '/clients',           heading: 'Klienci' },

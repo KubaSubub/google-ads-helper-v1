@@ -441,7 +441,7 @@ export default function DashboardPage() {
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
                             PMax — rozkład kanałów
                         </span>
-                        <span onClick={() => navigate('/search-optimization')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                        <span onClick={() => navigate('/audit-center')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
                             Szczegóły →
                         </span>
                     </div>

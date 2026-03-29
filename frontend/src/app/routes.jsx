@@ -1,5 +1,5 @@
 import { lazy } from 'react'
-import { Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 
 // Lazy-loaded page components
 const Dashboard = lazy(() => import('../pages/Dashboard'))
@@ -32,7 +32,7 @@ export const GLOBAL_FILTER_ROUTES = [
 
 export function AppRoutes() {
     return (
-        <>
+        <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/daily-audit" element={<DailyAudit />} />
             <Route path="/campaigns" element={<Campaigns />} />
@@ -51,12 +51,11 @@ export function AppRoutes() {
             <Route path="/agent" element={<Agent />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
-            {/* New campaign-type pages */}
             <Route path="/shopping" element={<Shopping />} />
             <Route path="/pmax" element={<PMax />} />
             <Route path="/display" element={<Display />} />
             <Route path="/video" element={<Video />} />
             <Route path="/competitive" element={<Competitive />} />
-        </>
+        </Routes>
     )
 }

@@ -121,7 +121,7 @@ export default function PMaxPage() {
                                 background: 'rgba(248,113,113,0.12)', color: '#F87171',
                                 fontFamily: 'DM Sans, sans-serif',
                             }}>
-                                {term.query || term}
+                                {term.search_term || term.query || (typeof term === 'string' ? term : term.text || '—')}
                             </span>
                         ))}
                         {overlappingTerms.length > 20 && (

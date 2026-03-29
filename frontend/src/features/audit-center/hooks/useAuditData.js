@@ -7,19 +7,32 @@ import {
     getParetoAnalysis, getScalingOpportunities,
     getTargetVsActual, getLearningStatus,
     getPortfolioHealth, getConversionQuality, getDemographics,
-    getPmaxChannels, getPmaxChannelTrends, getAssetGroupPerformance, getPmaxSearchThemes,
     getAudiencePerformance, getMissingExtensions, getExtensionPerformance,
     getPmaxSearchCannibalization,
-    getAuctionInsights,
-    getShoppingProductGroups,
-    getPlacementPerformance,
     getBidModifiers,
-    getTopicPerformance,
     getGoogleRecommendations,
     getConversionValueRules,
     getOfflineConversions,
     getAudiencesList,
 } from '../../../api'
+
+// Compute previous period date range: same length window ending 1 day before current start
+function computePrevPeriodParams(allParams) {
+    const { date_from, date_to, ...rest } = allParams
+    if (!date_from || !date_to) return null
+    const from = new Date(date_from)
+    const to = new Date(date_to)
+    const days = Math.max(1, Math.round((to - from) / 86400000))
+    const prevTo = new Date(from)
+    prevTo.setDate(prevTo.getDate() - 1)
+    const prevFrom = new Date(prevTo)
+    prevFrom.setDate(prevFrom.getDate() - days + 1)
+    return {
+        ...rest,
+        date_from: prevFrom.toISOString().slice(0, 10),
+        date_to: prevTo.toISOString().slice(0, 10),
+    }
+}
 
 export default function useAuditData(selectedClientId, allParams) {
     const [loading, setLoading] = useState(true)
@@ -33,12 +46,12 @@ export default function useAuditData(selectedClientId, allParams) {
         pareto: null, scaling: null, targetVsActual: null,
         learningStatus: null, portfolioHealth: null,
         convQuality: null, demographics: null,
-        pmaxChannels: null, pmaxTrends: null, assetGroups: null, searchThemes: null,
         pmaxCannibalization: null, audiencePerf: null, missingExt: null, extPerf: null,
-        auctionData: null, shoppingData: null, placementData: null,
-        topicData: null, bidModData: null, googleRecsData: null,
+        bidModData: null, googleRecsData: null,
         convValueRulesData: null, offlineConvData: null, audiencesListData: null,
     })
+
+    const [prevData, setPrevData] = useState({})
 
     useEffect(() => {
         if (selectedClientId) loadAll()
@@ -52,14 +65,39 @@ export default function useAuditData(selectedClientId, allParams) {
         }
     }, [ngramSize, selectedClientId, allParams])
 
+    // Background fetch for previous period (only numeric-value cards)
+    async function loadPrevPeriod() {
+        const pp = computePrevPeriodParams(allParams)
+        if (!pp) { setPrevData({}); return }
+        const _catch = (label) => (err) => { console.warn(`[AuditCenter:prev] ${label}`, err); return null }
+        const [w, ch, cq, sb, ls, bd, agh, demo, pcann, mex] = await Promise.all([
+            getWastedSpend(selectedClientId, pp).catch(_catch('prev-waste')),
+            getConversionHealth(selectedClientId, pp).catch(_catch('prev-conv-health')),
+            getConversionQuality(selectedClientId).catch(_catch('prev-conv-quality')),
+            getSmartBiddingHealth(selectedClientId, pp).catch(_catch('prev-smart-bidding')),
+            getLearningStatus(selectedClientId).catch(_catch('prev-learning')),
+            getBiddingAdvisor(selectedClientId, pp).catch(_catch('prev-bidding')),
+            getAdGroupHealth(selectedClientId, pp).catch(_catch('prev-adgroup-health')),
+            getDemographics(selectedClientId, pp).catch(_catch('prev-demographics')),
+            getPmaxSearchCannibalization(selectedClientId, pp).catch(_catch('prev-pmax-cann')),
+            getMissingExtensions(selectedClientId, pp).catch(_catch('prev-missing-ext')),
+        ])
+        setPrevData({
+            waste: w, convHealth: ch, convQuality: cq, smartBidding: sb,
+            learningStatus: ls, bidding: bd, adGroupHealth: agh,
+            demographics: demo, pmaxCannibalization: pcann, missingExt: mex,
+        })
+    }
+
     async function loadAll() {
         setLoading(true)
         setError(null)
+        setPrevData({})
         try {
             const _catch = (label) => (err) => { console.warn(`[AuditCenter] ${label}`, err); return null }
             const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
-                   pch, ptrend, agp, sth, pcann, aud, mex, exp, auct, shopg, plc,
-                   topd, bmod, grecs, cvr, oconv, audl] = await Promise.all([
+                   pcann, aud, mex, exp,
+                   bmod, grecs, cvr, oconv, audl] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(_catch('wasted-spend')),
                 getDayparting(selectedClientId, allParams).catch(_catch('dayparting')),
                 getMatchTypeAnalysis(selectedClientId, allParams).catch(_catch('match-type')),
@@ -79,18 +117,10 @@ export default function useAuditData(selectedClientId, allParams) {
                 getPortfolioHealth(selectedClientId, allParams).catch(_catch('portfolio-health')),
                 getConversionQuality(selectedClientId).catch(_catch('conversion-quality')),
                 getDemographics(selectedClientId, allParams).catch(_catch('demographics')),
-                getPmaxChannels(selectedClientId, allParams).catch(_catch('pmax-channels')),
-                getPmaxChannelTrends(selectedClientId, allParams).catch(_catch('pmax-channel-trends')),
-                getAssetGroupPerformance(selectedClientId, allParams).catch(_catch('asset-group')),
-                getPmaxSearchThemes(selectedClientId).catch(_catch('pmax-themes')),
                 getPmaxSearchCannibalization(selectedClientId, allParams).catch(_catch('pmax-cannibalization')),
                 getAudiencePerformance(selectedClientId, allParams).catch(_catch('audience')),
                 getMissingExtensions(selectedClientId, allParams).catch(_catch('missing-ext')),
                 getExtensionPerformance(selectedClientId, allParams).catch(_catch('ext-performance')),
-                getAuctionInsights(selectedClientId, allParams).catch(_catch('auction-insights')),
-                getShoppingProductGroups(selectedClientId).catch(_catch('shopping-groups')),
-                getPlacementPerformance(selectedClientId, allParams).catch(_catch('placements')),
-                getTopicPerformance(selectedClientId, allParams).catch(_catch('topics')),
                 getBidModifiers(selectedClientId).catch(_catch('bid-modifiers')),
                 getGoogleRecommendations(selectedClientId).catch(_catch('google-recs')),
                 getConversionValueRules(selectedClientId).catch(_catch('conv-value-rules')),
@@ -104,12 +134,12 @@ export default function useAuditData(selectedClientId, allParams) {
                 pareto: pa, scaling: sc, targetVsActual: tva,
                 learningStatus: ls, portfolioHealth: ph,
                 convQuality: cq, demographics: demo,
-                pmaxChannels: pch, pmaxTrends: ptrend, assetGroups: agp, searchThemes: sth,
                 pmaxCannibalization: pcann, audiencePerf: aud, missingExt: mex, extPerf: exp,
-                auctionData: auct, shoppingData: shopg, placementData: plc,
-                topicData: topd, bidModData: bmod, googleRecsData: grecs,
+                bidModData: bmod, googleRecsData: grecs,
                 convValueRulesData: cvr, offlineConvData: oconv, audiencesListData: audl,
             })
+            // Fire previous period load in background (non-blocking)
+            loadPrevPeriod()
         } catch (err) {
             setError(err.message)
         } finally {
@@ -117,5 +147,5 @@ export default function useAuditData(selectedClientId, allParams) {
         }
     }
 
-    return { data, loading, error, ngramSize, setNgramSize, reload: loadAll }
+    return { data, prevData, loading, error, ngramSize, setNgramSize, reload: loadAll }
 }

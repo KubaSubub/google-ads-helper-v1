@@ -1,5 +1,4 @@
-// Design tokens extracted from SearchOptimization.jsx
-// Used across audit-center sections and shared components
+// Design tokens shared across audit-center and feature pages
 
 export const SECTION_STYLE = { marginBottom: 24 }
 

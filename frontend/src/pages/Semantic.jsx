@@ -3,11 +3,11 @@ import { LoadingSpinner, ErrorMessage, PageHeader, Badge } from '../components/U
 import { getSemanticClusters, addNegativeKeyword } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
-import { Brain, ChevronDown, ChevronUp, AlertCircle, TrendingUp, MousePointer2, DollarSign, Layers, Search, Ban, Loader2 } from 'lucide-react'
+import { Brain, ChevronDown, ChevronUp, AlertCircle, TrendingUp, MousePointer2, DollarSign, Layers, Search, Ban, Loader2, CheckSquare, Square, X } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function Semantic() {
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
     const { days } = useFilter()
     const [clusters, setClusters] = useState([])
     const [loading, setLoading] = useState(true)
@@ -16,6 +16,45 @@ export default function Semantic() {
     const [minCost, setMinCost] = useState(0)
     const [searchTerm, setSearchTerm] = useState('')
     const [addingNegatives, setAddingNegatives] = useState(null)
+    const [selectedWaste, setSelectedWaste] = useState(new Set())
+    const [bulkExcluding, setBulkExcluding] = useState(false)
+
+    function toggleWasteSelect(clusterId, e) {
+        e.stopPropagation()
+        setSelectedWaste(prev => {
+            const next = new Set(prev)
+            if (next.has(clusterId)) next.delete(clusterId)
+            else next.add(clusterId)
+            return next
+        })
+    }
+
+    async function handleBulkExcludeSelected() {
+        const wasteClusters = clusters.filter(c => selectedWaste.has(c.id))
+        const allItems = wasteClusters.flatMap(c => c.items)
+        if (allItems.length === 0) return
+        setBulkExcluding(true)
+        let added = 0
+        let failed = 0
+        for (const item of allItems) {
+            try {
+                await addNegativeKeyword({
+                    client_id: selectedClientId,
+                    text: item.text,
+                    match_type: 'EXACT',
+                    scope: 'CAMPAIGN',
+                })
+                added++
+            } catch { failed++ }
+        }
+        setBulkExcluding(false)
+        setSelectedWaste(new Set())
+        if (failed > 0) {
+            showToast(`Dodano ${added} negatywów, ${failed} błędów`, 'error')
+        } else {
+            showToast(`Dodano ${added} negatywów z ${wasteClusters.length} klastrów`, 'success')
+        }
+    }
 
     async function handleBulkNegative(cluster) {
         if (!confirm(`Dodać ${cluster.items.length} fraz z klastra "${cluster.name}" jako negatywy EXACT?`)) return
@@ -34,7 +73,11 @@ export default function Semantic() {
             } catch { failed++ }
         }
         setAddingNegatives(null)
-        alert(`Dodano ${added} negatywów${failed > 0 ? `, ${failed} błędów` : ''}`)
+        if (failed > 0) {
+            showToast(`Dodano ${added} negatywów, ${failed} błędów`, 'error')
+        } else {
+            showToast(`Dodano ${added} negatywów z klastra "${cluster.name}"`, 'success')
+        }
     }
 
     useEffect(() => {
@@ -44,8 +87,7 @@ export default function Semantic() {
     async function loadData() {
         setLoading(true)
         try {
-            // Default to client 1, last 30 days
-            const data = await getSemanticClusters({ client_id: selectedClientId, days: days || 30, top_n: 500 })
+            const data = await getSemanticClusters({ client_id: selectedClientId, days, top_n: 500 })
             setClusters(data)
         } catch (err) {
             setError(err.message)
@@ -123,6 +165,18 @@ export default function Semantic() {
                                 className="p-5 flex items-center justify-between cursor-pointer select-none"
                             >
                                 <div className="flex items-center gap-4">
+                                    {cluster.is_waste && (
+                                        <button
+                                            onClick={(e) => toggleWasteSelect(cluster.id, e)}
+                                            className="flex-shrink-0 text-surface-200/50 hover:text-red-400 transition-colors"
+                                            title={selectedWaste.has(cluster.id) ? 'Odznacz klaster' : 'Zaznacz klaster do wykluczenia'}
+                                        >
+                                            {selectedWaste.has(cluster.id)
+                                                ? <CheckSquare size={18} className="text-red-400" />
+                                                : <Square size={18} />
+                                            }
+                                        </button>
+                                    )}
                                     <div className={clsx(
                                         "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
                                         cluster.is_waste ? "bg-red-500/10 text-red-400" : "bg-brand-500/10 text-brand-400"
@@ -207,6 +261,50 @@ export default function Semantic() {
                     </div>
                 )}
             </div>
+
+            {/* Floating action bar for selected waste clusters */}
+            {selectedWaste.size > 0 && (
+                <div
+                    className="sticky bottom-0 left-0 right-0 z-50 mt-4"
+                    style={{ marginLeft: '-1rem', marginRight: '-1rem' }}
+                >
+                    <div className="mx-auto max-w-[1200px] px-4">
+                        <div className="flex items-center justify-between gap-4 px-5 py-3 rounded-xl border border-red-500/20 bg-surface-800/95 backdrop-blur-md shadow-lg shadow-black/30">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                                    <Ban size={16} className="text-red-400" />
+                                </div>
+                                <div>
+                                    <span className="text-sm font-medium text-white">
+                                        {selectedWaste.size} {selectedWaste.size === 1 ? 'klaster' : selectedWaste.size < 5 ? 'klastry' : 'klastrów'}
+                                    </span>
+                                    <span className="text-xs text-surface-200/50 ml-2">
+                                        ({clusters.filter(c => selectedWaste.has(c.id)).reduce((sum, c) => sum + c.items.length, 0)} fraz)
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setSelectedWaste(new Set())}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all border border-surface-600/50 text-surface-200/70 hover:bg-surface-700/50 hover:text-white"
+                                >
+                                    <X size={12} />
+                                    Odznacz
+                                </button>
+                                <button
+                                    onClick={handleBulkExcludeSelected}
+                                    disabled={bulkExcluding}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 hover:text-red-300"
+                                    style={{ cursor: bulkExcluding ? 'wait' : 'pointer', opacity: bulkExcluding ? 0.6 : 1 }}
+                                >
+                                    {bulkExcluding ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                                    Wyklucz wszystkie
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

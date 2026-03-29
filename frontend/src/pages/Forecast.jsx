@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
-import { TrendingUp, TrendingDown, Activity, AlertCircle, Calendar, Loader2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, AlertCircle, Calendar, Loader2, ArrowRight } from 'lucide-react'
 import { getForecast, getCampaigns } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
@@ -47,16 +47,31 @@ export default function Forecast() {
     const [campaigns, setCampaigns] = useState([])
     const [selectedCampaign, setSelectedCampaign] = useState(null)
     const [metric, setMetric] = useState('cost')
-    const [forecastDays, setForecastDays] = useState(7)
+    const [forecastDays, setForecastDays] = useState(() => {
+        // Sync initial value from global FilterContext, clamped to available options
+        const closest = HORIZON_OPTIONS.reduce((prev, curr) =>
+            Math.abs(curr - days) < Math.abs(prev - days) ? curr : prev
+        )
+        return closest
+    })
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
     const [retryCount, setRetryCount] = useState(0)
+    const [campaignRetry, setCampaignRetry] = useState(0)
+
+    // Sync forecastDays when global FilterContext changes
+    useEffect(() => {
+        const closest = HORIZON_OPTIONS.reduce((prev, curr) =>
+            Math.abs(curr - days) < Math.abs(prev - days) ? curr : prev
+        )
+        setForecastDays(closest)
+    }, [days])
 
     useEffect(() => {
         if (!selectedClientId) return
         let cancelled = false
-        async function load() {
+        async function loadCampaigns() {
             try {
                 const res = await getCampaigns(selectedClientId)
                 if (cancelled) return
@@ -67,9 +82,9 @@ export default function Forecast() {
                 if (!cancelled) setError(err.message)
             }
         }
-        load()
+        loadCampaigns()
         return () => { cancelled = true }
-    }, [selectedClientId])
+    }, [selectedClientId, campaignRetry])
 
     useEffect(() => {
         if (!selectedCampaign) return
@@ -141,8 +156,8 @@ export default function Forecast() {
                         style={{ minWidth: 200 }}
                     />
                     {selectedCampaign && (
-                        <span onClick={() => navigateTo('campaigns')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                            Kampania →
+                        <span onClick={() => navigateTo('campaigns')} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#4F8EF7', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            Kampanie <ArrowRight size={12} />
                         </span>
                     )}
 
@@ -165,7 +180,16 @@ export default function Forecast() {
             {error && (
                 <div className="v2-card" style={{ padding: 24, textAlign: 'center' }}>
                     <p style={{ color: '#F87171', fontSize: 13, marginBottom: 8 }}>{error}</p>
-                    <button onClick={() => { setError(null); setRetryCount(c => c + 1) }} style={{
+                    <button onClick={() => {
+                        setError(null)
+                        if (!selectedCampaign) {
+                            // Campaigns failed to load — re-trigger campaigns fetch
+                            setCampaignRetry(c => c + 1)
+                        } else {
+                            // Forecast failed — re-trigger forecast fetch
+                            setRetryCount(c => c + 1)
+                        }
+                    }} style={{
                         padding: '5px 14px', borderRadius: 7, fontSize: 12,
                         background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
                         color: '#4F8EF7', cursor: 'pointer',
@@ -182,7 +206,7 @@ export default function Forecast() {
                         <div className="v2-card" style={{ padding: '16px 18px' }}>
                             <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
                                 <Activity size={14} style={{ color: 'rgba(255,255,255,0.4)' }} />
-                                <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Trend (7 dni)</span>
+                                <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Trend ({forecastDays} dni)</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 {data.trend.direction === 'up' && <TrendingUp size={18} style={{ color: '#4ADE80' }} />}
@@ -192,7 +216,7 @@ export default function Forecast() {
                                     {data.trend.change_pct > 0 ? '+' : ''}{data.trend.change_pct}%
                                 </span>
                             </div>
-                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>vs ostatnie 7 dni</p>
+                            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>vs ostatnie {forecastDays} dni</p>
                         </div>
 
                         <div className="v2-card" style={{ padding: '16px 18px' }}>
