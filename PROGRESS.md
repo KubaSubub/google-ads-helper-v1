@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-29 (docs-sync — sprint 2 complete)
+# Updated: 2026-03-29 (docs-sync)
 
 ## Status
 - Backend: 528 tests passing (`pytest --tb=short -q`)
