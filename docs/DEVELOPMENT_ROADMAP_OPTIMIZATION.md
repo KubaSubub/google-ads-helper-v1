@@ -268,7 +268,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## G. ZAAWANSOWANA ANALIZA
 
-### G1. ❌ Auction Insights Tracking
+### G1. ✅ Auction Insights Tracking
+> **Wdrożone:** Strona `/competitive` z tabelą auction insights, KPI (IS%, outranking%, competitor count), ranking z visual bars, search filter, position summary. Sync via `getAuctionInsights()`. Brakuje: trend tracking over time, alerty o nowych konkurentach.
 **Co:**
 - Import Auction Insights z API (impression share, overlap rate, outranking share per competitor)
 - Trend: "Competitor X zyskuje IS — wzrost o 15pp w tym miesiącu"
@@ -311,7 +312,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 **Nakład:** Średni — cross-referencing istniejących danych + optimizer algorithm.
 
-### G5. ❌ Ad Extensions (Assets) Audit
+### G5. ✅ Ad Extensions (Assets) Audit
+> **Wdrożone:** AuditCenter ma sekcje MissingExtensions (kampanie bez rozszerzeń) + ExtensionPerformance (per typ). Backend: `GET /analytics/missing-extensions`, `GET /analytics/extension-performance`. Brakuje: pełny sync per asset type, rekomendacje dodania.
 **Co:**
 - Import i analiza rozszerzeń (sitelinks, callouts, structured snippets, call, image)
 - Coverage check: "3 ad groups nie mają sitelinks"
@@ -342,7 +344,8 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 - Porównanie kampanii: side-by-side per metryka
 - Historyczne benchmarki konta (vs własny baseline)
 
-### H3. ❌ Keyboard Shortcuts & Speed Workflow
+### H3. ✅ Keyboard Shortcuts & Speed Workflow
+> **Wdrożone:** Hook `useKeyboardShortcuts` (1-9 nawigacja, Esc powrót, / focus search) + komponent `ShortcutsHint` (? tooltip z listą skrótów w headerze). Brakuje: Ctrl+K global search, quick actions N/P/B.
 **Co:**
 - Quick search: Ctrl+K → szukaj keyword/kampanię/search term
 - Keyboard navigation między sekcjami
@@ -374,7 +377,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 |---|---------|--------|--------|--------|
 | 10 | **A3** Conversion Tracking Health | Średni | 🟠 Wysoki | ✅ DONE |
 | 11 | **E3** Account Health Report | Duży | 🟠 Wysoki | ✅ DONE |
-| 12 | **G1** Auction Insights | Duży | 🟡 Średni | ❌ |
+| 12 | **G1** Auction Insights | Duży | 🟡 Średni | ✅ DONE |
 | 13 | **C1** DSA Targets Analysis | Duży | 🟡 Średni | ❌ |
 | 14 | **B2** Search Terms Trend Analysis | Średni | 🟡 Średni | ✅ DONE |
 
@@ -384,7 +387,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki | ❌ |
 | 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni | ❌ |
 | 17 | **D2** Asset Group Performance | Duży | 🟡 Średni | ❌ |
-| 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni | ❌ |
+| 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni | ✅ DONE |
 | 19 | **G3** Landing Page Audit | Duży | 🟡 Średni | 🟡 PARTIAL |
 
 ### Fala 5: "Polish & UX"
@@ -394,7 +397,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | 21 | **G4** Cross-Campaign Analysis | Średni | 🟡 Średni | ❌ |
 | 22 | **E2** Monthly Deep Dive Report | Średni | 🟡 Średni | ✅ DONE |
 | 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have | ❌ |
-| 24 | **H3** Keyboard Shortcuts | Mały | 🟢 Nice-to-have | ❌ |
+| 24 | **H3** Keyboard Shortcuts | Mały | 🟢 Nice-to-have | ✅ DONE |
 | 25 | **C2** DSA Headlines Audit | Średni | 🟢 Nice-to-have | ❌ |
 | 26 | **C3** DSA ↔ Search Overlap | Średni | 🟢 Nice-to-have | ❌ |
 
@@ -402,7 +405,7 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
-**Stan na 2026-03-27: 12 DONE, 2 PARTIAL, 12 NOT DONE (z 26 feature'ów)**
+**Stan na 2026-03-29: 17 DONE, 1 PARTIAL, 8 NOT DONE (z 26 feature'ów = 65%)**
 
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast
