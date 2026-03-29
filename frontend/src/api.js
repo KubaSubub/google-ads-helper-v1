@@ -330,6 +330,16 @@ export const dryRunRule = (ruleId, clientId) =>
 export const executeRule = (ruleId, clientId) =>
     api.post(`/rules/${ruleId}/execute`, null, { params: { client_id: clientId } });
 
+// DSA (C1, C2, C3)
+export const getDsaTargets = (clientId, params = {}) =>
+    api.get('/analytics/dsa-targets', { params: { client_id: clientId, ...params } });
+export const getDsaCoverage = (clientId) =>
+    api.get('/analytics/dsa-coverage', { params: { client_id: clientId } });
+export const getDsaHeadlines = (clientId, params = {}) =>
+    api.get('/analytics/dsa-headlines', { params: { client_id: clientId, ...params } });
+export const getDsaSearchOverlap = (clientId, params = {}) =>
+    api.get('/analytics/dsa-search-overlap', { params: { client_id: clientId, ...params } });
+
 // History
 export const getChangeHistory = (clientId, params = {}) =>
     api.get('/history/', { params: { client_id: clientId, ...params } });

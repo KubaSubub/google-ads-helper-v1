@@ -378,14 +378,14 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | 10 | **A3** Conversion Tracking Health | Średni | 🟠 Wysoki | ✅ DONE |
 | 11 | **E3** Account Health Report | Duży | 🟠 Wysoki | ✅ DONE |
 | 12 | **G1** Auction Insights | Duży | 🟡 Średni | ✅ DONE |
-| 13 | **C1** DSA Targets Analysis | Duży | 🟡 Średni | ❌ |
+| 13 | **C1** DSA Targets Analysis | Duży | 🟡 Średni | ✅ DONE |
 | 14 | **B2** Search Terms Trend Analysis | Średni | 🟡 Średni | ✅ DONE |
 
 ### Fala 4: "Automation & Scale"
 | # | Feature | Nakład | Impact | Status |
 |---|---------|--------|--------|--------|
 | 15 | **F1** Scheduled Sync & Alerts | Średni | 🟠 Wysoki | ✅ DONE |
-| 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni | ❌ |
+| 16 | **F3** Automated Rules Engine | Duży | 🟡 Średni | ✅ DONE |
 | 17 | **D2** Asset Group Performance | Duży | 🟡 Średni | ✅ DONE |
 | 18 | **G5** Ad Extensions Audit | Duży | 🟡 Średni | ✅ DONE |
 | 19 | **G3** Landing Page Audit | Duży | 🟡 Średni | 🟡 PARTIAL |
@@ -398,14 +398,14 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 | 22 | **E2** Monthly Deep Dive Report | Średni | 🟡 Średni | ✅ DONE |
 | 23 | **H2** Benchmarks | Średni | 🟢 Nice-to-have | ✅ DONE |
 | 24 | **H3** Keyboard Shortcuts | Mały | 🟢 Nice-to-have | ✅ DONE |
-| 25 | **C2** DSA Headlines Audit | Średni | 🟢 Nice-to-have | ❌ |
-| 26 | **C3** DSA ↔ Search Overlap | Średni | 🟢 Nice-to-have | ❌ |
+| 25 | **C2** DSA Headlines Audit | Średni | 🟢 Nice-to-have | ✅ DONE |
+| 26 | **C3** DSA ↔ Search Overlap | Średni | 🟢 Nice-to-have | ✅ DONE |
 
 ---
 
 ## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
 
-**Stan na 2026-03-29: 22 DONE, 1 PARTIAL, 3 NOT DONE (z 26 feature'ów = 85%)**
+**Stan na 2026-03-29: 25 DONE, 1 PARTIAL, 0 NOT DONE (z 26 feature'ów = 96%)**
 
 ### ✅ Mocne strony obecnej aplikacji:
 - Solidna analityka: KPIs, trends, compare-periods, forecast

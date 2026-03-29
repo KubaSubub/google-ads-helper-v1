@@ -41,6 +41,8 @@ from .mcc_link import MccLink
 from .offline_conversion import OfflineConversion
 from .scheduled_sync import ScheduledSyncConfig
 from .automated_rule import AutomatedRule, AutomatedRuleLog
+from .dsa_target import DsaTarget
+from .dsa_headline import DsaHeadline
 
 __all__ = [
     "Client",
@@ -84,5 +86,7 @@ __all__ = [
     "ScheduledSyncConfig",
     "AutomatedRule",
     "AutomatedRuleLog",
+    "DsaTarget",
+    "DsaHeadline",
 ]
 

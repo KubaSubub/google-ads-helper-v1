@@ -43,6 +43,7 @@ export const NAV_GROUPS = [
             { to: '/pmax', label: 'Performance Max', icon: Layers, types: ['PERFORMANCE_MAX'] },
             { to: '/display', label: 'Display', icon: Monitor, types: ['DISPLAY'] },
             { to: '/video', label: 'Video / YouTube', icon: Youtube, types: ['VIDEO'] },
+            { to: '/dsa', label: 'DSA', icon: Search, types: ['SEARCH'] },
         ],
     },
     {

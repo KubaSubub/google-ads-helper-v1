@@ -18,6 +18,7 @@ class Campaign(Base):
     name = Column(String(500), nullable=False)
     status = Column(String(20))  # ENABLED, PAUSED, REMOVED
     campaign_type = Column(String(50))  # SEARCH, DISPLAY, SHOPPING, etc.
+    campaign_subtype = Column(String(50), nullable=True)  # SEARCH_STANDARD, SEARCH_DYNAMIC_ADS, etc.
     budget_micros = Column(BigInteger, default=0)  # 1 USD = 1_000_000 micros
     budget_type = Column(String(20))  # DAILY, TOTAL
     bidding_strategy = Column(String(50))

@@ -28,11 +28,12 @@ const CrossCampaign = lazy(() => import('../features/cross-campaign'))
 const Benchmarks = lazy(() => import('../features/benchmarks'))
 const TaskQueue = lazy(() => import('../features/task-queue'))
 const Rules = lazy(() => import('../features/rules'))
+const Dsa = lazy(() => import('../features/dsa'))
 
 export const GLOBAL_FILTER_ROUTES = [
     '/', '/campaigns', '/keywords', '/search-terms', '/audit-center',
     '/recommendations', '/shopping', '/pmax', '/display', '/video', '/competitive',
-    '/cross-campaign', '/benchmarks',
+    '/cross-campaign', '/benchmarks', '/dsa',
 ]
 
 export function AppRoutes() {
@@ -65,6 +66,7 @@ export function AppRoutes() {
             <Route path="/benchmarks" element={<Benchmarks />} />
             <Route path="/tasks" element={<TaskQueue />} />
             <Route path="/rules" element={<Rules />} />
+            <Route path="/dsa" element={<Dsa />} />
         </Routes>
     )
 }
