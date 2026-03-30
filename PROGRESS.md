@@ -84,12 +84,6 @@
   - `MiniKpiGrid.jsx` — enhanced with expanded KPI cards and visual improvements
   - `HealthScoreCard.jsx` — enhanced with additional health metrics display
 
-## Write Safety Pipeline (2026-03-30)
-- New `backend/app/services/write_safety.py` — unified write-path safety layer for direct user-initiated mutations
-- Every mutation endpoint (rules, negatives, placements, bidding) goes through: demo guard → safety check → audit log
-- Complements existing ActionExecutor (recommendation-driven actions) for consistent audit trail
-- Campaigns bidding-target endpoint (`PATCH /campaigns/{id}/bidding-target`) refactored to remote-first with API push + fallback + write_safety audit
-
 ## DSA Support — C1/C2/C3 (2026-03-29)
 - 4 new analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`
 - 2 new models: `DsaTarget`, `DsaHeadline`

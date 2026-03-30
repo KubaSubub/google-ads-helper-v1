@@ -120,7 +120,7 @@ Base API URL: `/api/v1`
 - `GET /recommendations/?client_id=X&priority=&status=&category=&source=&executable=&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `GET /recommendations/summary?client_id=X&source=&category=&executable=&status=&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `POST /recommendations/{id}/apply?client_id=X&dry_run=false` (`allow_demo_write=true` required for DEMO)
-- `POST /recommendations/{id}/dismiss?client_id=X` (`allow_demo_write=true` required for DEMO)
+- `POST /recommendations/{id}/dismiss?client_id=X` (`allow_demo_write=true` required for DEMO; dismiss is local-only, no Google Ads API call)
 - `POST /recommendations/bulk-apply` — apply batch of recommendations by quick-script category (`allow_demo_write=true` required for DEMO)
   - Body: `{client_id: int, category: "clean_waste"|"pause_burning"|"boost_winners"|"emergency_brake"|"add_negatives", dry_run: true}`
   - `dry_run=true` (default): preview matching recommendations; `dry_run=false`: apply via ActionExecutor
