@@ -363,6 +363,11 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `MiniKpiGrid.jsx` — expanded KPI grid with visual enhancements.
 - `HealthScoreCard.jsx` — enhanced health score display with additional metrics.
 
+## Write Safety Pipeline
+- `write_safety.py` — unified write-path safety layer (demo guard → safety check → audit log) for all direct user-initiated mutations.
+- Campaigns bidding-target endpoint refactored to remote-first (API push first, local commit on success, fallback with pending_sync warning).
+- Complements ActionExecutor for recommendation-driven actions.
+
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
 - Display label: `PMax` (short, user-facing).

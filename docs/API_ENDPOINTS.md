@@ -72,7 +72,7 @@ Base API URL: `/api/v1`
 - `GET /campaigns/?client_id=X&page=1&page_size=50&campaign_type=&status=`
 - `GET /campaigns/{id}`
 - `PATCH /campaigns/{id}` -> patch campaign role override / reset (`allow_demo_write=true` required for DEMO)
-- `PATCH /campaigns/{id}/bidding-target?field=target_cpa_micros|target_roas&value=X` -> update bidding target (local + API push; `allow_demo_write` enforced)
+- `PATCH /campaigns/{id}/bidding-target?field=target_cpa_micros|target_roas&value=X` -> update bidding target (remote-first: API push → local commit; falls back to local-only if API disconnected; returns `pending_sync: true` when local-only; `allow_demo_write` enforced)
 - `GET /campaigns/{id}/kpis?days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 
@@ -196,7 +196,7 @@ Base API URL: `/api/v1`
 - `GET /analytics/google-recommendations?client_id=X` — Google's native recommendations
 - `GET /analytics/mcc-accounts?manager_customer_id=X` — MCC child accounts
 - `GET /analytics/offline-conversions?client_id=X&status=PENDING|UPLOADED|FAILED` — offline conversion upload history
-- `POST /analytics/offline-conversions/upload?client_id=X` — upload offline conversions (body: JSON array)
+- `POST /analytics/offline-conversions/upload?client_id=X` — upload offline conversions via Google Ads API (body: JSON array of `{gclid, conversion_action_id, conversion_time, conversion_value, currency_code}`; goes through write safety pipeline: demo guard → audit log; `allow_demo_write` enforced)
 - `GET /analytics/conversion-value-rules?client_id=X` — conversion value adjustment rules
 
 ## Analytics - PMax, Audiences & Extensions (Phase D)

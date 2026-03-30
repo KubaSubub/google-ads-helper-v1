@@ -1,8 +1,8 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-30 (docs-sync — latest)
+# Updated: 2026-03-30 (docs-sync — v3)
 
 ## Status
-- Backend: 477 tests passing (`pytest --tb=short -q`)
+- Backend: 477 tests (⚠️ config regression: `app_secret_key` extra field blocks pytest — needs Settings model fix)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
@@ -15,6 +15,21 @@
 - Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — all plans closed (0 MISSING)
 - Roadmap: 22/26 DONE (85%)
 
+## Write Safety Layer + Remote-First Bidding (2026-03-30)
+- New service `backend/app/services/write_safety.py` — unified write-path safety layer for direct user-initiated writes:
+  - `record_write_action()` — audit trail for non-recommendation writes (complements ActionExecutor)
+  - `count_negatives_added_today()` / `count_pauses_today()` — daily limit helpers
+  - Pipeline: demo guard → safety check → audit log
+- `PATCH /campaigns/{id}/bidding-target` refactored to remote-first:
+  - Tries Google Ads API push first, commits to local DB only on success
+  - Falls back to local-only if API disconnected (returns `pending_sync: true`)
+  - API failure now returns HTTP 502 with error detail (previously wrote local + logged warning)
+  - Full audit trail via `record_write_action()`
+- `POST /analytics/offline-conversions/upload` now functional:
+  - Actually calls `google_ads_service.upload_offline_conversions()` (was previously placeholder returning info message)
+  - Audit trail via `record_write_action()`
+- Auth config: `OAUTHLIB_INSECURE_TRANSPORT` now controlled by `settings.oauth_allow_insecure_transport` / `settings.is_development` instead of unconditional env override
+
 ## Dashboard Enhancements — Z-Score Anomalies + New Widgets (2026-03-30)
 - New `GET /analytics/z-score-anomalies` endpoint — z-score anomaly detection per campaign per day for a given metric (cost, clicks, impressions, conversions, ctr)
 - Anomalies response enriched with `campaign_name` and `metric_value` fields
@@ -24,6 +39,12 @@
   - `TopActions.jsx` — top recommended actions widget
   - `MiniKpiGrid.jsx` — enhanced with expanded KPI cards and visual improvements
   - `HealthScoreCard.jsx` — enhanced with additional health metrics display
+
+## Write Safety Pipeline (2026-03-30)
+- New `backend/app/services/write_safety.py` — unified write-path safety layer for direct user-initiated mutations
+- Every mutation endpoint (rules, negatives, placements, bidding) goes through: demo guard → safety check → audit log
+- Complements existing ActionExecutor (recommendation-driven actions) for consistent audit trail
+- Campaigns bidding-target endpoint (`PATCH /campaigns/{id}/bidding-target`) refactored to remote-first with API push + fallback + write_safety audit
 
 ## DSA Support — C1/C2/C3 (2026-03-29)
 - 4 new analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`
@@ -319,10 +340,11 @@
 - Frontend production build passed with Vite
 
 ## Open Follow-ups
+- ⚠️ **Backend test regression**: `app_secret_key` in config causes `Settings` pydantic validation error — all pytest tests blocked
 - Add more frontend coverage for Campaigns role override interactions and dry-run modal rendering
 - Add backend coverage for Google-native cache invalidation edge cases
 - Decide future executable allowlist for Google-native recommendation types after safety review
-- Address one npm audit high-severity dependency warning in frontend toolchain
+- Address 3 npm audit high-severity dependency warnings in frontend toolchain (undici — fixable via `npm audit fix`)
 
 ## Keyword Lifecycle Cleanup and Canonical SQLite (2026-03-12)
 - Added successful-sync cleanup for campaigns, ad groups, and keywords so stale local rows are marked `REMOVED` instead of lingering forever.
