@@ -1,12 +1,12 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-29 (docs-sync — latest)
+# Updated: 2026-03-30 (docs-sync — latest)
 
 ## Status
 - Backend: 477 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (APScheduler)
-- API endpoints: 158 total across 17 routers (72 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 159 total across 17 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
 - Frontend pages: 25 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA) — all with enriched UX
 - Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation

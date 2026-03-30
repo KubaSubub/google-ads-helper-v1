@@ -1,19 +1,93 @@
-// MiniKpiGrid — two rows of mini KPI cards (clicks, cost, conversions, ROAS, impressions, CTR, CPA, wasted spend)
-import { TrendingUp, TrendingDown, MousePointerClick, DollarSign, Target, BarChart3, Eye, Percent, ShoppingCart, Trash2 } from 'lucide-react'
+// MiniKpiGrid — customizable KPI grid with ALL Google Ads metrics
+// User picks which KPIs to display (persisted in localStorage)
+import { useState, useMemo } from 'react'
+import {
+    TrendingUp, TrendingDown, MousePointerClick, DollarSign, Target,
+    BarChart3, Eye, Percent, ShoppingCart, Trash2, ArrowUpDown,
+    Crosshair, Users, Layers, Award, Search, Settings2, X, Check,
+    Banknote, Activity, TrendingUp as TrendUp2,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon: Icon, iconColor = '#4F8EF7', invertChange = false }) {
+// ── Full KPI catalog ──────────────────────────────────────────────────────
+const ALL_KPIS = [
+    // Core Performance
+    { id: 'clicks', title: 'Klikniecia', field: 'clicks', icon: MousePointerClick, color: '#4F8EF7', suffix: '', category: 'Wyniki' },
+    { id: 'impressions', title: 'Wyswietlenia', field: 'impressions', icon: Eye, color: '#7B5CE0', suffix: '', category: 'Wyniki' },
+    { id: 'cost_usd', title: 'Koszt', field: 'cost_usd', icon: DollarSign, color: '#7B5CE0', suffix: ' zl', invertChange: true, category: 'Koszty' },
+    { id: 'conversions', title: 'Konwersje', field: 'conversions', icon: Target, color: '#4ADE80', suffix: '', category: 'Wyniki' },
+    { id: 'conversion_value_usd', title: 'Przychod', field: 'conversion_value_usd', icon: Banknote, color: '#4ADE80', suffix: ' zl', category: 'Wyniki', tooltip: 'Conversion Value — laczny przychod z konwersji' },
+    { id: 'ctr', title: 'CTR', field: 'ctr', icon: Percent, color: '#4F8EF7', suffix: '%', category: 'Wskazniki', tooltip: 'Click-Through Rate — stosunek klikniec do wyswietlen' },
+    { id: 'cvr', title: 'CVR', field: 'cvr', icon: Activity, color: '#4ADE80', suffix: '%', category: 'Wskazniki', tooltip: 'Conversion Rate — % klikniec konczacych sie konwersja' },
+    { id: 'roas', title: 'ROAS', field: 'roas', icon: BarChart3, color: '#FBBF24', suffix: 'x', category: 'Wskazniki', tooltip: 'Return On Ad Spend — przychod na kazda wydana zlotowke' },
+    { id: 'cpa', title: 'CPA', field: 'cpa', icon: ShoppingCart, color: '#F87171', suffix: ' zl', invertChange: true, category: 'Koszty', tooltip: 'Cost Per Acquisition — koszt pozyskania konwersji' },
+    { id: 'avg_cpc_usd', title: 'Avg. CPC', field: 'avg_cpc_usd', icon: ArrowUpDown, color: '#F87171', suffix: ' zl', invertChange: true, category: 'Koszty', tooltip: 'Average Cost Per Click — sredni koszt klikniecia' },
+    { id: 'wasted_spend', title: 'Wasted Spend', field: '_wasted_spend', icon: Trash2, color: '#F87171', suffix: ' zl', invertChange: true, category: 'Koszty', tooltip: 'Wydatki bez konwersji', link: '/search-terms?segment=WASTE' },
+
+    // Extended Conversions
+    { id: 'all_conversions', title: 'Konw. (wszystkie)', field: 'all_conversions', icon: Target, color: '#4ADE80', suffix: '', category: 'Konwersje', tooltip: 'All Conversions — w tym cross-device i view-through' },
+    { id: 'all_conversions_value_usd', title: 'Przychod (wszystkie)', field: 'all_conversions_value_usd', icon: Banknote, color: '#4ADE80', suffix: ' zl', category: 'Konwersje', tooltip: 'All Conversions Value' },
+    { id: 'cross_device_conversions', title: 'Cross-device', field: 'cross_device_conversions', icon: Users, color: '#7B5CE0', suffix: '', category: 'Konwersje', tooltip: 'Konwersje rozpoczete na jednym urzadzeniu, zakonczone na innym' },
+    { id: 'value_per_conversion_usd', title: 'Wartosc/konw.', field: 'value_per_conversion_usd', icon: Award, color: '#FBBF24', suffix: ' zl', category: 'Konwersje', tooltip: 'Value Per Conversion — srednia wartosc jednej konwersji' },
+
+    // Search Impression Share
+    { id: 'search_impression_share', title: 'Search IS', field: 'search_impression_share', icon: Search, color: '#4F8EF7', suffix: '', category: 'Udzial', tooltip: 'Search Impression Share — % wyswietlen w wyszukiwarce', format: 'pct' },
+    { id: 'search_top_impression_share', title: 'Top IS', field: 'search_top_impression_share', icon: Search, color: '#4F8EF7', suffix: '', category: 'Udzial', tooltip: 'Search Top Impression Share — % wyswietlen nad wynikami', format: 'pct' },
+    { id: 'search_abs_top_impression_share', title: 'Abs. Top IS', field: 'search_abs_top_impression_share', icon: Search, color: '#4F8EF7', suffix: '', category: 'Udzial', tooltip: 'Absolute Top IS — % wyswietlen na 1. pozycji', format: 'pct' },
+    { id: 'search_budget_lost_is', title: 'Lost IS (budzet)', field: 'search_budget_lost_is', icon: DollarSign, color: '#F87171', suffix: '', invertChange: true, category: 'Udzial', tooltip: 'Utracone wyswietlenia z powodu budzetu', format: 'pct' },
+    { id: 'search_rank_lost_is', title: 'Lost IS (ranking)', field: 'search_rank_lost_is', icon: TrendUp2, color: '#F87171', suffix: '', invertChange: true, category: 'Udzial', tooltip: 'Utracone wyswietlenia z powodu Ad Rank', format: 'pct' },
+    { id: 'search_click_share', title: 'Click Share', field: 'search_click_share', icon: MousePointerClick, color: '#4F8EF7', suffix: '', category: 'Udzial', tooltip: 'Search Click Share — % klikniec w wyszukiwarce', format: 'pct' },
+
+    // Position metrics
+    { id: 'abs_top_impression_pct', title: 'Abs. Top %', field: 'abs_top_impression_pct', icon: Layers, color: '#7B5CE0', suffix: '', category: 'Pozycja', tooltip: '% wyswietlen na absolutnej gorze strony', format: 'pct' },
+    { id: 'top_impression_pct', title: 'Top %', field: 'top_impression_pct', icon: Layers, color: '#7B5CE0', suffix: '', category: 'Pozycja', tooltip: '% wyswietlen nad wynikami organicznymi', format: 'pct' },
+
+    // Account
+    { id: 'active_campaigns', title: 'Aktywne kampanie', field: 'active_campaigns', icon: Crosshair, color: '#4ADE80', suffix: '', category: 'Konto' },
+]
+
+const STORAGE_KEY = 'dashboard_kpi_selection'
+const DEFAULT_SELECTION = [
+    'clicks', 'cost_usd', 'conversions', 'roas',
+    'conversion_value_usd', 'cvr', 'avg_cpc_usd', 'wasted_spend',
+]
+
+function getStoredSelection() {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY)
+        if (stored) {
+            const parsed = JSON.parse(stored)
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        }
+    } catch {}
+    return DEFAULT_SELECTION
+}
+
+// ── Single KPI card ───────────────────────────────────────────────────────
+function MiniKPI({ title, tooltip, value, change, suffix = '', icon: Icon, iconColor = '#4F8EF7', invertChange = false, onClick, format }) {
     const isUp = change > 0
     const isDown = change < 0
     const changeColor = invertChange
         ? (isUp ? '#F87171' : isDown ? '#4ADE80' : 'rgba(255,255,255,0.3)')
         : (isUp ? '#4ADE80' : isDown ? '#F87171' : 'rgba(255,255,255,0.3)')
-    const display = typeof value === 'number'
-        ? value.toLocaleString('pl-PL', { maximumFractionDigits: 2 })
-        : (value ?? '—')
+
+    let display
+    if (value == null) {
+        display = '—'
+    } else if (format === 'pct') {
+        display = (value * 100).toFixed(1) + '%'
+    } else if (typeof value === 'number') {
+        display = value.toLocaleString('pl-PL', { maximumFractionDigits: 2 })
+    } else {
+        display = value
+    }
 
     return (
-        <div className="v2-card" style={{ padding: '14px 18px' }}>
+        <div
+            className="v2-card"
+            style={{ padding: '14px 18px', cursor: onClick ? 'pointer' : 'default' }}
+            onClick={onClick}
+        >
             <div className="flex items-center justify-between mb-2">
                 <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em' }} title={tooltip || undefined}>
                     {title}
@@ -25,7 +99,7 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
                 )}
             </div>
             <div style={{ fontSize: 21, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1, marginBottom: 6 }}>
-                {prefix}{display}{suffix}
+                {format === 'pct' ? display : <>{display}{suffix}</>}
             </div>
             {change !== undefined && change !== null && (
                 <div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: changeColor }}>
@@ -38,85 +112,200 @@ function MiniKPI({ title, tooltip, value, change, suffix = '', prefix = '', icon
     )
 }
 
+// ── KPI Picker Modal ──────────────────────────────────────────────────────
+function KpiPicker({ selected, onSave, onClose }) {
+    const [sel, setSel] = useState(new Set(selected))
+
+    const toggle = (id) => {
+        const next = new Set(sel)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setSel(next)
+    }
+
+    const categories = useMemo(() => {
+        const map = {}
+        ALL_KPIS.forEach(k => {
+            if (!map[k.category]) map[k.category] = []
+            map[k.category].push(k)
+        })
+        return map
+    }, [])
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={onClose}>
+            <div
+                style={{
+                    background: '#13151B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16,
+                    padding: '24px 28px', maxWidth: 620, width: '90%', maxHeight: '80vh', overflow: 'auto',
+                }}
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between" style={{ marginBottom: 20 }}>
+                    <div>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', margin: 0 }}>
+                            Wybierz KPI
+                        </h3>
+                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '4px 0 0' }}>
+                            Zaznacz metryki do wyswietlenia na dashboardzie ({sel.size} wybranych)
+                        </p>
+                    </div>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}>
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {Object.entries(categories).map(([cat, kpis]) => (
+                    <div key={cat} style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                            {cat}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                            {kpis.map(k => {
+                                const active = sel.has(k.id)
+                                return (
+                                    <button
+                                        key={k.id}
+                                        onClick={() => toggle(k.id)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 8,
+                                            padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                                            border: active ? `1px solid ${k.color}40` : '1px solid rgba(255,255,255,0.06)',
+                                            background: active ? `${k.color}10` : 'rgba(255,255,255,0.02)',
+                                            color: active ? '#F0F0F0' : 'rgba(255,255,255,0.5)',
+                                            fontSize: 12, textAlign: 'left',
+                                        }}
+                                    >
+                                        {active && <Check size={12} style={{ color: k.color, flexShrink: 0 }} />}
+                                        <k.icon size={12} style={{ color: k.color, flexShrink: 0 }} />
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.title}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+                ))}
+
+                <div className="flex items-center justify-between" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <button
+                        onClick={() => setSel(new Set(DEFAULT_SELECTION))}
+                        style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                        Przywroc domyslne
+                    </button>
+                    <button
+                        onClick={() => { onSave([...sel]); onClose() }}
+                        disabled={sel.size === 0}
+                        style={{
+                            padding: '8px 20px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                            background: '#4F8EF7', color: '#fff', border: 'none',
+                            opacity: sel.size === 0 ? 0.4 : 1,
+                        }}
+                    >
+                        Zapisz ({sel.size} KPI)
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// ── Main Grid ─────────────────────────────────────────────────────────────
 export default function MiniKpiGrid({ current, change_pct, wastedSpend }) {
     const navigate = useNavigate()
+    const [selectedIds, setSelectedIds] = useState(getStoredSelection)
+    const [pickerOpen, setPickerOpen] = useState(false)
+
+    const handleSave = (ids) => {
+        setSelectedIds(ids)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+    }
+
+    const kpiMap = useMemo(() => {
+        const m = {}
+        ALL_KPIS.forEach(k => { m[k.id] = k })
+        return m
+    }, [])
+
+    // Resolve value + change for each selected KPI
+    const resolveKpi = (kpiDef) => {
+        if (kpiDef.id === 'wasted_spend') {
+            return {
+                value: wastedSpend?.total_waste_usd,
+                change: wastedSpend?.waste_change_pct ?? null,
+                dynamicColor: wastedSpend
+                    ? (wastedSpend.waste_pct > 25 ? '#F87171' : wastedSpend.waste_pct > 15 ? '#FBBF24' : '#4ADE80')
+                    : '#F87171',
+            }
+        }
+        return {
+            value: current?.[kpiDef.field],
+            change: change_pct?.[kpiDef.field],
+        }
+    }
+
+    const selectedKpis = selectedIds.map(id => kpiMap[id]).filter(Boolean)
+    const cols = selectedKpis.length <= 4 ? selectedKpis.length : 4
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                <MiniKPI
-                    title="Kliknięcia"
-                    value={current?.clicks}
-                    change={change_pct?.clicks}
-                    icon={MousePointerClick}
-                    iconColor="#4F8EF7"
-                />
-                <MiniKPI
-                    title="Koszt"
-                    value={current?.cost_usd}
-                    change={change_pct?.cost_usd}
-                    suffix=" zł"
-                    icon={DollarSign}
-                    iconColor="#7B5CE0"
-                    invertChange
-                />
-                <MiniKPI
-                    title="Konwersje"
-                    value={current?.conversions}
-                    change={change_pct?.conversions}
-                    icon={Target}
-                    iconColor="#4ADE80"
-                />
-                <MiniKPI
-                    title="ROAS"
-                    tooltip="Return On Ad Spend — przychód na każdą wydaną złotówkę"
-                    value={current?.roas}
-                    change={change_pct?.roas}
-                    suffix="×"
-                    icon={BarChart3}
-                    iconColor="#FBBF24"
-                />
+            {/* Gear button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                    onClick={() => setPickerOpen(true)}
+                    title="Dostosuj metryki KPI"
+                    style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                        color: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', gap: 4,
+                    }}
+                >
+                    <Settings2 size={13} />
+                    <span style={{ fontSize: 10 }}>Dostosuj KPI</span>
+                </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                <MiniKPI
-                    title="Wyświetlenia"
-                    value={current?.impressions}
-                    change={change_pct?.impressions}
-                    icon={Eye}
-                    iconColor="#7B5CE0"
+
+            {/* KPI cards in rows of 4 */}
+            {Array.from({ length: Math.ceil(selectedKpis.length / cols) }, (_, rowIdx) => (
+                <div key={rowIdx} style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 12 }}>
+                    {selectedKpis.slice(rowIdx * cols, rowIdx * cols + cols).map(kpi => {
+                        const { value, change, dynamicColor } = resolveKpi(kpi)
+                        return (
+                            <MiniKPI
+                                key={kpi.id}
+                                title={kpi.title}
+                                tooltip={kpi.tooltip}
+                                value={value}
+                                change={change}
+                                suffix={kpi.suffix}
+                                icon={kpi.icon}
+                                iconColor={dynamicColor || kpi.color}
+                                invertChange={kpi.invertChange}
+                                format={kpi.format}
+                                onClick={kpi.link ? () => navigate(kpi.link) : undefined}
+                            />
+                        )
+                    })}
+                </div>
+            ))}
+
+            {selectedKpis.length === 0 && (
+                <div className="v2-card" style={{ padding: 24, textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                        Brak wybranych KPI. Kliknij "Dostosuj KPI" aby wybrac metryki.
+                    </p>
+                </div>
+            )}
+
+            {pickerOpen && (
+                <KpiPicker
+                    selected={selectedIds}
+                    onSave={handleSave}
+                    onClose={() => setPickerOpen(false)}
                 />
-                <MiniKPI
-                    title="CTR"
-                    tooltip="Click-Through Rate — stosunek kliknięć do wyświetleń"
-                    value={current?.ctr}
-                    change={change_pct?.ctr}
-                    suffix="%"
-                    icon={Percent}
-                    iconColor="#4F8EF7"
-                />
-                <MiniKPI
-                    title="CPA"
-                    tooltip="Cost Per Acquisition — koszt pozyskania konwersji"
-                    value={current?.cpa}
-                    change={change_pct?.cpa}
-                    suffix=" zł"
-                    icon={ShoppingCart}
-                    iconColor="#F87171"
-                    invertChange
-                />
-                {wastedSpend && (
-                    <div onClick={() => navigate('/search-terms?segment=WASTE')} style={{ cursor: 'pointer' }}>
-                        <MiniKPI
-                            title="Wasted Spend"
-                            tooltip="Wydatki bez konwersji — kliknij aby zobaczyć waste terms"
-                            value={wastedSpend.total_waste_usd}
-                            suffix=" zł"
-                            icon={Trash2}
-                            iconColor={wastedSpend.waste_pct > 25 ? '#F87171' : wastedSpend.waste_pct > 15 ? '#FBBF24' : '#4ADE80'}
-                        />
-                    </div>
-                )}
-            </div>
+            )}
         </div>
     )
 }

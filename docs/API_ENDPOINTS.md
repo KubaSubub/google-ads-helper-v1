@@ -135,6 +135,7 @@ Base API URL: `/api/v1`
 - `GET /analytics/anomalies?client_id=X&status=unresolved|resolved`
 - `POST /analytics/anomalies/{alert_id}/resolve?client_id=X` (`allow_demo_write=true` required for DEMO)
 - `POST /analytics/detect?client_id=X` (`allow_demo_write=true` required for DEMO)
+- `GET /analytics/z-score-anomalies?client_id=X&metric=cost&days=90&threshold=2.0` — z-score anomaly detection per campaign per day for a given metric (metrics: cost, clicks, impressions, conversions, ctr)
 
 ## Analytics - Advanced
 - `POST /analytics/correlation`
