@@ -5,7 +5,9 @@ import hashlib
 import secrets
 from typing import Optional
 
-SESSION_TTL_MINUTES = 60
+from app.config import settings
+
+SESSION_TTL_MINUTES = settings.session_ttl_minutes
 SESSION_COOKIE_NAME = "gah_session"
 MAX_OAUTH_STATES = 100
 OAUTH_STATE_TTL_MINUTES = 15
