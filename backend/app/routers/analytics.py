@@ -2253,15 +2253,18 @@ def mcc_accounts(
 @router.post("/offline-conversions/upload")
 def upload_offline_conversions(
     client_id: int = Query(...),
+    conversions: list[dict] = [],
     allow_demo_write: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    """Upload offline conversions (body: JSON array of {gclid, conversion_action_id, conversion_time, conversion_value, currency_code})."""
+    """Upload offline conversions via Google Ads API.
+
+    Body: JSON array of {gclid, conversion_action_id, conversion_time, conversion_value, currency_code}.
+    Goes through canonical safety pipeline: demo guard → audit log.
+    """
     from app.demo_guard import ensure_demo_write_allowed
     from app.services.google_ads import google_ads_service
-    from app.models.offline_conversion import OfflineConversion
-    from fastapi import Request
-    import json
+    from app.services.write_safety import record_write_action
 
     ensure_demo_write_allowed(db, client_id, allow_demo_write=allow_demo_write, operation="Upload konwersji offline")
 
@@ -2269,12 +2272,32 @@ def upload_offline_conversions(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # For now, return info about the endpoint
-    return {
-        "status": "info",
-        "message": "Use POST with JSON body containing conversions array. Each item: {gclid, conversion_action_id, conversion_time, conversion_value, currency_code}",
-        "endpoint": "/analytics/offline-conversions/upload",
-    }
+    if not conversions:
+        return {
+            "status": "info",
+            "message": "Send POST with JSON body: [{gclid, conversion_action_id, conversion_time, conversion_value, currency_code}, ...]",
+            "endpoint": "/analytics/offline-conversions/upload",
+        }
+
+    result = google_ads_service.upload_offline_conversions(
+        db, client.google_customer_id, conversions
+    )
+
+    # Audit trail
+    record_write_action(
+        db,
+        client_id=client_id,
+        action_type="UPLOAD_OFFLINE_CONVERSIONS",
+        entity_type="offline_conversion",
+        entity_id=client_id,
+        status="SUCCESS" if result.get("status") != "error" else "FAILED",
+        execution_mode="LIVE" if google_ads_service.is_connected else "LOCAL",
+        new_value={"conversion_count": len(conversions), "uploaded": result.get("uploaded", 0)},
+        error_message=result.get("message") if result.get("status") == "error" else None,
+    )
+    db.commit()
+
+    return result
 
 
 @router.get("/offline-conversions")
