@@ -21,7 +21,7 @@ Owner: Product + Engineering
 - `docs/INCIDENT_NEGATIVE_KEYWORD_MAPPING_2026-03-13.md` - root cause, fix, and guardrails for the negative keyword mapping incident
 
 ## Current Baseline
-- Backend routers: 15 (including agent.py, reports.py, semantic.py)
+- Backend routers: 17 (including agent.py, reports.py, semantic.py, scheduled_sync.py, rules.py)
 - Backend utils: sse.py (SSE streaming helper), date_utils.py (date resolution)
 - Frontend pages: 15
 - Recommendation engine: 34 playbook rules + analytics stream + optional Google Ads native ingest

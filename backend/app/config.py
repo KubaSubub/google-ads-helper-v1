@@ -45,8 +45,7 @@ class Settings(BaseSettings):
 
     # App
     app_env: str = "development"
-    app_secret_key: str = "change-this-to-a-random-string"
-    session_ttl_hours: int = 12
+    session_ttl_minutes: int = 60
     oauth_allow_insecure_transport: bool = False
 
     # Database

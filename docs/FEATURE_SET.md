@@ -96,7 +96,7 @@ Current stable reason codes:
 - View-specific filters remain local to their screens and are not mixed into the global bar.
 
 ## 8. Safety and Audit
-- Every write path goes through preconditions and `validate_action()`.
+- Every write path goes through the canonical safety pipeline: `ensure_demo_write_allowed()` → `validate_action()` (where applicable) → `ActionLog` audit trail. Recommendation-driven actions use `ActionExecutor`; direct user actions use `write_safety.py` helpers.
 - `action_log` stores:
   - `execution_mode`
   - `precondition_status`

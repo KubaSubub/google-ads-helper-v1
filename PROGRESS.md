@@ -5,7 +5,7 @@
 - Backend: 477 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
-- Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (APScheduler)
+- Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
 - API endpoints: 159 total across 17 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
 - Frontend pages: 25 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA) — all with enriched UX
@@ -53,9 +53,9 @@
 
 ### Scheduled Sync (F1)
 - New model: `ScheduledSync` — per-client sync schedule (enabled, interval_hours)
-- New service: `scheduler.py` — APScheduler-based background sync runner
+- New service: `scheduler.py` — asyncio-based background sync runner (no external packages)
 - New router: `scheduled_sync.py` — 3 endpoints (GET/POST/DELETE `/sync/schedule`)
-- Registered in `main.py` as protected router (16 routers total)
+- Registered in `main.py` as protected router (17 routers total)
 
 ## PMax Asset Groups Enrichment (D2) + Task Queue Page (H1) (2026-03-29)
 
