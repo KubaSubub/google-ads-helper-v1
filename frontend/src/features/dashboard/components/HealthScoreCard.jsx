@@ -50,8 +50,29 @@ export default function HealthScoreCard({ score, issues, loading, dataAvailable,
     const offset = circumference * (1 - safeScore / 100)
     const color = safeScore > 70 ? '#4ADE80' : safeScore > 40 ? '#FBBF24' : '#F87171'
 
+    // Aggressive background tint for alarming scores
+    const bgTint = safeScore > 70 || safeScore === 0
+        ? 'transparent'
+        : safeScore <= 40
+            ? 'rgba(248,113,113,0.08)'
+            : 'rgba(251,191,36,0.06)'
+    const borderTint = safeScore > 70 || safeScore === 0
+        ? undefined
+        : safeScore <= 40
+            ? '1px solid rgba(248,113,113,0.18)'
+            : '1px solid rgba(251,191,36,0.12)'
+
     return (
-        <div className="v2-card" style={{ padding: '20px 24px', height: '100%', display: 'flex', flexDirection: 'column', cursor: onClick ? 'pointer' : 'default' }} onClick={onClick}>
+        <div
+            className="v2-card"
+            style={{
+                padding: '20px 24px', height: '100%', display: 'flex', flexDirection: 'column',
+                cursor: onClick ? 'pointer' : 'default',
+                background: bgTint,
+                ...(borderTint ? { border: borderTint } : {}),
+            }}
+            onClick={onClick}
+        >
             <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14 }}>
                 Health Score
             </div>
