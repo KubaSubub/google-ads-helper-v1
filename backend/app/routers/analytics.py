@@ -1351,13 +1351,33 @@ def get_wasted_spend(
     campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
-    """Total wasted spend on keywords, search terms, and ads with 0 conversions."""
+    """Total wasted spend on keywords, search terms, and ads with 0 conversions.
+    Includes period-over-period change for dashboard KPI card."""
     start, end = resolve_dates(days, date_from, date_to)
+    period_len = (end - start).days
+    prev_start = start - timedelta(days=period_len)
+    prev_end = start - timedelta(days=1)
+
     service = AnalyticsService(db)
-    return service.get_wasted_spend(
+    current = service.get_wasted_spend(
         client_id=client_id, date_from=start, date_to=end,
         campaign_type=campaign_type, campaign_status=campaign_status,
     )
+    previous = service.get_wasted_spend(
+        client_id=client_id, date_from=prev_start, date_to=prev_end,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
+
+    prev_waste = previous.get("total_waste_usd", 0)
+    cur_waste = current.get("total_waste_usd", 0)
+    if prev_waste == 0:
+        change_pct = 100.0 if cur_waste > 0 else 0.0
+    else:
+        change_pct = round((cur_waste - prev_waste) / prev_waste * 100, 1)
+
+    current["previous_waste_usd"] = prev_waste
+    current["waste_change_pct"] = change_pct
+    return current
 
 
 # ---------------------------------------------------------------------------
