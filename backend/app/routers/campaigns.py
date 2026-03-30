@@ -236,7 +236,16 @@ def update_bidding_target(
     allow_demo_write: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    """Update campaign bidding target (target CPA or target ROAS)."""
+    """Update campaign bidding target (target CPA or target ROAS).
+
+    Remote-first: tries API push first, commits locally only on success.
+    If API is not connected, falls back to local write with pending_sync warning.
+    Goes through canonical safety pipeline: demo guard → audit log.
+    """
+    from app.services.google_ads import google_ads_service
+    from app.services.write_safety import record_write_action
+    import logging
+
     if field not in ("target_cpa_micros", "target_roas"):
         raise HTTPException(status_code=400, detail="field must be target_cpa_micros or target_roas")
 
@@ -253,24 +262,57 @@ def update_bidding_target(
     )
 
     old_value = getattr(campaign, field)
-
-    # Update local DB
-    setattr(campaign, field, int(value) if field == "target_cpa_micros" else float(value))
-    db.commit()
-    db.refresh(campaign)
-
-    # Try to push to Google Ads API (optimistic local write — API failure logged)
-    from app.services.google_ads import google_ads_service
-    import logging
+    new_value = int(value) if field == "target_cpa_micros" else float(value)
     api_synced = False
     api_error = None
-    try:
-        if google_ads_service.is_connected:
+
+    # Remote-first: push to Google Ads API before committing locally
+    if google_ads_service.is_connected:
+        try:
             google_ads_service._mutate_campaign_bidding_target(campaign, db, field, value)
             api_synced = True
-    except Exception as e:
-        api_error = str(e)
-        logging.getLogger(__name__).warning(f"Bidding target API push failed for campaign {campaign_id}: {e}")
+        except Exception as e:
+            api_error = str(e)
+            logging.getLogger(__name__).warning(
+                f"Bidding target API push failed for campaign {campaign_id}: {e}"
+            )
+            # Audit the failed attempt
+            record_write_action(
+                db,
+                client_id=client.id,
+                action_type="UPDATE_BIDDING_TARGET",
+                entity_type="campaign",
+                entity_id=campaign_id,
+                status="FAILED",
+                execution_mode="LIVE",
+                old_value={field: old_value},
+                new_value={field: new_value},
+                error_message=api_error,
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=502,
+                detail=f"Google Ads API rejected the change: {api_error}. Local DB NOT updated.",
+            )
+
+    # Update local DB only after API confirmation (or if API not connected)
+    setattr(campaign, field, new_value)
+
+    # Audit trail
+    record_write_action(
+        db,
+        client_id=client.id,
+        action_type="UPDATE_BIDDING_TARGET",
+        entity_type="campaign",
+        entity_id=campaign_id,
+        status="SUCCESS",
+        execution_mode="LIVE" if api_synced else "LOCAL",
+        old_value={field: old_value},
+        new_value={field: new_value},
+        context={"api_synced": api_synced},
+    )
+    db.commit()
+    db.refresh(campaign)
 
     return {
         "campaign_id": campaign.id,
@@ -279,4 +321,5 @@ def update_bidding_target(
         "new_value": getattr(campaign, field),
         "api_synced": api_synced,
         "api_error": api_error,
+        "pending_sync": not api_synced,
     }
