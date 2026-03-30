@@ -408,11 +408,25 @@ export default function DailyAudit() {
             )}
 
             {/* ROW 1: KPIs (no Health Score — it's on Dashboard) */}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-                <KpiChip label="Wydatki" current={kpi.current_spend} previous={kpi.previous_spend} suffix=" zł" />
-                <KpiChip label="Kliknięcia" current={kpi.current_clicks} previous={kpi.previous_clicks} />
-                <KpiChip label="Konwersje" current={kpi.current_conversions} previous={kpi.previous_conversions} />
-            </div>
+            {(!kpi.current_spend && !kpi.current_clicks && !kpi.current_conversions) ? (
+                <div style={{ ...CARD, padding: '20px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Clock size={18} style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
+                    <div>
+                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                            Brak danych za ostatnie {periodDays} dni
+                        </div>
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>
+                            Dane pojawią się po synchronizacji z aktywnym kontem Google Ads
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+                    <KpiChip label="Wydatki" current={kpi.current_spend} previous={kpi.previous_spend} suffix=" zł" />
+                    <KpiChip label="Kliknięcia" current={kpi.current_clicks} previous={kpi.previous_clicks} />
+                    <KpiChip label="Konwersje" current={kpi.current_conversions} previous={kpi.previous_conversions} />
+                </div>
+            )}
 
             {/* ROW 2: Quick Optimization Scripts — collapsed by default */}
             <div style={{ marginBottom: 16 }}>

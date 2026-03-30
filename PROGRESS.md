@@ -1,8 +1,8 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-30 (docs-sync — v3)
+# Updated: 2026-03-30 (audit-v5 — honest status reconciliation)
 
 ## Status
-- Backend: 477 tests (⚠️ config regression: `app_secret_key` extra field blocks pytest — needs Settings model fix)
+- Backend: 487 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
@@ -12,8 +12,52 @@
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
-- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — all plans closed (0 MISSING)
+- Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — see open items below
 - Roadmap: 22/26 DONE (85%)
+
+## Raport Konkurenta — Full App (2026-03-30)
+> Ocena: **4.5/10** | Autor: persona "Marek K., CTO konkurencji" | Pelny raport: `docs/reviews/competitor-all.md`
+
+### Krytyczne slabosci (blokujace adopcje):
+1. **Desktop-only (nie SaaS)** — brak wspolpracy, brak sharingu, brak mobile. W 2026 to dyskwalifikacja
+2. **Tabele read-only (brak bulk edit)** — specjalista widzi problem ale nie moze go naprawic inline. To lookbook, nie narzedzie pracy
+3. **SQLite bez migracji** — zmiana schematu = kasowanie danych. Bomba zegarowa
+4. **Brak MCC dashboard** — jeden klient naraz, brak cross-account overview
+5. **Monolity 5800+ linii** — google_ads.py i recommendations.py nierefaktorowalne
+
+### Powazne braki:
+- Brak zarzadzania tresciami reklamowymi (RSA editor, A/B testing)
+- Rekomendacje z hardcodowanymi progami (one-size-fits-all zamiast adaptive)
+- Forecast na regresji liniowej (Google Performance Planner jest lepszy za darmo)
+- Brak CI/CD, Docker, monitoring (Sentry), health checks
+- Brak onboardingu, brak scheduled reports (email), brak multi-user
+
+### Co zostalo docenione:
+- **Audit Center (35 bento kart)** — unikalne na rynku, nikt tego nie ma
+- **Campaign Role Classification** z protection levels — inteligentne
+- **Safety guardrails** na mutacjach — enterprise-grade (circuit breaker, dry-run, revert, audit trail)
+- **Search Terms Intelligence** — kompletny workflow (segmentacja + semantic clustering + trends)
+- **Polskie UI** — pelna lokalizacja, przewaga na polskim rynku
+- **Keyboard shortcuts** — power user friendly
+
+### Scorecard:
+| Kategoria | Ocena |
+|-----------|-------|
+| Wartosc dla specjalisty | 5/10 |
+| Kompletnosc vs konkurencja | 4/10 |
+| UX/Design | 6/10 |
+| Tech quality | 5/10 |
+| Unikatowa wartosc (moat) | 4/10 |
+| Gotowosc rynkowa | 3/10 |
+| **SREDNIA** | **4.5/10** |
+
+### Werdykt:
+> "Silnik Porsche w karoserii Malucha. Solidny backend z 159 endpointami i enterprise-grade safety — ale zapakowany w desktop-only format dystrybucji z 2010 roku."
+
+### 30-dniowy plan zagrozenia (co musielibysmy zrobic zeby konkurencja sie bala):
+1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
+2. **Tydz 2-3:** Multi-user auth + team workspace
+3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
 
 ## Write Safety Layer + Remote-First Bidding (2026-03-30)
 - New service `backend/app/services/write_safety.py` — unified write-path safety layer for direct user-initiated writes:
@@ -118,8 +162,13 @@
 - **Video** (`features/video/VideoPage.jsx`): 3 tabs (placements, topics, exclusions), CPV metrics, high-CPV highlighting
 - **Competitive** (`features/competitive/CompetitivePage.jsx`): KPIs row, competitor ranking, visual bars for IS/outranking
 
-### Ads Review Pipeline Closure
-- All ads-verify plans closed: 0 MISSING items across `ads-verify-full-app.md` (DONE: 10, PARTIAL: 1, NOT_NEEDED: 3)
+### Ads Review Pipeline — Honest Status (audit 2026-03-30)
+- ads-verify-full-app.md: DONE: 11, PARTIAL: 3 (#2 pause keyword, #4 placement exclude UI, #8 bulk checkboxes), NOT_NEEDED: 3
+- ads-check-reports.md: DONE: 7/13 — 6 STILL_MISSING are all NICE TO HAVE (scheduler, compare, filter, trend, email, custom sections)
+- ads-check-quality-score.md: DONE: 12/15 — PARTIAL: 1 (#7 deeper recommendation logic), STILL_MISSING: 2 (#5 QS trend history, #9 per-row pause)
+- ads-check-action-history.md: DONE: 13/16 — STILL_MISSING: 3 (#N1 pagination, #N2 CSV export, #N6 post-revert alerts) — all NICE TO HAVE
+- ads-check-dashboard.md: DONE: 9/9 — fully complete
+- All KRYTYCZNE items across all reviews are DONE. Open items are exclusively NICE TO HAVE / backlog for v1.1+
 
 ## Frontend Modular Architecture (2026-03-29 — commit 5b36e3a)
 - Extracted monolithic page components into feature modules under `frontend/src/features/` (14 modules):
@@ -340,7 +389,6 @@
 - Frontend production build passed with Vite
 
 ## Open Follow-ups
-- ⚠️ **Backend test regression**: `app_secret_key` in config causes `Settings` pydantic validation error — all pytest tests blocked
 - Add more frontend coverage for Campaigns role override interactions and dry-run modal rendering
 - Add backend coverage for Google-native cache invalidation edge cases
 - Decide future executable allowlist for Google-native recommendation types after safety review

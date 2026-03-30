@@ -6,6 +6,8 @@ Tests verify that all write paths go through:
 3. Audit trail (ActionLog)
 """
 
+from datetime import date, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -56,17 +58,23 @@ def _seed_base(db):
     db.add(ad_group)
     db.flush()
 
-    keyword = Keyword(
-        ad_group_id=ad_group.id,
-        google_keyword_id="safe_kw1",
-        text="test keyword",
-        match_type="PHRASE",
-        status="ENABLED",
-        bid_micros=1500000,
-    )
-    db.add(keyword)
+    # Need 6+ keywords so PAUSE safety limit (20%) is not triggered for 1 pause
+    keywords = []
+    for i in range(6):
+        kw = Keyword(
+            ad_group_id=ad_group.id,
+            google_keyword_id=f"safe_kw{i}",
+            text=f"test keyword {i}",
+            match_type="PHRASE",
+            status="ENABLED",
+            bid_micros=1500000,
+        )
+        db.add(kw)
+        keywords.append(kw)
     db.flush()
+    keyword = keywords[0]
 
+    today = date.today()
     search_term = SearchTerm(
         campaign_id=campaign.id,
         ad_group_id=ad_group.id,
@@ -74,6 +82,8 @@ def _seed_base(db):
         clicks=20,
         impressions=100,
         cost_micros=500000,
+        date_from=today - timedelta(days=30),
+        date_to=today,
     )
     db.add(search_term)
     db.flush()
@@ -216,7 +226,7 @@ class TestNegativeKeywordsSafety:
         client, campaign, _, _, _ = _seed_base(db)
 
         resp = api_client.post(
-            "/api/v1/keywords/negative-keywords/",
+            "/api/v1/negative-keywords/",
             json={
                 "client_id": client.id,
                 "campaign_id": campaign.id,

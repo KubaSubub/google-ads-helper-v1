@@ -88,11 +88,11 @@ Current stable reason codes:
 - Campaign details page exposes manual role override and reset-to-auto controls.
 - Dashboard insights come from backend analytics recommendations instead of frontend-only heuristics.
 - The app now has a shared global filter bar at the top of the layout for:
-  - active client
-  - date range
-  - campaign type
   - campaign status
-- Campaign type and campaign status use single-select dropdowns with default `Wszystkie`.
+  - campaign label (when labels exist)
+  - campaign name search
+- Campaign type filtering is handled exclusively by sidebar pills (not in GlobalFilterBar).
+- Date range is controlled via the sidebar date picker (global context).
 - View-specific filters remain local to their screens and are not mixed into the global bar.
 
 ## 8. Safety and Audit

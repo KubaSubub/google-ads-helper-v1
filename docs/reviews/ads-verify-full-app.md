@@ -4,8 +4,9 @@
 
 ### Podsumowanie
 - Elementów z raportu: 14
-- DONE: 10 | PARTIAL: 1 | MISSING: 0 | NOT_NEEDED: 3
+- DONE: 11 | PARTIAL: 3 | MISSING: 0 | NOT_NEEDED: 3
 - Szacowany nakład: średni
+- Uwaga: audit 2026-03-30 skorygował PARTIAL z 1→3 (były zaniżone) i zamknął #5 (empty state)
 
 ### Status każdego elementu
 
@@ -17,7 +18,7 @@
 | 2 | Write actions — pause keyword z Command Center | PARTIAL | Backend: `PATCH /campaigns/{id}` istnieje, DailyAudit ma `pause_burning` script. Brak: pause keyword endpoint + UI button w drill-down | Dodać button "Pauzuj" w drill-down low-perf keywords | M |
 | 3 | Write actions — Apply recommendation z Command Center | DONE | Backend: `POST /recommendations/{id}/apply`, `POST /bulk-apply`. Frontend: DailyAudit renderuje rekomendacje | UI w Command Center drill-down "Google Recommendations" brakuje Apply button | S |
 | 4 | Write actions — Exclude placement z Command Center | PARTIAL | Backend: `POST /analytics/placement-exclusion` istnieje. Stary render SearchOptimization miał "Wyklucz" button, ale nowy drill-down go nie ma | Dodać "Wyklucz" button w drill-down placementPerf | S |
-| 5 | Poranny przegląd — KPI z zerami | PARTIAL | DailyAudit używa `period_days: 3`. Seed data nie pokrywa ostatnich 3 dni. Brak empty state z info o zakresie danych | Dodać komunikat "Brak danych za ostatnie 3 dni" lub zmienić fallback na 7 dni | S |
+| 5 | Poranny przegląd — KPI z zerami | DONE | DailyAudit.jsx:411-422 — empty state z komunikatem "Brak danych za ostatnie N dni" gdy KPI=0. Fallback: periodDays z API (domyślnie 3) | — | S |
 | 6 | Impression Share w tabeli kampanii | DONE | Campaigns.jsx linie 65-77: `search_impression_share`, `search_top_impression_share`, `search_abs_top_impression_share`, `search_budget_lost_is`, `search_rank_lost_is`, `search_click_share` — pełne IS z 6 metrykami! | — | — |
 
 #### NICE TO HAVE

@@ -73,7 +73,9 @@ class Settings(BaseSettings):
     # Canonical demo customer id used for write-lock matching.
     demo_google_customer_id: str = "123-456-7890"
 
-    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
+    # extra="ignore" — silently drops unknown env vars (e.g. legacy APP_SECRET_KEY in .env files).
+    # The app uses OAuth2 + in-memory sessions; no custom secret key is needed.
+    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @field_validator("database_url", mode="before")
     @classmethod
