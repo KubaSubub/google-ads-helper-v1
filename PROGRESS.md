@@ -323,9 +323,6 @@
 - Add backend coverage for Google-native cache invalidation edge cases
 - Decide future executable allowlist for Google-native recommendation types after safety review
 - Address one npm audit high-severity dependency warning in frontend toolchain
-- ~~Consider code-splitting frontend bundle (current build warning > 500 kB)~~ → DONE: lazy loading via `routes.jsx` for all 20 pages
-- ~~SearchOptimization.jsx dead code removal~~ → DONE: deleted 2014-line file, replaced by `features/audit-center/`
-- ~~Ads-verify plans open items~~ → DONE: 0 MISSING across all plans
 
 ## Keyword Lifecycle Cleanup and Canonical SQLite (2026-03-12)
 - Added successful-sync cleanup for campaigns, ad groups, and keywords so stale local rows are marked `REMOVED` instead of lingering forever.
