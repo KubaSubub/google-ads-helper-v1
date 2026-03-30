@@ -402,10 +402,19 @@ export const MOCK_DASHBOARD_KPIS = {
 export const MOCK_HEALTH_SCORE = {
     score: 74,
     issues: [
-        { severity: 'high', message: 'Kampania Display wstrzymana ponad 30 dni' },
-        { severity: 'medium', message: '2 słowa kluczowe z Quality Score < 4' },
-        { severity: 'low', message: 'Brak rozszerzeń sitelink w 1 kampanii' },
+        { severity: 'HIGH', message: 'Kampania Display wstrzymana ponad 30 dni' },
+        { severity: 'MEDIUM', message: '2 słowa kluczowe z Quality Score < 4' },
+        { severity: 'LOW', message: 'Brak rozszerzeń sitelink w 1 kampanii' },
     ],
+    data_available: true,
+    breakdown: {
+        performance: { score: 70, weight: 25, details: {} },
+        quality: { score: 65, weight: 20, details: {} },
+        efficiency: { score: 80, weight: 20, details: {} },
+        coverage: { score: 75, weight: 15, details: {} },
+        stability: { score: 85, weight: 10, details: {} },
+        structure: { score: 70, weight: 10, details: {} },
+    },
 };
 
 // ─── Budget Pacing ──────────────────────────────────────────────────

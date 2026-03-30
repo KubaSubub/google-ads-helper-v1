@@ -344,6 +344,11 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - C2: DSA headline performance analysis — top/worst headlines by CTR/conversions.
 - C3: DSA vs manual keyword overlap detection — search terms appearing in both DSA and manual campaigns.
 - Seed data: DSA targets and headlines generated per client.
+- Frontend: `features/dsa/` — dedicated DSA page at `/dsa` route.
+
+## Automated Rules Frontend (F3)
+- Frontend: `features/rules/` — dedicated Rules management page at `/rules` route.
+- Full CRUD UI for automated rules (list, create, edit, delete, dry-run, execute).
 
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).

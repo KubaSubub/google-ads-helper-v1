@@ -74,6 +74,8 @@ def get_anomalies(
                 "title": a.title,
                 "description": a.description,
                 "campaign_id": a.campaign_id,
+                "campaign_name": a.campaign.name if a.campaign else None,
+                "metric_value": a.metric_value,
                 "resolved_at": str(a.resolved_at) if a.resolved_at else None,
                 "created_at": str(a.created_at) if a.created_at else None,
             }
@@ -141,6 +143,114 @@ def run_anomaly_detection(
             }
             for a in alerts
         ],
+    }
+
+
+@router.get("/z-score-anomalies")
+def get_zscore_anomalies(
+    client_id: int = Query(..., description="Client ID"),
+    metric: str = Query("cost", description="Metric to analyze: cost, clicks, impressions, conversions, ctr"),
+    threshold: float = Query(2.0, description="Z-score threshold"),
+    days: int = Query(90, description="Lookback period in days"),
+    db: Session = Depends(get_db),
+):
+    """Detect z-score anomalies per campaign per day for a given metric."""
+    from collections import defaultdict
+    import math
+
+    campaign_ids = [c.id for c in db.query(Campaign.id).filter(
+        Campaign.client_id == client_id, Campaign.status == "ENABLED"
+    ).all()]
+
+    if not campaign_ids:
+        return {"anomalies": [], "mean": 0, "std": 0, "total_days": 0}
+
+    cutoff = date.today() - timedelta(days=days)
+    rows = db.query(MetricDaily).filter(
+        MetricDaily.campaign_id.in_(campaign_ids),
+        MetricDaily.date >= cutoff,
+    ).all()
+
+    if not rows:
+        return {"anomalies": [], "mean": 0, "std": 0, "total_days": 0}
+
+    # Build campaign name map
+    camp_names = {c.id: c.name for c in db.query(Campaign.id, Campaign.name).filter(
+        Campaign.id.in_(campaign_ids)
+    ).all()}
+
+    # Aggregate by date
+    day_agg = defaultdict(lambda: {"clicks": 0, "impressions": 0, "cost": 0.0,
+                                    "conversions": 0.0, "campaigns": set()})
+    for r in rows:
+        d = day_agg[r.date]
+        d["clicks"] += r.clicks or 0
+        d["impressions"] += r.impressions or 0
+        d["cost"] += (r.cost_micros or 0) / 1_000_000
+        d["conversions"] += r.conversions or 0
+        d["campaigns"].add(r.campaign_id)
+
+    # Extract metric values per day
+    metric_map = {
+        "cost": lambda d: d["cost"],
+        "clicks": lambda d: float(d["clicks"]),
+        "impressions": lambda d: float(d["impressions"]),
+        "conversions": lambda d: d["conversions"],
+        "ctr": lambda d: d["clicks"] / d["impressions"] if d["impressions"] > 0 else 0,
+    }
+    extract = metric_map.get(metric, metric_map["cost"])
+
+    daily_values = []
+    for dt in sorted(day_agg.keys()):
+        val = extract(day_agg[dt])
+        daily_values.append((dt, val))
+
+    if len(daily_values) < 7:
+        return {"anomalies": [], "mean": 0, "std": 0, "total_days": len(daily_values)}
+
+    values = [v for _, v in daily_values]
+    mean = sum(values) / len(values)
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    std = math.sqrt(variance) if variance > 0 else 0
+
+    anomalies = []
+    if std > 0:
+        for dt, val in daily_values:
+            z = (val - mean) / std
+            if abs(z) >= threshold:
+                # Find which campaign contributed most on this anomaly day
+                camp_rows = [r for r in rows if r.date == dt]
+                top_camp_id = None
+                top_val = 0
+                for cr in camp_rows:
+                    cv = extract({
+                        "clicks": cr.clicks or 0,
+                        "impressions": cr.impressions or 0,
+                        "cost": (cr.cost_micros or 0) / 1_000_000,
+                        "conversions": cr.conversions or 0,
+                    })
+                    if cv > top_val:
+                        top_val = cv
+                        top_camp_id = cr.campaign_id
+
+                anomalies.append({
+                    "date": str(dt),
+                    "value": round(val, 2),
+                    "z_score": round(z, 2),
+                    "direction": "spike" if z > 0 else "drop",
+                    "campaign_id": top_camp_id,
+                    "campaign_name": camp_names.get(top_camp_id, "?"),
+                })
+
+    anomalies.sort(key=lambda a: abs(a["z_score"]), reverse=True)
+
+    return {
+        "anomalies": anomalies,
+        "mean": round(mean, 2),
+        "std": round(std, 2),
+        "total_days": len(daily_values),
+        "metric": metric,
+        "threshold": threshold,
     }
 
 
@@ -295,6 +405,13 @@ def dashboard_kpis(
     if not campaign_ids:
         return {"current": {}, "previous": {}, "change_pct": {}}
 
+    # Count active campaigns for the KPI grid
+    active_campaigns = (
+        db.query(func.count(Campaign.id))
+        .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+        .scalar()
+    ) or 0
+
     def _agg(start: date, end: date) -> dict:
         rows = (
             db.query(MetricDaily)
@@ -305,35 +422,82 @@ def dashboard_kpis(
             )
             .all()
         )
+        empty = {
+            "clicks": 0, "impressions": 0, "cost_usd": 0, "conversions": 0,
+            "ctr": 0, "roas": 0, "cpa": 0, "conversion_value_usd": 0,
+            "cvr": 0, "avg_cpc_usd": 0, "all_conversions": 0,
+            "all_conversions_value_usd": 0, "cross_device_conversions": 0,
+            "value_per_conversion_usd": 0,
+            "search_impression_share": None, "search_top_impression_share": None,
+            "search_abs_top_impression_share": None,
+            "search_budget_lost_is": None, "search_rank_lost_is": None,
+            "search_click_share": None,
+            "abs_top_impression_pct": None, "top_impression_pct": None,
+            "active_campaigns": active_campaigns,
+        }
         if not rows:
-            return {"clicks": 0, "impressions": 0, "cost_usd": 0, "conversions": 0, "ctr": 0, "roas": 0, "cpa": 0}
+            return empty
 
         total_clicks = sum(r.clicks or 0 for r in rows)
         total_impressions = sum(r.impressions or 0 for r in rows)
         total_cost_micros = sum(r.cost_micros or 0 for r in rows)
         total_conversions = sum(r.conversions or 0 for r in rows)
         total_conv_value_micros = sum(r.conversion_value_micros or 0 for r in rows)
+        total_all_conversions = sum(r.all_conversions or 0 for r in rows)
+        total_all_conv_value_micros = sum(r.all_conversions_value_micros or 0 for r in rows)
+        total_cross_device = sum(r.cross_device_conversions or 0 for r in rows)
 
         total_cost_usd = micros_to_currency(total_cost_micros)
         total_conv_value_usd = micros_to_currency(total_conv_value_micros)
+        total_all_conv_value_usd = micros_to_currency(total_all_conv_value_micros)
         roas = round((total_conv_value_usd / total_cost_usd) if total_cost_usd else 0, 2)
-
         cpa = round((total_cost_usd / total_conversions) if total_conversions else 0, 2)
+        cvr = round((total_conversions / total_clicks * 100) if total_clicks else 0, 2)
+        avg_cpc_usd = round((total_cost_usd / total_clicks) if total_clicks else 0, 2)
+        vpc_usd = round((total_conv_value_usd / total_conversions) if total_conversions else 0, 2)
+
+        # Impression share — weighted average by impressions (only rows with data)
+        def _weighted_avg(attr):
+            pairs = [(getattr(r, attr), r.impressions or 0) for r in rows if getattr(r, attr) is not None]
+            if not pairs:
+                return None
+            total_w = sum(w for _, w in pairs)
+            if total_w == 0:
+                return None
+            return round(sum(v * w for v, w in pairs) / total_w, 4)
 
         return {
             "clicks": total_clicks,
             "impressions": total_impressions,
             "cost_usd": total_cost_usd,
             "conversions": total_conversions,
+            "conversion_value_usd": total_conv_value_usd,
             "ctr": round((total_clicks / total_impressions * 100) if total_impressions else 0, 2),
             "roas": roas,
             "cpa": cpa,
+            "cvr": cvr,
+            "avg_cpc_usd": avg_cpc_usd,
+            "all_conversions": round(total_all_conversions, 2),
+            "all_conversions_value_usd": round(total_all_conv_value_usd, 2),
+            "cross_device_conversions": round(total_cross_device, 2),
+            "value_per_conversion_usd": vpc_usd,
+            "search_impression_share": _weighted_avg("search_impression_share"),
+            "search_top_impression_share": _weighted_avg("search_top_impression_share"),
+            "search_abs_top_impression_share": _weighted_avg("search_abs_top_impression_share"),
+            "search_budget_lost_is": _weighted_avg("search_budget_lost_is"),
+            "search_rank_lost_is": _weighted_avg("search_rank_lost_is"),
+            "search_click_share": _weighted_avg("search_click_share"),
+            "abs_top_impression_pct": _weighted_avg("abs_top_impression_pct"),
+            "top_impression_pct": _weighted_avg("top_impression_pct"),
+            "active_campaigns": active_campaigns,
         }
 
     current = _agg(current_start, today)
     previous = _agg(previous_start, current_start - timedelta(days=1))
 
     def _pct(c, p):
+        if c is None or p is None:
+            return None
         if p == 0:
             return 100.0 if c > 0 else 0.0
         return round((c - p) / p * 100, 1)

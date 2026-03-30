@@ -1,14 +1,14 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-29 (docs-sync)
+# Updated: 2026-03-29 (docs-sync — latest)
 
 ## Status
-- Backend: 528 tests passing (`pytest --tb=short -q`)
+- Backend: 477 tests passing (`pytest --tb=short -q`)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
-- DB: 42 tables (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + DsaTarget + DsaHeadline)
+- DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (APScheduler)
 - API endpoints: 158 total across 17 routers (72 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
-- Models: 42 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, DsaTarget, DsaHeadline)
-- Frontend pages: 23 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks) — all with enriched UX
+- Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
+- Frontend pages: 25 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA) — all with enriched UX
 - Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
@@ -91,16 +91,21 @@
 - All ads-verify plans closed: 0 MISSING items across `ads-verify-full-app.md` (DONE: 10, PARTIAL: 1, NOT_NEEDED: 3)
 
 ## Frontend Modular Architecture (2026-03-29 — commit 5b36e3a)
-- Extracted monolithic page components into feature modules under `frontend/src/features/`:
+- Extracted monolithic page components into feature modules under `frontend/src/features/` (14 modules):
   - `audit-center/` — AuditCenterPage (replaces SearchOptimization, 25 analysis sections with bento card layout)
+  - `benchmarks/` — BenchmarksPage (account KPI benchmarks, cross-client comparison)
   - `campaigns/` — CampaignsPage + CampaignKpiRow + CampaignTrendExplorer
-  - `dashboard/` — DashboardPage + HealthScoreCard + MiniKpiGrid + QsHealthWidget
-  - `keywords/` — KeywordsPage + PositiveKeywordsTab + NegativeKeywordsTab + NegativeKeywordListsTab + KeywordExpansionTab + AddNegativeModal
-  - `shopping/` — ShoppingPage (product group performance, ROAS color-coding)
-  - `pmax/` — PMaxPage (channel breakdown, asset groups, search themes, cannibalization)
-  - `display/` — DisplayPage (placements, topics, exclusions)
-  - `video/` — VideoPage (video placements, view metrics)
   - `competitive/` — CompetitivePage (auction insights, competitor visibility)
+  - `cross-campaign/` — CrossCampaignPage (keyword overlap, budget allocation, campaign comparison)
+  - `dashboard/` — DashboardPage + HealthScoreCard + MiniKpiGrid + QsHealthWidget
+  - `display/` — DisplayPage (placements, topics, exclusions)
+  - `dsa/` — DsaPage (DSA targets, headlines, search overlap)
+  - `keywords/` — KeywordsPage + PositiveKeywordsTab + NegativeKeywordsTab + NegativeKeywordListsTab + KeywordExpansionTab + AddNegativeModal
+  - `pmax/` — PMaxPage (channel breakdown, asset groups, search themes, cannibalization)
+  - `rules/` — RulesPage (automated rules CRUD, dry-run, execute)
+  - `shopping/` — ShoppingPage (product group performance, ROAS color-coding)
+  - `task-queue/` — TaskQueuePage (plan dnia, priority sorting, progress tracking)
+  - `video/` — VideoPage (video placements, view metrics)
 - Extracted sidebar into `frontend/src/components/layout/Sidebar/` (SidebarContent, ClientSelector, ClientDrawer, NavItem, CampaignTypePills, navConfig)
 - Added shared components: `MatchBadge`, `MetricPill`, `SectionHeader` in `frontend/src/components/shared/`
 - Added constants: `designTokens.js`, `campaignTypes.js` in `frontend/src/constants/`

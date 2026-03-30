@@ -245,21 +245,23 @@ class TestHealthScore:
         assert "score" in data
         assert 0 <= data["score"] <= 100
 
-    def test_health_score_has_breakdown(self, api_client, db):
+    def test_health_score_has_pillar_breakdown(self, api_client, db):
+        """Breakdown contains 6 weighted pillars."""
         client, _, _ = _seed_full(db)
         resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}")
         data = resp.json()
         assert "breakdown" in data
         bd = data["breakdown"]
-        assert bd["base"] == 100
-        assert "alert_penalty" in bd
-        assert "zero_conv_penalty" in bd
-        assert "roas_penalty" in bd
-        assert "ctr_penalty" in bd
-        assert "pacing_penalty" in bd
+        for pillar in ("performance", "quality", "efficiency", "coverage", "stability", "structure"):
+            assert pillar in bd, f"Missing pillar: {pillar}"
+            assert "score" in bd[pillar]
+            assert "weight" in bd[pillar]
+            assert 0 <= bd[pillar]["score"] <= 100
+        # Weights must sum to 100
+        assert sum(p["weight"] for p in bd.values()) == 100
 
     def test_many_high_alerts_score_not_negative(self, api_client, db):
-        """FIX 1: 10 HIGH alerts should cap at -30, score stays >= 0."""
+        """10 HIGH alerts — score stays >= 0, stability pillar drops but overall capped."""
         client, _, _ = _seed_full(db)
         for i in range(10):
             db.add(Alert(
@@ -273,11 +275,11 @@ class TestHealthScore:
         resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}")
         data = resp.json()
         assert data["score"] >= 0
-        # Alert penalty capped at 30 (not 10*10=100)
-        assert data["breakdown"]["alert_penalty"] <= 50  # 30 HIGH cap + 20 MED cap max
+        # Stability pillar should be heavily penalized (alerts cap at -40)
+        assert data["breakdown"]["stability"]["score"] <= 60
 
     def test_pmax_no_ctr_penalty(self, api_client, db):
-        """FIX 3: PMax campaign with CTR drop should NOT trigger CTR penalty."""
+        """PMax campaign with CTR drop should NOT trigger CTR penalty in stability."""
         client = Client(name="PMax Test", google_customer_id="pm1")
         db.add(client)
         db.flush()
@@ -291,11 +293,10 @@ class TestHealthScore:
         )
         db.add(pmax)
         db.flush()
-        # Create CTR drop: first half high CTR, second half very low
         today = date.today()
         for i in range(30):
             d = today - timedelta(days=29 - i)
-            clicks = 100 if i < 15 else 10  # big drop in second half
+            clicks = 100 if i < 15 else 10
             db.add(MetricDaily(
                 campaign_id=pmax.id,
                 date=d,
@@ -310,10 +311,11 @@ class TestHealthScore:
         db.commit()
         resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}&days=30")
         data = resp.json()
-        assert data["breakdown"]["ctr_penalty"] == 0
+        # PMax excluded from CTR check → stability.ctr_drop_pct should be 0
+        assert data["breakdown"]["stability"]["details"].get("ctr_drop_pct", 0) == 0
 
     def test_brand_campaign_no_roas_penalty(self, api_client, db):
-        """FIX 4: Brand campaign with ROAS < 1 should NOT trigger ROAS penalty."""
+        """Brand campaign with ROAS < 1 should NOT trigger low ROAS in performance."""
         client = Client(name="Brand Test", google_customer_id="br1")
         db.add(client)
         db.flush()
@@ -337,14 +339,15 @@ class TestHealthScore:
                 impressions=1000,
                 ctr=0.05,
                 conversions=1.0,
-                conversion_value_micros=5_000_000,  # low ROAS
-                cost_micros=20_000_000,  # high cost → ROAS < 1
+                conversion_value_micros=5_000_000,
+                cost_micros=20_000_000,
                 roas=0.25,
             ))
         db.commit()
         resp = api_client.get(f"/api/v1/analytics/health-score?client_id={client.id}&days=7")
         data = resp.json()
-        assert data["breakdown"]["roas_penalty"] == 0
+        # Brand excluded from low ROAS check
+        assert data["breakdown"]["performance"]["details"]["low_roas_campaigns"] == 0
 
 
 class TestCampaignTrends:

@@ -24,6 +24,10 @@ from app.models.asset_group_asset import AssetGroupAsset
 from app.models.asset_group_signal import AssetGroupSignal
 from app.models.campaign_audience import CampaignAudienceMetric
 from app.models.campaign_asset import CampaignAsset
+from app.models.ad import Ad
+from app.models.ad_group import AdGroup
+from app.models.search_term import SearchTerm
+from app.models.keyword_daily import KeywordDaily
 from app.utils.formatters import micros_to_currency
 from loguru import logger
 
@@ -442,208 +446,577 @@ class AnalyticsService:
         campaign_status: str | None = None, status: str | None = None,
         days: int | None = None, date_from: date | None = None, date_to: date | None = None,
     ) -> dict:
-        """Calculate account health score (0-100) based on lightweight DB queries.
+        """Calculate account health score (0-100) based on 6 weighted pillars.
 
-        Does NOT call recommendations_engine — uses only MetricDaily + Alert + Campaign.
+        Pillars (weight):
+          1. Performance (25%) — conversions, ROAS, zero-conv campaigns
+          2. Quality     (20%) — Quality Score, ad strength
+          3. Efficiency  (20%) — wasted spend, search term pollution
+          4. Coverage    (15%) — impression share, lost IS
+          5. Stability   (10%) — alerts, CTR trend
+          6. Structure   (10%) — budget pacing, ad group health
         """
         effective_status = campaign_status if campaign_status is not None else status
         from app.utils.date_utils import resolve_dates as _rd
         period_start, period_end = _rd(days, date_from, date_to)
-        period_len = (period_end - period_start).days
-        half_period = period_len // 2
+        period_len = (period_end - period_start).days or 1
 
-        score = 100
-        issues = []
-        breakdown = {"base": 100}
+        issues: list[dict] = []
 
-        # 1. Unresolved alerts (capped per severity)
-        alerts = self.db.query(Alert).filter(
-            Alert.client_id == client_id,
-            Alert.resolved_at.is_(None),
-        ).all()
-        high_alerts = [a for a in alerts if a.severity == "HIGH"]
-        med_alerts = [a for a in alerts if a.severity == "MEDIUM"]
-        alert_penalty = min(len(high_alerts) * 10, 30) + min(len(med_alerts) * 5, 20)
-        score -= alert_penalty
-        breakdown["alert_penalty"] = alert_penalty
-        if high_alerts:
-            issues.append({
-                "severity": "HIGH",
-                "message": f"{len(high_alerts)} alert{'y' if len(high_alerts) > 1 else ''} wysokiej wagi wymagają uwagi",
-                "action": "alerts",
-            })
-        if med_alerts:
-            issues.append({
-                "severity": "MEDIUM",
-                "message": f"{len(med_alerts)} alert{'y' if len(med_alerts) > 1 else ''} średniej wagi",
-                "action": "alerts",
-            })
-
-        # 2. Active campaigns with 0 conversions in period
+        # --- Fetch campaigns ---
         campaign_q = self._filter_campaigns(client_id, campaign_type, effective_status)
         if not effective_status or effective_status == "ALL":
             campaign_q = campaign_q.filter(Campaign.status == "ENABLED")
         active_campaigns = campaign_q.all()
-
-        no_conv_campaigns = []
-        low_roas_campaigns = []
-        campaigns_with_data = 0
         total_campaigns = len(active_campaigns)
+        campaign_ids = [c.id for c in active_campaigns]
 
-        zero_conv_penalty = 0
-        roas_penalty = 0
+        if not campaign_ids:
+            return self._health_empty_response(total_campaigns, issues)
 
-        for campaign in active_campaigns:
-            rows = self.db.query(MetricDaily).filter(
-                MetricDaily.campaign_id == campaign.id,
-                MetricDaily.date >= period_start,
-                MetricDaily.date <= period_end,
-            ).all()
+        # --- Batch-load MetricDaily for all campaigns in period ---
+        all_metrics = self.db.query(MetricDaily).filter(
+            MetricDaily.campaign_id.in_(campaign_ids),
+            MetricDaily.date >= period_start,
+            MetricDaily.date <= period_end,
+        ).all()
+
+        if not all_metrics:
+            issues.insert(0, {
+                "severity": "HIGH",
+                "message": "Brak danych metryk — synchronizuj konto aby zebrać dane",
+                "action": "sync",
+            })
+            return self._health_empty_response(total_campaigns, issues)
+
+        from collections import defaultdict
+        metrics_by_camp = defaultdict(list)
+        for m in all_metrics:
+            metrics_by_camp[m.campaign_id].append(m)
+        campaigns_with_data = len(metrics_by_camp)
+
+        # Pre-aggregate per campaign
+        camp_agg = {}
+        for camp in active_campaigns:
+            rows = metrics_by_camp.get(camp.id, [])
             if not rows:
                 continue
-            campaigns_with_data += 1
-            total_conv = sum(r.conversions or 0 for r in rows)
-            total_conv_value = sum(r.conversion_value_micros or 0 for r in rows) / 1_000_000
-            total_cost = sum(r.cost_micros or 0 for r in rows) / 1_000_000
-            total_clicks = sum(r.clicks or 0 for r in rows)
+            camp_agg[camp.id] = {
+                "campaign": camp,
+                "clicks": sum(r.clicks or 0 for r in rows),
+                "impressions": sum(r.impressions or 0 for r in rows),
+                "conversions": sum(r.conversions or 0 for r in rows),
+                "conv_value": sum(r.conversion_value_micros or 0 for r in rows) / 1_000_000,
+                "cost": sum(r.cost_micros or 0 for r in rows) / 1_000_000,
+                "search_is": [r.search_impression_share for r in rows if r.search_impression_share is not None],
+                "budget_lost_is": [r.search_budget_lost_is for r in rows if r.search_budget_lost_is is not None],
+                "rank_lost_is": [r.search_rank_lost_is for r in rows if r.search_rank_lost_is is not None],
+            }
 
-            if total_clicks > 10 and total_conv == 0:
-                no_conv_campaigns.append(campaign.name)
-                zero_conv_penalty += 3
+        total_cost = sum(a["cost"] for a in camp_agg.values())
+        total_conv = sum(a["conversions"] for a in camp_agg.values())
+        total_conv_value = sum(a["conv_value"] for a in camp_agg.values())
 
-            # FIX 4: skip ROAS penalty for brand campaigns
-            is_brand = (campaign.campaign_role_final or "").upper() in ("BRAND", "BRAND_EXACT")
-            roas = total_conv_value / total_cost if total_cost > 0 else 0
-            if total_cost > 10 and roas < 1 and not is_brand:
-                low_roas_campaigns.append(campaign.name)
-                roas_penalty += 5
+        # =====================================================================
+        # PILLAR 1: PERFORMANCE (25%) — conversions, ROAS, zero-conv campaigns
+        # =====================================================================
+        perf_score = 100
+        perf_details = {}
 
-        zero_conv_penalty = min(zero_conv_penalty, 15)  # cap: max -15 from zero conversions
-        roas_penalty = min(roas_penalty, 20)  # cap: max -20 from low ROAS
-        score -= zero_conv_penalty
-        score -= roas_penalty
-        breakdown["zero_conv_penalty"] = zero_conv_penalty
-        breakdown["roas_penalty"] = roas_penalty
-
-        if no_conv_campaigns:
+        # 1a. Zero-conversion campaigns with significant spend
+        no_conv_camps = []
+        for cid, agg in camp_agg.items():
+            if agg["clicks"] > 10 and agg["conversions"] == 0:
+                no_conv_camps.append(agg["campaign"].name)
+        if no_conv_camps:
+            pct_no_conv = len(no_conv_camps) / campaigns_with_data
+            perf_score -= min(pct_no_conv * 60, 40)  # up to -40 if all camps have 0 conv
             issues.append({
                 "severity": "HIGH",
-                "message": f"{len(no_conv_campaigns)} kampania/e aktywne bez konwersji (ostatnie {period_len} dni)",
+                "message": f"{len(no_conv_camps)} kampanii bez konwersji (>10 kliknięć, 0 konwersji)",
                 "action": "recommendations",
             })
-        if low_roas_campaigns:
+        perf_details["zero_conv_campaigns"] = len(no_conv_camps)
+
+        # 1b. Low ROAS campaigns (non-brand, cost > $20)
+        low_roas_camps = []
+        for cid, agg in camp_agg.items():
+            camp = agg["campaign"]
+            is_brand = (camp.campaign_role_final or "").upper() in ("BRAND", "BRAND_EXACT")
+            if is_brand or agg["cost"] < 20:
+                continue
+            roas = agg["conv_value"] / agg["cost"] if agg["cost"] > 0 else 0
+            if roas < 1.0:
+                low_roas_camps.append(camp.name)
+        if low_roas_camps:
+            pct_low_roas = len(low_roas_camps) / max(1, campaigns_with_data)
+            perf_score -= min(pct_low_roas * 50, 35)  # up to -35
             issues.append({
-                "severity": "MEDIUM",
-                "message": f"{len(low_roas_campaigns)} kampania/e z ROAS < 1 (tracisz pieniądze)",
+                "severity": "HIGH" if len(low_roas_camps) > 2 else "MEDIUM",
+                "message": f"{len(low_roas_camps)} kampanii z ROAS < 1 (tracisz pieniądze)",
                 "action": "campaigns",
             })
+        perf_details["low_roas_campaigns"] = len(low_roas_camps)
 
-        # 3. CTR trend: second half vs first half of period
-        # FIX 3: exclude PMax/Display/Video — CTR is naturally volatile for these types
-        ctr_penalty = 0
-        ctr_eligible = [c for c in active_campaigns
-                        if (c.campaign_type or "").upper() not in ("PERFORMANCE_MAX", "DISPLAY", "VIDEO")]
-        ctr_campaign_ids = [c.id for c in ctr_eligible]
-        midpoint = period_start + timedelta(days=half_period)
-        if ctr_campaign_ids:
-            def _sum_ctr(d_from, d_to):
-                rows = self.db.query(MetricDaily).filter(
-                    MetricDaily.campaign_id.in_(ctr_campaign_ids),
-                    MetricDaily.date >= d_from,
-                    MetricDaily.date <= d_to,
-                ).all()
-                clicks = sum(r.clicks or 0 for r in rows)
-                impressions = sum(r.impressions or 0 for r in rows)
-                return clicks / impressions if impressions else 0
+        # 1c. Overall ROAS health
+        overall_roas = total_conv_value / total_cost if total_cost > 0 else 0
+        if overall_roas >= 3:
+            pass  # excellent
+        elif overall_roas >= 2:
+            perf_score -= 5
+        elif overall_roas >= 1:
+            perf_score -= 15
+        else:
+            perf_score -= 25
+        perf_details["overall_roas"] = round(overall_roas, 2)
+        perf_score = max(0, perf_score)
 
-            ctr_last = _sum_ctr(midpoint, period_end)
-            ctr_prev = _sum_ctr(period_start, midpoint)
-            if ctr_prev > 0 and ctr_last < ctr_prev * 0.85:
-                ctr_penalty = 5
-                score -= ctr_penalty
-                drop_pct = round((ctr_prev - ctr_last) / ctr_prev * 100, 1)
+        # =====================================================================
+        # PILLAR 2: QUALITY (20%) — Quality Score, ad strength
+        # =====================================================================
+        qual_score = 100
+        qual_details = {}
+
+        # 2a. Quality Score from Keywords
+        ad_group_ids = [ag.id for ag in self.db.query(AdGroup).filter(
+            AdGroup.campaign_id.in_(campaign_ids)
+        ).all()]
+
+        qs_keywords = []
+        if ad_group_ids:
+            qs_keywords = self.db.query(Keyword.quality_score).filter(
+                Keyword.ad_group_id.in_(ad_group_ids),
+                Keyword.status == "ENABLED",
+                Keyword.quality_score > 0,
+            ).all()
+
+        if qs_keywords:
+            qs_values = [k[0] for k in qs_keywords]
+            avg_qs = sum(qs_values) / len(qs_values)
+            low_qs_count = sum(1 for v in qs_values if v < 5)
+            low_qs_pct = low_qs_count / len(qs_values)
+
+            # Average QS scoring: 7+ = full, 5-7 = partial, <5 = heavy penalty
+            if avg_qs >= 7:
+                pass  # perfect
+            elif avg_qs >= 6:
+                qual_score -= 10
+            elif avg_qs >= 5:
+                qual_score -= 25
+            else:
+                qual_score -= 40
+
+            # Low QS keyword percentage
+            if low_qs_pct > 0.3:
+                qual_score -= 20
                 issues.append({
                     "severity": "MEDIUM",
-                    "message": f"CTR spada {drop_pct}% tydzień do tygodnia",
+                    "message": f"{low_qs_count}/{len(qs_values)} słów kluczowych z Quality Score < 5 ({low_qs_pct*100:.0f}%)",
                     "action": "keywords",
                 })
-        breakdown["ctr_penalty"] = ctr_penalty
+            elif low_qs_pct > 0.15:
+                qual_score -= 10
+                issues.append({
+                    "severity": "LOW",
+                    "message": f"{low_qs_count} słów z niskim Quality Score (< 5)",
+                    "action": "keywords",
+                })
 
-        # 4. Budget pacing — underspend / overspend detection
+            qual_details["avg_quality_score"] = round(avg_qs, 1)
+            qual_details["low_qs_count"] = low_qs_count
+            qual_details["total_keywords"] = len(qs_values)
+        else:
+            qual_details["avg_quality_score"] = None
+            qual_details["total_keywords"] = 0
+
+        # 2b. Ad Strength
+        ads = []
+        if ad_group_ids:
+            ads = self.db.query(Ad.ad_strength).filter(
+                Ad.ad_group_id.in_(ad_group_ids),
+                Ad.status == "ENABLED",
+                Ad.ad_strength.isnot(None),
+            ).all()
+
+        if ads:
+            strength_map = {"EXCELLENT": 4, "GOOD": 3, "AVERAGE": 2, "POOR": 1}
+            total_ads = len(ads)
+            poor_ads = sum(1 for a in ads if (a[0] or "").upper() == "POOR")
+            avg_ads = sum(1 for a in ads if (a[0] or "").upper() == "AVERAGE")
+            weak_pct = (poor_ads + avg_ads) / total_ads if total_ads else 0
+
+            if weak_pct > 0.5:
+                qual_score -= 20
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"{poor_ads + avg_ads}/{total_ads} reklam z siłą POOR/AVERAGE — popraw nagłówki i opisy",
+                    "action": "recommendations",
+                })
+            elif weak_pct > 0.25:
+                qual_score -= 10
+            qual_details["poor_ads"] = poor_ads
+            qual_details["average_ads"] = avg_ads
+            qual_details["total_ads"] = total_ads
+        else:
+            qual_details["total_ads"] = 0
+
+        qual_score = max(0, qual_score)
+
+        # =====================================================================
+        # PILLAR 3: EFFICIENCY (20%) — wasted spend, search term pollution
+        # =====================================================================
+        eff_score = 100
+        eff_details = {}
+
+        # 3a. Wasted spend — keywords with cost but 0 conversions
+        if ad_group_ids and total_cost > 0:
+            wasted_kw = self.db.query(
+                func.sum(Keyword.cost_micros)
+            ).filter(
+                Keyword.ad_group_id.in_(ad_group_ids),
+                Keyword.status == "ENABLED",
+                Keyword.conversions == 0,
+                Keyword.cost_micros > 0,
+            ).scalar() or 0
+            wasted_kw_usd = wasted_kw / 1_000_000
+            wasted_pct = wasted_kw_usd / total_cost if total_cost > 0 else 0
+
+            if wasted_pct > 0.4:
+                eff_score -= 35
+                issues.append({
+                    "severity": "HIGH",
+                    "message": f"{wasted_pct*100:.0f}% budżetu na słowa bez konwersji (${wasted_kw_usd:,.0f})",
+                    "action": "keywords",
+                })
+            elif wasted_pct > 0.25:
+                eff_score -= 20
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"{wasted_pct*100:.0f}% budżetu na słowa bez konwersji",
+                    "action": "keywords",
+                })
+            elif wasted_pct > 0.15:
+                eff_score -= 10
+            eff_details["wasted_spend_pct"] = round(wasted_pct * 100, 1)
+        else:
+            eff_details["wasted_spend_pct"] = 0
+
+        # 3b. Search term waste — search terms with cost but 0 conversions
+        waste_terms = self.db.query(
+            func.sum(SearchTerm.cost_micros)
+        ).filter(
+            SearchTerm.campaign_id.in_(campaign_ids),
+            SearchTerm.conversions == 0,
+            SearchTerm.cost_micros > 0,
+        ).scalar() or 0
+        waste_terms_usd = waste_terms / 1_000_000
+        st_waste_pct = waste_terms_usd / total_cost if total_cost > 0 else 0
+        if st_waste_pct > 0.3:
+            eff_score -= 25
+            issues.append({
+                "severity": "MEDIUM",
+                "message": f"{st_waste_pct*100:.0f}% wydatków na wyszukiwania bez konwersji — dodaj wykluczenia",
+                "action": "search-terms",
+            })
+        elif st_waste_pct > 0.2:
+            eff_score -= 15
+        eff_details["search_term_waste_pct"] = round(st_waste_pct * 100, 1)
+
+        # 3c. Budget pacing (uses period dates, not hardcoded today)
         import calendar as _cal
-        pacing_penalty = 0
-        today = date.today()
-        month_start = today.replace(day=1)
-        days_elapsed = (today - month_start).days + 1
-        days_in_month = _cal.monthrange(today.year, today.month)[1]
+        ref_date = period_end
+        month_start = ref_date.replace(day=1)
+        days_elapsed = (ref_date - month_start).days + 1
+        days_in_month = _cal.monthrange(ref_date.year, ref_date.month)[1]
         month_progress = days_elapsed / days_in_month
 
-        if month_progress > 0.10 and active_campaigns:
-            from sqlalchemy import func as sa_func
-            for camp in active_campaigns:
+        pacing_issues = 0
+        if month_progress > 0.10:
+            for cid, agg in camp_agg.items():
+                camp = agg["campaign"]
                 if not camp.budget_micros or camp.budget_micros <= 0:
                     continue
                 budget_monthly = (camp.budget_micros / 1_000_000) * days_in_month
-                actual_micros = (
-                    self.db.query(sa_func.sum(MetricDaily.cost_micros))
-                    .filter(
-                        MetricDaily.campaign_id == camp.id,
-                        MetricDaily.date >= month_start,
-                        MetricDaily.date <= today,
-                    )
-                    .scalar()
-                ) or 0
-                actual_spend = actual_micros / 1_000_000
+                # Get spend for this month only
+                month_spend_micros = sum(
+                    r.cost_micros or 0 for r in metrics_by_camp.get(camp.id, [])
+                    if r.date >= month_start
+                )
+                actual_spend = month_spend_micros / 1_000_000
                 expected_spend = budget_monthly * month_progress
                 if expected_spend <= 0:
                     continue
                 pct = actual_spend / expected_spend
 
                 if pct < 0.40 and month_progress > 0.30:
-                    pacing_penalty += 5
+                    pacing_issues += 1
                     issues.append({
                         "severity": "MEDIUM",
-                        "message": f"'{camp.name}' niedowydaje budżetu ({pct*100:.0f}% oczekiwanego przy {month_progress*100:.0f}% miesiąca)",
+                        "message": f"'{camp.name}' niedowydaje budżetu ({pct*100:.0f}% oczekiwanego)",
                         "action": "campaigns",
                     })
                 elif pct > 1.30:
-                    pacing_penalty += 5
+                    pacing_issues += 1
                     issues.append({
                         "severity": "HIGH",
-                        "message": f"'{camp.name}' przepala budżet ({pct*100:.0f}% oczekiwanego przy {month_progress*100:.0f}% miesiąca)",
+                        "message": f"'{camp.name}' przepala budżet ({pct*100:.0f}% oczekiwanego)",
                         "action": "campaigns",
                     })
 
-        pacing_penalty = min(pacing_penalty, 15)  # cap: max -15 from pacing
-        score -= pacing_penalty
-        breakdown["pacing_penalty"] = pacing_penalty
+        if pacing_issues:
+            eff_score -= min(pacing_issues * 10, 20)
+        eff_details["pacing_issues"] = pacing_issues
+        eff_score = max(0, eff_score)
 
-        # Positive insights — only if truly no issues
-        has_problems = no_conv_campaigns or low_roas_campaigns or high_alerts or pacing_penalty > 0
-        if active_campaigns and not has_problems:
+        # =====================================================================
+        # PILLAR 4: COVERAGE (15%) — impression share
+        # =====================================================================
+        cov_score = 100
+        cov_details = {}
+
+        # Only for SEARCH campaigns (IS is not meaningful for PMax/Display)
+        search_camps = [cid for cid, agg in camp_agg.items()
+                        if (agg["campaign"].campaign_type or "").upper() == "SEARCH"]
+
+        all_is_vals = []
+        all_budget_lost = []
+        all_rank_lost = []
+        for cid in search_camps:
+            agg = camp_agg[cid]
+            all_is_vals.extend(agg["search_is"])
+            all_budget_lost.extend(agg["budget_lost_is"])
+            all_rank_lost.extend(agg["rank_lost_is"])
+
+        if all_is_vals:
+            avg_is = sum(all_is_vals) / len(all_is_vals)
+            # IS scoring: >80% = great, 60-80% ok, 40-60% concern, <40% bad
+            if avg_is >= 0.80:
+                pass
+            elif avg_is >= 0.60:
+                cov_score -= 15
+            elif avg_is >= 0.40:
+                cov_score -= 30
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"Impression Share średnio {avg_is*100:.0f}% — tracisz widoczność",
+                    "action": "campaigns",
+                })
+            else:
+                cov_score -= 45
+                issues.append({
+                    "severity": "HIGH",
+                    "message": f"Impression Share tylko {avg_is*100:.0f}% — kampanie są słabo widoczne",
+                    "action": "campaigns",
+                })
+            cov_details["avg_impression_share"] = round(avg_is * 100, 1)
+        else:
+            cov_details["avg_impression_share"] = None
+
+        if all_budget_lost:
+            avg_budget_lost = sum(all_budget_lost) / len(all_budget_lost)
+            if avg_budget_lost > 0.20:
+                cov_score -= 25
+                issues.append({
+                    "severity": "HIGH",
+                    "message": f"Tracisz {avg_budget_lost*100:.0f}% wyświetleń przez zbyt niski budżet",
+                    "action": "campaigns",
+                })
+            elif avg_budget_lost > 0.10:
+                cov_score -= 15
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"{avg_budget_lost*100:.0f}% wyświetleń utraconych przez budżet",
+                    "action": "campaigns",
+                })
+            cov_details["avg_budget_lost_is"] = round(avg_budget_lost * 100, 1)
+        else:
+            cov_details["avg_budget_lost_is"] = None
+
+        if all_rank_lost:
+            avg_rank_lost = sum(all_rank_lost) / len(all_rank_lost)
+            if avg_rank_lost > 0.25:
+                cov_score -= 20
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"{avg_rank_lost*100:.0f}% wyświetleń utraconych przez niski ranking (QS/stawki)",
+                    "action": "keywords",
+                })
+            elif avg_rank_lost > 0.15:
+                cov_score -= 10
+            cov_details["avg_rank_lost_is"] = round(avg_rank_lost * 100, 1)
+        else:
+            cov_details["avg_rank_lost_is"] = None
+
+        cov_score = max(0, cov_score)
+
+        # =====================================================================
+        # PILLAR 5: STABILITY (10%) — alerts, CTR trend
+        # =====================================================================
+        stab_score = 100
+        stab_details = {}
+
+        # 5a. Unresolved alerts
+        alerts = self.db.query(Alert).filter(
+            Alert.client_id == client_id,
+            Alert.resolved_at.is_(None),
+        ).all()
+        high_alerts = [a for a in alerts if a.severity == "HIGH"]
+        med_alerts = [a for a in alerts if a.severity == "MEDIUM"]
+
+        if high_alerts:
+            stab_score -= min(len(high_alerts) * 15, 40)
+            issues.append({
+                "severity": "HIGH",
+                "message": f"{len(high_alerts)} nierozwiązanych alertów HIGH",
+                "action": "alerts",
+            })
+        if med_alerts:
+            stab_score -= min(len(med_alerts) * 8, 20)
+            if not high_alerts:  # don't spam issues
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"{len(med_alerts)} alertów MEDIUM do przejrzenia",
+                    "action": "alerts",
+                })
+        stab_details["high_alerts"] = len(high_alerts)
+        stab_details["medium_alerts"] = len(med_alerts)
+
+        # 5b. CTR trend (second half vs first half, exclude PMax/Display/Video)
+        half_period = period_len // 2
+        ctr_eligible_ids = [c.id for c in active_campaigns
+                           if (c.campaign_type or "").upper() not in ("PERFORMANCE_MAX", "DISPLAY", "VIDEO")]
+        midpoint = period_start + timedelta(days=half_period)
+
+        if ctr_eligible_ids and half_period >= 3:
+            def _sum_ctr(d_from, d_to):
+                subset = [r for r in all_metrics
+                          if r.campaign_id in ctr_eligible_ids and d_from <= r.date <= d_to]
+                clicks = sum(r.clicks or 0 for r in subset)
+                imps = sum(r.impressions or 0 for r in subset)
+                return clicks / imps if imps else 0
+
+            ctr_last = _sum_ctr(midpoint, period_end)
+            ctr_prev = _sum_ctr(period_start, midpoint)
+            if ctr_prev > 0 and ctr_last < ctr_prev * 0.85:
+                drop_pct = round((ctr_prev - ctr_last) / ctr_prev * 100, 1)
+                stab_score -= min(drop_pct, 30)  # proportional to drop, max -30
+                issues.append({
+                    "severity": "HIGH" if drop_pct > 25 else "MEDIUM",
+                    "message": f"CTR spadł o {drop_pct}% w drugiej połowie okresu",
+                    "action": "keywords",
+                })
+                stab_details["ctr_drop_pct"] = drop_pct
+            else:
+                stab_details["ctr_drop_pct"] = 0
+        else:
+            stab_details["ctr_drop_pct"] = 0
+
+        stab_score = max(0, stab_score)
+
+        # =====================================================================
+        # PILLAR 6: STRUCTURE (10%) — ad group health, extensions
+        # =====================================================================
+        struct_score = 100
+        struct_details = {}
+
+        if ad_group_ids:
+            # 6a. Ad groups with < 2 enabled ads
+            ad_counts = self.db.query(
+                Ad.ad_group_id, func.count(Ad.id)
+            ).filter(
+                Ad.ad_group_id.in_(ad_group_ids),
+                Ad.status == "ENABLED",
+            ).group_by(Ad.ad_group_id).all()
+            ad_count_map = dict(ad_counts)
+            thin_groups = sum(1 for agid in ad_group_ids if ad_count_map.get(agid, 0) < 2)
+            if thin_groups > 0:
+                thin_pct = thin_groups / len(ad_group_ids)
+                struct_score -= min(thin_pct * 50, 30)
+                if thin_pct > 0.2:
+                    issues.append({
+                        "severity": "MEDIUM",
+                        "message": f"{thin_groups} grup reklam z < 2 reklamami — ograniczone testowanie",
+                        "action": "recommendations",
+                    })
+            struct_details["thin_ad_groups"] = thin_groups
+
+            # 6b. Missing sitelink extensions (campaign level)
+            sitelink_camps = set()
+            camp_assets = self.db.query(CampaignAsset.campaign_id).filter(
+                CampaignAsset.campaign_id.in_(campaign_ids),
+                CampaignAsset.asset_type == "SITELINK",
+            ).distinct().all()
+            sitelink_camps = {ca[0] for ca in camp_assets}
+            missing_sitelinks = [agg["campaign"].name for cid, agg in camp_agg.items()
+                                 if cid not in sitelink_camps
+                                 and (agg["campaign"].campaign_type or "").upper() == "SEARCH"]
+            if missing_sitelinks:
+                struct_score -= min(len(missing_sitelinks) * 10, 25)
+                issues.append({
+                    "severity": "MEDIUM",
+                    "message": f"{len(missing_sitelinks)} kampanii Search bez sitelinków",
+                    "action": "recommendations",
+                })
+            struct_details["missing_sitelinks"] = len(missing_sitelinks)
+        else:
+            struct_details["thin_ad_groups"] = 0
+            struct_details["missing_sitelinks"] = 0
+
+        struct_score = max(0, struct_score)
+
+        # =====================================================================
+        # FINAL: Weighted average
+        # =====================================================================
+        pillars = {
+            "performance": {"score": round(perf_score), "weight": 25, "details": perf_details},
+            "quality":     {"score": round(qual_score), "weight": 20, "details": qual_details},
+            "efficiency":  {"score": round(eff_score),  "weight": 20, "details": eff_details},
+            "coverage":    {"score": round(cov_score),  "weight": 15, "details": cov_details},
+            "stability":   {"score": round(stab_score), "weight": 10, "details": stab_details},
+            "structure":   {"score": round(struct_score), "weight": 10, "details": struct_details},
+        }
+
+        final_score = sum(p["score"] * p["weight"] for p in pillars.values()) / 100
+        final_score = max(0, min(100, round(final_score)))
+
+        # Sort issues: HIGH first, then MEDIUM, then LOW/INFO
+        severity_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
+        issues.sort(key=lambda i: severity_order.get(i.get("severity", "INFO"), 99))
+
+        # Positive message if no issues
+        if not issues:
             issues.append({
                 "severity": "INFO",
                 "message": "Konto w dobrej kondycji — brak krytycznych problemów",
                 "action": "dashboard",
             })
 
-        data_available = campaigns_with_data > 0
-
-        # Add warning if no data available
-        if total_campaigns > 0 and campaigns_with_data == 0:
-            issues.insert(0, {
-                "severity": "HIGH",
-                "message": "Brak danych metryk — synchronizuj konto aby zebrać dane",
-                "action": "sync",
-            })
-
         return {
-            "score": max(0, min(100, score)),
+            "score": final_score,
             "issues": issues,
-            "breakdown": breakdown,
+            "breakdown": pillars,
             "campaigns_with_data": campaigns_with_data,
             "total_campaigns": total_campaigns,
-            "data_available": data_available,
+            "data_available": campaigns_with_data > 0,
+        }
+
+    def _health_empty_response(self, total_campaigns: int, issues: list) -> dict:
+        """Return health score response when no data is available."""
+        empty_pillar = {"score": 0, "weight": 0, "details": {}}
+        return {
+            "score": 0,
+            "issues": issues or [{"severity": "HIGH", "message": "Brak aktywnych kampanii", "action": "sync"}],
+            "breakdown": {
+                "performance": {**empty_pillar, "weight": 25},
+                "quality": {**empty_pillar, "weight": 20},
+                "efficiency": {**empty_pillar, "weight": 20},
+                "coverage": {**empty_pillar, "weight": 15},
+                "stability": {**empty_pillar, "weight": 10},
+                "structure": {**empty_pillar, "weight": 10},
+            },
+            "campaigns_with_data": 0,
+            "total_campaigns": total_campaigns,
+            "data_available": False,
         }
 
     # -----------------------------------------------------------------------

@@ -224,7 +224,8 @@ export default function DashboardPage() {
                     issues={healthScore?.issues}
                     loading={healthLoading}
                     dataAvailable={healthScore?.data_available}
-                    onClick={() => navigate('/alerts')}
+                    breakdown={healthScore?.breakdown}
+                    onClick={null}
                 />
 
                 <MiniKpiGrid

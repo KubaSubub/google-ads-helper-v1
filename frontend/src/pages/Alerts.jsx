@@ -205,7 +205,7 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
         setLoading(true);
         setError(null);
         try {
-            const result = await api.get('/analytics/anomalies', { params: { metric, threshold, days, client_id: selectedClientId } });
+            const result = await api.get('/analytics/z-score-anomalies', { params: { metric, threshold, days, client_id: selectedClientId } });
             setData(result);
         } catch (err) {
             setError(err.message);
@@ -311,7 +311,7 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
                                                 <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{a.date}</td>
                                                 <td style={{ padding: '10px 16px', color: '#4F8EF7', fontSize: 12, cursor: 'pointer' }} onClick={() => navigateTo && navigateTo('campaigns')}>
                                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                                        ID: {a.campaign_id} <ArrowRight size={12} />
+                                                        {a.campaign_name || `ID: ${a.campaign_id}`} <ArrowRight size={12} />
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', color: 'white', fontWeight: 500, fontSize: 12 }}>{a.value}</td>

@@ -1,5 +1,49 @@
-// HealthScoreCard — circular gauge widget showing account health score + issue list
-export default function HealthScoreCard({ score, issues, loading, dataAvailable, onClick }) {
+// HealthScoreCard — circular gauge + 6-pillar breakdown + issue list
+const PILLAR_LABELS = {
+    performance: 'Wyniki',
+    quality: 'Jakość',
+    efficiency: 'Efektywność',
+    coverage: 'Zasięg',
+    stability: 'Stabilność',
+    structure: 'Struktura',
+}
+const PILLAR_ORDER = ['performance', 'quality', 'efficiency', 'coverage', 'stability', 'structure']
+
+function pillarColor(score) {
+    if (score > 70) return '#4ADE80'
+    if (score > 40) return '#FBBF24'
+    return '#F87171'
+}
+
+function PillarBars({ breakdown }) {
+    if (!breakdown || !breakdown.performance) return null
+    return (
+        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+            {PILLAR_ORDER.map(key => {
+                const p = breakdown[key]
+                if (!p) return null
+                return (
+                    <div key={key} style={{ flex: 1, minWidth: 0 }} title={`${PILLAR_LABELS[key]}: ${p.score}/100`}>
+                        <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', marginBottom: 3, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {PILLAR_LABELS[key]}
+                        </div>
+                        <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                            <div style={{
+                                height: '100%',
+                                borderRadius: 2,
+                                width: `${p.score}%`,
+                                background: pillarColor(p.score),
+                                transition: 'width 0.6s ease',
+                            }} />
+                        </div>
+                    </div>
+                )
+            })}
+        </div>
+    )
+}
+
+export default function HealthScoreCard({ score, issues, loading, dataAvailable, breakdown, onClick }) {
     const radius = 34
     const circumference = 2 * Math.PI * radius
     const safeScore = typeof score === 'number' ? score : 0
@@ -28,49 +72,54 @@ export default function HealthScoreCard({ score, issues, loading, dataAvailable,
                     </div>
                 </div>
             ) : (
-                <div className="flex items-center gap-5">
-                    {/* Circular gauge */}
-                    <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
-                        <svg width="76" height="76" viewBox="0 0 76 76">
-                            <circle cx="38" cy="38" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
-                            <circle
-                                cx="38" cy="38" r={radius} fill="none"
-                                stroke={color} strokeWidth="6"
-                                strokeDasharray={circumference}
-                                strokeDashoffset={offset}
-                                strokeLinecap="round"
-                                transform="rotate(-90 38 38)"
-                                style={{ transition: 'stroke-dashoffset 0.6s ease' }}
-                            />
-                        </svg>
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ fontSize: 22, fontWeight: 700, color, fontFamily: 'Syne', lineHeight: 1 }}>
-                                {safeScore}
-                            </span>
+                <>
+                    <div className="flex items-center gap-5">
+                        {/* Circular gauge */}
+                        <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+                            <svg width="76" height="76" viewBox="0 0 76 76">
+                                <circle cx="38" cy="38" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                                <circle
+                                    cx="38" cy="38" r={radius} fill="none"
+                                    stroke={color} strokeWidth="6"
+                                    strokeDasharray={circumference}
+                                    strokeDashoffset={offset}
+                                    strokeLinecap="round"
+                                    transform="rotate(-90 38 38)"
+                                    style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                                />
+                            </svg>
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ fontSize: 22, fontWeight: 700, color, fontFamily: 'Syne', lineHeight: 1 }}>
+                                    {safeScore}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Issues list */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            {(issues || []).length === 0 ? (
+                                <div style={{ fontSize: 12, color: '#4ADE80', lineHeight: 1.5 }}>
+                                    Wszystko działa poprawnie
+                                </div>
+                            ) : (
+                                (issues || []).slice(0, 3).map((issue, i) => (
+                                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 5 }}>
+                                        <span style={{
+                                            fontSize: 6, marginTop: 4, flexShrink: 0,
+                                            color: issue.severity === 'HIGH' ? '#F87171' : issue.severity === 'MEDIUM' ? '#FBBF24' : '#4ADE80',
+                                        }}>●</span>
+                                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.45 }}>
+                                            {issue.message}
+                                        </span>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
 
-                    {/* Issues list */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        {(issues || []).length === 0 ? (
-                            <div style={{ fontSize: 12, color: '#4ADE80', lineHeight: 1.5 }}>
-                                Wszystko działa poprawnie
-                            </div>
-                        ) : (
-                            (issues || []).slice(0, 3).map((issue, i) => (
-                                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 5 }}>
-                                    <span style={{
-                                        fontSize: 6, marginTop: 4, flexShrink: 0,
-                                        color: issue.severity === 'high' ? '#F87171' : '#FBBF24',
-                                    }}>●</span>
-                                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.45 }}>
-                                        {issue.message}
-                                    </span>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
+                    {/* Pillar breakdown bars */}
+                    <PillarBars breakdown={breakdown} />
+                </>
             )}
         </div>
     )
