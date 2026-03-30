@@ -271,9 +271,13 @@ def dry_run_rule(
 def execute_rule_endpoint(
     rule_id: int,
     client_id: int = Query(..., description="Client ID"),
+    allow_demo_write: bool = Query(False, description="Override DEMO write lock"),
     db: Session = Depends(get_db),
 ):
-    """Execute a rule for real — apply actions to matching entities."""
+    """Execute a rule for real — apply actions to matching entities.
+
+    Goes through the canonical safety pipeline: demo guard → validate_action → audit log.
+    """
     rule = (
         db.query(AutomatedRule)
         .filter(AutomatedRule.id == rule_id, AutomatedRule.client_id == client_id)
@@ -282,4 +286,4 @@ def execute_rule_endpoint(
     if not rule:
         raise HTTPException(status_code=404, detail="Regula nie znaleziona")
 
-    return execute_rule(rule, db, dry_run=False)
+    return execute_rule(rule, db, dry_run=False, allow_demo_write=allow_demo_write)

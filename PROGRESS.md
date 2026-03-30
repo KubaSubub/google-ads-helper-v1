@@ -9,11 +9,21 @@
 - API endpoints: 159 total across 17 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
 - Frontend pages: 25 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA) — all with enriched UX
-- Dashboard: overhaul with WoW comparison chart, per-campaign summary table, cross-app navigation
+- Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
 - Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — all plans closed (0 MISSING)
 - Roadmap: 22/26 DONE (85%)
+
+## Dashboard Enhancements — Z-Score Anomalies + New Widgets (2026-03-30)
+- New `GET /analytics/z-score-anomalies` endpoint — z-score anomaly detection per campaign per day for a given metric (cost, clicks, impressions, conversions, ctr)
+- Anomalies response enriched with `campaign_name` and `metric_value` fields
+- New dashboard components:
+  - `DayOfWeekWidget.jsx` — day-of-week performance analysis widget
+  - `CampaignMiniRanking.jsx` — mini campaign ranking widget
+  - `TopActions.jsx` — top recommended actions widget
+  - `MiniKpiGrid.jsx` — enhanced with expanded KPI cards and visual improvements
+  - `HealthScoreCard.jsx` — enhanced with additional health metrics display
 
 ## DSA Support — C1/C2/C3 (2026-03-29)
 - 4 new analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`

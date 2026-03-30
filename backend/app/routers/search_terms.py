@@ -210,8 +210,21 @@ def bulk_add_negative(
     body: BulkAddNegativeRequest,
     db: Session = Depends(get_db),
 ):
-    """Add selected search terms as negative keywords (campaign- or ad-group-level)."""
+    """Add selected search terms as negative keywords (campaign- or ad-group-level).
+
+    Goes through canonical safety pipeline: demo guard → validate_action → audit log.
+    """
+    from app.services.action_executor import SafetyViolationError, validate_action
+    from app.services.write_safety import count_negatives_added_today
+
     ensure_demo_write_allowed(db, body.client_id)
+
+    # Safety: check daily negative keyword limit
+    negatives_today = count_negatives_added_today(db, body.client_id)
+    try:
+        validate_action("ADD_NEGATIVE", 0, 0, {"negatives_added_today": negatives_today})
+    except SafetyViolationError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
 
     if not body.search_term_ids:
         raise HTTPException(status_code=400, detail="search_term_ids must not be empty")

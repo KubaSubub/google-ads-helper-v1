@@ -282,3 +282,168 @@ Najważniejsze ryzyka:
 ### Podsumowanie audytowe w jednym zdaniu
 
 Największy problem aplikacji nie leży dziś w braku funkcji, tylko w tym, że część funkcji mutujących omija własne kontrakty bezpieczeństwa i jest opisana w dokumentacji pewniej, niż wynika to z realnej implementacji.
+
+## 8. Addendum: Audyt Ekspercki Google Ads
+
+## 8.1 Werdykt domenowy
+
+Jeśli patrzę na tę aplikację jak operator Google Ads, a nie tylko jak inżynier, to mój werdykt jest prosty:
+
+**to jest już całkiem mocny cockpit analityczny, ale jeszcze nie jest wiarygodnym zastępcą seniora Google Ads w obszarach: measurement truth, search term mining, e-commerce feed layer i bezpieczne execution.**
+
+Największa różnica między "narzędziem, które pomaga specjaliście" a "narzędziem, które może go zastąpić" polega na tym, czy system:
+
+- operuje na poprawnym grain danych,
+- odróżnia heurystyki od twardych sygnałów platformy,
+- nie myli diagnostyki z KPI,
+- widzi całą ścieżkę biznesową od feedu i trackingu do bidów i negatywów,
+- potrafi wykonać najważniejsze akcje realnie w Google Ads, a nie tylko lokalnie.
+
+Na dziś aplikacja jest najmocniejsza w:
+
+- read modelu Search / PMax,
+- surfacingu insightów i rekomendacji,
+- porządnym modelu danych dla kosztów i wartości w micros,
+- rozdzieleniu Search Terms i PMax Search Terms na poziomie syncu.
+
+Na dziś jest najsłabsza w:
+
+- wiarygodności danych Search Terms jako podstawy decyzji,
+- realnym workflow `search term -> negative / keyword`,
+- nowoczesnym measurement stacku dla offline conversions,
+- feed i Merchant Center layer dla e-commerce,
+- odróżnianiu nowoczesnych praktyk Google Ads od heurystyk z epoki manual CPC / SKAG.
+
+### Ocena gotowości "zastąpienia specjalisty"
+
+| Obszar | Ocena | Komentarz |
+|---|---|---|
+| Search analytics | 7/10 | Dobra widoczność problemów i sensowna warstwa read-only. |
+| PMax insights | 6/10 | Jest channel breakdown, asset groups i search terms, ale nadal bez pełnej warstwy management/feed. |
+| Search term mining | 3/10 | To powinien być silnik aplikacji, a dziś ma problemy z grain danych i execution. |
+| Measurement / offline conversion | 3/10 | Za wąsko i za legacy, żeby ufać temu jako production-grade pomiarowi. |
+| E-commerce / Shopping / feed | 3/10 | Jest trochę analityki, ale brakuje upstreamowej prawdy o feedzie i Merchant Center. |
+| Autonomous optimization | 2/10 | Za dużo heurystyk, za mało twardych guardrailów i zbyt wiele local-only write pathów. |
+
+## 8.2 Findings Domenowe
+
+### GA-C1. Search Terms są zapisane w złym grainie do optymalizacji i mogą zniekształcać rekomendacje
+
+- **Status weryfikacji:** potwierdzone statycznie
+- **Wpływ biznesowy/techniczny:** krytyczny. Search Terms to serce pracy specjalisty Google Ads. Jeżeli grain danych jest zły, to wszystko nad nim: waste analysis, keyword mining, n-gramy, semantic clustering i część rekomendacji staje się podejrzana.
+- **Dowód:**
+  - `backend/app/models/search_term.py:38-40` przechowuje SearchTerm jako agregat za zakres `date_from` → `date_to`, a nie jako dzienny grain.
+  - `backend/app/services/google_ads.py:3142-3243` i `backend/app/services/google_ads.py:3265-3362` zapisują search terms jako snapshot agregowany za cały wybrany range.
+  - `backend/app/services/recommendations.py:538-559` oraz `backend/app/services/recommendations.py:675-689` sumują `SearchTerm.*` bez filtra czasowego, mimo że metody przyjmują argument `days`.
+  - `backend/app/routers/semantic.py:53-68` buduje top termy przez `sum(SearchTerm.cost_micros/conversions/clicks/impressions)`.
+  - `backend/app/routers/search_terms.py:128-158` buduje summary na bazie tego samego modelu zakresowego.
+- **Dlaczego to jest problem Google Ads:** rolling 30-day sync zapisany jako wiele zakresowych snapshotów może prowadzić do nakładania się tych samych danych w czasie. Specjalista nie może ufać analizie search terms, jeśli nie wie, czy patrzy na daily grain, snapshot 30D czy sumę snapshotów.
+- **Ocena ryzyka:** krytyczne.
+- **Rekomendowany kierunek naprawy:** Search Terms trzeba przechowywać w atomowym grainie dziennym albo w ściśle oznaczonych, nieagregowanych snapshotach z warstwą rollup. Dopiero na tym budować segmentację, semantic clustering, waste cost i keyword recommendations.
+
+### GA-H1. Najważniejszy workflow specjalisty, czyli `search term -> negative / keyword`, jest dziś local-only
+
+- **Status weryfikacji:** potwierdzone statycznie
+- **Wpływ biznesowy/techniczny:** wysoki. To jedna z najcenniejszych operacji w Search i Shopping-led kontach. Jeżeli aplikacja jej realnie nie wykonuje w Google Ads, to nie przejmuje pracy specjalisty, tylko symuluje ją w lokalnej bazie.
+- **Dowód:**
+  - `backend/app/routers/search_terms.py:208-299` (`bulk-add-negative`) tworzy lokalne `NegativeKeyword`, commit do DB i log z `execution_mode="LOCAL"`.
+  - `backend/app/routers/search_terms.py:303-379` (`bulk-add-keyword`) tworzy lokalne `Keyword`, commit do DB i log z `execution_mode="LOCAL"`.
+  - W tych ścieżkach nie ma wywołania `google_ads_service.apply_action(...)`, `_mutate_campaign_negative(...)`, `_mutate_ad_group_negative(...)` ani innego remote execution path.
+- **Dlaczego to jest problem Google Ads:** search term mining bez realnego shippingu negatives/keywords do konta nie zamyka pętli optymalizacyjnej. To zostawia operatora z "insightem", ale bez rzeczywistej zmiany aukcji.
+- **Ocena ryzyka:** wysokie.
+- **Rekomendowany kierunek naprawy:** bulk actions ze Search Terms trzeba przepiąć na ten sam execution layer, który wykonuje realne mutacje Google Ads, albo jawnie oznaczyć je jako draft queue do ręcznego eksportu.
+
+### GA-H2. Heurystyki keyword/negative mining są zbyt prymitywne i nie są window-aware
+
+- **Status weryfikacji:** potwierdzone statycznie
+- **Wpływ biznesowy/techniczny:** wysoki. Zbyt agresywne albo zbyt proste heurystyki są gorsze niż brak automatyzacji, bo generują fałszywe poczucie eksperckości.
+- **Dowód:**
+  - `backend/app/services/recommendations.py:598-637` promuje term do keywordu głównie na podstawie liczby konwersji i prostego CVR.
+  - `backend/app/services/recommendations.py:584-585` wybiera `EXACT` dla <=2 słów i `PHRASE` dla reszty, co jest zbyt mechaniczne.
+  - `backend/app/services/recommendations.py:710-737` sugeruje account-level negative na podstawie lexical matchów.
+  - `backend/app/utils/constants.py:25-35` zawiera sztywną listę "irrelevant" słów, m.in. `youtube`, `allegro`, `olx`, `opinie`, `forum`.
+  - `backend/app/services/search_terms_service.py:211-228` daje priorytet klasyfikacji `IRRELEVANT` przed `HIGH_PERFORMER`.
+  - `backend/app/services/recommendations.py:538-559` i `675-689` ignorują argument `days`, więc decyzje nie są naprawdę oparte o wybrany window.
+- **Dlaczego to jest problem Google Ads:** w realnym koncie Google Ads query intent jest zależny od brandu, struktury kampanii, modelu biznesowego, tCPA/tROAS, match type strategy, list wykluczeń i funnelu. Twarda lista słów typu `opinie` lub `youtube` może w jednym koncie oznaczać śmieciowy ruch, a w innym wartościowy middle-funnel.
+- **Ocena ryzyka:** wysokie.
+- **Rekomendowany kierunek naprawy:** wprowadzić window-aware evaluation, brand lexicon, protected terms, listy wyjątków per klient, rozdzielenie heurystyk dla Search vs PMax i możliwość zatwierdzania sugestii negatywów przez warstwę ekspercką zamiast automatycznego domniemania intencji.
+
+### GA-H3. Offline conversion stack jest legacy-only i nie wygląda na gotowy do nowoczesnego measurement
+
+- **Status weryfikacji:** potwierdzone statycznie + wsparte oficjalną dokumentacją Google
+- **Wpływ biznesowy/techniczny:** wysoki. Bez mocnej warstwy pomiaru każda optymalizacja bidów, budżetów i PMax jest tylko pozornie inteligentna.
+- **Dowód:**
+  - `backend/app/models/offline_conversion.py:1-21` modeluje tylko `gclid`-based offline conversions.
+  - `backend/app/services/google_ads.py:1148-1215` implementuje upload click conversions w wariancie legacy.
+  - `backend/app/routers/analytics.py:2160-2184` nie wykonuje faktycznego uploadu i zwraca tylko `status=info`.
+  - Statyczne wyszukiwanie nie znalazło w repo obsługi `gbraid`, `wbraid`, `order_id`, `consent` ani enhanced conversions.
+- **Źródło Google:** oficjalny guide Google Ads API dla uploadu click conversions opisuje ten path jako legacy offline conversion import dla przypadków, gdy nie można wdrożyć enhanced conversions for leads, oraz wymaga jednego z `gclid` / `gbraid` / `wbraid`: [Upload click conversions](https://developers.google.com/google-ads/api/docs/conversions/legacy_oci_guide)
+- **Ocena ryzyka:** wysokie.
+- **Rekomendowany kierunek naprawy:** najpierw podjąć decyzję measurement strategy. Dla nowoczesnych kont aplikacja potrzebuje co najmniej jasnego stanowiska wobec enhanced conversions for leads, szerszego modelu click ID oraz kompletnego, działającego endpointu uploadu.
+
+### GA-M1. Quality Score jest traktowany jak KPI zbiorczy, choć powinien pozostać narzędziem diagnostycznym na poziomie keywordu
+
+- **Status weryfikacji:** potwierdzone statycznie + wsparte oficjalną dokumentacją Google
+- **Wpływ biznesowy/techniczny:** średni do wysokiego. To może przesuwać uwagę operatora z realnej ekonomii konta na miarę pomocniczą.
+- **Dowód:**
+  - `backend/app/routers/analytics.py:561-562` liczy `avg_qs = sum(all_qs) / len(all_qs)`.
+  - `backend/app/routers/analytics.py:697` zwraca `average_qs` jako account-style summary metric.
+  - `backend/app/services/agent_service.py:904-916` buduje `avg` i status `healthy/warning/critical` na podstawie średniego QS.
+- **Źródło Google:** Google Ads Help wprost mówi, że Quality Score to narzędzie diagnostyczne na poziomie keywordu, które nie powinno być agregowane i nie jest KPI: [About Quality Score for search campaigns](https://support.google.com/google-ads/answer/1659752?hl=en-GB&ref_topic=24937)
+- **Ocena ryzyka:** średnie.
+- **Rekomendowany kierunek naprawy:** zostawić QS jako drill-down diagnostic. W dashboardach i agent summaries podnosić raczej udział spendu/impressions na niskim QS, rozkład komponentów i listę keywordów najbardziej kosztownych z problemem jakości.
+
+### GA-M2. Playbook i helpery jakości nadal są częściowo zakotwiczone w starszej epoce Google Ads
+
+- **Status weryfikacji:** potwierdzone statycznie; część wniosków to świadoma ekspertyza domenowa, nie literalny cytat z dokumentacji Google
+- **Wpływ biznesowy/techniczny:** średni. To nie rozwala aplikacji technicznie, ale może stopniowo wypychać użytkownika w kierunku gorszych praktyk operacyjnych.
+- **Dowód:**
+  - `google_ads_optimization_playbook.md:58-60` sugeruje mechaniczne `Broad -> Phrase`.
+  - `google_ads_optimization_playbook.md:403-407` zakłada powrót z tCPA do Manual CPC / Enhanced CPC jako typową ścieżkę.
+  - `backend/app/utils/quality_score.py:47-56` sugeruje `SKAG` i `DKI` jako rozwiązania diagnostyki QS.
+- **Ekspercka interpretacja:** w nowoczesnych kontach opartych o RSA, Smart Bidding, broad match z dobrymi negatywami i sygnałami jakościowymi, takie recepty są zbyt uproszczone. Dziś lepsza praktyka to lepszy measurement, lepsza segmentacja intencji, lepsza architektura kampanii i eksperymentowanie, a nie automatyczny powrót do nadmiernej granulacji.
+- **Ocena ryzyka:** średnie.
+- **Rekomendowany kierunek naprawy:** przepisać playbook na podejście 2025/2026: Smart Bidding readiness, query sculpting przez negatywy i intent mapping, asset/feed quality, experiment-first changes, osobne zasady dla Search, PMax i e-commerce.
+
+### GA-M3. E-commerce layer nadal jest ślepa na Merchant Center i feed health
+
+- **Status weryfikacji:** potwierdzone statycznie
+- **Wpływ biznesowy/techniczny:** średni do wysokiego dla e-commerce. To klasyczny przypadek optymalizowania kampanii bez wiedzy, czy połowa problemu nie siedzi upstream w feedzie.
+- **Dowód:**
+  - Statyczne wyszukiwanie po repo nie wykazało implementacji `merchant_center`, `feed diagnostics`, `price competitiveness`, `disapproved products`.
+  - Jedyny mocniejszy trop shoppingowy po stronie analityki to `backend/app/routers/analytics.py:2036-2042` (`shopping-product-groups`).
+- **Dlaczego to jest problem Google Ads:** w Shopping i feed-led PMax jakość feedu, disapprovale, brakujące atrybuty, custom labels i freshness danych często decydują o wyniku bardziej niż korekta bidów.
+- **Ocena ryzyka:** średnie strategicznie, wysokie produktowo dla e-commerce-heavy klientów.
+- **Rekomendowany kierunek naprawy:** dobudować Merchant Center / feed-health layer, nawet read-only na start. Bez tego aplikacja nie widzi całej prawdy biznesowej konta.
+
+## 8.3 Mocne strony z perspektywy Google Ads
+
+- **PMax search terms są pobierane sensownie.**
+  `backend/app/services/google_ads.py:3269-3275` świadomie rozróżnia `search_term_view` od `campaign_search_term_view` i zaznacza, że standardowy widok nie zawiera danych PMax.
+
+- **Micros są traktowane konsekwentnie.**
+  W modelach i syncu koszt/wartość są w większości trzymane jako `*_micros`, co zmniejsza ryzyko dryfu finansowego.
+
+- **Quality Score subcomponents są przechowywane.**
+  To daje bazę pod sensowną diagnostykę keywordów Search, o ile QS pozostanie warstwą pomocniczą, a nie north-star KPI.
+
+- **Aplikacja ma fundament pod Search + PMax cockpit.**
+  Search terms, negative keywords, product groups, asset groups i channel metrics tworzą realną bazę do zbudowania bardzo mocnego narzędzia operatorskiego.
+
+## 8.4 Oficjalne źródła Google użyte w tej rundzie
+
+- Google Ads Help: [About Quality Score for search campaigns](https://support.google.com/google-ads/answer/1659752?hl=en-GB&ref_topic=24937)
+- Google Ads API: [SearchTermView](https://developers.google.com/google-ads/api/reference/rpc/v16/SearchTermView)
+- Google Ads API: [QualityInfo](https://developers.google.com/google-ads/api/reference/rpc/v20/AdGroupCriterion.QualityInfo)
+- Google Ads API: [Upload click conversions](https://developers.google.com/google-ads/api/docs/conversions/legacy_oci_guide)
+
+## 8.5 Konkluzja ekspercka
+
+Jeśli celem jest zbudowanie aplikacji, która realnie "zabiera pracę" dobremu specjaliście Google Ads, to najbliższe miesiące nie powinny iść głównie w kolejne dashboardy. Powinny iść w cztery rzeczy:
+
+1. **measurement truth**,
+2. **search term engine na poprawnym grainie danych**,
+3. **real execution najważniejszych workflow w Google Ads**,
+4. **feed / Merchant Center visibility dla e-commerce i PMax**.
+
+Dopiero po domknięciu tych czterech warstw narzędzie przestaje być "bardzo dobrym cockpitowym helperem" i zaczyna być kandydatem na prawdziwego operatora konta.

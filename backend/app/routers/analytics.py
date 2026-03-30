@@ -1937,9 +1937,13 @@ def add_placement_exclusion(
     allow_demo_write: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    """Add a placement exclusion to a Display/Video campaign."""
+    """Add a placement exclusion to a Display/Video campaign.
+
+    Goes through canonical safety pipeline: demo guard → audit log.
+    """
     from app.demo_guard import ensure_demo_write_allowed
     from app.services.google_ads import google_ads_service
+    from app.services.write_safety import record_write_action
 
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -1954,6 +1958,21 @@ def add_placement_exclusion(
     result = google_ads_service.add_placement_exclusion(
         db, client.google_customer_id, campaign.google_campaign_id, placement_url
     )
+
+    # Audit trail
+    record_write_action(
+        db,
+        client_id=client_id,
+        action_type="ADD_PLACEMENT_EXCLUSION",
+        entity_type="campaign",
+        entity_id=campaign_id,
+        status="SUCCESS" if result.get("status") != "error" else "FAILED",
+        execution_mode="LIVE" if google_ads_service.is_connected else "LOCAL",
+        new_value={"placement_url": placement_url, "campaign_id": campaign_id},
+        error_message=result.get("message") if result.get("status") == "error" else None,
+    )
+    db.commit()
+
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result

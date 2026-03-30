@@ -133,7 +133,8 @@ Project command prompts are stored in `.claude/commands/`:
 - `ads-user.md` — symulacja specjalisty PPC klikajacego po zakladce (UX review oczami end-usera)
 - `ads-expert.md` — ocena zakladki przez specjaliste Google Ads (potrzebnosc, kompletnosc, wartosc vs Google Ads UI)
 - `ads-verify.md` — weryfikacja co z raportu ads-expert juz istnieje w kodzie + plan implementacji
-- `ads-check.md` �� weryfikacja czy taski z ads-verify zostaly wdrozone (QA gate)
+- `ads-check.md` — weryfikacja czy taski z ads-verify zostaly wdrozone (QA gate)
+- `competitor.md` — "czlowiek-konkurent" (devil's advocate) — brutalny CTO konkurencji wytyka slabosci
 
 Use them as workflow helpers, but keep behavior aligned with `AGENTS.md`.
 

@@ -41,10 +41,11 @@
 **Why:** After 24h, the account state may have changed due to external factors (Google auto-optimizations, other users editing). Reverting old actions is unsafe.
 **Exception:** ADD_NEGATIVE is NEVER revertable (removing negatives immediately re-enables bad traffic).
 
-## ADR-008: Threshold-based anomaly detection over statistical (MVP)
+## ADR-008: Threshold-based anomaly detection over statistical (MVP) — SUPERSEDED
 **Decision:** Use simple thresholds (1.5× spend, 0.5% CTR floor) instead of Z-score/IQR
 **Why:** MVP simplicity. Statistical methods need sufficient historical daily data which we don't store per-day in MVP schema (only 30-day aggregates).
 **Future:** v1.1 will add daily metrics table → enable proper statistical detection.
+**SUPERSEDED:** Z-score anomaly detection implemented (2026-03-30) — `GET /analytics/z-score-anomalies` with per-campaign per-day z-score detection. `KeywordDaily` and `MetricDaily` tables provide the daily granularity needed for statistical methods. Threshold-based detection still active alongside z-score as complementary approach.
 
 ## ADR-009: React hooks over Redux/Zustand
 **Decision:** Use useState + useContext for state management
@@ -56,10 +57,11 @@
 **Why:** Single process = simpler PyWebView integration. No CORS issues. One port (8000).
 **Dev mode:** React runs on port 5173 (Vite dev server), proxied to FastAPI on 8000.
 
-## ADR-011: No Alembic migrations for MVP
+## ADR-011: No Alembic migrations for MVP — PARTIALLY SUPERSEDED
 **Decision:** Use `Base.metadata.create_all()` for schema creation
 **Why:** Single user, no production database to migrate. If schema changes, user can re-sync (data comes from Google Ads API anyway).
 **Future:** Add Alembic when schema is stable and user has historical data worth preserving.
+**PARTIALLY SUPERSEDED:** Schema Auto-Migration in `database.py` now auto-adds missing columns (labels, target_cpa_micros, target_roas, etc.) without requiring DB delete + reseed. Full Alembic still not used.
 
 ## ADR-012: Dark mode only (MVP)
 **Decision:** Dark mode default, no light mode toggle

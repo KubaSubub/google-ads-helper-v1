@@ -20,6 +20,9 @@ import EmptyState from '../../components/EmptyState'
 import HealthScoreCard from './components/HealthScoreCard'
 import MiniKpiGrid from './components/MiniKpiGrid'
 import QsHealthWidget from './components/QsHealthWidget'
+import TopActions from './components/TopActions'
+import CampaignMiniRanking from './components/CampaignMiniRanking'
+import DayOfWeekWidget from './components/DayOfWeekWidget'
 
 // ─── Campaign type labels ────────────────────────────────────────────────────
 const TYPE_LABELS = {
@@ -238,6 +241,9 @@ export default function DashboardPage() {
             {/* ── QS Health Widget ───────────────────────────────────────── */}
             <QsHealthWidget qsAudit={qsAudit} />
 
+            {/* ── Top 3 Actions for Today ─────────────────────────────── */}
+            <TopActions recommendations={recommendations} />
+
             {/* ── Insights Feed ─────────────────────────────────────────── */}
             <div style={{ marginBottom: 16 }}>
                 <InsightsFeed
@@ -254,6 +260,12 @@ export default function DashboardPage() {
 
             {/* ── WoW Comparison ────────────────────────────────────────── */}
             <WoWChart />
+
+            {/* ── Day of Week Performance ─────────────────────────────── */}
+            <DayOfWeekWidget />
+
+            {/* ── Campaign Mini-Ranking ───────────────────────────────── */}
+            <CampaignMiniRanking campaigns={campaigns} campaignMetrics={campaignMetrics} />
 
             {/* ── Campaign Table ────────────────────────────────────────── */}
             <div className="v2-card" style={{ overflow: 'hidden', marginBottom: 16 }}>

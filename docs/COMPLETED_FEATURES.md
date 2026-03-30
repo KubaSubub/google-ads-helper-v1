@@ -350,6 +350,19 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Frontend: `features/rules/` — dedicated Rules management page at `/rules` route.
 - Full CRUD UI for automated rules (list, create, edit, delete, dry-run, execute).
 
+## Z-Score Anomaly Detection
+- `GET /analytics/z-score-anomalies?client_id=X&metric=cost&days=90&threshold=2.0` — z-score anomaly detection per campaign per day.
+- Supported metrics: cost, clicks, impressions, conversions, ctr.
+- Returns anomalies with z-score, date, metric value, plus mean/std for context.
+- Anomalies list endpoint enriched with `campaign_name` and `metric_value` fields.
+
+## Dashboard Widgets Expansion
+- `DayOfWeekWidget.jsx` — day-of-week performance analysis (clicks/cost/conversions per weekday).
+- `CampaignMiniRanking.jsx` — top/bottom campaign mini ranking by key metrics.
+- `TopActions.jsx` — top recommended actions summary widget.
+- `MiniKpiGrid.jsx` — expanded KPI grid with visual enhancements.
+- `HealthScoreCard.jsx` — enhanced health score display with additional metrics.
+
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
 - Display label: `PMax` (short, user-facing).

@@ -2,6 +2,11 @@
 
 Supports dynamic condition evaluation against Keyword, Campaign, and SearchTerm
 models, with actions: PAUSE, ADD_NEGATIVE, ALERT.
+
+All mutating actions go through the canonical safety pipeline:
+- Demo guard (ensure_demo_write_allowed)
+- Safety limits (validate_action)
+- Audit trail (ActionLog via write_safety)
 """
 
 from __future__ import annotations
@@ -13,12 +18,19 @@ from loguru import logger
 from sqlalchemy import BigInteger, Float, Integer, and_
 from sqlalchemy.orm import Session
 
+from app.demo_guard import ensure_demo_write_allowed
 from app.models.alert import Alert
 from app.models.automated_rule import AutomatedRule, AutomatedRuleLog
 from app.models.campaign import Campaign
 from app.models.keyword import Keyword
 from app.models.negative_keyword import NegativeKeyword
 from app.models.search_term import SearchTerm
+from app.services.action_executor import SafetyViolationError, validate_action
+from app.services.write_safety import (
+    count_negatives_added_today,
+    count_pauses_today,
+    record_write_action,
+)
 
 
 # ── Entity type → model mapping ───────────────────────────────────────────
@@ -154,7 +166,7 @@ def evaluate_rule(rule: AutomatedRule, db: Session) -> list[dict]:
 
 
 def _execute_pause(entity_match: dict, rule: AutomatedRule, db: Session) -> str:
-    """Set the entity's status to PAUSED."""
+    """Set the entity's status to PAUSED, with safety validation."""
     model = ENTITY_MODELS.get(rule.entity_type)
     if not model:
         return "error: unknown entity type"
@@ -167,18 +179,63 @@ def _execute_pause(entity_match: dict, rule: AutomatedRule, db: Session) -> str:
     if current_status == "PAUSED":
         return "skipped: already paused"
 
+    # Safety: check daily pause limit for keywords
+    if rule.entity_type == "keyword":
+        from app.models.ad_group import AdGroup
+        kw = entity
+        ag = db.query(AdGroup).filter(AdGroup.id == kw.ad_group_id).first()
+        campaign_id = ag.campaign_id if ag else None
+        total_kw = 0
+        if campaign_id:
+            total_kw = (
+                db.query(Keyword)
+                .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+                .filter(AdGroup.campaign_id == campaign_id)
+                .count()
+            )
+        paused_today = count_pauses_today(db, rule.client_id)
+        context = {
+            "total_keywords_in_campaign": total_kw,
+            "keywords_paused_today_in_campaign": paused_today,
+        }
+        try:
+            validate_action("PAUSE_KEYWORD", 0, 0, context)
+        except SafetyViolationError as exc:
+            return f"blocked: {exc}"
+
+    old_status = current_status
     entity.status = "PAUSED"
+
+    # Audit trail
+    record_write_action(
+        db,
+        client_id=rule.client_id,
+        action_type="RULE_PAUSE",
+        entity_type=rule.entity_type,
+        entity_id=entity.id,
+        old_value={"status": old_status},
+        new_value={"status": "PAUSED"},
+        context={"rule_id": rule.id, "rule_name": rule.name},
+    )
+
     return "paused"
 
 
 def _execute_add_negative(entity_match: dict, rule: AutomatedRule, db: Session) -> str:
-    """Add the entity's text as a negative keyword."""
+    """Add the entity's text as a negative keyword, with safety validation."""
     text = entity_match.get("name", "")
     if not text:
         return "error: no text to negate"
 
     params = rule.action_params or {}
     match_type = params.get("match_type", "PHRASE")
+
+    # Safety: check daily negative limit
+    negatives_today = count_negatives_added_today(db, rule.client_id)
+    try:
+        validate_action("ADD_NEGATIVE", 0, 0, {"negatives_added_today": negatives_today})
+    except SafetyViolationError as exc:
+        return f"blocked: {exc}"
 
     # Find campaign_id for the negative keyword
     campaign_id = None
@@ -219,6 +276,18 @@ def _execute_add_negative(entity_match: dict, rule: AutomatedRule, db: Session) 
         source="AUTOMATED_RULE",
     )
     db.add(neg)
+
+    # Audit trail
+    record_write_action(
+        db,
+        client_id=rule.client_id,
+        action_type="RULE_ADD_NEGATIVE",
+        entity_type="negative_keyword",
+        entity_id=campaign_id,
+        new_value={"text": text, "match_type": match_type, "campaign_id": campaign_id},
+        context={"rule_id": rule.id, "rule_name": rule.name},
+    )
+
     return "added_negative"
 
 
@@ -246,11 +315,30 @@ _ACTION_EXECUTORS = {
 }
 
 
-def execute_rule(rule: AutomatedRule, db: Session, dry_run: bool = True) -> dict:
+def execute_rule(
+    rule: AutomatedRule,
+    db: Session,
+    dry_run: bool = True,
+    allow_demo_write: bool = False,
+) -> dict:
     """Evaluate a rule and optionally execute actions.
+
+    All mutating actions go through:
+    - Demo guard check
+    - validate_action() safety limits
+    - ActionLog audit trail
 
     Returns a dict with matches, actions taken, and per-entity results.
     """
+    # Demo guard: block live execution on demo clients
+    if not dry_run:
+        ensure_demo_write_allowed(
+            db,
+            rule.client_id,
+            allow_demo_write=allow_demo_write,
+            operation=f"Wykonanie reguly automatycznej '{rule.name}'",
+        )
+
     matches = evaluate_rule(rule, db)
     now = datetime.now(timezone.utc)
 
@@ -277,7 +365,7 @@ def execute_rule(rule: AutomatedRule, db: Session, dry_run: bool = True) -> dict
             try:
                 action_result = executor_fn(match, rule, db)
                 detail["action_result"] = action_result
-                if action_result and not action_result.startswith("error") and not action_result.startswith("skipped"):
+                if action_result and not action_result.startswith(("error", "skipped", "blocked")):
                     result["actions_taken"] += 1
             except Exception as exc:
                 detail["action_result"] = f"error: {str(exc)[:200]}"

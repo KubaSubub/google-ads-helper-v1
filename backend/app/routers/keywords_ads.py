@@ -334,8 +334,22 @@ def create_negative_keywords(
     body: NegativeKeywordCreate,
     db: Session = Depends(get_db),
 ):
-    """Create one or more negative keywords for a campaign or ad group."""
+    """Create one or more negative keywords for a campaign or ad group.
+
+    Goes through canonical safety pipeline: demo guard → validate_action → audit log.
+    """
+    from app.services.action_executor import SafetyViolationError, validate_action
+    from app.services.write_safety import count_negatives_added_today, record_write_action
+
     ensure_demo_write_allowed(db, body.client_id)
+
+    # Safety: check daily negative keyword limit
+    negatives_today = count_negatives_added_today(db, body.client_id)
+    try:
+        validate_action("ADD_NEGATIVE", 0, 0, {"negatives_added_today": negatives_today})
+    except SafetyViolationError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+
     scope = body.negative_scope.upper()
     if scope not in ("CAMPAIGN", "AD_GROUP"):
         raise HTTPException(400, "negative_scope must be CAMPAIGN or AD_GROUP")
@@ -393,6 +407,23 @@ def create_negative_keywords(
         created.append(negative)
 
     db.commit()
+
+    # Audit trail
+    if created:
+        record_write_action(
+            db,
+            client_id=body.client_id,
+            action_type="ADD_NEGATIVE",
+            entity_type="negative_keyword",
+            entity_id=body.campaign_id or body.ad_group_id,
+            new_value={
+                "texts": [neg.text for neg in created],
+                "scope": scope,
+                "match_type": body.match_type,
+                "count": len(created),
+            },
+        )
+        db.commit()
 
     results = []
     for neg in created:
