@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-30 (audit-v5 — honest status reconciliation)
+# Updated: 2026-03-30
 
 ## Status
 - Backend: 487 tests passing
@@ -647,7 +647,7 @@
 - Replaced 9 off-palette colors in Campaigns.jsx with v2 design system
 - Deleted dead code: Charts.jsx (17KB unused), SegmentBadge.jsx (duplicate)
 - Added Playwright E2E smoke tests: 19 tests covering all pages with mocked API
-- Archived 5 obsolete MD files to `docs/archive/`
+- Archived 5 obsolete MD files to `docs/archive/` (removed 2026-03-31, content absorbed into roadmap)
 - Updated DEVELOPMENT_ROADMAP_OPTIMIZATION.md with implementation status (6 DONE, 4 PARTIAL, 16 NOT DONE)
 - Synced COMPLETED_FEATURES.md with 6 newly delivered features
 - Updated SOURCE_OF_TRUTH.md and AGENTS.md references

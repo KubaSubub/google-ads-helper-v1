@@ -11,11 +11,8 @@ Owner: Product + Engineering
 5. `docs/COMPLETED_FEATURES.md` - done features (do not touch)
 6. `docs/DEVELOPMENT_ROADMAP_OPTIMIZATION.md` - roadmap with implementation status
 
-## Archived Documents (in `docs/archive/`)
-- `Technical_Spec.md` - historical snapshot (LEGACY 2025-02-17)
-- `deep-research-report.md`, `deep-research-report-2.md` - research phase docs
-- `AGENT_EXECUTION_BOARD.md` - completed execution board
-- `API_CONTRACT_REPORT.md` - one-time test report (2026-03-12)
+## Historical Documents (removed 2026-03-31)
+Content from archived docs (PRD, Blueprint, Technical Spec, deep-research reports) absorbed into `DEVELOPMENT_ROADMAP_OPTIMIZATION.md` — see "Geneza projektu" and "Otwarte kierunki rozwoju" sections.
 
 ## Recent Incident Notes
 - `docs/INCIDENT_NEGATIVE_KEYWORD_MAPPING_2026-03-13.md` - root cause, fix, and guardrails for the negative keyword mapping incident

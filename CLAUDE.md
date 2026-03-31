@@ -117,7 +117,6 @@ Read in this order when context is needed:
 Project command prompts are stored in `.claude/commands/`:
 - `start.md`
 - `debug.md`
-- `fix.md`
 - `review.md`
 - `refactor.md`
 - `endpoint.md`
@@ -125,7 +124,6 @@ Project command prompts are stored in `.claude/commands/`:
 - `sync-check.md`
 - `seed.md`
 - `audit.md`
-- `progress.md`
 - `commit.md`
 - `docs-sync.md` — synchronizacja dokumentacji z kodem
 - `pm-check.md` — PM review (kod jako zrodlo prawdy)

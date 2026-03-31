@@ -7,6 +7,24 @@
 
 ---
 
+## GENEZA PROJEKTU (luty 2025)
+
+Projekt powstał jako **lokalna desktopowa aplikacja** zastępująca 80% ręcznej pracy specjalisty Google Ads.
+
+**Problem:** Zarządzanie 2-10 kontami klientów ręcznie — godziny na rutynowe zadania (przegląd search terms, korekty stawek, pauzowanie słabych), powtarzalne decyzje ("klikanie OK na oczywistych zmianach"), liniowy wzrost czasu z każdym nowym klientem.
+
+**Rozwiązanie:** Safety-first helper z przepływem `sync → insight → apply/revert → history` — automatyczna analiza danych z Google Ads API, regułowy silnik rekomendacji (17+ reguł), jednokliczkowe akcje z mechanizmami bezpieczeństwa (dry-run, potwierdzenie, rollback 24h, circuit breaker).
+
+**Architektura:** FastAPI backend + React/Vite frontend + PyWebView desktop wrapper. SQLite local-first, credentials via Windows Credential Manager (keyring). Wszystkie wartości pieniężne w mikrosach (BigInteger).
+
+**Kluczowe decyzje początkowe** (z oryginalnego PRD/Blueprint, Feb 2025):
+- Import one-way: `utils → config → models → schemas → services → routers → main`
+- Każda mutacja Google Ads przez centralną walidację (circuit breaker)
+- Rekomendacje: 2-etapowy apply (dry-run preview → confirm → execute)
+- Brak Alembic — schema changes = DB delete + reseed
+
+---
+
 ## LEGENDA STATUSÓW
 
 | Status | Znaczenie |
@@ -403,35 +421,31 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ---
 
-## PODSUMOWANIE: CO JUŻ MAMY vs CZEGO BRAKUJE
+## PODSUMOWANIE
 
-**Stan na 2026-03-29: 25 DONE, 1 PARTIAL, 0 NOT DONE (z 26 feature'ów = 96%)**
+**Stan na 2026-03-31: 25 DONE, 1 PARTIAL (z 26 feature'ów = 96%)**
 
-### ✅ Mocne strony obecnej aplikacji:
-- Solidna analityka: KPIs, trends, compare-periods, forecast
-- Kompletna analiza keywords: QS audit, match type, wasted spend, n-gram
-- Search terms: segmentacja, n-gram, rekomendacje + **bulk actions** (add negatives, exclude terms)
-- RSA analysis z best/worst
-- Anomaly detection (5 typów)
-- 18 reguł rekomendacji
-- Device/Geo/Dayparting breakdown
-- Impression share tracking
-- Budget pacing
-- Action execution + revert + history
-- AI Agent (Claude) do rozmów o danych
-- **Daily Audit Panel** — centralny widok codziennego workflow
-- **Change History Monitor** — tracking zmian w koncie Google Ads
-- **Quick Optimization Scripts** — bulk-apply: clean_waste, pause_burning, boost_winners, emergency_brake, add_negatives
-- **Monthly Deep Dive Report** — generowanie raportów AI z SSE streaming
-- **Negative keyword lists** — pełne zarządzanie listami negatywnych słów
+### ✅ Zrealizowane (v1 roadmap):
+- 26 feature'ów z 5 fal — od Daily Audit, przez Search Terms bulk actions, DSA, PMax, raporty AI, po automated rules engine
+- Silnik rekomendacji: 17+ reguł, confidence/risk scoring, expires_at, pełny scope w dedup key
+- Action execution: dry-run → confirm → apply (Google Ads API when connected) → revert 24h
+- AI Agent (Claude) do rozmów o danych + SSE streaming reports
 
-### ❌ Kluczowe luki (pozostałe):
-1. **Brak DSA support** — zero funkcji dla dynamicznych reklam (C1-C3)
-2. **PMax ograniczone** — brak pełnego channel breakdown (D1 partial) i asset analysis (D2)
-3. **Brak schedulingu** — sync manualny, alerty nie przychodzą proaktywnie (F1)
-4. **Brak auction insights** — nie widać konkurencji (G1)
-5. **Brak ad extensions audit** — rozszerzenia reklam to łatwy win, a nie są monitorowane (G5)
-6. **Brak automated rules engine** — brak automatyzacji beyond scripts (F3)
+### 🟡 Pozostałe luki z v1:
+1. **G3 Landing Page Audit** — endpoint istnieje, brakuje: PageSpeed Insights, mobile-friendliness, message match
+
+### 🔮 Otwarte kierunki rozwoju (z analizy deep-research, zweryfikowane 2026-03-31):
+
+**Silnik rekomendacji — human-centered improvements:**
+- **User feedback loop** — obecnie tylko apply/dismiss; brak: "Dlaczego się nie zgadzam?" (reason codes), snooze/suppress na 30/60 dni, zbieranie feedbacku jako sygnału uczenia
+- **Counter-arguments per typ** — system powinien sam sugerować dlaczego user może się nie zgodzić (np. role mismatch Brand vs PMax przy REALLOCATE_BUDGET)
+- **Structured explanations** — przejście z regex-tłumaczeń `reason` na pola strukturalne (`reason_short`, `evidence[]`, `risk_reasons[]`) + i18n
+- **Native Google Ads recommendations** — integracja z RecommendationService (retrieve/apply/dismiss), source=GOOGLE_NATIVE, expiry handling
+
+**Proaktywność i AI (patrz też STRATEGIC_ROADMAP_V2.md):**
+- Background scheduler (APScheduler) — sync co 6h + auto-recommendations + anomaly alerts
+- AI Morning Brief — autonomiczny digest po scheduled sync
+- Claude API direct integration (zamiast CLI subprocess)
 
 ---
 

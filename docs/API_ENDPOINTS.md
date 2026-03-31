@@ -4,7 +4,7 @@ Complete list of REST API endpoints.
 Base API URL: `/api/v1`
 
 ## Auth
-- `GET /auth/status` -> auth/config/session status
+- `GET /auth/status?bootstrap=0` -> auth/config/session status (bootstrap=1 on first load)
 - `GET /auth/setup-status` -> credentials setup status
 - `GET /auth/setup-values` -> current credential values (masked)
 - `POST /auth/setup` -> save credentials to keyring
