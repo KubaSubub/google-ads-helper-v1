@@ -1,14 +1,14 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-03-30
+# Updated: 2026-04-02
 
 ## Status
-- Backend: 487 tests passing
+- Backend: 497 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 159 total across 17 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 163 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 4 mcc, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
-- Frontend pages: 25 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA) — all with enriched UX
+- Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Dashboard) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
@@ -22,7 +22,7 @@
 1. **Desktop-only (nie SaaS)** — brak wspolpracy, brak sharingu, brak mobile. W 2026 to dyskwalifikacja
 2. **Tabele read-only (brak bulk edit)** — specjalista widzi problem ale nie moze go naprawic inline. To lookbook, nie narzedzie pracy
 3. **SQLite bez migracji** — zmiana schematu = kasowanie danych. Bomba zegarowa
-4. **Brak MCC dashboard** — jeden klient naraz, brak cross-account overview
+4. ~~**Brak MCC dashboard**~~ — DONE: MCC Overview landing page at /mcc-overview (commit 854f481)
 5. **Monolity 5800+ linii** — google_ads.py i recommendations.py nierefaktorowalne
 
 ### Powazne braki:
@@ -58,6 +58,29 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## MCC Overview — Cross-Account Landing Page (2026-04-02)
+- New landing page at `/mcc-overview` — default entry point (/ redirects to /mcc-overview)
+- Backend: `MCCService` with 4 endpoints (`/mcc/overview`, `/mcc/new-access`, `/mcc/dismiss-google-recommendations`, `/mcc/negative-keyword-lists`)
+- Per-account metrics: spend 30d (with delta %), conversions, CPA, ROAS, budget pacing (75%/120% thresholds), health score (6-pillar tooltip), change activity (total + external), Google recs pending, unresolved alerts, last sync
+- Sortable table columns, deep-links from cells to per-account pages (Recommendations, Action History, Alerts, Keywords)
+- Collapsible NKL cross-account section (lazy-loaded)
+- Link "Open in Google Ads" per row, alert badge (Bell) per account
+- Sidebar: "Wszystkie konta" always visible, ClientSelector/CampaignTypePills hidden on MCC page
+- Dashboard breadcrumb "← Wszystkie konta" when navigating from MCC
+- Config: `SPECIALIST_EMAILS` env var for external change detection
+- 10 backend tests, frontend build OK, ads review pipeline complete (ads-user → ads-expert 7.5/10 → ads-verify Sprint 1+2 done)
+
+## Reusable UI Modules — BudgetPacingModule + KpiCard (2026-04-01)
+- Extracted `BudgetPacingModule` and `KpiCard` from duplicated inline code across 5+ pages into `frontend/src/components/modules/`.
+- New shared modules: `BudgetPacingModule.jsx`, `KpiCard.jsx`, `PacingProgressBar.jsx`, `pacing-utils.js`, `index.js`.
+- Consumers updated: DashboardPage, CampaignsPage, DailyAudit, Reports, VideoPage, CrossCampaignPage, CompetitivePage.
+- Eliminates copy-paste budget pacing logic and KPI card styling across pages.
+
+## Project Cleanup (2026-04-01)
+- Removed archived docs, screenshots, and duplicate files (commit 69b84e7).
+- Cleaned `docs/archive/` directory (obsolete MD files previously archived from 2026-03-31).
+- Removed `frontend/e2e-screenshots/` baseline snapshots no longer needed.
 
 ## Write Safety Layer + Remote-First Bidding (2026-03-30)
 - New service `backend/app/services/write_safety.py` — unified write-path safety layer for direct user-initiated writes:
