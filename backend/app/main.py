@@ -50,6 +50,7 @@ from app.routers import (
     export,
     history,
     keywords_ads,
+    mcc,
     recommendations,
     reports,
     rules,
@@ -117,6 +118,7 @@ app.include_router(agent.router, prefix=API_PREFIX, tags=["agent"], dependencies
 app.include_router(reports.router, prefix=API_PREFIX, tags=["reports"], dependencies=protected)
 app.include_router(daily_audit.router, prefix=API_PREFIX, tags=["daily-audit"], dependencies=protected)
 app.include_router(rules.router, prefix=API_PREFIX, tags=["automated-rules"], dependencies=protected)
+app.include_router(mcc.router, prefix=API_PREFIX, tags=["mcc"], dependencies=protected)
 
 
 @app.get("/health", tags=["System"])

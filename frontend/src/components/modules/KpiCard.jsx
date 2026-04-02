@@ -44,7 +44,7 @@ export default function KpiCard({
 
     return (
         <div className={isSm ? undefined : 'v2-card'} style={cardStyle}>
-            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: isSm ? '0.08em' : '0.05em', marginBottom: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: isSm ? undefined : 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: isSm ? '0.08em' : '0.05em', marginBottom: 6 }}>
                 {label}
             </div>
             <div style={{ fontSize: isSm ? 20 : 22, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0', lineHeight: isSm ? 1 : undefined }}>

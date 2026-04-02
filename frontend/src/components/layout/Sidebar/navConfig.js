@@ -12,6 +12,7 @@ import {
     KeyRound,
     Layers,
     LayoutDashboard,
+    LayoutGrid,
     Lightbulb,
     Megaphone,
     Monitor,
@@ -29,7 +30,8 @@ export const NAV_GROUPS = [
         label: 'PRZEGLĄD',
         always: true,
         items: [
-            { to: '/', label: 'Pulpit', icon: LayoutDashboard },
+            { to: '/mcc-overview', label: 'Wszystkie konta', icon: LayoutGrid, alwaysVisible: true },
+            { to: '/dashboard', label: 'Pulpit', icon: LayoutDashboard },
             { to: '/daily-audit', label: 'Poranny przegląd', icon: ClipboardCheck },
         ],
     },

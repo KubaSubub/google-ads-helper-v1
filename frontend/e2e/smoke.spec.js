@@ -52,7 +52,8 @@ test('sidebar navigation links are present', async ({ page }) => {
 //   2. Page heading or key element is visible
 
 const PAGES = [
-    { path: '/',                  heading: 'Pulpit' },
+    { path: '/mcc-overview',      heading: 'Wszystkie konta' },
+    { path: '/dashboard',         heading: 'Pulpit' },
     { path: '/daily-audit',       heading: 'Poranny' },
     { path: '/campaigns',         heading: 'Kampanie' },
     { path: '/keywords',          heading: 'kluczowe' },
@@ -62,7 +63,7 @@ const PAGES = [
     { path: '/alerts',            heading: 'Alerty' },
     { path: '/agent',             heading: 'Asystent AI' },
     { path: '/reports',           heading: 'Raport' },
-    { path: '/clients',           heading: 'Pulpit' },  // /clients redirects to /
+    { path: '/clients',           heading: 'Wszystkie konta' },  // /clients redirects to /mcc-overview
     { path: '/settings',          heading: 'Ustawienia' },
     { path: '/search-optimization', heading: 'Centrum audytu' },  // redirects to /audit-center
     { path: '/semantic',          heading: 'Inteligencja' },

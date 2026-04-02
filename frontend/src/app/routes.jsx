@@ -2,6 +2,7 @@ import { lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 
 // Lazy-loaded page components
+const MCCOverview = lazy(() => import('../features/mcc-overview'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const DailyAudit = lazy(() => import('../pages/DailyAudit'))
 const Campaigns = lazy(() => import('../pages/Campaigns'))
@@ -31,7 +32,7 @@ const Rules = lazy(() => import('../features/rules'))
 const Dsa = lazy(() => import('../features/dsa'))
 
 export const GLOBAL_FILTER_ROUTES = [
-    '/', '/campaigns', '/keywords', '/search-terms', '/audit-center',
+    '/dashboard', '/campaigns', '/keywords', '/search-terms', '/audit-center',
     '/recommendations', '/shopping', '/pmax', '/display', '/video', '/competitive',
     '/cross-campaign', '/benchmarks', '/dsa',
 ]
@@ -39,7 +40,9 @@ export const GLOBAL_FILTER_ROUTES = [
 export function AppRoutes() {
     return (
         <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/mcc-overview" replace />} />
+            <Route path="/mcc-overview" element={<MCCOverview />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/daily-audit" element={<DailyAudit />} />
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/search-terms" element={<SearchTerms />} />
@@ -49,7 +52,7 @@ export function AppRoutes() {
             <Route path="/recommendations" element={<Recommendations />} />
             <Route path="/quality-score" element={<QualityScore />} />
             <Route path="/forecast" element={<Forecast />} />
-            <Route path="/clients" element={<Navigate to="/" replace />} />
+            <Route path="/clients" element={<Navigate to="/mcc-overview" replace />} />
             <Route path="/action-history" element={<ActionHistory />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/audit-center" element={<AuditCenter />} />

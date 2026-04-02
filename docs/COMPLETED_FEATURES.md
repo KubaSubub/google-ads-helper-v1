@@ -368,6 +368,14 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Campaigns bidding-target endpoint refactored to remote-first (API push first, local commit on success, fallback with pending_sync warning).
 - Complements ActionExecutor for recommendation-driven actions.
 
+## Reusable UI Modules (BudgetPacingModule + KpiCard)
+- Extracted shared `BudgetPacingModule` and `KpiCard` from duplicated inline code into `frontend/src/components/modules/`.
+- `BudgetPacingModule.jsx` — budget pacing display with progress bar, spend vs budget, pacing percentage.
+- `KpiCard.jsx` — standardized KPI card with label, value, trend indicator, optional comparison.
+- `PacingProgressBar.jsx` — reusable progress bar for budget pacing visualization.
+- `pacing-utils.js` — shared pacing calculation logic (pacing %, status, color).
+- Used by: DashboardPage, CampaignsPage, DailyAudit, Reports, VideoPage, CrossCampaignPage, CompetitivePage.
+
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
 - Display label: `PMax` (short, user-facing).

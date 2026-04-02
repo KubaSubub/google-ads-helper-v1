@@ -1,0 +1,226 @@
+"""Tests for MCC overview service and router."""
+
+from datetime import date, datetime, timedelta, timezone
+
+from app.models import (
+    Alert, Campaign, ChangeEvent, Client, MetricDaily,
+    NegativeKeywordList, NegativeKeywordListItem, Recommendation, SyncLog,
+)
+from app.services.mcc_service import MCCService
+
+
+def _client(db, name="Test", cid="111-222-3333") -> Client:
+    c = Client(name=name, google_customer_id=cid)
+    db.add(c)
+    db.commit()
+    return c
+
+
+def _campaign(db, client_id, name="Camp", budget_micros=10_000_000) -> Campaign:
+    c = Campaign(
+        client_id=client_id,
+        name=name,
+        google_campaign_id=f"g{client_id}_{name}",
+        status="ENABLED",
+        campaign_type="SEARCH",
+        budget_micros=budget_micros,
+    )
+    db.add(c)
+    db.commit()
+    return c
+
+
+def test_mcc_overview_returns_all_clients(db):
+    _client(db, "A", "100")
+    _client(db, "B", "200")
+    svc = MCCService(db)
+    result = svc.get_overview()
+    assert len(result["accounts"]) == 2
+    names = {a["client_name"] for a in result["accounts"]}
+    assert names == {"A", "B"}
+
+
+def test_mcc_overview_empty_when_no_clients(db):
+    svc = MCCService(db)
+    result = svc.get_overview()
+    assert result["accounts"] == []
+
+
+def test_mcc_overview_spend_and_conversions(db):
+    client = _client(db)
+    camp = _campaign(db, client.id)
+    today = date.today()
+
+    for i in range(5):
+        db.add(MetricDaily(
+            campaign_id=camp.id,
+            date=today - timedelta(days=i),
+            cost_micros=1_000_000,  # $1 each
+            clicks=10,
+            impressions=100,
+            conversions=2.0,
+            conversion_value_micros=5_000_000,  # $5 each
+        ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview()
+    acc = result["accounts"][0]
+    assert acc["spend_30d_usd"] == 5.0
+    assert acc["conversions_30d"] == 10.0
+    assert acc["cpa_usd"] == 0.5  # $5 / 10 conv
+    assert acc["roas_pct"] == 500.0  # $25 value / $5 spend * 100
+
+
+def test_mcc_overview_pacing_status(db):
+    client = _client(db)
+    camp = _campaign(db, client.id, budget_micros=10_000_000)  # $10/day
+    today = date.today()
+    month_start = today.replace(day=1)
+    days_elapsed = (today - month_start).days + 1
+
+    # Spend exactly on track
+    expected_daily = 10.0
+    for i in range(days_elapsed):
+        d = month_start + timedelta(days=i)
+        db.add(MetricDaily(
+            campaign_id=camp.id,
+            date=d,
+            cost_micros=int(expected_daily * 1_000_000),
+            clicks=10,
+            impressions=100,
+        ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview()
+    pacing = result["accounts"][0]["pacing"]
+    assert pacing["status"] == "on_track"
+
+
+def test_dismiss_google_recommendations_bulk(db):
+    client = _client(db)
+    for i in range(3):
+        db.add(Recommendation(
+            client_id=client.id,
+            rule_id=f"google_{i}",
+            entity_type="CAMPAIGN",
+            entity_id=str(i),
+            source="GOOGLE_ADS_API",
+            status="pending",
+            reason="test",
+            suggested_action="test",
+        ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.dismiss_google_recommendations(client.id, dismiss_all=True)
+    assert result["dismissed"] == 3
+
+    # Verify all dismissed
+    pending = db.query(Recommendation).filter(
+        Recommendation.client_id == client.id,
+        Recommendation.status == "pending",
+    ).count()
+    assert pending == 0
+
+
+def test_new_access_detection(db):
+    client = _client(db)
+    now = datetime.now(timezone.utc)
+
+    # Recent email (last 30 days)
+    db.add(ChangeEvent(
+        client_id=client.id,
+        resource_name="res_new",
+        change_date_time=now - timedelta(days=5),
+        user_email="new_person@agency.com",
+        client_type="GOOGLE_ADS_WEB_CLIENT",
+        change_resource_type="CAMPAIGN",
+        resource_change_operation="UPDATE",
+    ))
+
+    # Old email (31-90 days ago)
+    db.add(ChangeEvent(
+        client_id=client.id,
+        resource_name="res_old",
+        change_date_time=now - timedelta(days=45),
+        user_email="old_person@agency.com",
+        client_type="GOOGLE_ADS_WEB_CLIENT",
+        change_resource_type="CAMPAIGN",
+        resource_change_operation="UPDATE",
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    new_emails = svc.detect_new_access(client.id, days=30)
+    assert "new_person@agency.com" in new_emails
+    assert "old_person@agency.com" not in new_emails
+
+
+def test_negative_keyword_lists_overview(db):
+    c1 = _client(db, "Alpha", "111")
+    c2 = _client(db, "Beta", "222")
+
+    nkl1 = NegativeKeywordList(client_id=c1.id, name="Brand Terms", source="LOCAL")
+    nkl2 = NegativeKeywordList(client_id=c2.id, name="Competitor Terms", source="GOOGLE_ADS_SYNC")
+    db.add_all([nkl1, nkl2])
+    db.commit()
+
+    # Add items to first list
+    db.add(NegativeKeywordListItem(list_id=nkl1.id, text="brand x"))
+    db.add(NegativeKeywordListItem(list_id=nkl1.id, text="brand y"))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_negative_keyword_lists_overview()
+    assert len(result) == 2
+
+    alpha_list = next(r for r in result if r["client_name"] == "Alpha")
+    assert alpha_list["name"] == "Brand Terms"
+    assert alpha_list["member_count"] == 2
+
+    beta_list = next(r for r in result if r["client_name"] == "Beta")
+    assert beta_list["member_count"] == 0
+
+
+def test_negative_keyword_lists_overview_empty(db):
+    svc = MCCService(db)
+    result = svc.get_negative_keyword_lists_overview()
+    assert result == []
+
+
+def test_mcc_overview_health_returns_breakdown(db):
+    client = _client(db)
+    svc = MCCService(db)
+    result = svc.get_overview()
+    acc = result["accounts"][0]
+    # health is None (no data) or dict with score + pillars
+    health = acc["health"]
+    assert health is None or ("score" in health and "pillars" in health)
+
+
+def test_mcc_overview_alerts_count(db):
+    client = _client(db)
+    # Add unresolved alerts
+    for i in range(3):
+        db.add(Alert(
+            client_id=client.id,
+            alert_type="ANOMALY",
+            severity="HIGH",
+            title=f"Alert {i}",
+        ))
+    # Add one resolved alert
+    db.add(Alert(
+        client_id=client.id,
+        alert_type="ANOMALY",
+        severity="MEDIUM",
+        title="Resolved",
+        resolved_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview()
+    acc = result["accounts"][0]
+    assert acc["unresolved_alerts"] == 3

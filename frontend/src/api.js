@@ -340,6 +340,15 @@ export const getDsaHeadlines = (clientId, params = {}) =>
 export const getDsaSearchOverlap = (clientId, params = {}) =>
     api.get('/analytics/dsa-search-overlap', { params: { client_id: clientId, ...params } });
 
+// MCC Overview
+export const getMccOverview = () => api.get('/mcc/overview')
+export const getMccNewAccess = (clientId, days = 30) =>
+    api.get('/mcc/new-access', { params: { client_id: clientId, days } })
+export const dismissMccGoogleRecommendations = (data) =>
+    api.post('/mcc/dismiss-google-recommendations', data)
+export const getMccNegativeKeywordLists = () =>
+    api.get('/mcc/negative-keyword-lists')
+
 // History
 export const getChangeHistory = (clientId, params = {}) =>
     api.get('/history/', { params: { client_id: clientId, ...params } });

@@ -30,8 +30,8 @@ function PacingCards({ campaigns, month, title, linkTo, onNavigate }) {
                                     {label}
                                 </span>
                             </div>
-                            <PacingProgressBar pct={Math.min(c.pacing_pct, 150)} color={color} height={4} />
-                            <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>
+                            <PacingProgressBar pct={Math.min(c.pacing_pct, 150)} color={color} height={4} style={{ marginBottom: 6 }} />
+                            <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
                                 <span>{c.actual_spend_usd?.toFixed(0) ?? '—'} / {c.expected_spend_usd?.toFixed(0) ?? '—'} zł</span>
                                 <span style={{ color }}>{c.pacing_pct}%</span>
                             </div>

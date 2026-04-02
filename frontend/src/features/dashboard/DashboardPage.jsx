@@ -3,7 +3,7 @@ import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid, Pi
 import {
     ChevronRight, ChevronUp, ChevronDown,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
     getDashboardKPIs, getCampaigns, getCampaignsSummary,
     getHealthScore, getCampaignTrends, getRecommendations,
@@ -70,6 +70,8 @@ export default function DashboardPage() {
     const { selectedClientId } = useApp()
     const { filters, allParams, campaignParams, days } = useFilter()
     const navigate = useNavigate()
+    const location = useLocation()
+    const fromMCC = location.state?.fromMCC
 
     const [kpis, setKpis]                   = useState(null)
     const [campaigns, setCampaigns]         = useState([])
@@ -198,6 +200,18 @@ export default function DashboardPage() {
         <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 4px' }}>
 
             {/* ── Header ─────────────────────────────────────────────────── */}
+            {fromMCC && (
+                <button
+                    onClick={() => navigate('/mcc-overview')}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        background: 'none', border: 'none', color: '#4F8EF7',
+                        fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8,
+                    }}
+                >
+                    &larr; Wszystkie konta
+                </button>
+            )}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>

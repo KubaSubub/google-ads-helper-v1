@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # AI Agent (Claude Code headless)
     agent_timeout: int = 120
 
+    # Specialist emails (comma-separated) — used to distinguish external changes
+    specialist_emails: str = ""
+
     # Demo protection
     demo_protection_enabled: bool = True
     # Optional hard pin by runtime client id (leave None to avoid accidental lock on non-demo clients).
