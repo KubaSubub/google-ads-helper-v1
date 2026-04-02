@@ -223,10 +223,12 @@ Base API URL: `/api/v1`
 - `GET /analytics/dsa-search-overlap?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — DSA search term overlap with manual keywords
 
 ## MCC (Cross-Account Overview)
-- `GET /mcc/overview` — aggregated data for all client accounts (spend, conversions, CPA, ROAS, pacing, health score with 6-pillar breakdown, change activity, external changes, Google recs pending, unresolved alerts, last sync)
+- `GET /mcc/overview` — aggregated data for all client accounts: full metrics (clicks, impressions, CTR, avg CPC, spend, conversions, CVR, conversion value, CPA, ROAS), pacing, health score with 6-pillar breakdown, change activity (total + external), new access emails, Google recs pending, unresolved alerts, last sync
 - `GET /mcc/new-access?client_id=X&days=30` — detect new user emails in change history (last N days vs 31-90 days ago, excluding specialist_emails)
 - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google Ads API recommendations (body: `{client_id, recommendation_ids?, dismiss_all?}`)
 - `GET /mcc/negative-keyword-lists` — all negative keyword lists across all clients with item counts
+- `GET /mcc/shared-lists` — MCC-level shared negative keyword lists (from manager account via MccLink hierarchy)
+- `GET /mcc/billing-status?customer_id=X` — check billing/payment status via Google Ads billing_setup API (returns status or error if access insufficient)
 
 ## Scheduled Sync (F1)
 - `GET /sync/schedule?client_id=X` — get sync schedule for a client

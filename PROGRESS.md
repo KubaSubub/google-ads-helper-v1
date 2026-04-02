@@ -2,13 +2,13 @@
 # Updated: 2026-04-02
 
 ## Status
-- Backend: 497 tests passing
+- Backend: 500 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 163 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 4 mcc, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 165 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
-- Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Dashboard) — all with enriched UX
+- Frontend pages: 26 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
@@ -69,7 +69,19 @@
 - Sidebar: "Wszystkie konta" always visible, ClientSelector/CampaignTypePills hidden on MCC page
 - Dashboard breadcrumb "← Wszystkie konta" when navigating from MCC
 - Config: `SPECIALIST_EMAILS` env var for external change detection
-- 10 backend tests, frontend build OK, ads review pipeline complete (ads-user → ads-expert 7.5/10 → ads-verify Sprint 1+2 done)
+- 13 backend tests, frontend build OK, ads review pipeline complete (ads-user → ads-expert 7.5/10 → ads-verify Sprint 1+2 done)
+- Phase 2: full account metrics (clicks, impressions, CTR, CPC, CVR, conv value), new access badges, dismiss Google recs button, MCC shared lists, billing status endpoint, design tokens migration (C/B/T/R/S)
+
+## MCC Overview Landing Page (2026-04-02)
+- New landing page `MccOverviewPage.jsx` (`features/mcc-overview/`) — cross-account aggregation dashboard.
+- New backend router `mcc.py` with 4 endpoints:
+  - `GET /mcc/overview` — aggregated KPIs, health scores, pacing, change activity for all clients
+  - `GET /mcc/new-access` — detect new user emails in change history
+  - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google recommendations
+  - `GET /mcc/negative-keyword-lists` — negative keyword lists across all clients
+- Route: `/mcc-overview`, set as default landing page (redirect from `/`).
+- Per-account health score with 6-pillar breakdown, pacing status, unresolved alerts, last sync.
+- Reuses `BudgetPacingModule` and `KpiCard` shared components.
 
 ## Reusable UI Modules — BudgetPacingModule + KpiCard (2026-04-01)
 - Extracted `BudgetPacingModule` and `KpiCard` from duplicated inline code across 5+ pages into `frontend/src/components/modules/`.
