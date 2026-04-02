@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../../constants/designTokens'
 
 export default function SectionHeader({ icon: Icon, title, subtitle, open, onToggle }) {
     return (
@@ -10,12 +11,12 @@ export default function SectionHeader({ icon: Icon, title, subtitle, open, onTog
                 background: 'transparent', border: 'none', textAlign: 'left',
             }}
         >
-            <Icon size={16} style={{ color: '#4F8EF7', flexShrink: 0 }} />
+            <Icon size={16} style={{ color: C.accentBlue, flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0' }}>{title}</span>
-                {subtitle && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginLeft: 8 }}>{subtitle}</span>}
+                <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{title}</span>
+                {subtitle && <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 8 }}>{subtitle}</span>}
             </div>
-            {open ? <ChevronDown size={14} style={{ color: 'rgba(255,255,255,0.3)' }} /> : <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />}
+            {open ? <ChevronDown size={14} style={{ color: C.w30 }} /> : <ChevronRight size={14} style={{ color: C.w30 }} />}
         </button>
     )
 }

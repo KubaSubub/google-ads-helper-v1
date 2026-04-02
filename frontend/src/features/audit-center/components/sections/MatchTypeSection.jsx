@@ -7,7 +7,7 @@ export default function MatchTypeSection({ data }) {
         <div style={{ padding: '0 16px 16px', overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr style={{ borderBottom: B.subtle }}>
                         <th style={TH}>Dopasowanie</th>
                         <th style={TH}>Słów kl.</th>
                         <th style={TH}>Kliknięcia</th>
@@ -23,7 +23,7 @@ export default function MatchTypeSection({ data }) {
                 </thead>
                 <tbody>
                     {data.match_types.map(mt => (
-                        <tr key={mt.match_type} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <tr key={mt.match_type} style={{ borderBottom: `1px solid ${C.w04}` }}>
                             <td style={{ ...TD, fontFamily: 'inherit' }}><MatchBadge type={mt.match_type} /></td>
                             <td style={TD_DIM}>{mt.keyword_count}</td>
                             <td style={TD}>{mt.clicks.toLocaleString('pl-PL')}</td>

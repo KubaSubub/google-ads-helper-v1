@@ -7,7 +7,7 @@ export default function AccountStructureSection({ data }) {
     const { issues, oversized_ad_groups, mixed_match_ad_groups, cannibalized_keywords } = data
     if (!issues?.length) {
         return (
-            <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+            <div style={{ padding: '0 16px 16px', fontSize: 12, color: C.w40 }}>
                 Brak wykrytych problemów strukturalnych
             </div>
         )
@@ -19,18 +19,18 @@ export default function AccountStructureSection({ data }) {
                     <MetricPill key={issue.type} label={
                         issue.type === 'cannibalization' ? 'Kanibalizacja' :
                         issue.type === 'oversized_ad_groups' ? 'Zbyt duże grupy' : 'Mieszane dopas.'
-                    } value={issue.count} color={issue.severity === 'HIGH' ? '#F87171' : '#FBBF24'} />
+                    } value={issue.count} color={issue.severity === 'HIGH' ? C.danger : C.warning} />
                 ))}
             </div>
 
             {cannibalized_keywords?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: C.w50, marginBottom: 8 }}>
                         Kanibalizacja słów kluczowych ({cannibalized_keywords.length})
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
-                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <tr style={{ borderBottom: B.subtle }}>
                                 <th style={TH}>Słowo kluczowe</th>
                                 <th style={TH}>Dopasowanie</th>
                                 <th style={TH}>Wystąpień</th>
@@ -40,8 +40,8 @@ export default function AccountStructureSection({ data }) {
                         </thead>
                         <tbody>
                             {cannibalized_keywords.slice(0, 15).map((item, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F87171' }}>{item.keyword_text}</td>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                    <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: C.danger }}>{item.keyword_text}</td>
                                     <td style={{ ...TD, fontFamily: 'inherit' }}><MatchBadge type={item.match_type} /></td>
                                     <td style={TD}>{item.occurrences}</td>
                                     <td style={TD}>{item.total_cost_usd.toFixed(2)} zł</td>
@@ -59,7 +59,7 @@ export default function AccountStructureSection({ data }) {
 
             {oversized_ad_groups?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: C.w50, marginBottom: 8 }}>
                         Zbyt duże grupy reklam — &gt;20 słów kluczowych ({oversized_ad_groups.length})
                     </div>
                     {oversized_ad_groups.map((ag, i) => (
@@ -68,10 +68,10 @@ export default function AccountStructureSection({ data }) {
                             padding: '6px 8px', borderRadius: 6,
                             background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
                         }}>
-                            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                            <span style={{ fontSize: 12, color: C.w70 }}>
                                 {ag.campaign_name} → {ag.ad_group_name}
                             </span>
-                            <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#FBBF24' }}>
+                            <span style={{ fontSize: 12, fontFamily: 'monospace', color: C.warning }}>
                                 {ag.keyword_count} słów
                             </span>
                         </div>
@@ -81,7 +81,7 @@ export default function AccountStructureSection({ data }) {
 
             {mixed_match_ad_groups?.length > 0 && (
                 <div>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: C.w50, marginBottom: 8 }}>
                         Mieszane dopasowania BROAD + EXACT w grupie ({mixed_match_ad_groups.length})
                     </div>
                     {mixed_match_ad_groups.map((ag, i) => (
@@ -90,7 +90,7 @@ export default function AccountStructureSection({ data }) {
                             padding: '6px 8px', borderRadius: 6,
                             background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
                         }}>
-                            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                            <span style={{ fontSize: 12, color: C.w70 }}>
                                 {ag.campaign_name} → {ag.ad_group_name}
                             </span>
                             <div className="flex items-center gap-1">

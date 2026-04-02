@@ -206,26 +206,26 @@ export default function AuditCenterPage() {
             return (
                 <div style={{ padding: '0 16px 16px' }}>
                     <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', flex: '1 1 120px' }}>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 4 }}>Score</div>
-                            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne', color: data.convHealth.score >= 80 ? '#4ADE80' : data.convHealth.score >= 50 ? '#FBBF24' : '#F87171' }}>{data.convHealth.score}</div>
+                        <div style={{ padding: '10px 16px', borderRadius: 10, background: C.w03, border: B.card, flex: '1 1 120px' }}>
+                            <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Score</div>
+                            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne', color: data.convHealth.score >= 80 ? C.success : data.convHealth.score >= 50 ? C.warning : C.danger }}>{data.convHealth.score}</div>
                         </div>
-                        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', flex: '1 1 120px' }}>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 4 }}>Kampanie</div>
-                            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0' }}>{data.convHealth.total_campaigns}</div>
+                        <div style={{ padding: '10px 16px', borderRadius: 10, background: C.w03, border: B.card, flex: '1 1 120px' }}>
+                            <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Kampanie</div>
+                            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne', color: C.textPrimary }}>{data.convHealth.total_campaigns}</div>
                         </div>
                     </div>
                     {data.convHealth.campaigns?.length > 0 && (
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                             <thead><tr>{['Kampania','Typ','Koszt','Konwersje','CVR','Score','Problemy'].map(h => <th key={h} style={{ ...TH, textAlign: h === 'Kampania' || h === 'Problemy' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
                             <tbody>{data.convHealth.campaigns.map((c, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ ...TD, color: '#F0F0F0', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.campaign_name}</td>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                    <td style={{ ...TD, color: C.textPrimary, fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.campaign_name}</td>
                                     <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.campaign_type}</td>
                                     <td style={{ ...TD, textAlign: 'right' }}>{c.cost_usd} zł</td>
                                     <td style={{ ...TD, textAlign: 'right' }}>{c.conversions}</td>
                                     <td style={{ ...TD_DIM, textAlign: 'right' }}>{c.conv_rate_pct}%</td>
-                                    <td style={{ ...TD, textAlign: 'right', color: c.score >= 80 ? '#4ADE80' : c.score >= 50 ? '#FBBF24' : '#F87171', fontWeight: 600 }}>{c.score}</td>
+                                    <td style={{ ...TD, textAlign: 'right', color: c.score >= 80 ? C.success : c.score >= 50 ? C.warning : C.danger, fontWeight: 600 }}>{c.score}</td>
                                     <td style={{ ...TD_DIM, textAlign: 'left', fontSize: 11 }}>{c.issues?.join(', ') || '—'}</td>
                                 </tr>
                             ))}</tbody>
@@ -238,13 +238,13 @@ export default function AuditCenterPage() {
             return (
                 <div style={{ padding: '0 16px 16px' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['Kampania','Typ','Urządzenie/Lokalizacja','Modifier'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                        <thead><tr style={{ borderBottom: B.subtle }}>{['Kampania','Typ','Urządzenie/Lokalizacja','Modifier'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                         <tbody>{data.bidModData.modifiers.map((m, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td style={{ ...TD, color: '#F0F0F0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.campaign_name || '—'}</td>
+                            <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                <td style={{ ...TD, color: C.textPrimary, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.campaign_name || '—'}</td>
                                 <td style={{ ...TD_DIM, fontSize: 10, textTransform: 'uppercase' }}>{m.modifier_type}</td>
                                 <td style={TD}>{m.device_type || m.location_name || (m.day_of_week ? `${m.day_of_week} ${m.start_hour}-${m.end_hour}h` : '—')}</td>
-                                <td style={{ ...TD, color: m.bid_modifier > 1 ? '#4ADE80' : m.bid_modifier < 1 ? '#F87171' : '#F0F0F0', fontWeight: 600 }}>
+                                <td style={{ ...TD, color: m.bid_modifier > 1 ? C.success : m.bid_modifier < 1 ? C.danger : C.textPrimary, fontWeight: 600 }}>
                                     {m.bid_modifier != null ? `${m.bid_modifier > 1 ? '+' : ''}${((m.bid_modifier - 1) * 100).toFixed(0)}%` : '—'}
                                 </td>
                             </tr>
@@ -256,15 +256,15 @@ export default function AuditCenterPage() {
         if (key === 'googleRecs' && data.googleRecsData?.recommendations) {
             return (
                 <div style={{ padding: '0 16px 16px' }}>
-                    {data.googleRecsData.recommendations.length === 0 ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Brak nowych rekomendacji Google.</p> : (
+                    {data.googleRecsData.recommendations.length === 0 ? <p style={{ fontSize: 12, color: C.textMuted }}>Brak nowych rekomendacji Google.</p> : (
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['Typ','Kampania','Impact','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                            <thead><tr style={{ borderBottom: B.subtle }}>{['Typ','Kampania','Impact','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                             <tbody>{data.googleRecsData.recommendations.map((r, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ ...TD, fontSize: 11, color: '#F0F0F0' }}>{r.type}</td>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                    <td style={{ ...TD, fontSize: 11, color: C.textPrimary }}>{r.type}</td>
                                     <td style={{ ...TD, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.campaign_name || '—'}</td>
                                     <td style={TD}>{typeof r.impact_estimate === 'object' ? JSON.stringify(r.impact_estimate) : r.impact_estimate || '—'}</td>
-                                    <td style={{ ...TD, color: r.status === 'ACTIVE' ? '#4ADE80' : r.dismissed ? '#F87171' : '#FBBF24', fontSize: 10 }}>{r.dismissed ? 'Odrzucona' : r.status}</td>
+                                    <td style={{ ...TD, color: r.status === 'ACTIVE' ? C.success : r.dismissed ? C.danger : C.warning, fontSize: 10 }}>{r.dismissed ? 'Odrzucona' : r.status}</td>
                                 </tr>
                             ))}</tbody>
                         </table>
@@ -275,11 +275,11 @@ export default function AuditCenterPage() {
         if (key === 'convValueRules' && data.convValueRulesData?.rules) {
             return (
                 <div style={{ padding: '0 16px 16px' }}>
-                    {data.convValueRulesData.rules.length === 0 ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Brak reguł wartości konwersji.</p> : (
+                    {data.convValueRulesData.rules.length === 0 ? <p style={{ fontSize: 12, color: C.textMuted }}>Brak reguł wartości konwersji.</p> : (
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['Warunek','Wartość','Typ akcji','Wartość','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                            <thead><tr style={{ borderBottom: B.subtle }}>{['Warunek','Wartość','Typ akcji','Wartość','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                             <tbody>{data.convValueRulesData.rules.map((r, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
                                     <td style={{ ...TD_DIM, fontSize: 10, textTransform: 'uppercase' }}>{r.condition_type || '—'}</td>
                                     <td style={TD}>{r.condition_value || '—'}</td>
                                     <td style={TD_DIM}>{r.action_type || '—'}</td>
@@ -296,16 +296,16 @@ export default function AuditCenterPage() {
             return (
                 <div style={{ padding: '0 16px 16px' }}>
                     {!data.offlineConvData?.conversions || data.offlineConvData.conversions.length === 0
-                        ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Brak uploadowanych konwersji offline.</p>
+                        ? <p style={{ fontSize: 12, color: C.textMuted }}>Brak uploadowanych konwersji offline.</p>
                         : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['GCLID','Konwersja','Data','Wartość','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                            <thead><tr style={{ borderBottom: B.subtle }}>{['GCLID','Konwersja','Data','Wartość','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                             <tbody>{data.offlineConvData.conversions.map((c, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
                                     <td style={{ ...TD, fontSize: 10, fontFamily: 'monospace', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.gclid}</td>
                                     <td style={TD}>{c.conversion_name || '—'}</td>
                                     <td style={TD_DIM}>{c.conversion_time}</td>
                                     <td style={TD}>{c.conversion_value != null ? `${c.conversion_value} zł` : '—'}</td>
-                                    <td style={{ ...TD, fontSize: 10, color: c.status === 'UPLOADED' ? '#4ADE80' : c.status === 'FAILED' ? '#F87171' : '#FBBF24' }}>{c.status}</td>
+                                    <td style={{ ...TD, fontSize: 10, color: c.status === 'UPLOADED' ? C.success : c.status === 'FAILED' ? C.danger : C.warning }}>{c.status}</td>
                                 </tr>
                             ))}</tbody>
                         </table>
@@ -317,14 +317,14 @@ export default function AuditCenterPage() {
             return (
                 <div style={{ padding: '0 16px 16px' }}>
                     {!data.audiencesListData?.audiences || data.audiencesListData.audiences.length === 0
-                        ? <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Brak odbiorców.</p>
+                        ? <p style={{ fontSize: 12, color: C.textMuted }}>Brak odbiorców.</p>
                         : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{['Nazwa','Typ','Status','Członków'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                            <thead><tr style={{ borderBottom: B.subtle }}>{['Nazwa','Typ','Status','Członków'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                             <tbody>{data.audiencesListData.audiences.map((a, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ ...TD, color: '#F0F0F0' }}>{a.name}</td>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                    <td style={{ ...TD, color: C.textPrimary }}>{a.name}</td>
                                     <td style={{ ...TD_DIM, fontSize: 10, textTransform: 'uppercase' }}>{a.type || '—'}</td>
-                                    <td style={{ ...TD, fontSize: 10, color: a.status === 'ENABLED' ? '#4ADE80' : 'rgba(255,255,255,0.4)' }}>{a.status}</td>
+                                    <td style={{ ...TD, fontSize: 10, color: a.status === 'ENABLED' ? C.success : C.w40 }}>{a.status}</td>
                                     <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.member_count != null ? a.member_count.toLocaleString('pl-PL') : '—'}</td>
                                 </tr>
                             ))}</tbody>
@@ -333,17 +333,17 @@ export default function AuditCenterPage() {
                 </div>
             )
         }
-        return sectionMap[key] || <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: 16 }}>Brak danych dla tej sekcji.</p>
+        return sectionMap[key] || <p style={{ fontSize: 12, color: C.textMuted, padding: 16 }}>Brak danych dla tej sekcji.</p>
     }
 
     if (loading) {
         return (
             <div style={{ maxWidth: 1400 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 20 }}>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', marginBottom: 20 }}>
                     Centrum audytu
                 </h1>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
-                    <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                    <Loader2 size={28} style={{ color: C.accentBlue }} className="animate-spin" />
                 </div>
             </div>
         )
@@ -357,14 +357,14 @@ export default function AuditCenterPage() {
             <div style={{ maxWidth: 1400 }}>
                 <div style={{ marginBottom: 16 }}>
                     <button onClick={() => setActiveSection(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 8 }}>
-                        <ChevronRight size={14} style={{ color: '#4F8EF7', transform: 'rotate(180deg)' }} />
-                        <span style={{ fontSize: 12, color: '#4F8EF7' }}>Centrum audytu</span>
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>›</span>
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{card?.title}</span>
+                        <ChevronRight size={14} style={{ color: C.accentBlue, transform: 'rotate(180deg)' }} />
+                        <span style={{ fontSize: 12, color: C.accentBlue }}>Centrum audytu</span>
+                        <span style={{ fontSize: 12, color: C.w30 }}>›</span>
+                        <span style={{ fontSize: 12, color: C.w60 }}>{card?.title}</span>
                     </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Icon size={18} style={{ color: '#4F8EF7' }} />
-                        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>{card?.title}</h1>
+                        <Icon size={18} style={{ color: C.accentBlue }} />
+                        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne' }}>{card?.title}</h1>
                     </div>
                 </div>
                 <div className={CARD}>
@@ -379,10 +379,10 @@ export default function AuditCenterPage() {
         <div style={{ maxWidth: 1400 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Centrum audytu
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         Analiza {days} dni — {filteredCards.length} sekcji{pinnedKeys.length > 0 ? ` · ${pinnedKeys.length} przypiętych` : ''}
                     </p>
                 </div>
@@ -391,7 +391,7 @@ export default function AuditCenterPage() {
                         display: 'inline-flex', alignItems: 'center', gap: 6,
                         padding: '5px 12px', borderRadius: 999, fontSize: 11, fontFamily: 'DM Sans', fontWeight: 500,
                         cursor: 'pointer', border: '1px solid rgba(79,142,247,0.2)', background: 'rgba(79,142,247,0.06)',
-                        color: '#4F8EF7', transition: 'all 0.15s',
+                        color: C.accentBlue, transition: 'all 0.15s',
                     }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(79,142,247,0.12)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(79,142,247,0.06)' }}
@@ -407,9 +407,9 @@ export default function AuditCenterPage() {
                     <button key={t} onClick={() => setFilter('campaignType', t)} style={{
                         padding: '5px 14px', borderRadius: 999, fontSize: 12, fontFamily: 'DM Sans', fontWeight: 500,
                         cursor: 'pointer', border: 'none', transition: 'all 0.15s',
-                        background: campFilter === t ? '#4F8EF7' : 'transparent',
-                        color: campFilter === t ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
-                        outline: campFilter === t ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                        background: campFilter === t ? C.accentBlue : 'transparent',
+                        color: campFilter === t ? '#FFFFFF' : C.w50,
+                        outline: campFilter === t ? 'none' : B.hover,
                     }}>{CAMP_LABELS[t]}</button>
                 ))}
             </div>
@@ -419,8 +419,8 @@ export default function AuditCenterPage() {
                     display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 16,
                     borderRadius: 8, background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)',
                 }}>
-                    <AlertTriangle size={16} style={{ color: '#F87171', flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: '#F87171' }}>
+                    <AlertTriangle size={16} style={{ color: C.danger, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: C.danger }}>
                         {alerts.length} {alerts.length === 1 ? 'problem wymaga' : 'problemy wymagają'} uwagi: {alerts.map(a => a.title).join(', ')}
                     </span>
                 </div>
@@ -430,8 +430,8 @@ export default function AuditCenterPage() {
                     display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 16,
                     borderRadius: 8, background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)',
                 }}>
-                    <AlertTriangle size={16} style={{ color: '#FBBF24', flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: '#FBBF24' }}>
+                    <AlertTriangle size={16} style={{ color: C.warning, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: C.warning }}>
                         {warnings.length} {warnings.length === 1 ? 'ostrzeżenie' : 'ostrzeżeń'}: {warnings.map(a => a.title).join(', ')}
                     </span>
                 </div>

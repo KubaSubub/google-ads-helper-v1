@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react'
+import { C, T, S, R, B, MODAL, TRANSITION, TOOLTIP_STYLE } from '../constants/designTokens'
 
 export function LoadingSpinner() {
     return (
@@ -29,33 +30,18 @@ export function ErrorMessage({ message, onRetry }) {
 
 /* ─── Shared table / modal style constants ─── */
 
-export const TH_STYLE = {
-    padding: '10px 12px',
-    fontSize: 10,
-    fontWeight: 500,
-    color: 'rgba(255,255,255,0.35)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    whiteSpace: 'nowrap',
-    textAlign: 'left',
-}
+export const TH_STYLE = { ...T.th, padding: '10px 12px' }
 
-export const MODAL_OVERLAY = {
-    position: 'fixed', inset: 0, zIndex: 1000,
-    background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-}
+export const MODAL_OVERLAY = MODAL.overlay
 
-export const MODAL_BOX = {
-    background: '#151720', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
-    padding: 24, minWidth: 420, maxWidth: 540, maxHeight: '80vh', overflowY: 'auto',
-}
+export const MODAL_BOX = MODAL.box
 
 export function PageHeader({ title, subtitle, children }) {
     return (
-        <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
+        <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: S['5xl'] }}>
             <div>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>{title}</h1>
-                {subtitle && <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>{subtitle}</p>}
+                <h1 style={T.pageTitle}>{title}</h1>
+                {subtitle && <p style={T.pageSubtitle}>{subtitle}</p>}
             </div>
             {children}
         </div>

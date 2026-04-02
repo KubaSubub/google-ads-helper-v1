@@ -74,9 +74,9 @@ export default function DisplayPage() {
               style={{
                 padding: '6px 18px',
                 borderRadius: 999,
-                border: active ? '1px solid #4F8EF7' : '1px solid rgba(255,255,255,0.1)',
-                background: active ? 'rgba(79,142,247,0.15)' : 'transparent',
-                color: active ? '#4F8EF7' : 'rgba(255,255,255,0.55)',
+                border: active ? '1px solid #4F8EF7' : B.medium,
+                background: active ? C.infoBg : 'transparent',
+                color: active ? C.accentBlue : C.textSecondary,
                 fontSize: 13,
                 fontWeight: active ? 600 : 400,
                 cursor: 'pointer',
@@ -91,7 +91,7 @@ export default function DisplayPage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <Loader2 size={32} className="animate-spin" style={{ color: '#4F8EF7' }} />
+          <Loader2 size={32} className="animate-spin" style={{ color: C.accentBlue }} />
         </div>
       ) : (
         <div className="v2-card" style={{ borderRadius: 12, overflow: 'hidden' }}>
@@ -115,7 +115,7 @@ export default function DisplayPage() {
                   </thead>
                   <tbody>
                     {placements.map((row, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                         <td style={TD_DIM}>{row.placement_url || row.placement || '—'}</td>
                         <td style={TD}>{row.placement_type || '—'}</td>
                         <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(row.clicks)}</td>
@@ -150,7 +150,7 @@ export default function DisplayPage() {
                   </thead>
                   <tbody>
                     {topics.map((row, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                         <td style={TD_DIM}>{row.topic_path || row.topic || '—'}</td>
                         <td style={{ ...TD, textAlign: 'right' }}>
                           {row.bid_modifier != null
@@ -197,7 +197,7 @@ export default function DisplayPage() {
                           ? row.conversion_value_micros / 1e6 / cost
                           : null;
                       return (
-                        <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                           <td style={TD_DIM}>{row.audience_name || '—'}</td>
                           <td style={TD}>{row.audience_type || '—'}</td>
                           <td style={{ ...TD, textAlign: 'right' }}>
@@ -218,8 +218,8 @@ export default function DisplayPage() {
                           </td>
                           <td style={{ ...TD, textAlign: 'center' }}>
                             {row.anomaly
-                              ? <span style={{ color: '#F87171', fontWeight: 600, fontSize: 12 }}>!</span>
-                              : <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>—</span>}
+                              ? <span style={{ color: C.danger, fontWeight: 600, fontSize: 12 }}>!</span>
+                              : <span style={{ color: C.w20, fontSize: 12 }}>—</span>}
                           </td>
                         </tr>
                       );
@@ -247,7 +247,7 @@ export default function DisplayPage() {
                     {bidModifiers.map((row, i) => {
                       const val = row.modifier_value != null ? Number(row.modifier_value) : null;
                       return (
-                        <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                           <td style={TD_DIM}>{row.campaign_name || '—'}</td>
                           <td style={TD}>{row.modifier_type || '—'}</td>
                           <td style={TD}>{row.device || row.location || '—'}</td>

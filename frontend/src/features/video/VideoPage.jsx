@@ -42,10 +42,10 @@ function KpiCard({ label, value, accent }) {
         minWidth: 160,
         borderRadius: 12,
         padding: '18px 20px',
-        borderLeft: `3px solid ${accent || '#4F8EF7'}`,
+        borderLeft: `3px solid ${accent || C.accentBlue}`,
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
         {label}
       </div>
       <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#fff' }}>{value}</div>
@@ -143,7 +143,7 @@ export default function VideoPage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <Loader2 size={32} className="animate-spin" style={{ color: '#FBBF24' }} />
+          <Loader2 size={32} className="animate-spin" style={{ color: C.warning }} />
         </div>
       ) : (
         <>
@@ -167,9 +167,9 @@ export default function VideoPage() {
                   style={{
                     padding: '6px 18px',
                     borderRadius: 999,
-                    border: active ? '1px solid #FBBF24' : '1px solid rgba(255,255,255,0.1)',
+                    border: active ? '1px solid #FBBF24' : B.medium,
                     background: active ? 'rgba(251,191,36,0.15)' : 'transparent',
-                    color: active ? '#FBBF24' : 'rgba(255,255,255,0.55)',
+                    color: active ? C.warning : C.textSecondary,
                     fontSize: 13,
                     fontWeight: active ? 600 : 400,
                     cursor: 'pointer',
@@ -186,7 +186,7 @@ export default function VideoPage() {
               <div style={{ marginLeft: 'auto', position: 'relative', minWidth: 220 }}>
                 <Search
                   size={14}
-                  style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}
+                  style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.w30, pointerEvents: 'none' }}
                 />
                 <input
                   type="text"
@@ -197,8 +197,8 @@ export default function VideoPage() {
                     width: '100%',
                     padding: '7px 12px 7px 30px',
                     borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
+                    border: B.medium,
+                    background: C.w04,
                     color: '#fff',
                     fontSize: 12,
                     outline: 'none',
@@ -240,7 +240,7 @@ export default function VideoPage() {
                         const rowUrl = row.placement_url || row.placement || '';
                         const rowKey = `${row.campaign_id}-${rowUrl}`;
                         return (
-                          <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                             <td style={TD_DIM} title={rowUrl}>{rowUrl || '\u2014'}</td>
                             <td style={TD}>{row.placement_type || '\u2014'}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(row.clicks)}</td>
@@ -251,7 +251,7 @@ export default function VideoPage() {
                             <td style={{
                               ...TD,
                               textAlign: 'right',
-                              color: isHighCpv ? '#F87171' : TD.color,
+                              color: isHighCpv ? C.danger : TD.color,
                               fontWeight: isHighCpv ? 600 : 'normal',
                             }}>
                               {rowCpv != null ? fmt(rowCpv) : '\u2014'}
@@ -272,8 +272,8 @@ export default function VideoPage() {
                                   padding: '4px 10px',
                                   borderRadius: 6,
                                   border: '1px solid rgba(248,113,113,0.3)',
-                                  background: 'rgba(248,113,113,0.08)',
-                                  color: '#F87171',
+                                  background: C.dangerBg,
+                                  color: C.danger,
                                   fontSize: 11,
                                   fontWeight: 500,
                                   cursor: excludingId === rowKey ? 'wait' : 'pointer',
@@ -313,7 +313,7 @@ export default function VideoPage() {
                     </thead>
                     <tbody>
                       {topics.map((row, i) => (
-                        <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                           <td style={TD_DIM}>{row.topic_path || row.topic || '\u2014'}</td>
                           <td style={{ ...TD, textAlign: 'right' }}>
                             {row.bid_modifier != null
@@ -360,7 +360,7 @@ export default function VideoPage() {
                             ? row.conversion_value_micros / 1e6 / cost
                             : null;
                         return (
-                          <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                             <td style={TD_DIM}>{row.audience_name || '\u2014'}</td>
                             <td style={TD}>{row.audience_type || '\u2014'}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>
@@ -381,8 +381,8 @@ export default function VideoPage() {
                             </td>
                             <td style={{ ...TD, textAlign: 'center' }}>
                               {row.anomaly
-                                ? <span style={{ color: '#F87171', fontWeight: 600, fontSize: 12 }}>!</span>
-                                : <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>{'\u2014'}</span>}
+                                ? <span style={{ color: C.danger, fontWeight: 600, fontSize: 12 }}>!</span>
+                                : <span style={{ color: C.w20, fontSize: 12 }}>{'\u2014'}</span>}
                             </td>
                           </tr>
                         );

@@ -6,6 +6,7 @@ import {
 import { getWoWComparison } from '../api'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const METRIC_OPTIONS = [
     { key: 'cost', label: 'Koszt (zł)' },
@@ -71,12 +72,12 @@ export default function WoWChart() {
     return (
         <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                     Porównanie okresów
                 </span>
                 <div className="flex items-center gap-2">
                     {data?.current_range && (
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+                        <span style={{ fontSize: 10, color: C.w30 }}>
                             {data.current_range[0].slice(5)} — {data.current_range[1].slice(5)}
                             {' vs '}
                             {data.previous_range[0].slice(5)} — {data.previous_range[1].slice(5)}
@@ -86,12 +87,12 @@ export default function WoWChart() {
                         value={metric}
                         onChange={e => setMetric(e.target.value)}
                         style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: C.w06,
+                            border: B.medium,
                             borderRadius: 6,
                             padding: '4px 8px',
                             fontSize: 11,
-                            color: '#F0F0F0',
+                            color: C.textPrimary,
                             cursor: 'pointer',
                         }}
                     >
@@ -103,11 +104,11 @@ export default function WoWChart() {
             </div>
 
             {loading ? (
-                <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'rgba(255,255,255,0.2)' }}>
+                <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: C.w20 }}>
                     Ładowanie…
                 </div>
             ) : merged.length === 0 ? (
-                <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: C.w30 }}>
                     Brak danych do porównania
                 </div>
             ) : (
@@ -116,20 +117,20 @@ export default function WoWChart() {
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                         <XAxis
                             dataKey="day"
-                            tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.35)' }}
+                            tick={{ fontSize: 10, fill: C.textMuted }}
                             axisLine={false}
                             tickLine={false}
                         />
                         <YAxis
-                            tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.25)' }}
+                            tick={{ fontSize: 10, fill: C.w25 }}
                             axisLine={false}
                             tickLine={false}
                             width={45}
                         />
                         <Tooltip
                             contentStyle={{
-                                background: '#1a1d24',
-                                border: '1px solid rgba(255,255,255,0.12)',
+                                background: C.surfaceElevated,
+                                border: B.hover,
                                 borderRadius: 8,
                                 fontSize: 11,
                             }}
@@ -140,7 +141,7 @@ export default function WoWChart() {
                         />
                         <Legend
                             formatter={value => (
-                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>
+                                <span style={{ fontSize: 10, color: C.w50 }}>
                                     {value === 'current' ? `Bieżący (${metricLabel})` : `Poprzedni (${metricLabel})`}
                                 </span>
                             )}
@@ -159,7 +160,7 @@ export default function WoWChart() {
                             dataKey="current"
                             stroke="#4F8EF7"
                             strokeWidth={2}
-                            dot={{ r: 3, fill: '#4F8EF7', strokeWidth: 0 }}
+                            dot={{ r: 3, fill: C.accentBlue, strokeWidth: 0 }}
                             connectNulls
                         />
                     </ComposedChart>

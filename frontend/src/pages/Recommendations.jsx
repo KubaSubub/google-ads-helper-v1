@@ -18,52 +18,53 @@ import { LoadingSpinner } from '../components/UI'
 import { useApp } from '../contexts/AppContext'
 import { useFilter } from '../contexts/FilterContext'
 import { useRecommendations } from '../hooks/useRecommendations'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const TYPE_CONFIG = {
-    PAUSE_KEYWORD: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Wstrzymaj słowo' },
-    UPDATE_BID: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zmień stawkę' },
-    ADD_KEYWORD: { icon: TrendingUp, color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)', label: 'Dodaj słowo' },
-    ADD_NEGATIVE: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Dodaj wykluczenie' },
-    PAUSE_AD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Wstrzymaj reklamę' },
-    INCREASE_BUDGET: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Zwiększ budżet' },
-    REALLOCATE_BUDGET: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Przesuń budżet' },
+    PAUSE_KEYWORD: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Wstrzymaj słowo' },
+    UPDATE_BID: { icon: TrendingUp, color: C.success, bg: C.successBg, label: 'Zmień stawkę' },
+    ADD_KEYWORD: { icon: TrendingUp, color: C.accentBlue, bg: C.infoBg, label: 'Dodaj słowo' },
+    ADD_NEGATIVE: { icon: TrendingDown, color: C.danger, bg: C.dangerBg, label: 'Dodaj wykluczenie' },
+    PAUSE_AD: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Wstrzymaj reklamę' },
+    INCREASE_BUDGET: { icon: TrendingUp, color: C.success, bg: C.successBg, label: 'Zwiększ budżet' },
+    REALLOCATE_BUDGET: { icon: Zap, color: C.warning, bg: C.warningBg, label: 'Przesuń budżet' },
     // v1.1 rules (R8-R13)
-    QS_ALERT: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Quality Score' },
-    IS_BUDGET_ALERT: { icon: TrendingUp, color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)', label: 'Impression Share — Budżet' },
-    IS_RANK_ALERT: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Impression Share — Ad Rank' },
-    LOW_CTR_KEYWORD: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Niski CTR' },
-    WASTED_SPEND_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Przepalony Budżet' },
-    PMAX_CANNIBALIZATION: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'PMax Kanibalizacja' },
+    QS_ALERT: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Quality Score' },
+    IS_BUDGET_ALERT: { icon: TrendingUp, color: C.accentBlue, bg: C.infoBg, label: 'Impression Share — Budżet' },
+    IS_RANK_ALERT: { icon: TrendingDown, color: C.warning, bg: C.warningBg, label: 'Impression Share — Ad Rank' },
+    LOW_CTR_KEYWORD: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Niski CTR' },
+    WASTED_SPEND_ALERT: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Przepalony Budżet' },
+    PMAX_CANNIBALIZATION: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'PMax Kanibalizacja' },
     // v1.2 rules (R15-R18)
-    DEVICE_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia Urządzeń' },
-    GEO_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia Lokalizacji' },
-    BUDGET_PACING: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Tempo Budżetu' },
-    NGRAM_NEGATIVE: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'N-gram do Wykluczenia' },
+    DEVICE_ANOMALY: { icon: TrendingDown, color: C.warning, bg: C.warningBg, label: 'Anomalia Urządzeń' },
+    GEO_ANOMALY: { icon: TrendingDown, color: C.warning, bg: C.warningBg, label: 'Anomalia Lokalizacji' },
+    BUDGET_PACING: { icon: Zap, color: C.warning, bg: C.warningBg, label: 'Tempo Budżetu' },
+    NGRAM_NEGATIVE: { icon: TrendingDown, color: C.danger, bg: C.dangerBg, label: 'N-gram do Wykluczenia' },
     // v2.0 GAP rules
-    AD_GROUP_HEALTH: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Zdrowie grupy reklam' },
-    SINGLE_AD_ALERT: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Tylko 1 reklama' },
-    OVERSIZED_AD_GROUP: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Za dużo keywords' },
-    ZERO_CONV_AD_GROUP: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Brak konwersji w grupie' },
-    DISAPPROVED_AD_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Odrzucona reklama' },
-    SMART_BIDDING_DATA_STARVATION: { icon: Zap, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Smart Bidding — niski wolumen' },
-    ECPC_DEPRECATION: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'ECPC wycofane' },
-    SCALING_OPPORTUNITY: { icon: TrendingUp, color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', label: 'Okazja do skalowania' },
+    AD_GROUP_HEALTH: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Zdrowie grupy reklam' },
+    SINGLE_AD_ALERT: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Tylko 1 reklama' },
+    OVERSIZED_AD_GROUP: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Za dużo keywords' },
+    ZERO_CONV_AD_GROUP: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Brak konwersji w grupie' },
+    DISAPPROVED_AD_ALERT: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Odrzucona reklama' },
+    SMART_BIDDING_DATA_STARVATION: { icon: Zap, color: C.danger, bg: C.dangerBg, label: 'Smart Bidding — niski wolumen' },
+    ECPC_DEPRECATION: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'ECPC wycofane' },
+    SCALING_OPPORTUNITY: { icon: TrendingUp, color: C.success, bg: C.successBg, label: 'Okazja do skalowania' },
     // v2.0 GAP rules (Phase B+C)
-    TARGET_DEVIATION_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Odchylenie od celu' },
-    LEARNING_PERIOD_ALERT: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Okres nauki' },
-    CONVERSION_QUALITY_ALERT: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Jakość konwersji' },
-    DEMOGRAPHIC_ANOMALY: { icon: TrendingDown, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Anomalia demograficzna' },
+    TARGET_DEVIATION_ALERT: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Odchylenie od celu' },
+    LEARNING_PERIOD_ALERT: { icon: Zap, color: C.warning, bg: C.warningBg, label: 'Okres nauki' },
+    CONVERSION_QUALITY_ALERT: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Jakość konwersji' },
+    DEMOGRAPHIC_ANOMALY: { icon: TrendingDown, color: C.warning, bg: C.warningBg, label: 'Anomalia demograficzna' },
     // v2.1 Phase D (R28-R31)
-    PMAX_CHANNEL_IMBALANCE: { icon: Zap, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Nierównowaga kanałów PMax' },
-    ASSET_GROUP_AD_STRENGTH: { icon: ShieldAlert, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Siła reklam grupy zasobów' },
-    AUDIENCE_PERFORMANCE_ANOMALY: { icon: TrendingDown, color: '#F87171', bg: 'rgba(248,113,113,0.1)', label: 'Anomalia odbiorców' },
-    MISSING_EXTENSIONS_ALERT: { icon: ShieldAlert, color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Brakujące rozszerzenia' },
+    PMAX_CHANNEL_IMBALANCE: { icon: Zap, color: C.warning, bg: C.warningBg, label: 'Nierównowaga kanałów PMax' },
+    ASSET_GROUP_AD_STRENGTH: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Siła reklam grupy zasobów' },
+    AUDIENCE_PERFORMANCE_ANOMALY: { icon: TrendingDown, color: C.danger, bg: C.dangerBg, label: 'Anomalia odbiorców' },
+    MISSING_EXTENSIONS_ALERT: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Brakujące rozszerzenia' },
 }
 
 const PRIORITY_CONFIG = {
-    HIGH: { color: '#F87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)', label: 'HIGH' },
-    MEDIUM: { color: '#FBBF24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)', label: 'MEDIUM' },
-    LOW: { color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', label: 'LOW' },
+    HIGH: { color: C.danger, bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)', label: 'HIGH' },
+    MEDIUM: { color: C.warning, bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)', label: 'MEDIUM' },
+    LOW: { color: C.textPlaceholder, bg: C.w06, border: C.w12, label: 'LOW' },
 }
 
 const SOURCE_LABELS = {
@@ -94,9 +95,9 @@ const CAMPAIGN_ROLE_LABELS = {
 }
 
 const OUTCOME_CONFIG = {
-    ACTION: { label: 'Action', color: '#4ADE80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.25)' },
-    INSIGHT_ONLY: { label: 'Insight only', color: '#FBBF24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)' },
-    BLOCKED_BY_CONTEXT: { label: 'Blocked', color: '#F87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)' },
+    ACTION: { label: 'Action', color: C.success, bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.25)' },
+    INSIGHT_ONLY: { label: 'Insight only', color: C.warning, bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)' },
+    BLOCKED_BY_CONTEXT: { label: 'Blocked', color: C.danger, bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)' },
 }
 
 const REASON_COPY = {
@@ -201,13 +202,13 @@ function MetricPills({ metadata }) {
                         fontSize: 10,
                         padding: '2px 7px',
                         borderRadius: 6,
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        color: 'rgba(255,255,255,0.6)',
+                        background: C.w04,
+                        border: `1px solid ${C.w08}`,
+                        color: C.w60,
                     }}
                 >
-                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>{pill.label}:</span>
-                    <span style={{ fontWeight: 600, fontFamily: 'monospace', color: '#F0F0F0' }}>{pill.value}</span>
+                    <span style={{ color: C.w30 }}>{pill.label}:</span>
+                    <span style={{ fontWeight: 600, fontFamily: 'monospace', color: C.textPrimary }}>{pill.value}</span>
                 </span>
             ))}
         </div>
@@ -236,7 +237,7 @@ function PriorityPill({ priority }) {
 }
 
 function TypePill({ actionType }) {
-    const cfg = TYPE_CONFIG[actionType] || { icon: Zap, color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)', label: humanizeCode(actionType || 'REVIEW') }
+    const cfg = TYPE_CONFIG[actionType] || { icon: Zap, color: C.textPlaceholder, bg: C.w06, label: humanizeCode(actionType || 'REVIEW') }
     const Icon = cfg.icon
     return (
         <span
@@ -283,7 +284,7 @@ function ExplanationList({ title, items, color = 'rgba(255,255,255,0.72)' }) {
     if (!items.length) return null
     return (
         <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
                 {title}
             </div>
             <div style={{ display: 'grid', gap: 4 }}>
@@ -337,13 +338,13 @@ function ContextPanel({ rec }) {
                         fontSize: 10,
                         padding: '2px 7px',
                         borderRadius: 6,
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        color: 'rgba(255,255,255,0.6)',
+                        background: C.w04,
+                        border: `1px solid ${C.w08}`,
+                        color: C.w60,
                     }}
                 >
-                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>{chip.label}:</span>
-                    <span style={{ fontWeight: 600, color: '#F0F0F0' }}>{chip.value}</span>
+                    <span style={{ color: C.w30 }}>{chip.label}:</span>
+                    <span style={{ fontWeight: 600, color: C.textPrimary }}>{chip.value}</span>
                 </span>
             ))}
         </div>
@@ -368,17 +369,17 @@ function ExplanationPanel({ rec }) {
                 gap: 8,
                 padding: '10px 12px',
                 borderRadius: 10,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: C.w03,
+                border: `1px solid ${C.w08}`,
                 marginBottom: 12,
             }}
         >
             <ExplanationList title="Allowed because" items={whyAllowed} color="#4ADE80" />
-            <ExplanationList title={rec.context_outcome === 'ACTION' ? 'Context checks' : 'Blocked or downgraded because'} items={whyBlocked} color={rec.context_outcome === 'BLOCKED_BY_CONTEXT' ? '#F87171' : '#FBBF24'} />
+            <ExplanationList title={rec.context_outcome === 'ACTION' ? 'Context checks' : 'Blocked or downgraded because'} items={whyBlocked} color={rec.context_outcome === 'BLOCKED_BY_CONTEXT' ? C.danger : C.warning} />
             <ExplanationList title="Trade-offs" items={tradeoffs} />
             {riskNote && (
                 <div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                    <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
                         Risk note
                     </div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.45 }}>{riskNote}</div>
@@ -386,10 +387,10 @@ function ExplanationPanel({ rec }) {
             )}
             {nextBestAction && (
                 <div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                    <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
                         Next best action
                     </div>
-                    <div style={{ fontSize: 11, color: '#F0F0F0', lineHeight: 1.45 }}>{nextBestAction}</div>
+                    <div style={{ fontSize: 11, color: C.textPrimary, lineHeight: 1.45 }}>{nextBestAction}</div>
                 </div>
             )}
         </div>
@@ -400,17 +401,17 @@ function MetaRow({ rec }) {
     return (
         <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 10 }}>
             <OutcomePill outcome={rec.context_outcome} />
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{SOURCE_LABELS[rec.source] || rec.source}</span>
-            <span style={{ fontSize: 10, color: rec.executable ? '#4ADE80' : '#FBBF24' }}>
+            <span style={{ fontSize: 10, color: C.textMuted }}>{SOURCE_LABELS[rec.source] || rec.source}</span>
+            <span style={{ fontSize: 10, color: rec.executable ? C.success : C.warning }}>
                 {rec.executable ? 'Executable' : 'Alert'}
             </span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+            <span style={{ fontSize: 10, color: C.textMuted }}>
                 Confidence {(Number(rec.confidence_score || 0) * 100).toFixed(0)}%
             </span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+            <span style={{ fontSize: 10, color: C.textMuted }}>
                 Risk {(Number(rec.risk_score || 0) * 100).toFixed(0)}%
             </span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+            <span style={{ fontSize: 10, color: C.textMuted }}>
                 Expires {formatExpires(rec.expires_at)}
             </span>
         </div>
@@ -429,20 +430,20 @@ function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onT
                     type="checkbox"
                     checked={selected}
                     onChange={() => onToggle(rec.id)}
-                    style={{ marginTop: 4, accentColor: '#4F8EF7', cursor: 'pointer', flexShrink: 0 }}
+                    style={{ marginTop: 4, accentColor: C.accentBlue, cursor: 'pointer', flexShrink: 0 }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 8 }}>
                         <PriorityPill priority={rec.priority} />
                         <TypePill actionType={actionType} />
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{entityTypeLabel}</span>
+                        <span style={{ fontSize: 10, color: C.textMuted }}>{entityTypeLabel}</span>
                     </div>
 
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#F0F0F0', marginBottom: 2 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: C.textPrimary, marginBottom: 2 }}>
                         {rec.entity_name || 'Recommendation'}
                     </div>
                     {rec.campaign_name && (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>
                             Campaign: {rec.campaign_name}
                         </div>
                     )}
@@ -454,12 +455,12 @@ function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onT
                         {rec.reason}
                     </p>
                     {rec.recommended_action && (
-                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                        <p style={{ fontSize: 11, color: C.textPlaceholder, marginBottom: 6 }}>
                             Recommended: {rec.recommended_action}
                         </p>
                     )}
                     {impact && (
-                        <p style={{ fontSize: 11, color: '#4ADE80', marginBottom: 12 }}>
+                        <p style={{ fontSize: 11, color: C.success, marginBottom: 12 }}>
                             {impact}
                         </p>
                     )}
@@ -480,8 +481,8 @@ function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onT
                                 borderRadius: 7,
                                 fontSize: 12,
                                 fontWeight: 500,
-                                background: rec.executable ? '#4F8EF7' : 'rgba(255,255,255,0.08)',
-                                color: rec.executable ? 'white' : 'rgba(255,255,255,0.4)',
+                                background: rec.executable ? C.accentBlue : C.w08,
+                                color: rec.executable ? 'white' : C.w40,
                                 cursor: rec.executable ? 'pointer' : 'not-allowed',
                                 border: 'none',
                                 opacity: isApplying ? 0.6 : 1,
@@ -502,9 +503,9 @@ function RecommendationCard({ rec, onApply, onDismiss, isApplying, selected, onT
                                 borderRadius: 7,
                                 fontSize: 12,
                                 background: 'transparent',
-                                color: 'rgba(255,255,255,0.45)',
+                                color: C.textPlaceholder,
                                 cursor: 'pointer',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                border: B.medium,
                             }}
                         >
                             <XCircle size={12} /> Odrzuć
@@ -524,7 +525,7 @@ function Section({ title, count, items, onApply, onDismiss, applyingId, selected
                 <h2 style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     {title}
                 </h2>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{count}</span>
+                <span style={{ fontSize: 11, color: C.textMuted }}>{count}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 12 }}>
                 {items.map((rec, index) => (
@@ -695,10 +696,10 @@ export default function Recommendations() {
         <div style={{ maxWidth: 1140 }}>
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Rekomendacje
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         {(summary && summary.total) || (recommendations && recommendations.length) || 0} aktywnych rekomendacji
                     </p>
                 </div>
@@ -712,7 +713,7 @@ export default function Recommendations() {
                             display: 'flex', alignItems: 'center', gap: 5,
                             padding: '6px 12px', borderRadius: 7, fontSize: 11,
                             background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)',
-                            color: '#4ADE80', cursor: 'pointer',
+                            color: C.success, cursor: 'pointer',
                         }}
                     >
                         <Download size={11} /> Eksport
@@ -722,8 +723,8 @@ export default function Recommendations() {
                         style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '6px 14px', borderRadius: 7, fontSize: 12,
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
+                            background: C.w05, border: B.medium,
+                            color: C.w60, cursor: 'pointer',
                         }}
                     >
                         <RefreshCw size={12} /> Odśwież
@@ -734,24 +735,24 @@ export default function Recommendations() {
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div className="flex items-center gap-3 flex-wrap">
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Łącznie</span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>{summary?.total || 0}</span>
+                        <span style={{ fontSize: 11, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Łącznie</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne' }}>{summary?.total || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Do wykonania</span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>{summary?.executable_total || 0}</span>
+                        <span style={{ fontSize: 11, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Do wykonania</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: C.success, fontFamily: 'Syne' }}>{summary?.executable_total || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Pilne</span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: '#F87171', fontFamily: 'Syne' }}>{summary?.high_priority || 0}</span>
+                        <span style={{ fontSize: 11, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Pilne</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: C.danger, fontFamily: 'Syne' }}>{summary?.high_priority || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Akcje</span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>{summary?.by_context_outcome?.ACTION || 0}</span>
+                        <span style={{ fontSize: 11, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Akcje</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: C.success, fontFamily: 'Syne' }}>{summary?.by_context_outcome?.ACTION || 0}</span>
                     </div>
                     <div className="v2-card" style={{ padding: '8px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Zablokowane</span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: '#FBBF24', fontFamily: 'Syne' }}>{summary?.by_context_outcome?.BLOCKED_BY_CONTEXT || 0}</span>
+                        <span style={{ fontSize: 11, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Zablokowane</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: C.warning, fontFamily: 'Syne' }}>{summary?.by_context_outcome?.BLOCKED_BY_CONTEXT || 0}</span>
                     </div>
                 </div>
 
@@ -764,9 +765,9 @@ export default function Recommendations() {
                                 padding: '4px 12px',
                                 borderRadius: 999,
                                 fontSize: 11,
-                                border: `1px solid ${filterPriority === priority ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
-                                background: filterPriority === priority ? 'rgba(79,142,247,0.18)' : 'transparent',
-                                color: filterPriority === priority ? '#F0F0F0' : 'rgba(255,255,255,0.45)',
+                                border: `1px solid ${filterPriority === priority ? C.accentBlue : C.w10}`,
+                                background: filterPriority === priority ? C.accentBlueBg : 'transparent',
+                                color: filterPriority === priority ? C.textPrimary : C.textPlaceholder,
                                 cursor: 'pointer',
                             }}
                         >
@@ -781,9 +782,9 @@ export default function Recommendations() {
                                 padding: '4px 12px',
                                 borderRadius: 999,
                                 fontSize: 11,
-                                border: `1px solid ${filterSource === source ? 'rgba(74,222,128,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                                border: `1px solid ${filterSource === source ? 'rgba(74,222,128,0.35)' : C.w10}`,
                                 background: filterSource === source ? 'rgba(74,222,128,0.12)' : 'transparent',
-                                color: filterSource === source ? '#4ADE80' : 'rgba(255,255,255,0.45)',
+                                color: filterSource === source ? C.success : C.textPlaceholder,
                                 cursor: 'pointer',
                             }}
                         >
@@ -798,9 +799,9 @@ export default function Recommendations() {
                                 padding: '4px 12px',
                                 borderRadius: 999,
                                 fontSize: 11,
-                                border: `1px solid ${filterExecution === mode ? 'rgba(251,191,36,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                                border: `1px solid ${filterExecution === mode ? 'rgba(251,191,36,0.35)' : C.w10}`,
                                 background: filterExecution === mode ? 'rgba(251,191,36,0.12)' : 'transparent',
-                                color: filterExecution === mode ? '#FBBF24' : 'rgba(255,255,255,0.45)',
+                                color: filterExecution === mode ? C.warning : C.textPlaceholder,
                                 cursor: 'pointer',
                             }}
                         >
@@ -815,9 +816,9 @@ export default function Recommendations() {
                                 padding: '4px 12px',
                                 borderRadius: 999,
                                 fontSize: 11,
-                                border: `1px solid ${filterCategory === cat.key ? 'rgba(123,92,224,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                                border: `1px solid ${filterCategory === cat.key ? 'rgba(123,92,224,0.35)' : C.w10}`,
                                 background: filterCategory === cat.key ? 'rgba(123,92,224,0.12)' : 'transparent',
-                                color: filterCategory === cat.key ? '#7B5CE0' : 'rgba(255,255,255,0.45)',
+                                color: filterCategory === cat.key ? C.accentPurple : C.textPlaceholder,
                                 cursor: 'pointer',
                             }}
                         >
@@ -833,22 +834,22 @@ export default function Recommendations() {
                         onClick={selectAllExecutable}
                         style={{
                             padding: '5px 12px', borderRadius: 7, fontSize: 11,
-                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
+                            background: C.w04, border: B.medium,
+                            color: C.w50, cursor: 'pointer',
                         }}
                     >
                         {selectedIds.size === executableItems.length ? 'Odznacz wykonalne' : 'Zaznacz wykonalne'}
                     </button>
                     {selectedIds.size > 0 && (
                         <>
-                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{selectedIds.size} selected</span>
+                            <span style={{ fontSize: 11, color: C.w40 }}>{selectedIds.size} selected</span>
                             <button
                                 onClick={handleBulkApply}
                                 disabled={bulkApplying}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
                                     padding: '5px 14px', borderRadius: 7, fontSize: 12, fontWeight: 500,
-                                    background: '#4F8EF7', color: 'white', border: 'none', cursor: 'pointer',
+                                    background: C.accentBlue, color: 'white', border: 'none', cursor: 'pointer',
                                     opacity: bulkApplying ? 0.6 : 1,
                                 }}
                             >
@@ -860,8 +861,8 @@ export default function Recommendations() {
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
                                     padding: '5px 12px', borderRadius: 7, fontSize: 11,
-                                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
-                                    color: 'rgba(255,255,255,0.45)', cursor: 'pointer',
+                                    background: 'transparent', border: B.medium,
+                                    color: C.textPlaceholder, cursor: 'pointer',
                                 }}
                             >
                                 <XCircle size={11} /> Dismiss selected
@@ -873,9 +874,9 @@ export default function Recommendations() {
 
             {!(recommendations || []).length ? (
                 <div style={{ padding: '48px 0', textAlign: 'center' }}>
-                    <CheckCircle2 size={40} style={{ color: '#4ADE80', margin: '0 auto 12px' }} />
-                    <div style={{ fontSize: 15, fontWeight: 500, color: '#F0F0F0', marginBottom: 4 }}>Nothing to do</div>
-                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>No active recommendations match the current filters.</div>
+                    <CheckCircle2 size={40} style={{ color: C.success, margin: '0 auto 12px' }} />
+                    <div style={{ fontSize: 15, fontWeight: 500, color: C.textPrimary, marginBottom: 4 }}>Nothing to do</div>
+                    <div style={{ fontSize: 13, color: C.w40 }}>No active recommendations match the current filters.</div>
                 </div>
             ) : (
                 <>

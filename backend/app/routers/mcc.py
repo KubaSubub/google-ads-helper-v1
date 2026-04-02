@@ -45,3 +45,18 @@ def mcc_dismiss_google_recommendations(
 @router.get("/negative-keyword-lists")
 def mcc_negative_keyword_lists(db: Session = Depends(get_db)):
     return MCCService(db).get_negative_keyword_lists_overview()
+
+
+@router.get("/shared-lists")
+def mcc_shared_lists(db: Session = Depends(get_db)):
+    """MCC-level shared negative keyword lists (from manager account)."""
+    return MCCService(db).get_mcc_shared_lists()
+
+
+@router.get("/billing-status")
+def mcc_billing_status(
+    customer_id: str = Query(..., description="Google customer ID (e.g. 123-456-7890)"),
+    db: Session = Depends(get_db),
+):
+    """Check billing/payment status for a specific account."""
+    return MCCService(db).get_billing_status(customer_id)

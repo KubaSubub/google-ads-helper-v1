@@ -34,14 +34,14 @@ const ROAS_COLOR = (roas) => {
     return 'rgba(248,113,113,0.06)'
 }
 const ROAS_BORDER = (roas) => {
-    if (typeof roas !== 'number') return 'rgba(255,255,255,0.04)'
+    if (typeof roas !== 'number') return C.w04
     if (roas >= 4) return 'rgba(74,222,128,0.15)'
     if (roas >= 2) return 'rgba(251,191,36,0.12)'
     return 'rgba(248,113,113,0.12)'
 }
 
 function AdStrengthBadge({ strength }) {
-    const color = AD_STRENGTH_COLOR[strength] || 'rgba(255,255,255,0.4)'
+    const color = AD_STRENGTH_COLOR[strength] || C.w40
     const tooltip = STRENGTH_TOOLTIPS[strength] || ''
     return (
         <span
@@ -61,9 +61,9 @@ function AdStrengthBadge({ strength }) {
 
 function PerformanceLabelBadge({ label }) {
     const colors = {
-        BEST: '#4ADE80', GOOD: '#4F8EF7', LOW: '#FBBF24', LEARNING: 'rgba(255,255,255,0.4)',
+        BEST: C.success, GOOD: C.accentBlue, LOW: C.warning, LEARNING: C.w40,
     }
-    const c = colors[label] || 'rgba(255,255,255,0.3)'
+    const c = colors[label] || C.w30
     return (
         <span style={{
             fontSize: 10, padding: '1px 6px', borderRadius: 999,
@@ -108,8 +108,8 @@ export default function PMaxPage() {
                 {children}
                 {agSortBy === field && (
                     agSortDir === 'asc'
-                        ? <ChevronUp size={10} style={{ color: '#4F8EF7' }} />
-                        : <ChevronDown size={10} style={{ color: '#4F8EF7' }} />
+                        ? <ChevronUp size={10} style={{ color: C.accentBlue }} />
+                        : <ChevronDown size={10} style={{ color: C.accentBlue }} />
                 )}
             </span>
         </th>
@@ -153,9 +153,9 @@ export default function PMaxPage() {
     const channelCount = channels.length
 
     const kpiCards = [
-        { label: 'Łączny koszt', value: `${totalCost.toFixed(2)} zł`, color: '#7B5CE0' },
-        { label: 'Konwersje', value: fmt(totalConversions), color: '#4ADE80' },
-        { label: 'Kanały', value: String(channelCount), color: '#4F8EF7' },
+        { label: 'Łączny koszt', value: `${totalCost.toFixed(2)} zł`, color: C.accentPurple },
+        { label: 'Konwersje', value: fmt(totalConversions), color: C.success },
+        { label: 'Kanały', value: String(channelCount), color: C.accentBlue },
     ]
 
     // Cannibalization overlapping terms
@@ -170,7 +170,7 @@ export default function PMaxPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
                 {kpiCards.map((k) => (
                     <div key={k.label} className="v2-card" style={{ padding: '20px 24px' }}>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
                             {k.label}
                         </div>
                         <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: k.color }}>
@@ -184,8 +184,8 @@ export default function PMaxPage() {
             {hasCannibalization && (
                 <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 24, borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.05)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                        <AlertTriangle size={16} style={{ color: '#F87171' }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Syne, sans-serif', color: '#F87171' }}>
+                        <AlertTriangle size={16} style={{ color: C.danger }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Syne, sans-serif', color: C.danger }}>
                             Wykryto kanibalizację słów kluczowych ({overlappingTerms.length} fraz)
                         </span>
                     </div>
@@ -193,14 +193,14 @@ export default function PMaxPage() {
                         {overlappingTerms.slice(0, 20).map((term, i) => (
                             <span key={i} style={{
                                 fontSize: 11, padding: '3px 10px', borderRadius: 999,
-                                background: 'rgba(248,113,113,0.12)', color: '#F87171',
+                                background: 'rgba(248,113,113,0.12)', color: C.danger,
                                 fontFamily: 'DM Sans, sans-serif',
                             }}>
                                 {term.search_term || term.query || (typeof term === 'string' ? term : term.text || '—')}
                             </span>
                         ))}
                         {overlappingTerms.length > 20 && (
-                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif', alignSelf: 'center' }}>
+                            <span style={{ fontSize: 11, color: C.w30, fontFamily: 'DM Sans, sans-serif', alignSelf: 'center' }}>
                                 +{overlappingTerms.length - 20} więcej
                             </span>
                         )}
@@ -230,51 +230,51 @@ export default function PMaxPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
                         {/* Total Groups */}
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
-                            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
                                 Grupy zasobów
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Layers size={16} style={{ color: '#4F8EF7' }} />
-                                <span style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: '#4F8EF7' }}>{agCount}</span>
+                                <Layers size={16} style={{ color: C.accentBlue }} />
+                                <span style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: C.accentBlue }}>{agCount}</span>
                             </div>
                         </div>
 
                         {/* Avg Ad Strength */}
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
-                            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
                                 Śr. Ad Strength
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <Award size={16} style={{ color: AD_STRENGTH_COLOR[avgStrengthLabel] || '#fff' }} />
                                 <AdStrengthBadge strength={avgStrengthLabel} />
-                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif' }}>({avgStrengthScore.toFixed(1)})</span>
+                                <span style={{ fontSize: 11, color: C.w30, fontFamily: 'DM Sans, sans-serif' }}>({avgStrengthScore.toFixed(1)})</span>
                             </div>
                         </div>
 
                         {/* Top Performer */}
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
-                            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
                                 Najlepszy ROAS
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <TrendingUp size={16} style={{ color: '#4ADE80' }} />
-                                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: '#4ADE80' }}>{fmt(topPerformer?.roas)}</span>
+                                <TrendingUp size={16} style={{ color: C.success }} />
+                                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: C.success }}>{fmt(topPerformer?.roas)}</span>
                             </div>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans, sans-serif', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 11, color: C.w40, fontFamily: 'DM Sans, sans-serif', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {topPerformer?.name || '—'}
                             </div>
                         </div>
 
                         {/* Bottom Performer */}
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
-                            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 6 }}>
                                 Najsłabszy ROAS
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <TrendingDown size={16} style={{ color: '#F87171' }} />
-                                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: '#F87171' }}>{fmt(bottomPerformer?.roas)}</span>
+                                <TrendingDown size={16} style={{ color: C.danger }} />
+                                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: C.danger }}>{fmt(bottomPerformer?.roas)}</span>
                             </div>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'DM Sans, sans-serif', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 11, color: C.w40, fontFamily: 'DM Sans, sans-serif', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {bottomPerformer?.name || '—'}
                             </div>
                         </div>
@@ -285,7 +285,7 @@ export default function PMaxPage() {
             {/* Asset Strength Distribution */}
             {assetGroups.length > 0 && (
                 <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, fontFamily: 'Syne, sans-serif', color: 'rgba(255,255,255,0.7)', marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, fontFamily: 'Syne, sans-serif', color: C.w70, marginBottom: 12 }}>
                         Rozkład Ad Strength
                     </div>
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -303,10 +303,10 @@ export default function PMaxPage() {
                                         {level}
                                     </span>
                                     <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Syne, sans-serif', color }}>{count}</span>
-                                    <div style={{ width: 48, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                                    <div style={{ width: 48, height: 4, borderRadius: 999, background: C.w06, overflow: 'hidden' }}>
                                         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 999, transition: 'width 0.3s' }} />
                                     </div>
-                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif' }}>{pct}%</span>
+                                    <span style={{ fontSize: 10, color: C.w30, fontFamily: 'DM Sans, sans-serif' }}>{pct}%</span>
                                 </div>
                             )
                         })}
@@ -316,20 +316,20 @@ export default function PMaxPage() {
 
             {/* Asset Groups Table */}
             <div className="v2-card" style={{ padding: 0, marginBottom: 24 }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ padding: '16px 20px', borderBottom: B.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Syne, sans-serif', color: 'rgba(255,255,255,0.9)' }}>
                         Grupy zasobów (Asset Groups)
                     </span>
-                    {loading && <Loader2 size={16} style={{ color: '#4F8EF7', animation: 'spin 1s linear infinite' }} />}
+                    {loading && <Loader2 size={16} style={{ color: C.accentBlue, animation: 'spin 1s linear infinite' }} />}
                 </div>
 
                 {loading && assetGroups.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif' }}>
+                    <div style={{ padding: 40, textAlign: 'center', color: C.w30, fontFamily: 'DM Sans, sans-serif' }}>
                         <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
                         <div>Ładowanie danych...</div>
                     </div>
                 ) : assetGroups.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
+                    <div style={{ padding: 40, textAlign: 'center', color: C.w30, fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
                         Brak grup zasobów dla wybranego okresu
                     </div>
                 ) : (() => {
@@ -355,7 +355,7 @@ export default function PMaxPage() {
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                                    <tr style={{ borderBottom: B.card }}>
                                         <th style={{ ...TH, width: 28 }} />
                                         <AgSortHeader field="name">Nazwa</AgSortHeader>
                                         <AgSortHeader field="ad_strength">Ad Strength</AgSortHeader>
@@ -370,7 +370,7 @@ export default function PMaxPage() {
                                     {sorted.map((row, i) => {
                                         const roas = row.roas || 0
                                         const isExpanded = expandedAgId === (row.id ?? i)
-                                        const roasColor = roas >= 4 ? '#4ADE80' : roas >= 2 ? '#FBBF24' : '#F87171'
+                                        const roasColor = roas >= 4 ? C.success : roas >= 2 ? C.warning : C.danger
                                         return (
                                             <React.Fragment key={row.id ?? i}>
                                                 <tr
@@ -381,20 +381,20 @@ export default function PMaxPage() {
                                                         cursor: 'pointer',
                                                     }}
                                                     onClick={() => setExpandedAgId(prev => prev === (row.id ?? i) ? null : (row.id ?? i))}
-                                                    onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+                                                    onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = C.w04 }}
                                                     onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = ROAS_COLOR(roas) }}
                                                 >
                                                     <td style={{ ...TD, width: 28, padding: '8px 4px 8px 12px' }}>
                                                         <ChevronRight
                                                             size={14}
                                                             style={{
-                                                                color: 'rgba(255,255,255,0.3)',
+                                                                color: C.w30,
                                                                 transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                                                                 transition: 'transform 0.15s',
                                                             }}
                                                         />
                                                     </td>
-                                                    <td style={{ ...TD, color: 'rgba(255,255,255,0.7)' }}>{row.name || '—'}</td>
+                                                    <td style={{ ...TD, color: C.w70 }}>{row.name || '—'}</td>
                                                     <td style={TD}><AdStrengthBadge strength={row.ad_strength} /></td>
                                                     <td style={{ ...TD, textAlign: 'right' }}>{fmtInt(row.total_clicks)}</td>
                                                     <td style={{ ...TD, textAlign: 'right' }}>{fmtCost(row.total_cost_micros)}</td>
@@ -408,7 +408,7 @@ export default function PMaxPage() {
                                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 8 }}>
                                                                 {/* Assets */}
                                                                 <div>
-                                                                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
+                                                                    <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
                                                                         Zasoby ({row.asset_count || 0})
                                                                     </div>
                                                                     {row.assets && row.assets.length > 0 ? (
@@ -417,60 +417,60 @@ export default function PMaxPage() {
                                                                                 <div key={ai} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontFamily: 'DM Sans, sans-serif' }}>
                                                                                     <span style={{
                                                                                         fontSize: 9, padding: '1px 5px', borderRadius: 4,
-                                                                                        background: 'rgba(79,142,247,0.1)', color: '#4F8EF7',
+                                                                                        background: C.infoBg, color: C.accentBlue,
                                                                                         fontWeight: 500, minWidth: 60, textAlign: 'center',
                                                                                     }}>
                                                                                         {asset.type}
                                                                                     </span>
-                                                                                    <span style={{ color: 'rgba(255,255,255,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
+                                                                                    <span style={{ color: C.w60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
                                                                                         {asset.text || '(media)'}
                                                                                     </span>
                                                                                     {asset.performance_label && <PerformanceLabelBadge label={asset.performance_label} />}
                                                                                 </div>
                                                                             ))}
                                                                             {row.assets.length > 12 && (
-                                                                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif' }}>
+                                                                                <div style={{ fontSize: 10, color: C.w30, fontFamily: 'DM Sans, sans-serif' }}>
                                                                                     +{row.assets.length - 12} więcej
                                                                                 </div>
                                                                             )}
                                                                         </div>
                                                                     ) : (
-                                                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontFamily: 'DM Sans, sans-serif' }}>Brak danych o zasobach</div>
+                                                                        <div style={{ fontSize: 11, color: C.w25, fontFamily: 'DM Sans, sans-serif' }}>Brak danych o zasobach</div>
                                                                     )}
                                                                 </div>
 
                                                                 {/* Details */}
                                                                 <div>
-                                                                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
+                                                                    <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
                                                                         Szczegóły
                                                                     </div>
                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, fontFamily: 'DM Sans, sans-serif' }}>
                                                                         <div style={{ display: 'flex', gap: 8 }}>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 80 }}>Status</span>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>{row.status || '—'}</span>
+                                                                            <span style={{ color: C.textMuted, minWidth: 80 }}>Status</span>
+                                                                            <span style={{ color: C.w70 }}>{row.status || '—'}</span>
                                                                         </div>
                                                                         <div style={{ display: 'flex', gap: 8 }}>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 80 }}>Impressions</span>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>{fmtInt(row.total_impressions)}</span>
+                                                                            <span style={{ color: C.textMuted, minWidth: 80 }}>Impressions</span>
+                                                                            <span style={{ color: C.w70 }}>{fmtInt(row.total_impressions)}</span>
                                                                         </div>
                                                                         <div style={{ display: 'flex', gap: 8 }}>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 80 }}>CTR</span>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>
+                                                                            <span style={{ color: C.textMuted, minWidth: 80 }}>CTR</span>
+                                                                            <span style={{ color: C.w70 }}>
                                                                                 {row.total_clicks && row.total_impressions
                                                                                     ? ((row.total_clicks / row.total_impressions) * 100).toFixed(2) + '%'
                                                                                     : '—'}
                                                                             </span>
                                                                         </div>
                                                                         <div style={{ display: 'flex', gap: 8 }}>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 80 }}>Avg CPC</span>
-                                                                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>
+                                                                            <span style={{ color: C.textMuted, minWidth: 80 }}>Avg CPC</span>
+                                                                            <span style={{ color: C.w70 }}>
                                                                                 {row.total_clicks > 0 ? ((row.total_cost_micros || 0) / row.total_clicks / 1e6).toFixed(2) + ' zł' : '—'}
                                                                             </span>
                                                                         </div>
                                                                         {row.final_url && (
                                                                             <div style={{ display: 'flex', gap: 8 }}>
-                                                                                <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 80 }}>URL</span>
-                                                                                <span style={{ color: '#4F8EF7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}>
+                                                                                <span style={{ color: C.textMuted, minWidth: 80 }}>URL</span>
+                                                                                <span style={{ color: C.accentBlue, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}>
                                                                                     {row.final_url}
                                                                                 </span>
                                                                             </div>
@@ -493,21 +493,21 @@ export default function PMaxPage() {
 
             {/* Channel Breakdown Table */}
             <div className="v2-card" style={{ padding: 0, marginBottom: 24 }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                <div style={{ padding: '16px 20px', borderBottom: B.card }}>
                     <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Syne, sans-serif', color: 'rgba(255,255,255,0.9)' }}>
                         Rozkład kanałów
                     </span>
                 </div>
 
                 {channels.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
+                    <div style={{ padding: 40, textAlign: 'center', color: C.w30, fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
                         Brak danych kanałów
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
-                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                                <tr style={{ borderBottom: B.card }}>
                                     <th style={TH}>Kanał</th>
                                     <th style={{ ...TH, textAlign: 'right' }}>Kliknięcia</th>
                                     <th style={{ ...TH, textAlign: 'right' }}>Koszt (zł)</th>
@@ -518,13 +518,13 @@ export default function PMaxPage() {
                             <tbody>
                                 {channels.map((row, i) => {
                                     const network = row.network_type || row.channel || 'UNKNOWN'
-                                    const channelColor = CHANNEL_COLORS[network] || 'rgba(255,255,255,0.5)'
+                                    const channelColor = CHANNEL_COLORS[network] || C.w50
                                     const costShare = row.cost_share_pct ?? null
                                     return (
                                         <tr
                                             key={i}
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.15s' }}
-                                            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                                            style={{ borderBottom: `1px solid ${C.w04}`, transition: 'background 0.15s' }}
+                                            onMouseEnter={(e) => (e.currentTarget.style.background = C.w03)}
                                             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                                         >
                                             <td style={TD}>
@@ -562,7 +562,7 @@ export default function PMaxPage() {
                     Motywy wyszukiwania (Search Themes)
                 </div>
                 {searchThemes.length === 0 ? (
-                    <div style={{ color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
+                    <div style={{ color: C.w30, fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
                         Brak motywów wyszukiwania dla wybranej kampanii
                     </div>
                 ) : (
@@ -570,7 +570,7 @@ export default function PMaxPage() {
                         {searchThemes.map((theme, i) => (
                             <span key={i} style={{
                                 fontSize: 12, padding: '4px 12px', borderRadius: 999,
-                                background: 'rgba(79,142,247,0.12)', color: '#4F8EF7',
+                                background: 'rgba(79,142,247,0.12)', color: C.accentBlue,
                                 border: '1px solid rgba(79,142,247,0.25)',
                                 fontFamily: 'DM Sans, sans-serif',
                             }}>

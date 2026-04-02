@@ -5,6 +5,7 @@ import { AlertTriangle, BarChart3, Building2, Loader2, Plus, Save, ShieldAlert, 
 import api, { getClient, updateClient, getMccAccounts } from '../api'
 import EmptyState from '../components/EmptyState'
 import { useApp } from '../contexts/AppContext'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const SAFETY_FIELDS = [
     { key: 'MAX_BID_CHANGE_PCT', label: 'Max zmiana stawki (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana stawki CPC w procentach', min: 1, max: 100 },
@@ -223,7 +224,7 @@ export default function Settings() {
     if (loading) {
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
-                <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                <Loader2 size={28} style={{ color: C.accentBlue }} className="animate-spin" />
             </div>
         )
     }
@@ -231,16 +232,16 @@ export default function Settings() {
     if (error) {
         return (
             <div className="v2-card" style={{ padding: 24, textAlign: 'center', maxWidth: 500, margin: '40px auto' }}>
-                <p style={{ color: '#F87171', fontSize: 13, marginBottom: 8 }}>{error}</p>
+                <p style={{ color: C.danger, fontSize: 13, marginBottom: 8 }}>{error}</p>
                 <button
                     onClick={loadClient}
                     style={{
                         padding: '5px 14px',
                         borderRadius: 7,
                         fontSize: 12,
-                        background: 'rgba(79,142,247,0.15)',
+                        background: C.infoBg,
                         border: '1px solid rgba(79,142,247,0.3)',
-                        color: '#4F8EF7',
+                        color: C.accentBlue,
                         cursor: 'pointer',
                     }}
                 >
@@ -254,8 +255,8 @@ export default function Settings() {
 
     const inputStyle = {
         width: '100%',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: C.w04,
+        border: `1px solid ${C.w08}`,
         borderRadius: 8,
         padding: '8px 12px',
         fontSize: 13,
@@ -267,7 +268,7 @@ export default function Settings() {
         display: 'block',
         fontSize: 10,
         fontWeight: 500,
-        color: 'rgba(255,255,255,0.35)',
+        color: C.textMuted,
         textTransform: 'uppercase',
         letterSpacing: '0.06em',
         marginBottom: 6,
@@ -275,7 +276,7 @@ export default function Settings() {
 
     const errorStyle = {
         fontSize: 11,
-        color: '#F87171',
+        color: C.danger,
         marginTop: 4,
     }
 
@@ -298,13 +299,13 @@ export default function Settings() {
                         fontSize: 12,
                         background: 'rgba(251,191,36,0.08)',
                         border: '1px solid rgba(251,191,36,0.2)',
-                        color: '#FBBF24',
+                        color: C.warning,
                     }}
                 >
                     <AlertTriangle size={14} />
                     Niezapisane zmiany
                     {hasErrors && (
-                        <span style={{ color: '#F87171', marginLeft: 8 }}>
+                        <span style={{ color: C.danger, marginLeft: 8 }}>
                             — popraw błędy walidacji
                         </span>
                     )}
@@ -313,10 +314,10 @@ export default function Settings() {
 
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Ustawienia klienta
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         Kontekst biznesowy, reguly i limity bezpieczenstwa
                     </p>
                 </div>
@@ -331,9 +332,9 @@ export default function Settings() {
                         borderRadius: 8,
                         fontSize: 12,
                         fontWeight: 500,
-                        background: hasErrors ? 'rgba(248,113,113,0.1)' : 'rgba(79,142,247,0.15)',
-                        border: `1px solid ${hasErrors ? 'rgba(248,113,113,0.25)' : 'rgba(79,142,247,0.3)'}`,
-                        color: hasErrors ? '#F87171' : '#4F8EF7',
+                        background: hasErrors ? C.dangerBg : C.infoBg,
+                        border: `1px solid ${hasErrors ? 'rgba(248,113,113,0.25)' : C.infoBorder}`,
+                        color: hasErrors ? C.danger : C.accentBlue,
                         cursor: (saving || hasErrors) ? 'not-allowed' : 'pointer',
                         opacity: saving ? 0.5 : 1,
                     }}
@@ -345,8 +346,8 @@ export default function Settings() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <section>
-                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 12 }}>
-                        <Building2 size={16} style={{ color: '#4F8EF7' }} />
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 12 }}>
+                        <Building2 size={16} style={{ color: C.accentBlue }} />
                         Informacje ogolne
                     </h3>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
@@ -377,8 +378,8 @@ export default function Settings() {
                 </section>
 
                 <section>
-                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 12 }}>
-                        <Target size={16} style={{ color: '#4ADE80' }} />
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 12 }}>
+                        <Target size={16} style={{ color: C.success }} />
                         Strategia i konkurencja
                     </h3>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
@@ -403,13 +404,13 @@ export default function Settings() {
                                             padding: '3px 10px',
                                             borderRadius: 999,
                                             fontSize: 12,
-                                            background: 'rgba(255,255,255,0.04)',
-                                            border: '1px solid rgba(255,255,255,0.08)',
-                                            color: 'rgba(255,255,255,0.6)',
+                                            background: C.w04,
+                                            border: `1px solid ${C.w08}`,
+                                            color: C.w60,
                                         }}
                                     >
                                         {competitor}
-                                        <button onClick={() => removeCompetitor(index)} style={{ color: 'rgba(255,255,255,0.3)', cursor: 'pointer', background: 'none', border: 'none' }}>
+                                        <button onClick={() => removeCompetitor(index)} style={{ color: C.w30, cursor: 'pointer', background: 'none', border: 'none' }}>
                                             <X size={12} />
                                         </button>
                                     </div>
@@ -423,7 +424,7 @@ export default function Settings() {
                                         fontSize: 12,
                                         background: 'rgba(79,142,247,0.08)',
                                         border: '1px solid rgba(79,142,247,0.2)',
-                                        color: '#4F8EF7',
+                                        color: C.accentBlue,
                                         cursor: 'pointer',
                                     }}
                                 >
@@ -435,8 +436,8 @@ export default function Settings() {
                 </section>
 
                 <section>
-                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 12 }}>
-                        <BarChart3 size={16} style={{ color: '#FBBF24' }} />
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 12 }}>
+                        <BarChart3 size={16} style={{ color: C.warning }} />
                         Reguly biznesowe
                     </h3>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
@@ -456,11 +457,11 @@ export default function Settings() {
                 </section>
 
                 <section>
-                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 4 }}>
-                        <ShieldAlert size={16} style={{ color: '#F87171' }} />
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <ShieldAlert size={16} style={{ color: C.danger }} />
                         Limity bezpieczeństwa
                     </h3>
-                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
+                    <p style={{ fontSize: 11, color: C.w30, marginBottom: 12 }}>
                         Nadpisz domyślne limity dla tego klienta. Puste pole = wartość globalna.
                     </p>
                     <div className="v2-card" style={{ padding: '18px 20px' }}>
@@ -491,7 +492,7 @@ export default function Settings() {
                                                     top: '50%',
                                                     transform: 'translateY(-50%)',
                                                     fontSize: 11,
-                                                    color: 'rgba(255,255,255,0.2)',
+                                                    color: C.w20,
                                                     pointerEvents: 'none',
                                                 }}>
                                                     {unit}
@@ -507,11 +508,11 @@ export default function Settings() {
                 </section>
 
                 <section>
-                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0', marginBottom: 4 }}>
-                        <ShieldAlert size={16} style={{ color: '#F87171' }} />
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <ShieldAlert size={16} style={{ color: C.danger }} />
                         Twardy reset danych klienta
                     </h3>
-                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
+                    <p style={{ fontSize: 11, color: C.w30, marginBottom: 12 }}>
                         Usuwa lokalne dane tego klienta: kampanie, grupy reklam, słowa kluczowe, search terms, rekomendacje, alerty, historię i logi sync. Nie usuwa profilu klienta ani credentials Google Ads.
                     </p>
                     <div className="v2-card" style={{ padding: '18px 20px', border: '1px solid rgba(248,113,113,0.22)', background: 'rgba(248,113,113,0.05)' }}>
@@ -560,30 +561,30 @@ export default function Settings() {
             {mccAccounts && mccAccounts.accounts && mccAccounts.accounts.length > 0 && (
                 <div style={{ maxWidth: 800 }}>
                     <section className="v2-card" style={{ padding: '18px 22px' }}>
-                        <h2 style={{ fontSize: 15, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                            <Building2 size={16} style={{ color: '#7B5CE0' }} />
+                        <h2 style={{ fontSize: 15, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                            <Building2 size={16} style={{ color: C.accentPurple }} />
                             Konta MCC ({mccAccounts.total})
                         </h2>
-                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 12 }}>
+                        <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
                             Konta podrzędne pod menadżerem Google Ads
                         </p>
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left' }}>ID konta</th>
-                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'left' }}>Nazwa</th>
-                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'center' }}>Status</th>
-                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', textAlign: 'center' }}>W aplikacji</th>
+                                    <tr style={{ borderBottom: B.subtle }}>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', textAlign: 'left' }}>ID konta</th>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', textAlign: 'left' }}>Nazwa</th>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', textAlign: 'center' }}>Status</th>
+                                        <th style={{ padding: '6px 10px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', textAlign: 'center' }}>W aplikacji</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {mccAccounts.accounts.map((acc, i) => (
-                                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                            <td style={{ padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' }}>{acc.customer_id}</td>
-                                            <td style={{ padding: '6px 10px', fontSize: 12, color: '#F0F0F0' }}>{acc.name || '—'}</td>
-                                            <td style={{ padding: '6px 10px', fontSize: 10, textAlign: 'center', color: acc.status === 'ENABLED' ? '#4ADE80' : 'rgba(255,255,255,0.4)' }}>{acc.status}</td>
-                                            <td style={{ padding: '6px 10px', fontSize: 10, textAlign: 'center', color: acc.local_client_id ? '#4ADE80' : 'rgba(255,255,255,0.25)' }}>
+                                        <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                            <td style={{ padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: C.w60 }}>{acc.customer_id}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: 12, color: C.textPrimary }}>{acc.name || '—'}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: 10, textAlign: 'center', color: acc.status === 'ENABLED' ? C.success : C.w40 }}>{acc.status}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: 10, textAlign: 'center', color: acc.local_client_id ? C.success : C.w25 }}>
                                                 {acc.local_client_id ? '✓ Połączony' : '—'}
                                             </td>
                                         </tr>

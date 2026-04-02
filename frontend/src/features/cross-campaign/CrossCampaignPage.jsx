@@ -36,11 +36,11 @@ function KpiCard({ label, value, accent, icon: Icon }) {
         minWidth: 180,
         borderRadius: 12,
         padding: '18px 20px',
-        borderLeft: `3px solid ${accent || '#4F8EF7'}`,
+        borderLeft: `3px solid ${accent || C.accentBlue}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {label}
         </span>
         {Icon && (
@@ -56,7 +56,7 @@ function KpiCard({ label, value, accent, icon: Icon }) {
 
 // ── Priority badge ───────────────────────────────────────────────────────────
 function PriorityBadge({ priority }) {
-  const color = priority === 'high' ? '#F87171' : '#FBBF24';
+  const color = priority === 'high' ? C.danger : C.warning;
   return (
     <span style={{
       fontSize: 10, padding: '2px 8px', borderRadius: 999,
@@ -74,7 +74,7 @@ function OverlapRow({ item, expanded, onToggle }) {
     <>
       <tr
         onClick={onToggle}
-        style={{ borderTop: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}
+        style={{ borderTop: `1px solid ${C.w05}`, cursor: 'pointer' }}
       >
         <td style={TD_DIM}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -85,7 +85,7 @@ function OverlapRow({ item, expanded, onToggle }) {
         <td style={{ ...TD, textAlign: 'center' }}>
           <span style={{
             fontSize: 11, fontWeight: 700, fontFamily: 'Syne',
-            color: item.campaign_count >= 3 ? '#F87171' : '#FBBF24',
+            color: item.campaign_count >= 3 ? C.danger : C.warning,
           }}>
             {item.campaign_count}
           </span>
@@ -94,18 +94,18 @@ function OverlapRow({ item, expanded, onToggle }) {
         <td style={{ ...TD, textAlign: 'right' }}>${fmtCost(item.total_cost_usd)}</td>
         <td style={{ ...TD, textAlign: 'right' }}>{fmtCost(item.total_conversions)}</td>
         <td style={{ ...TD, textAlign: 'right' }}>
-          <span style={{ color: item.estimated_waste_usd > 0 ? '#F87171' : 'rgba(255,255,255,0.45)' }}>
+          <span style={{ color: item.estimated_waste_usd > 0 ? C.danger : C.textPlaceholder }}>
             ${fmtCost(item.estimated_waste_usd)}
           </span>
         </td>
       </tr>
       {expanded && item.campaigns?.map((c, j) => (
-        <tr key={j} style={{ borderTop: '1px solid rgba(255,255,255,0.03)', background: 'rgba(255,255,255,0.02)' }}>
+        <tr key={j} style={{ borderTop: `1px solid ${C.w03}`, background: 'rgba(255,255,255,0.02)' }}>
           <td style={{ ...TD_DIM, paddingLeft: 36 }}>
             <span style={{ fontSize: 11 }}>{c.campaign_name}</span>
             <span style={{
               marginLeft: 8, fontSize: 10, padding: '1px 6px', borderRadius: 999,
-              background: 'rgba(79,142,247,0.1)', color: '#4F8EF7',
+              background: C.infoBg, color: C.accentBlue,
             }}>
               {c.match_type}
             </span>
@@ -133,11 +133,11 @@ function SuggestionCard({ s }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <AlertTriangle size={14} style={{ color: '#F87171' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#F87171' }}>Zerowe konwersje</span>
+          <AlertTriangle size={14} style={{ color: C.danger }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: C.danger }}>Zerowe konwersje</span>
           <PriorityBadge priority={s.priority} />
         </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: C.w60, lineHeight: 1.5 }}>
           <strong style={{ color: '#fff' }}>{s.campaign_name}</strong>{' '}
           wydala ${fmtCost(s.cost_usd)} bez konwersji. Rozważ wstrzymanie lub optymalizację.
         </div>
@@ -154,7 +154,7 @@ function SuggestionCard({ s }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Shuffle size={14} style={{ color: '#4F8EF7' }} />
+        <Shuffle size={14} style={{ color: C.accentBlue }} />
         <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Realokacja budżetu</span>
         <PriorityBadge priority={s.priority} />
       </div>
@@ -164,17 +164,17 @@ function SuggestionCard({ s }) {
           flex: 1, minWidth: 200, padding: '12px 16px', borderRadius: 10,
           background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)',
         }}>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
             Donor (wysoki CPA)
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 2 }}>{s.donor_campaign_name}</div>
-          <div style={{ fontSize: 12, color: '#F87171', fontFamily: 'monospace' }}>CPA: ${fmtCost(s.donor_cpa_usd)}</div>
+          <div style={{ fontSize: 12, color: C.danger, fontFamily: 'monospace' }}>CPA: ${fmtCost(s.donor_cpa_usd)}</div>
         </div>
 
         {/* Arrow */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-          <ArrowRight size={18} style={{ color: '#4F8EF7' }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#4F8EF7', fontFamily: 'Syne' }}>
+          <ArrowRight size={18} style={{ color: C.accentBlue }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.accentBlue, fontFamily: 'Syne' }}>
             ${fmtCost(s.suggested_move_usd)}/d
           </span>
         </div>
@@ -184,20 +184,20 @@ function SuggestionCard({ s }) {
           flex: 1, minWidth: 200, padding: '12px 16px', borderRadius: 10,
           background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.15)',
         }}>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
             Odbiorca (niski CPA)
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 2 }}>{s.recipient_campaign_name}</div>
-          <div style={{ fontSize: 12, color: '#4ADE80', fontFamily: 'monospace' }}>CPA: ${fmtCost(s.recipient_cpa_usd)}</div>
+          <div style={{ fontSize: 12, color: C.success, fontFamily: 'monospace' }}>CPA: ${fmtCost(s.recipient_cpa_usd)}</div>
           {s.recipient_budget_lost_is > 0 && (
-            <div style={{ fontSize: 10, color: '#FBBF24', marginTop: 2 }}>
+            <div style={{ fontSize: 10, color: C.warning, marginTop: 2 }}>
               Budget lost IS: {s.recipient_budget_lost_is.toFixed(1)}%
             </div>
           )}
         </div>
       </div>
-      <div style={{ marginTop: 10, fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
-        Szacowane oszczędności CPA: <strong style={{ color: '#4ADE80' }}>${fmtCost(s.estimated_cpa_savings_usd)}</strong>
+      <div style={{ marginTop: 10, fontSize: 11, color: C.textPlaceholder, lineHeight: 1.4 }}>
+        Szacowane oszczędności CPA: <strong style={{ color: C.success }}>${fmtCost(s.estimated_cpa_savings_usd)}</strong>
       </div>
     </div>
   );
@@ -206,8 +206,8 @@ function SuggestionCard({ s }) {
 // ── Campaign KPI card for budget tab ─────────────────────────────────────────
 function CampaignKpiCard({ cm, maxCost }) {
   const costBarPct = maxCost > 0 ? Math.min((cm.cost_usd / maxCost) * 100, 100) : 0;
-  const roasColor = cm.roas >= 4 ? '#4ADE80' : cm.roas >= 2 ? '#FBBF24' : '#F87171';
-  const cpaColor = cm.conversions > 0 ? (cm.cpa_usd <= 20 ? '#4ADE80' : cm.cpa_usd <= 50 ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)';
+  const roasColor = cm.roas >= 4 ? C.success : cm.roas >= 2 ? C.warning : C.danger;
+  const cpaColor = cm.conversions > 0 ? (cm.cpa_usd <= 20 ? C.success : cm.cpa_usd <= 50 ? C.warning : C.danger) : C.w30;
 
   return (
     <div
@@ -217,41 +217,41 @@ function CampaignKpiCard({ cm, maxCost }) {
       <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {cm.campaign_name}
       </div>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 10, color: C.w30, marginBottom: 10, textTransform: 'uppercase' }}>
         {cm.campaign_type}
       </div>
       {/* Cost bar */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: C.w40, marginBottom: 3 }}>
           <span>Koszt</span>
           <span style={{ color: '#fff', fontFamily: 'monospace' }}>${fmtCost(cm.cost_usd)}</span>
         </div>
-        <div style={{ width: '100%', height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
-          <div style={{ width: `${costBarPct}%`, height: '100%', borderRadius: 2, background: '#4F8EF7', transition: 'width 0.3s' }} />
+        <div style={{ width: '100%', height: 4, borderRadius: 2, background: C.w06 }}>
+          <div style={{ width: `${costBarPct}%`, height: '100%', borderRadius: 2, background: C.accentBlue, transition: 'width 0.3s' }} />
         </div>
       </div>
       {/* Metrics row */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>CPA</div>
+          <div style={{ fontSize: 9, color: C.w30, textTransform: 'uppercase' }}>CPA</div>
           <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Syne', color: cpaColor }}>
             {cm.conversions > 0 ? `$${fmtCost(cm.cpa_usd)}` : '\u2014'}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>ROAS</div>
+          <div style={{ fontSize: 9, color: C.w30, textTransform: 'uppercase' }}>ROAS</div>
           <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Syne', color: roasColor }}>
             {cm.roas > 0 ? cm.roas.toFixed(2) + 'x' : '\u2014'}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>Conv</div>
+          <div style={{ fontSize: 9, color: C.w30, textTransform: 'uppercase' }}>Conv</div>
           <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Syne', color: '#fff' }}>
             {fmtCost(cm.conversions)}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>CTR</div>
+          <div style={{ fontSize: 9, color: C.w30, textTransform: 'uppercase' }}>CTR</div>
           <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Syne', color: '#fff' }}>
             {fmtPct(cm.ctr)}
           </div>
@@ -426,9 +426,9 @@ export default function CrossCampaignPage() {
               style={{
                 padding: '6px 18px',
                 borderRadius: 999,
-                border: active ? '1px solid #4F8EF7' : '1px solid rgba(255,255,255,0.1)',
-                background: active ? 'rgba(79,142,247,0.15)' : 'transparent',
-                color: active ? '#4F8EF7' : 'rgba(255,255,255,0.55)',
+                border: active ? '1px solid #4F8EF7' : B.medium,
+                background: active ? C.infoBg : 'transparent',
+                color: active ? C.accentBlue : C.textSecondary,
                 fontSize: 13,
                 fontWeight: active ? 600 : 400,
                 cursor: 'pointer',
@@ -443,7 +443,7 @@ export default function CrossCampaignPage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <Loader2 size={32} className="animate-spin" style={{ color: '#4F8EF7' }} />
+          <Loader2 size={32} className="animate-spin" style={{ color: C.accentBlue }} />
         </div>
       ) : (
         <>
@@ -454,14 +454,14 @@ export default function CrossCampaignPage() {
             <>
               {/* Search bar */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   Nakładające się słowa kluczowe
                 </div>
                 {totalOverlaps > 0 && (
                   <div style={{ position: 'relative', width: 220 }}>
                     <Search
                       size={13}
-                      style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}
+                      style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.w30, pointerEvents: 'none' }}
                     />
                     <input
                       type="text"
@@ -470,7 +470,7 @@ export default function CrossCampaignPage() {
                       onChange={(e) => setOverlapSearch(e.target.value)}
                       style={{
                         width: '100%', padding: '6px 10px 6px 30px', borderRadius: 8,
-                        border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)',
+                        border: B.medium, background: C.w04,
                         color: '#fff', fontSize: 12, outline: 'none',
                       }}
                     />
@@ -524,7 +524,7 @@ export default function CrossCampaignPage() {
               {/* Suggestions */}
               {budgetSuggestions.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
                     Sugestie realokacji
                   </div>
                   {budgetSuggestions.map((s, i) => (
@@ -534,7 +534,7 @@ export default function CrossCampaignPage() {
               )}
 
               {/* Campaign KPI grid */}
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
                 Kampanie wg kosztu ({budget?.period_days || days} dni)
               </div>
               {(!budget?.campaigns || budget.campaigns.length === 0) ? (
@@ -553,11 +553,11 @@ export default function CrossCampaignPage() {
               {budget?.campaigns?.length > 0 && (
                 <div className="v2-card" style={{ borderRadius: 12, padding: '14px 20px', marginTop: 16, display: 'flex', gap: 24, flexWrap: 'wrap', borderLeft: '3px solid #4F8EF7' }}>
                   <div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Łączny koszt</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase' }}>Łączny koszt</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: '#fff' }}>${fmtCost(budget.total_cost_usd)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Średni CPA</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase' }}>Średni CPA</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: '#fff' }}>${fmtCost(budget.avg_cpa_usd)}</div>
                   </div>
                 </div>
@@ -571,7 +571,7 @@ export default function CrossCampaignPage() {
           {activeTab === 'comparison' && (
             <>
               {/* Campaign selector */}
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
                 Wybierz kampanie do porównania (min. 2, maks. 20)
               </div>
 
@@ -598,12 +598,12 @@ export default function CrossCampaignPage() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleCampaign(id)}
-                            style={{ accentColor: '#4F8EF7' }}
+                            style={{ accentColor: C.accentBlue }}
                           />
-                          <span style={{ fontSize: 12, color: checked ? '#fff' : 'rgba(255,255,255,0.6)', fontWeight: checked ? 600 : 400 }}>
+                          <span style={{ fontSize: 12, color: checked ? '#fff' : C.w60, fontWeight: checked ? 600 : 400 }}>
                             {c.name || c.campaign_name}
                           </span>
-                          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 'auto' }}>
+                          <span style={{ fontSize: 10, color: C.w25, marginLeft: 'auto' }}>
                             {c.campaign_type}
                           </span>
                         </label>
@@ -620,8 +620,8 @@ export default function CrossCampaignPage() {
                   disabled={selectedIds.size < 2 || compLoading}
                   style={{
                     padding: '8px 24px', borderRadius: 999, border: 'none',
-                    background: selectedIds.size < 2 ? 'rgba(255,255,255,0.08)' : '#4F8EF7',
-                    color: selectedIds.size < 2 ? 'rgba(255,255,255,0.3)' : '#fff',
+                    background: selectedIds.size < 2 ? C.w08 : C.accentBlue,
+                    color: selectedIds.size < 2 ? C.w30 : '#fff',
                     fontSize: 13, fontWeight: 600, cursor: selectedIds.size < 2 ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', gap: 8,
                     transition: 'all 0.15s',
@@ -659,7 +659,7 @@ export default function CrossCampaignPage() {
                         const values = comparison.campaigns.map((c) => c[m.key]);
                         const bestIdx = getBestIdx(values, m.type);
                         return (
-                          <tr key={m.key} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <tr key={m.key} style={{ borderTop: `1px solid ${C.w05}` }}>
                             <td style={{ ...TD_DIM, position: 'sticky', left: 0, background: '#111318', zIndex: 1, fontFamily: 'DM Sans', fontSize: 12 }}>
                               {m.label}
                             </td>
@@ -670,7 +670,7 @@ export default function CrossCampaignPage() {
                                   ...TD,
                                   textAlign: 'right',
                                   fontWeight: idx === bestIdx ? 700 : 400,
-                                  color: idx === bestIdx ? '#4ADE80' : 'rgba(255,255,255,0.8)',
+                                  color: idx === bestIdx ? C.success : C.w80,
                                 }}
                               >
                                 {m.fmt(c[m.key])}

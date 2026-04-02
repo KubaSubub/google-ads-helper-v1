@@ -376,6 +376,17 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `pacing-utils.js` — shared pacing calculation logic (pacing %, status, color).
 - Used by: DashboardPage, CampaignsPage, DailyAudit, Reports, VideoPage, CrossCampaignPage, CompetitivePage.
 
+## MCC Overview Landing Page
+- `MccOverviewPage.jsx` (`features/mcc-overview/`) — cross-account aggregation dashboard as the app landing page.
+- Route: `/mcc-overview`, set as default landing page (redirects from `/`).
+- KPI cards: total spend, conversions, CPA, ROAS across all client accounts.
+- Per-account table with health score (6-pillar breakdown), pacing status, change activity, unresolved alerts, last sync.
+- External changes detection (`/mcc/new-access`), Google recommendations pending count.
+- Negative keyword lists overview across all accounts (`/mcc/negative-keyword-lists`).
+- Bulk dismiss Google recommendations (`/mcc/dismiss-google-recommendations`).
+- Backend: `mcc.py` router with 4 endpoints (overview, new-access, dismiss-google-recommendations, negative-keyword-lists).
+- Reuses `BudgetPacingModule` and `KpiCard` shared components.
+
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
 - Display label: `PMax` (short, user-facing).

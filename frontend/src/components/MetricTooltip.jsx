@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Info } from 'lucide-react';
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const METRIC_DEFINITIONS = {
     CTR: 'Click-Through Rate — stosunek kliknięć do wyświetleń. Wyższy CTR = reklama bardziej trafna.',
@@ -53,7 +54,7 @@ export function MetricTooltip({ term, children, inline = false }) {
             }}
         >
             {children || <span>{term}</span>}
-            <Info size={11} style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
+            <Info size={11} style={{ color: C.w25, flexShrink: 0 }} />
 
             {visible && (
                 <div
@@ -64,18 +65,18 @@ export function MetricTooltip({ term, children, inline = false }) {
                         left: position.left,
                         width: 260,
                         padding: '10px 14px',
-                        background: '#1A1D24',
-                        border: '1px solid rgba(255,255,255,0.12)',
+                        background: C.surfaceElevated,
+                        border: B.hover,
                         borderRadius: 8,
                         fontSize: 11,
                         lineHeight: 1.5,
-                        color: 'rgba(255,255,255,0.7)',
+                        color: C.w70,
                         zIndex: 9999,
                         pointerEvents: 'none',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                     }}
                 >
-                    <div style={{ fontWeight: 600, color: '#4F8EF7', marginBottom: 3, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div style={{ fontWeight: 600, color: C.accentBlue, marginBottom: 3, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         {term}
                     </div>
                     {definition}

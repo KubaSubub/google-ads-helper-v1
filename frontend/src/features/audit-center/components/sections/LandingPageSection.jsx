@@ -6,7 +6,7 @@ export default function LandingPageSection({ data }) {
         <div style={{ padding: '0 16px 16px', overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr style={{ borderBottom: B.subtle }}>
                         <th style={TH}>URL</th>
                         <th style={TH}>Słów kl.</th>
                         <th style={TH}>Kliknięcia</th>
@@ -19,9 +19,9 @@ export default function LandingPageSection({ data }) {
                 </thead>
                 <tbody>
                     {data.pages.map((p, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
                             <td style={{ ...TD, fontFamily: 'inherit', maxWidth: 300 }}>
-                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#4F8EF7' }} title={p.url}>
+                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.accentBlue }} title={p.url}>
                                     {p.url.replace(/^https?:\/\/(www\.)?/, '').substring(0, 50)}
                                 </span>
                             </td>

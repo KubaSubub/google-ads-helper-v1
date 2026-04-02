@@ -18,6 +18,7 @@ import {
     Eye,
     EyeOff,
 } from 'lucide-react';
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const EMPTY_AUTH_STATUS = {
     authenticated: false,
@@ -52,8 +53,8 @@ const HIDDEN_SETUP_FIELDS = {
 
 const inputStyle = {
     width: '100%',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: C.w04,
+    border: B.medium,
     borderRadius: 8,
     padding: '10px 14px',
     fontSize: 13,
@@ -71,7 +72,7 @@ const labelStyle = {
     display: 'block',
     fontSize: 11,
     fontWeight: 500,
-    color: 'rgba(255,255,255,0.5)',
+    color: C.w50,
     marginBottom: 6,
 };
 
@@ -252,7 +253,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                     </button>
                 </div>
                 {hint && (
-                    <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
+                    <p style={{ fontSize: 10, color: C.w25, marginTop: 4 }}>
                         {hint}
                     </p>
                 )}
@@ -342,7 +343,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                 minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: '#0D0F14',
             }}>
-                <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                <Loader2 size={28} style={{ color: C.accentBlue }} className="animate-spin" />
             </div>
         );
     }
@@ -354,8 +355,8 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
         }}>
             <div style={{
                 maxWidth: 440, width: '100%', padding: 32,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)',
+                background: C.w03,
+                border: B.card,
                 borderRadius: 16, textAlign: 'center',
             }}>
                 <div style={{
@@ -367,25 +368,25 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                     <Zap size={28} color="white" />
                 </div>
 
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 4 }}>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', marginBottom: 4 }}>
                     Google Ads Helper
                 </h1>
 
                 <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    margin: '16px 0 24px', fontSize: 11, color: 'rgba(255,255,255,0.35)',
+                    margin: '16px 0 24px', fontSize: 11, color: C.textMuted,
                 }}>
                     <span style={{
                         display: 'flex', alignItems: 'center', gap: 4,
-                        color: setupComplete ? '#4ADE80' : '#4F8EF7',
+                        color: setupComplete ? C.success : C.accentBlue,
                     }}>
                         {setupComplete ? <CheckCircle size={12} /> : <Key size={12} />}
                         Konfiguracja API
                     </span>
-                    <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.15)' }} />
+                    <ChevronRight size={12} style={{ color: C.w15 }} />
                     <span style={{
                         display: 'flex', alignItems: 'center', gap: 4,
-                        color: loginActive ? '#4F8EF7' : 'rgba(255,255,255,0.25)',
+                        color: loginActive ? C.accentBlue : C.w25,
                     }}>
                         <LogIn size={12} />
                         Logowanie Google
@@ -414,8 +415,8 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                 {error && step !== 'ready-blocked' && (
                     <div style={{
                         marginBottom: 16, padding: '10px 14px', borderRadius: 8,
-                        background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)',
-                        color: '#F87171', fontSize: 12, textAlign: 'left',
+                        background: C.dangerBg, border: '1px solid rgba(248,113,113,0.2)',
+                        color: C.danger, fontSize: 12, textAlign: 'left',
                     }}>
                         {error}
                     </div>
@@ -423,20 +424,20 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
 
                 {step === 'setup' && (
                     <form onSubmit={handleSetupSubmit} style={{ textAlign: 'left' }}>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 8, textAlign: 'center' }}>
+                        <p style={{ fontSize: 12, color: C.textPlaceholder, marginBottom: 8, textAlign: 'center' }}>
                             Wpisz dane z Google Cloud Console i Google Ads API.
                             {' '}
                             <a
                                 href="https://developers.google.com/google-ads/api/docs/first-call/overview"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                style={{ color: '#4F8EF7', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 }}
+                                style={{ color: C.accentBlue, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 }}
                             >
                                 Jak uzyskac? <ExternalLink size={10} />
                             </a>
                         </p>
 
-                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 20, textAlign: 'center' }}>
+                        <p style={{ fontSize: 11, color: C.w30, marginBottom: 20, textAlign: 'center' }}>
                             Dane są zapisane lokalnie w Windows Credential Manager. Kliknij ikonkę oka, aby sprawdzić wartość.
                         </p>
 
@@ -477,8 +478,8 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                             style={{
                                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
-                                color: '#4F8EF7', cursor: loading || loadingStoredSetup ? 'wait' : 'pointer',
+                                background: C.infoBg, border: '1px solid rgba(79,142,247,0.3)',
+                                color: C.accentBlue, cursor: loading || loadingStoredSetup ? 'wait' : 'pointer',
                                 opacity: loading || loadingStoredSetup ? 0.6 : 1,
                             }}
                         >
@@ -490,7 +491,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
 
                 {step === 'oauth' && (
                     <div>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 20 }}>
+                        <p style={{ fontSize: 12, color: C.textPlaceholder, marginBottom: 20 }}>
                             Credentials skonfigurowane. Zaloguj sie kontem Google z dostepem do Google Ads.
                         </p>
 
@@ -500,8 +501,8 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                             style={{
                                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
-                                color: '#4F8EF7', cursor: loading ? 'wait' : 'pointer',
+                                background: C.infoBg, border: '1px solid rgba(79,142,247,0.3)',
+                                color: C.accentBlue, cursor: loading ? 'wait' : 'pointer',
                                 opacity: loading ? 0.6 : 1,
                             }}
                         >
@@ -519,7 +520,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                         </button>
 
                         {loading && (
-                            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 12 }}>
+                            <p style={{ fontSize: 11, color: C.w30, marginTop: 12 }}>
                                 Otworzylo sie okno przegladarki. Zaloguj sie tam i wroc tutaj.
                             </p>
                         )}
@@ -528,7 +529,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                             onClick={openSetupEditor}
                             style={{
                                 marginTop: 16, background: 'none', border: 'none',
-                                color: 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer',
+                                color: C.w30, fontSize: 11, cursor: 'pointer',
                                 textDecoration: 'underline',
                             }}
                         >
@@ -539,7 +540,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
 
                 {step === 'ready-blocked' && (
                     <div>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 20 }}>
+                        <p style={{ fontSize: 12, color: C.textPlaceholder, marginBottom: 20 }}>
                             Logowanie OAuth jest zakonczone, ale backend nie moze jeszcze potwierdzic gotowosci Google Ads API.
                         </p>
 
@@ -549,8 +550,8 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                             style={{
                                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
-                                color: '#4F8EF7', cursor: loading ? 'wait' : 'pointer',
+                                background: C.infoBg, border: '1px solid rgba(79,142,247,0.3)',
+                                color: C.accentBlue, cursor: loading ? 'wait' : 'pointer',
                                 opacity: loading ? 0.6 : 1,
                             }}
                         >
@@ -564,7 +565,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                             style={{
                                 width: '100%', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                background: C.w05, border: B.medium,
                                 color: '#E5E7EB', cursor: loading ? 'wait' : 'pointer',
                                 opacity: loading ? 0.6 : 1,
                             }}
@@ -577,7 +578,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                             onClick={openSetupEditor}
                             style={{
                                 marginTop: 16, background: 'none', border: 'none',
-                                color: 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer',
+                                color: C.w30, fontSize: 11, cursor: 'pointer',
                                 textDecoration: 'underline',
                             }}
                         >
@@ -585,7 +586,7 @@ export default function Login({ onAuthComplete, initialAuthStatus = EMPTY_AUTH_S
                         </button>
 
                         {!setupStatus.has_login_customer_id && (
-                            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 14 }}>
+                            <p style={{ fontSize: 11, color: C.w30, marginTop: 14 }}>
                                 Brakuje Login Customer ID? Wroc do konfiguracji API i uzupelnij pole MCC.
                             </p>
                         )}

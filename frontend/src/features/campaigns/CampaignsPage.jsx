@@ -11,6 +11,7 @@ import {
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
+import { C, T, S, R, B, PILL, TOOLTIP_STYLE, CAMPAIGN_STATUS, CHANNEL_COLORS, TRANSITION, FONT } from '../../constants/designTokens'
 import EmptyState from '../../components/EmptyState'
 import { LoadingSpinner, ErrorMessage } from '../../components/UI'
 import { BudgetPacingModule } from '../../components/modules'
@@ -20,9 +21,9 @@ import CampaignTrendExplorer from './components/CampaignTrendExplorer'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-    ENABLED: { dot: '#4ADE80', color: '#4ADE80', label: 'Aktywna' },
-    PAUSED: { dot: '#FBBF24', color: '#FBBF24', label: 'Wstrzymana' },
-    REMOVED: { dot: '#F87171', color: '#F87171', label: 'Usunięta' },
+    ENABLED: { dot: CAMPAIGN_STATUS.ENABLED.dot, color: CAMPAIGN_STATUS.ENABLED.dot, label: CAMPAIGN_STATUS.ENABLED.label },
+    PAUSED: { dot: CAMPAIGN_STATUS.PAUSED.dot, color: CAMPAIGN_STATUS.PAUSED.dot, label: CAMPAIGN_STATUS.PAUSED.label },
+    REMOVED: { dot: CAMPAIGN_STATUS.REMOVED.dot, color: CAMPAIGN_STATUS.REMOVED.dot, label: CAMPAIGN_STATUS.REMOVED.label },
 }
 
 const TYPE_LABELS = {
@@ -43,9 +44,9 @@ const ROLE_LABELS = {
 const ROLE_OPTIONS = ['BRAND', 'GENERIC', 'PROSPECTING', 'REMARKETING', 'PMAX', 'LOCAL', 'UNKNOWN']
 
 const PROTECTION_CONFIG = {
-    HIGH: { color: '#F87171', bg: 'rgba(248,113,113,0.12)' },
-    MEDIUM: { color: '#FBBF24', bg: 'rgba(251,191,36,0.12)' },
-    LOW: { color: '#4ADE80', bg: 'rgba(74,222,128,0.12)' },
+    HIGH: { color: C.danger, bg: C.dangerBg },
+    MEDIUM: { color: C.warning, bg: C.warningBg },
+    LOW: { color: C.success, bg: C.successBg },
 }
 
 const ROLE_SOURCE_LABELS = {
@@ -136,15 +137,15 @@ function ActionHistoryTimeline({ entries }) {
     return (
         <div className="v2-card" style={{ padding: '16px 20px' }}>
             <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                <Clock size={14} style={{ color: '#4F8EF7' }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                <Clock size={14} style={{ color: C.accentBlue }} />
+                <span style={{ ...T.sectionTitle, fontSize: 13 }}>
                     Historia zmian ({entries.length})
                 </span>
             </div>
             <div style={{ maxHeight: 360, overflowY: 'auto' }}>
                 {entries.map((entry, i) => {
                     const isHelper = entry.source === 'helper'
-                    const borderColor = isHelper ? '#4F8EF7' : 'rgba(255,255,255,0.12)'
+                    const borderColor = isHelper ? C.accentBlue : C.w12
                     const ts = entry.timestamp || entry.executed_at || entry.change_date_time
                     const op = entry.operation || entry.action_type
                     const beforeAfter = formatBeforeAfter(entry)
@@ -153,26 +154,26 @@ function ActionHistoryTimeline({ entries }) {
                         <div key={entry.action_log_id || entry.change_event_id || i} style={{
                             display: 'flex', gap: 10, paddingLeft: 12, paddingBottom: 10, marginBottom: 10,
                             borderLeft: `2px solid ${borderColor}`,
-                            borderBottom: i < entries.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                            borderBottom: i < entries.length - 1 ? `1px solid ${C.w04}` : 'none',
                         }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
                                 <div className="flex items-center gap-2" style={{ marginBottom: 3 }}>
                                     <span style={{
                                         fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
-                                        background: isHelper ? 'rgba(79,142,247,0.15)' : 'rgba(251,191,36,0.15)',
-                                        color: isHelper ? '#4F8EF7' : '#FBBF24',
+                                        background: isHelper ? C.accentBlueBg : C.warningBg,
+                                        color: isHelper ? C.accentBlue : C.warning,
                                     }}>
                                         {isHelper ? 'HELPER' : 'ZEWN.'}
                                     </span>
-                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>
+                                    <span style={{ fontSize: 10, color: C.w40, fontFamily: FONT.mono }}>
                                         {ts ? formatTimestamp(ts) : ''}
                                     </span>
                                 </div>
-                                <div style={{ fontSize: 12, color: '#F0F0F0', fontWeight: 500, marginBottom: 2 }}>
+                                <div style={{ fontSize: 12, color: C.textPrimary, fontWeight: 500, marginBottom: 2 }}>
                                     {getOperationLabel(op)}
                                 </div>
                                 {entry.entity_name && (
-                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+                                    <div style={{ fontSize: 11, color: C.textPlaceholder, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
                                         {entry.entity_name}
                                     </div>
                                 )}
@@ -371,10 +372,10 @@ export default function CampaignsPage() {
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ ...T.pageTitle }}>
                         Kampanie
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ ...T.pageSubtitle }}>
                         {filteredCampaigns.length} z {campaigns.length} kampanii
                     </p>
                 </div>
@@ -384,14 +385,14 @@ export default function CampaignsPage() {
                 {/* Campaign list */}
                 <div className="v2-card" style={{ padding: 6, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
                     {/* Sort & Filter toolbar */}
-                    <div style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 4 }}>
+                    <div style={{ padding: '6px 8px', borderBottom: `1px solid ${C.w06}`, marginBottom: 4 }}>
                         <div className="flex items-center gap-2" style={{ marginBottom: showFilter ? 8 : 0 }}>
                             <select
                                 value={sortBy}
                                 onChange={e => setSortBy(e.target.value)}
                                 style={{
-                                    flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: 6, padding: '4px 6px', fontSize: 10, color: '#F0F0F0', cursor: 'pointer',
+                                    flex: 1, background: C.w06, border: `1px solid ${C.w10}`,
+                                    borderRadius: R.sm, padding: '4px 6px', fontSize: 10, color: C.textPrimary, cursor: 'pointer',
                                 }}
                             >
                                 <option value="cost_usd">Koszt</option>
@@ -405,8 +406,8 @@ export default function CampaignsPage() {
                                 onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
                                 title={sortDir === 'desc' ? 'Malejąco' : 'Rosnąco'}
                                 style={{
-                                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#F0F0F0', fontSize: 10,
+                                    background: C.w06, border: `1px solid ${C.w10}`,
+                                    borderRadius: R.sm, padding: '4px 6px', cursor: 'pointer', color: C.textPrimary, fontSize: 10,
                                 }}
                             >
                                 {sortDir === 'desc' ? '↓' : '↑'}
@@ -415,10 +416,10 @@ export default function CampaignsPage() {
                                 onClick={() => setShowFilter(v => !v)}
                                 title="Filtruj po metryce"
                                 style={{
-                                    background: showFilter ? 'rgba(79,142,247,0.15)' : 'rgba(255,255,255,0.06)',
-                                    border: `1px solid ${showFilter ? 'rgba(79,142,247,0.3)' : 'rgba(255,255,255,0.1)'}`,
-                                    borderRadius: 6, padding: '4px 6px', cursor: 'pointer',
-                                    color: showFilter ? '#4F8EF7' : '#F0F0F0',
+                                    background: showFilter ? C.accentBlueBg : C.w06,
+                                    border: `1px solid ${showFilter ? C.infoBorder : C.w10}`,
+                                    borderRadius: R.sm, padding: '4px 6px', cursor: 'pointer',
+                                    color: showFilter ? C.accentBlue : C.textPrimary,
                                 }}
                             >
                                 <Filter size={11} />
@@ -430,8 +431,8 @@ export default function CampaignsPage() {
                                     value={metricFilter.field || ''}
                                     onChange={e => setMetricFilter(f => ({ ...f, field: e.target.value || null }))}
                                     style={{
-                                        flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: 6, padding: '4px 6px', fontSize: 10, color: '#F0F0F0', cursor: 'pointer',
+                                        flex: 1, background: C.w06, border: `1px solid ${C.w10}`,
+                                        borderRadius: R.sm, padding: '4px 6px', fontSize: 10, color: C.textPrimary, cursor: 'pointer',
                                     }}
                                 >
                                     <option value="">— metryka —</option>
@@ -445,8 +446,8 @@ export default function CampaignsPage() {
                                     value={metricFilter.op}
                                     onChange={e => setMetricFilter(f => ({ ...f, op: e.target.value }))}
                                     style={{
-                                        width: 36, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: 6, padding: '4px 4px', fontSize: 10, color: '#F0F0F0', cursor: 'pointer',
+                                        width: 36, background: C.w06, border: `1px solid ${C.w10}`,
+                                        borderRadius: R.sm, padding: '4px 4px', fontSize: 10, color: C.textPrimary, cursor: 'pointer',
                                     }}
                                 >
                                     <option value="gte">≥</option>
@@ -458,14 +459,14 @@ export default function CampaignsPage() {
                                     onChange={e => setMetricFilter(f => ({ ...f, value: e.target.value }))}
                                     placeholder="0"
                                     style={{
-                                        width: 52, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: 6, padding: '4px 6px', fontSize: 10, color: '#F0F0F0',
+                                        width: 52, background: C.w06, border: `1px solid ${C.w10}`,
+                                        borderRadius: R.sm, padding: '4px 6px', fontSize: 10, color: C.textPrimary,
                                     }}
                                 />
                                 {metricFilter.field && (
                                     <button
                                         onClick={() => setMetricFilter({ field: null, op: 'gte', value: '' })}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', padding: 0 }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 0 }}
                                     >
                                         <X size={11} />
                                     </button>
@@ -475,7 +476,7 @@ export default function CampaignsPage() {
                     </div>
 
                     {filteredCampaigns.length === 0 ? (
-                        <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                        <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: 12, color: C.textDim }}>
                             Brak kampanii
                         </div>
                     ) : filteredCampaigns.map(c => {
@@ -490,28 +491,28 @@ export default function CampaignsPage() {
                                     width: '100%', textAlign: 'left',
                                     padding: '10px 12px', borderRadius: 8,
                                     background: active ? 'rgba(79,142,247,0.12)' : 'transparent',
-                                    border: `1px solid ${active ? 'rgba(79,142,247,0.3)' : 'transparent'}`,
+                                    border: `1px solid ${active ? C.infoBorder : 'transparent'}`,
                                     cursor: 'pointer', display: 'block', marginBottom: 2,
                                     borderLeft: active ? '2px solid #4F8EF7' : '2px solid transparent',
                                 }}
                                 className={active ? '' : 'hover:bg-white/[0.04]'}
                             >
                                 <div className="flex items-center justify-between gap-2" style={{ marginBottom: 4 }}>
-                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <span style={{ fontSize: 12, fontWeight: 500, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {c.name}
                                     </span>
                                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: sCfg.dot, flexShrink: 0 }} />
                                 </div>
-                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', display: 'flex', gap: 6 }}>
+                                <div style={{ fontSize: 11, color: C.textMuted, display: 'flex', gap: 6 }}>
                                     <span>{TYPE_LABELS[c.campaign_type] ?? c.campaign_type}</span>
                                     <span>·</span>
                                     <span>{c.budget_usd?.toFixed(0)} zł/d</span>
                                 </div>
                                 {cm && (
-                                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', display: 'flex', gap: 8, marginTop: 4 }}>
+                                    <div style={{ fontSize: 10, color: C.w40, display: 'flex', gap: 8, marginTop: 4 }}>
                                         <span>{cm.cost_usd?.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł</span>
                                         <span>{cm.conversions?.toFixed(1)} conv</span>
-                                        <span style={{ color: (cm.roas ?? 0) >= 3 ? '#4ADE80' : (cm.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>
+                                        <span style={{ color: (cm.roas ?? 0) >= 3 ? C.success : (cm.roas ?? 0) >= 1 ? C.warning : C.danger }}>
                                             {cm.roas?.toFixed(1)}× ROAS
                                         </span>
                                     </div>
@@ -527,13 +528,13 @@ export default function CampaignsPage() {
                         <>
                             {/* Header */}
                             <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0' }}>{selected.name}</span>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary }}>{selected.name}</span>
                                 {(() => {
                                     const sCfg = STATUS_CONFIG[selected.status] || { color: '#666', label: selected.status }
                                     return <span style={{ fontSize: 11, color: sCfg.color }}>● {sCfg.label}</span>
                                 })()}
                                 {selected.bidding_strategy && (
-                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>
+                                    <span style={{ fontSize: 10, color: C.w25, marginLeft: 4 }}>
                                         {selected.bidding_strategy}
                                         {selected.target_cpa_micros ? ` · CPA ${(selected.target_cpa_micros / 1000000).toFixed(2)} zł` : ''}
                                         {selected.target_roas ? ` · ROAS ${selected.target_roas}` : ''}
@@ -546,8 +547,8 @@ export default function CampaignsPage() {
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: 5,
                                         padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
-                                        background: 'rgba(79,142,247,0.1)', border: '1px solid rgba(79,142,247,0.25)',
-                                        color: '#4F8EF7', cursor: 'pointer',
+                                        background: C.infoBg, border: '1px solid rgba(79,142,247,0.25)',
+                                        color: C.accentBlue, cursor: 'pointer',
                                     }}
                                 >
                                     <KeyRound size={12} /> Słowa kluczowe
@@ -558,7 +559,7 @@ export default function CampaignsPage() {
                                         display: 'flex', alignItems: 'center', gap: 5,
                                         padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
                                         background: 'rgba(123,92,224,0.1)', border: '1px solid rgba(123,92,224,0.25)',
-                                        color: '#7B5CE0', cursor: 'pointer',
+                                        color: C.accentPurple, cursor: 'pointer',
                                     }}
                                 >
                                     <Search size={12} /> Wyszukiwane frazy
@@ -568,32 +569,32 @@ export default function CampaignsPage() {
                             <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16 }}>
                                 <div className="flex items-center justify-between flex-wrap" style={{ gap: 10, marginBottom: 12 }}>
                                     <div>
-                                        <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                                             Rola kampanii
                                         </div>
-                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                                        <div style={{ fontSize: 11, color: C.w40, marginTop: 2 }}>
                                             Auto-klasyfikacja jest deterministyczna. Manual override blokuje nadpisanie przez sync.
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(79,142,247,0.12)', color: '#4F8EF7' }}>
+                                        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(79,142,247,0.12)', color: C.accentBlue }}>
                                             {ROLE_SOURCE_LABELS[selected.role_source] || selected.role_source || 'Auto'}
                                         </span>
                                         <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).bg, color: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).color }}>
                                             Protection {selected.protection_level || 'HIGH'}
                                         </span>
-                                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
+                                        <span style={{ fontSize: 10, color: C.textPlaceholder }}>
                                             Confidence {selected.role_confidence != null ? `${Math.round(selected.role_confidence * 100)}%` : '—'}
                                         </span>
                                     </div>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 220px auto auto', gap: 10, alignItems: 'end' }}>
                                     <div>
-                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 4 }}>
-                                            Auto: <span style={{ color: '#F0F0F0' }}>{ROLE_LABELS[selected.campaign_role_auto] || selected.campaign_role_auto || 'Unknown'}</span>
+                                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>
+                                            Auto: <span style={{ color: C.textPrimary }}>{ROLE_LABELS[selected.campaign_role_auto] || selected.campaign_role_auto || 'Unknown'}</span>
                                         </div>
-                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-                                            Final: <span style={{ color: '#F0F0F0' }}>{ROLE_LABELS[selected.campaign_role_final] || selected.campaign_role_final || 'Unknown'}</span>
+                                        <div style={{ fontSize: 11, color: C.textMuted }}>
+                                            Final: <span style={{ color: C.textPrimary }}>{ROLE_LABELS[selected.campaign_role_final] || selected.campaign_role_final || 'Unknown'}</span>
                                         </div>
                                     </div>
                                     <DarkSelect
@@ -615,7 +616,7 @@ export default function CampaignsPage() {
                                             padding: '0 14px',
                                             borderRadius: 8,
                                             border: 'none',
-                                            background: '#4F8EF7',
+                                            background: C.accentBlue,
                                             color: 'white',
                                             cursor: savingRole || !roleDraft ? 'not-allowed' : 'pointer',
                                             opacity: savingRole || !roleDraft ? 0.5 : 1,
@@ -632,9 +633,9 @@ export default function CampaignsPage() {
                                             height: 36,
                                             padding: '0 14px',
                                             borderRadius: 8,
-                                            border: '1px solid rgba(255,255,255,0.12)',
+                                            border: B.hover,
                                             background: 'transparent',
-                                            color: 'rgba(255,255,255,0.6)',
+                                            color: C.w60,
                                             cursor: savingRole || selected.role_source !== 'MANUAL' ? 'not-allowed' : 'pointer',
                                             opacity: savingRole || selected.role_source !== 'MANUAL' ? 0.5 : 1,
                                             fontSize: 12,
@@ -669,22 +670,22 @@ export default function CampaignsPage() {
                                     {deviceData?.devices?.length > 0 && (
                                         <div className="v2-card" style={{ padding: '16px 20px' }}>
                                             <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                                                <Monitor size={14} style={{ color: '#4F8EF7' }} />
-                                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>Urządzenia</span>
+                                                <Monitor size={14} style={{ color: C.accentBlue }} />
+                                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>Urządzenia</span>
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                                 {deviceData.devices.map(d => {
-                                                    const color = d.device === 'MOBILE' ? '#4F8EF7' : d.device === 'DESKTOP' ? '#7B5CE0' : '#FBBF24'
+                                                    const color = d.device === 'MOBILE' ? C.accentBlue : d.device === 'DESKTOP' ? C.accentPurple : C.warning
                                                     return (
                                                         <div key={d.device}>
                                                             <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                                                                <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{d.device}</span>
-                                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
+                                                                <span style={{ fontSize: 12, fontWeight: 500, color: C.textPrimary }}>{d.device}</span>
+                                                                <span style={{ fontSize: 11, color: C.w40 }}>{d.share_clicks_pct}% kliknięć</span>
                                                             </div>
-                                                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                                            <div style={{ height: 4, borderRadius: 2, background: C.w06 }}>
                                                                 <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
                                                             </div>
-                                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: C.textMuted }}>
                                                                 <span>CTR {d.ctr}% · CPC {d.cpc?.toFixed(2)} zł</span>
                                                                 <span>ROAS {d.roas}×</span>
                                                             </div>
@@ -699,8 +700,8 @@ export default function CampaignsPage() {
                                     {geoData?.cities?.length > 0 && (
                                         <div className="v2-card" style={{ padding: '16px 20px' }}>
                                             <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                                                <MapPin size={14} style={{ color: '#7B5CE0' }} />
-                                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>Top miasta</span>
+                                                <MapPin size={14} style={{ color: C.accentPurple }} />
+                                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>Top miasta</span>
                                             </div>
                                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                                 <thead>
@@ -708,7 +709,7 @@ export default function CampaignsPage() {
                                                         {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
                                                             <th key={h} style={{
                                                                 padding: '4px 6px', fontSize: 10, fontWeight: 500,
-                                                                color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+                                                                color: C.textMuted, textTransform: 'uppercase',
                                                                 letterSpacing: '0.08em', textAlign: h === 'Miasto' ? 'left' : 'right',
                                                             }}>{h}</th>
                                                         ))}
@@ -716,11 +717,11 @@ export default function CampaignsPage() {
                                                 </thead>
                                                 <tbody>
                                                     {geoData.cities.slice(0, 8).map(c => (
-                                                        <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                                                            <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
-                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
-                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0)} zł</td>
-                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? '#4ADE80' : c.roas >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2)}×</td>
+                                                        <tr key={c.city} style={{ borderTop: `1px solid ${C.w04}` }}>
+                                                            <td style={{ padding: '6px', fontSize: 12, color: C.textPrimary }}>{c.city}</td>
+                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.clicks}</td>
+                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.cost_usd?.toFixed(0)} zł</td>
+                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? C.success : c.roas >= 1 ? C.warning : C.danger }}>{c.roas?.toFixed(2)}×</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -735,13 +736,13 @@ export default function CampaignsPage() {
 
                             {/* Loading secondary */}
                             {loadingSecondary && (
-                                <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                                <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: C.w30 }}>
                                     Ładowanie dodatkowych danych…
                                 </div>
                             )}
                         </>
                     ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: C.w30, fontSize: 13 }}>
                             Wybierz kampanię z listy
                         </div>
                     )}

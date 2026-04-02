@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Keyboard } from 'lucide-react'
 import { NAV_GROUPS } from './layout/Sidebar/navConfig'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 /**
  * Build shortcut entries from nav config — maps keys 1-9 to sidebar items in order.
@@ -63,9 +64,9 @@ export default function ShortcutsHint() {
                     width: 32,
                     height: 32,
                     borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: open ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                    color: open ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.4)',
+                    border: B.medium,
+                    background: open ? C.w08 : C.w03,
+                    color: open ? C.w80 : C.w40,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -74,14 +75,14 @@ export default function ShortcutsHint() {
                 }}
                 onMouseEnter={(e) => {
                     if (!open) {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-                        e.currentTarget.style.color = 'rgba(255,255,255,0.6)'
+                        e.currentTarget.style.background = C.w06
+                        e.currentTarget.style.color = C.w60
                     }
                 }}
                 onMouseLeave={(e) => {
                     if (!open) {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
-                        e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+                        e.currentTarget.style.background = C.w03
+                        e.currentTarget.style.color = C.w40
                     }
                 }}
             >
@@ -97,7 +98,7 @@ export default function ShortcutsHint() {
                         width: 280,
                         background: 'rgba(17, 19, 24, 0.97)',
                         backdropFilter: 'blur(16px)',
-                        border: '1px solid rgba(255,255,255,0.07)',
+                        border: B.card,
                         borderRadius: 12,
                         padding: '14px 0',
                         zIndex: 100,
@@ -108,7 +109,7 @@ export default function ShortcutsHint() {
                     <div
                         style={{
                             padding: '0 16px 10px',
-                            borderBottom: '1px solid rgba(255,255,255,0.07)',
+                            borderBottom: B.card,
                             marginBottom: 8,
                         }}
                     >
@@ -116,7 +117,7 @@ export default function ShortcutsHint() {
                             style={{
                                 fontSize: 11,
                                 fontWeight: 600,
-                                color: 'rgba(255,255,255,0.6)',
+                                color: C.w60,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.08em',
                                 fontFamily: 'Syne, sans-serif',
@@ -132,7 +133,7 @@ export default function ShortcutsHint() {
                             style={{
                                 fontSize: 9,
                                 fontWeight: 500,
-                                color: 'rgba(255,255,255,0.3)',
+                                color: C.w30,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.1em',
                                 padding: '4px 4px 6px',
@@ -146,7 +147,7 @@ export default function ShortcutsHint() {
                     </div>
 
                     {/* Separator */}
-                    <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 12px' }} />
+                    <div style={{ height: 1, background: C.w05, margin: '8px 12px' }} />
 
                     {/* Extra shortcuts */}
                     <div style={{ padding: '0 12px' }}>
@@ -154,7 +155,7 @@ export default function ShortcutsHint() {
                             style={{
                                 fontSize: 9,
                                 fontWeight: 500,
-                                color: 'rgba(255,255,255,0.3)',
+                                color: C.w30,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.1em',
                                 padding: '4px 4px 6px',
@@ -182,7 +183,7 @@ function ShortcutRow({ shortcutKey, label }) {
                 padding: '4px 4px',
             }}
         >
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'DM Sans, sans-serif' }}>
+            <span style={{ fontSize: 12, color: C.textSecondary, fontFamily: 'DM Sans, sans-serif' }}>
                 {label}
             </span>
             <kbd
@@ -194,11 +195,11 @@ function ShortcutRow({ shortcutKey, label }) {
                     height: 22,
                     padding: '0 6px',
                     borderRadius: 6,
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: C.w06,
+                    border: B.medium,
                     fontSize: 11,
                     fontWeight: 500,
-                    color: 'rgba(255,255,255,0.45)',
+                    color: C.textPlaceholder,
                     fontFamily: 'DM Sans, monospace',
                 }}
             >

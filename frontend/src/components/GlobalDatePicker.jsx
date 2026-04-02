@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useFilter, DATE_PRESETS } from '../contexts/FilterContext'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const DAYS_PL = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd']
 const MONTHS_PL = [
@@ -76,20 +77,20 @@ function MiniCalendar({ dateFrom, dateTo, onSelectDate }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: 'rgba(255,255,255,0.4)' }} className="hover:bg-white/5">
+                <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: C.w40 }} className="hover:bg-white/5">
                     <ChevronLeft size={16} />
                 </button>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF' }}>
                     {MONTHS_PL[viewMonth]} {viewYear}
                 </span>
-                <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: 'rgba(255,255,255,0.4)' }} className="hover:bg-white/5">
+                <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: C.w40 }} className="hover:bg-white/5">
                     <ChevronRight size={16} />
                 </button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0, textAlign: 'center' }}>
                 {DAYS_PL.map(d => (
-                    <div key={d} style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', padding: '4px 0', fontWeight: 500 }}>{d}</div>
+                    <div key={d} style={{ fontSize: 10, color: C.w30, padding: '4px 0', fontWeight: 500 }}>{d}</div>
                 ))}
                 {weeks.flat().map((day, i) => {
                     if (day === null) return <div key={`e${i}`} style={{ padding: '4px 0' }} />
@@ -110,8 +111,8 @@ function MiniCalendar({ dateFrom, dateTo, onSelectDate }) {
                                 padding: '5px 0',
                                 fontSize: 11,
                                 fontWeight: isEndpoint ? 600 : 400,
-                                color: isEndpoint ? '#FFFFFF' : isInRange ? '#4F8EF7' : 'rgba(255,255,255,0.6)',
-                                background: isEndpoint ? '#4F8EF7' : isInRange ? 'rgba(79,142,247,0.1)' : 'transparent',
+                                color: isEndpoint ? '#FFFFFF' : isInRange ? C.accentBlue : C.w60,
+                                background: isEndpoint ? C.accentBlue : isInRange ? C.infoBg : 'transparent',
                                 border: 'none',
                                 borderRadius: isFrom ? '6px 0 0 6px' : isTo ? '0 6px 6px 0' : 0,
                                 cursor: 'pointer',
@@ -124,7 +125,7 @@ function MiniCalendar({ dateFrom, dateTo, onSelectDate }) {
                             {isToday && !isEndpoint && (
                                 <span style={{
                                     position: 'absolute', bottom: 1, left: '50%', transform: 'translateX(-50%)',
-                                    width: 3, height: 3, borderRadius: '50%', background: '#4F8EF7',
+                                    width: 3, height: 3, borderRadius: '50%', background: C.accentBlue,
                                 }} />
                             )}
                         </button>
@@ -191,18 +192,18 @@ export default function GlobalDatePicker() {
                     gap: 10,
                     padding: '8px 14px',
                     borderRadius: 10,
-                    background: open ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${open ? 'rgba(79,142,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                    background: open ? C.w06 : C.w04,
+                    border: `1px solid ${open ? 'rgba(79,142,247,0.4)' : C.w08}`,
                     cursor: 'pointer',
                     transition: 'all 0.15s',
                 }}
                 className="hover:bg-white/[0.06]"
             >
-                <Calendar size={15} style={{ color: '#4F8EF7', flexShrink: 0 }} />
+                <Calendar size={15} style={{ color: C.accentBlue, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, fontWeight: 500, color: '#FFFFFF', whiteSpace: 'nowrap' }}>
                     {getPresetLabel(filters)}
                 </span>
-                <ChevronDown size={14} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                <ChevronDown size={14} style={{ color: C.w40, flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
             </button>
 
             {open && (
@@ -213,8 +214,8 @@ export default function GlobalDatePicker() {
                     zIndex: 50,
                     display: 'flex',
                     borderRadius: 12,
-                    background: '#1A1D24',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: C.surfaceElevated,
+                    border: B.medium,
                     boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
                     overflow: 'hidden',
                     minWidth: 460,
@@ -226,10 +227,10 @@ export default function GlobalDatePicker() {
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 2,
-                        borderRight: '1px solid rgba(255,255,255,0.07)',
+                        borderRight: B.card,
                         flexShrink: 0,
                     }}>
-                        <div style={{ fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '4px 10px 6px' }}>
+                        <div style={{ fontSize: 9, fontWeight: 500, color: C.w25, letterSpacing: '0.12em', textTransform: 'uppercase', padding: '4px 10px 6px' }}>
                             Szybki wybór
                         </div>
                         {DATE_PRESETS.map((preset, i) => {
@@ -246,8 +247,8 @@ export default function GlobalDatePicker() {
                                         borderRadius: 6,
                                         fontSize: 12,
                                         fontWeight: active ? 500 : 400,
-                                        color: active ? '#4F8EF7' : 'rgba(255,255,255,0.6)',
-                                        background: active ? 'rgba(79,142,247,0.15)' : 'transparent',
+                                        color: active ? C.accentBlue : C.w60,
+                                        background: active ? C.infoBg : 'transparent',
                                         border: active ? '1px solid rgba(79,142,247,0.4)' : '1px solid transparent',
                                         cursor: 'pointer',
                                         textAlign: 'left',
@@ -273,9 +274,9 @@ export default function GlobalDatePicker() {
                                 marginTop: 8,
                                 padding: '6px 10px',
                                 borderRadius: 6,
-                                background: 'rgba(79,142,247,0.1)',
+                                background: C.infoBg,
                                 fontSize: 11,
-                                color: 'rgba(255,255,255,0.5)',
+                                color: C.w50,
                                 textAlign: 'center',
                             }}>
                                 Kliknij datę końcową zakresu

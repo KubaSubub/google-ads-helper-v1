@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 /**
  * Custom dark-themed dropdown replacing native <select>.
@@ -54,9 +55,9 @@ export default function DarkSelect({
                     borderRadius: 8,
                     fontSize: 12,
                     fontWeight: selected ? 500 : 400,
-                    color: selected ? '#F0F0F0' : 'rgba(255,255,255,0.4)',
-                    background: open ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${open ? 'rgba(79,142,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    color: selected ? C.textPrimary : C.w40,
+                    background: open ? C.w06 : C.w04,
+                    border: `1px solid ${open ? 'rgba(79,142,247,0.4)' : C.w10}`,
                     outline: 'none',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     opacity: disabled ? 0.5 : 1,
@@ -77,7 +78,7 @@ export default function DarkSelect({
                     right: 9,
                     top: '50%',
                     transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)`,
-                    color: 'rgba(255,255,255,0.3)',
+                    color: C.w30,
                     pointerEvents: 'none',
                     transition: 'transform 0.15s',
                 }}
@@ -87,8 +88,8 @@ export default function DarkSelect({
                     position: 'absolute',
                     ...dropdownPos,
                     zIndex: 60,
-                    background: '#1A1D24',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: C.surfaceElevated,
+                    border: B.medium,
                     borderRadius: 8,
                     padding: 3,
                     boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
@@ -114,7 +115,7 @@ export default function DarkSelect({
                                     fontSize: 12,
                                     fontWeight: active ? 500 : 400,
                                     color: active ? '#FFFFFF' : 'rgba(255,255,255,0.65)',
-                                    background: active ? 'rgba(79,142,247,0.15)' : 'transparent',
+                                    background: active ? C.infoBg : 'transparent',
                                     border: 'none',
                                     cursor: 'pointer',
                                     textAlign: 'left',

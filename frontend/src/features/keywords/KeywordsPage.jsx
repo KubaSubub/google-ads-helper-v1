@@ -11,6 +11,7 @@ import NegativeKeywordsTab from './components/NegativeKeywordsTab'
 import NegativeKeywordListsTab from './components/NegativeKeywordListsTab'
 import KeywordExpansionTab from './components/KeywordExpansionTab'
 import { TAB_STYLE } from './components/shared'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../../constants/designTokens'
 
 export default function KeywordsPage() {
     const { selectedClientId, showToast } = useApp()
@@ -24,7 +25,7 @@ export default function KeywordsPage() {
     return (
         <div style={{ maxWidth: 1480 }}>
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                     Słowa kluczowe
                 </h1>
                 <div className="flex items-center gap-2">
@@ -40,7 +41,7 @@ export default function KeywordsPage() {
                     <button onClick={() => setActiveTab('expansion')} style={TAB_STYLE(activeTab === 'expansion')}>
                         <Lightbulb size={13} /> Ekspansja
                     </button>
-                    <button onClick={() => navigate('/quality-score')} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 500, background: 'rgba(123,92,224,0.08)', border: '1px solid rgba(123,92,224,0.2)', color: '#7B5CE0', cursor: 'pointer', marginLeft: 8 }}>
+                    <button onClick={() => navigate('/quality-score')} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 500, background: 'rgba(123,92,224,0.08)', border: '1px solid rgba(123,92,224,0.2)', color: C.accentPurple, cursor: 'pointer', marginLeft: 8 }}>
                         <Award size={12} /> Audyt QS
                     </button>
                 </div>

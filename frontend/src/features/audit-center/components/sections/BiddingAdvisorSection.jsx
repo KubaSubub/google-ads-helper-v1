@@ -3,11 +3,11 @@ import MetricPill from '../../../../components/shared/MetricPill'
 
 function StatusBadge({ status }) {
     const config = {
-        OK:                    { label: 'OK',        color: '#4ADE80' },
-        UPGRADE_RECOMMENDED:   { label: 'Upgrade',   color: '#FBBF24' },
-        CHANGE_RECOMMENDED:    { label: 'Zmień!',    color: '#F87171' },
+        OK:                    { label: 'OK',        color: C.success },
+        UPGRADE_RECOMMENDED:   { label: 'Upgrade',   color: C.warning },
+        CHANGE_RECOMMENDED:    { label: 'Zmień!',    color: C.danger },
     }
-    const c = config[status] || { label: status, color: 'rgba(255,255,255,0.3)' }
+    const c = config[status] || { label: status, color: C.w30 }
     return (
         <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
             background: `${c.color}15`, color: c.color, border: `1px solid ${c.color}30` }}>
@@ -27,7 +27,7 @@ export default function BiddingAdvisorSection({ data }) {
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr style={{ borderBottom: B.subtle }}>
                         <th style={TH}>Kampania</th>
                         <th style={TH}>Obecna strategia</th>
                         <th style={TH}>Rekomendacja</th>
@@ -38,15 +38,15 @@ export default function BiddingAdvisorSection({ data }) {
                 <tbody>
                     {data.campaigns.map(c => (
                         <tr key={c.campaign_id} style={{
-                            borderBottom: '1px solid rgba(255,255,255,0.04)',
+                            borderBottom: `1px solid ${C.w04}`,
                             background: c.status === 'CHANGE_RECOMMENDED' ? 'rgba(248,113,113,0.04)' :
                                         c.status === 'UPGRADE_RECOMMENDED' ? 'rgba(251,191,36,0.04)' : 'transparent',
                         }}>
-                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: C.textPrimary, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {c.campaign_name}
                             </td>
                             <td style={TD_DIM}>{c.current_strategy}</td>
-                            <td style={{ ...TD, color: c.status !== 'OK' ? '#4F8EF7' : 'rgba(255,255,255,0.5)' }}>
+                            <td style={{ ...TD, color: c.status !== 'OK' ? C.accentBlue : C.w50 }}>
                                 {c.recommended_strategy}
                             </td>
                             <td style={TD}>{c.conversions_30d}</td>

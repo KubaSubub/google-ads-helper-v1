@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Menu, X, Zap } from 'lucide-react'
 import SidebarContent from './layout/Sidebar/SidebarContent'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 export default function Sidebar() {
     const [mobileOpen, setMobileOpen] = useState(false)
@@ -9,7 +10,7 @@ export default function Sidebar() {
         <>
             <div
                 className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3"
-                style={{ background: 'rgba(17,19,24,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+                style={{ background: 'rgba(17,19,24,0.95)', backdropFilter: 'blur(12px)', borderBottom: B.card }}
             >
                 <div className="flex items-center gap-2">
                     <div
@@ -29,7 +30,7 @@ export default function Sidebar() {
                 </div>
                 <button
                     onClick={() => setMobileOpen((open) => !open)}
-                    style={{ padding: 6, borderRadius: 7, color: 'rgba(255,255,255,0.5)' }}
+                    style={{ padding: 6, borderRadius: 7, color: C.w50 }}
                     className="hover:bg-white/5"
                 >
                     {mobileOpen ? <X size={20} /> : <Menu size={20} />}
@@ -52,7 +53,7 @@ export default function Sidebar() {
                 </div>
             )}
 
-            <aside className="hidden lg:flex flex-col w-64 flex-shrink-0" style={{ borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+            <aside className="hidden lg:flex flex-col w-64 flex-shrink-0" style={{ borderRight: B.card }}>
                 <SidebarContent onNavigate={undefined} />
             </aside>
         </>

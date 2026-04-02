@@ -20,7 +20,7 @@ export default function BentoCard({ card, onClick, pinned, onTogglePin, changePc
             border: `1px solid ${pinned ? 'rgba(79,142,247,0.25)' : sc.border}`,
             position: 'relative',
         }}
-        onMouseEnter={e => { setHovered(true); e.currentTarget.style.background = pinned ? 'rgba(79,142,247,0.10)' : 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+        onMouseEnter={e => { setHovered(true); e.currentTarget.style.background = pinned ? 'rgba(79,142,247,0.10)' : C.w05; e.currentTarget.style.transform = 'translateY(-1px)' }}
         onMouseLeave={e => { setHovered(false); e.currentTarget.style.background = pinned ? 'rgba(79,142,247,0.06)' : 'rgba(255,255,255,0.02)'; e.currentTarget.style.transform = 'none' }}
         >
             {(hovered || pinned) && (
@@ -31,15 +31,15 @@ export default function BentoCard({ card, onClick, pinned, onTogglePin, changePc
                         position: 'absolute', top: 8, right: 8,
                         width: 22, height: 22, borderRadius: 6,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: pinned ? 'rgba(79,142,247,0.15)' : 'rgba(255,255,255,0.06)',
+                        background: pinned ? C.infoBg : C.w06,
                         transition: 'all 0.15s', cursor: 'pointer',
                         opacity: pinned ? 1 : 0.6,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = pinned ? 'rgba(79,142,247,0.25)' : 'rgba(255,255,255,0.12)'; e.currentTarget.style.opacity = '1' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = pinned ? 'rgba(79,142,247,0.15)' : 'rgba(255,255,255,0.06)'; e.currentTarget.style.opacity = pinned ? '1' : '0.6' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = pinned ? 'rgba(79,142,247,0.25)' : C.w12; e.currentTarget.style.opacity = '1' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = pinned ? C.infoBg : C.w06; e.currentTarget.style.opacity = pinned ? '1' : '0.6' }}
                 >
                     <Pin size={12} style={{
-                        color: pinned ? '#4F8EF7' : 'rgba(255,255,255,0.5)',
+                        color: pinned ? C.accentBlue : C.w50,
                         transform: pinned ? 'rotate(0deg)' : 'rotate(45deg)',
                         transition: 'transform 0.15s',
                     }} />
@@ -48,7 +48,7 @@ export default function BentoCard({ card, onClick, pinned, onTogglePin, changePc
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Icon size={14} style={{ color: sc.dot, flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>{card.title}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>{card.title}</span>
                 </div>
                 <div style={{ width: 7, height: 7, borderRadius: 999, background: sc.dot, flexShrink: 0 }} />
             </div>
@@ -57,14 +57,14 @@ export default function BentoCard({ card, onClick, pinned, onTogglePin, changePc
                 {changePct != null && changePct.pct !== 0 && (() => {
                     const up = changePct.pct > 0
                     const isGood = up === changePct.upIsGood
-                    const color = isGood ? '#4ADE80' : '#F87171'
+                    const color = isGood ? C.success : C.danger
                     const TrendIcon = up ? TrendingUp : TrendingDown
                     return (
                         <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 3,
                             padding: '2px 6px', borderRadius: 999, fontSize: 10, fontWeight: 600,
                             fontFamily: 'DM Sans', lineHeight: 1,
-                            color, background: isGood ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+                            color, background: isGood ? C.successBg : C.dangerBg,
                         }}>
                             <TrendIcon size={10} />
                             {up ? '+' : ''}{changePct.pct}%
@@ -72,7 +72,7 @@ export default function BentoCard({ card, onClick, pinned, onTogglePin, changePc
                     )
                 })()}
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{card.sub}</div>
+            <div style={{ fontSize: 11, color: C.w40 }}>{card.sub}</div>
         </button>
     )
 }

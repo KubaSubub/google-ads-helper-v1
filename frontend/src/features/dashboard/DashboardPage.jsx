@@ -35,20 +35,18 @@ const TYPE_LABELS = {
     SMART: 'Smart',
 }
 
+import { C, T, B, TOOLTIP_STYLE, CAMPAIGN_STATUS, TRANSITION, CHANNEL_COLORS } from '../../constants/designTokens'
+
 // ─── Status helpers ──────────────────────────────────────────────────────────
-const STATUS_CONFIG = {
-    ENABLED:  { dot: '#4ADE80', label: 'Aktywna'     },
-    PAUSED:   { dot: '#FBBF24', label: 'Wstrzymana'  },
-    REMOVED:  { dot: '#F87171', label: 'Usunięta'    },
-}
+const STATUS_CONFIG = CAMPAIGN_STATUS
 
 // ─── Sparkline ───────────────────────────────────────────────────────────────
 function Sparkline({ data, direction }) {
     if (!data || data.length < 2) {
-        return <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 11 }}>—</span>
+        return <span style={{ color: C.w15, fontSize: 11 }}>—</span>
     }
     // Cost trend: up = bad (spending more), down = good (saving)
-    const color = direction === 'up' ? '#F87171' : direction === 'down' ? '#4ADE80' : '#4F8EF7'
+    const color = direction === 'up' ? C.danger : direction === 'down' ? C.success : C.accentBlue
     // Backend returns flat array [12.5, 14.2, ...] — Recharts needs [{v: 12.5}, ...]
     const chartData = Array.isArray(data) && typeof data[0] === 'number'
         ? data.map(v => ({ v }))
@@ -56,7 +54,7 @@ function Sparkline({ data, direction }) {
     return (
         <LineChart width={72} height={24} data={chartData}>
             <Tooltip
-                contentStyle={{ background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, fontSize: 10, padding: '4px 8px' }}
+                contentStyle={TOOLTIP_STYLE}
                 formatter={v => [`${typeof v === 'number' ? v.toLocaleString('pl-PL', { maximumFractionDigits: 1 }) : v}`, null]}
                 labelFormatter={() => ''}
             />
@@ -205,7 +203,7 @@ export default function DashboardPage() {
                     onClick={() => navigate('/mcc-overview')}
                     style={{
                         display: 'inline-flex', alignItems: 'center', gap: 4,
-                        background: 'none', border: 'none', color: '#4F8EF7',
+                        background: 'none', border: 'none', color: C.accentBlue,
                         fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8,
                     }}
                 >
@@ -214,23 +212,23 @@ export default function DashboardPage() {
             )}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ ...T.pageTitle }}>
                         Pulpit
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ ...T.pageSubtitle }}>
                         {typeof filters.period === 'number'
                             ? `Ostatnie ${filters.period} dni`
                             : `${filters.dateFrom} — ${filters.dateTo}`
                         }
                     </p>
                 </div>
-                <span onClick={() => navigate('/daily-audit')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                <span onClick={() => navigate('/daily-audit')} style={{ fontSize: 11, color: C.accentBlue, cursor: 'pointer' }}>
                     Poranny przegląd →
                 </span>
             </div>
 
             {error && (
-                <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#F87171' }}>
+                <div style={{ background: C.dangerBg, border: B.danger, borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: C.danger }}>
                     Błąd ładowania danych: {error}
                 </div>
             )}
@@ -284,29 +282,29 @@ export default function DashboardPage() {
 
             {/* ── Campaign Table ────────────────────────────────────────── */}
             <div className="v2-card" style={{ overflow: 'hidden', marginBottom: 16 }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                <div style={{ padding: '16px 20px', borderBottom: B.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ ...T.sectionTitle }}>
                         Kampanie
                     </span>
                     <div className="flex items-center gap-3">
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                        <span style={{ fontSize: 11, color: C.textDim }}>
                             {filteredCampaigns.length} z {campaigns.length}
                         </span>
-                        <span onClick={() => navigate('/campaigns')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                        <span onClick={() => navigate('/campaigns')} style={{ fontSize: 11, color: C.accentBlue, cursor: 'pointer' }}>
                             Wszystkie →
                         </span>
                     </div>
                 </div>
 
                 {loading ? (
-                    <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: C.textDim }}>
                         Ładowanie kampanii…
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
-                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                <tr style={{ borderBottom: B.subtle }}>
                                     {[
                                         { label: 'Nazwa', key: null },
                                         { label: 'Status', key: null },
@@ -332,7 +330,7 @@ export default function DashboardPage() {
                                                     padding: '10px 16px',
                                                     textAlign: h.right ? 'right' : 'left',
                                                     fontSize: 10, fontWeight: 500,
-                                                    color: isSorted ? '#4F8EF7' : 'rgba(255,255,255,0.35)',
+                                                    color: isSorted ? C.accentBlue : C.textMuted,
                                                     textTransform: 'uppercase',
                                                     letterSpacing: '0.08em',
                                                     whiteSpace: 'nowrap',
@@ -353,7 +351,7 @@ export default function DashboardPage() {
                             <tbody>
                                 {filteredCampaigns.length === 0 ? (
                                     <tr>
-                                        <td colSpan={11} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+                                        <td colSpan={11} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: C.textDim }}>
                                             Brak kampanii dla wybranych filtrów
                                         </td>
                                     </tr>
@@ -364,12 +362,12 @@ export default function DashboardPage() {
                                     return (
                                         <tr
                                             key={c.id}
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.12s', cursor: 'pointer' }}
+                                            style={{ borderBottom: `1px solid ${C.w04}`, transition: 'background 0.12s', cursor: 'pointer' }}
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                             onClick={() => navigate(`/campaigns?campaign_id=${c.id}`)}
                                         >
-                                            <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 260 }}>
+                                            <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 500, color: C.textPrimary, maxWidth: 260 }}>
                                                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {c.name}
                                                 </span>
@@ -380,25 +378,25 @@ export default function DashboardPage() {
                                                     <span style={{ color: statusCfg.dot }}>{statusCfg.label}</span>
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '11px 16px', fontSize: 12, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>
+                                            <td style={{ padding: '11px 16px', fontSize: 12, color: C.w50, whiteSpace: 'nowrap' }}>
                                                 {TYPE_LABELS[c.campaign_type] ?? c.campaign_type}
                                             </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: C.w70, whiteSpace: 'nowrap' }}>
                                                 {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zł` : '—'}
                                             </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: C.w60, whiteSpace: 'nowrap' }}>
                                                 {metrics ? `${metrics.cost_usd.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł` : '—'}
                                             </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: C.w60, whiteSpace: 'nowrap' }}>
                                                 {metrics ? metrics.conversions.toFixed(1) : '—'}
                                             </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics ? ((metrics.roas >= 3) ? '#4ADE80' : (metrics.roas >= 1) ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics ? ((metrics.roas >= 3) ? C.success : (metrics.roas >= 1) ? C.warning : C.danger) : C.textDim }}>
                                                 {metrics ? `${metrics.roas.toFixed(2)}×` : '—'}
                                             </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.6)' }}>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: C.w60 }}>
                                                 {metrics && metrics.conversions > 0 ? `${(metrics.cost_usd / metrics.conversions).toFixed(0)} zł` : '—'}
                                             </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics?.impression_share != null ? (metrics.impression_share > 0.5 ? '#4ADE80' : metrics.impression_share > 0.3 ? '#FBBF24' : '#F87171') : 'rgba(255,255,255,0.3)' }}>
+                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics?.impression_share != null ? (metrics.impression_share > 0.5 ? C.success : metrics.impression_share > 0.3 ? C.warning : C.danger) : C.textDim }}>
                                                 {metrics?.impression_share != null ? `${(metrics.impression_share * 100).toFixed(0)}%` : '—'}
                                             </td>
                                             <td style={{ padding: '11px 16px' }}>
@@ -406,7 +404,7 @@ export default function DashboardPage() {
                                                     <Sparkline data={trendData?.cost_trend} direction={trendData?.direction} />
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '11px 16px', fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', maxWidth: 180 }}>
+                                            <td style={{ padding: '11px 16px', fontSize: 11, color: C.w40, whiteSpace: 'nowrap', maxWidth: 180 }}>
                                                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.bidding_strategy ?? ''}>
                                                     {c.bidding_strategy ?? '—'}
                                                 </span>
@@ -432,18 +430,14 @@ export default function DashboardPage() {
             {pmaxChannels?.channels?.length > 0 && (
                 <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        <span style={{ ...T.sectionTitle }}>
                             PMax — rozkład kanałów
                         </span>
-                        <span onClick={() => navigate('/audit-center')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
+                        <span onClick={() => navigate('/audit-center')} style={{ fontSize: 11, color: C.accentBlue, cursor: 'pointer' }}>
                             Szczegóły →
                         </span>
                     </div>
                     {(() => {
-                        const CHANNEL_COLORS = {
-                            SEARCH: '#4F8EF7', DISPLAY: '#7B5CE0', VIDEO: '#FBBF24',
-                            SHOPPING: '#4ADE80', DISCOVER: '#F472B6', CROSS_NETWORK: '#94A3B8',
-                        }
                         const CHANNEL_LABELS = {
                             SEARCH: 'Wyszukiwarka', DISPLAY: 'Sieć reklamowa', VIDEO: 'YouTube',
                             SHOPPING: 'Zakupy', DISCOVER: 'Discover', CROSS_NETWORK: 'Cross-network',
@@ -468,7 +462,7 @@ export default function DashboardPage() {
                                                 ))}
                                             </Pie>
                                             <Tooltip
-                                                contentStyle={{ background: '#1a1d24', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, fontSize: 11, padding: '6px 10px' }}
+                                                contentStyle={{ ...TOOLTIP_STYLE, fontSize: 11, padding: '6px 10px' }}
                                                 formatter={(v, name) => [`${v}%`, name]}
                                             />
                                         </PieChart>
@@ -482,12 +476,12 @@ export default function DashboardPage() {
                                             <div key={ch.network_type} className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                                                    <span style={{ fontSize: 12, color: '#F0F0F0' }}>{CHANNEL_LABELS[ch.network_type] || ch.network_type}</span>
+                                                    <span style={{ fontSize: 12, color: C.textPrimary }}>{CHANNEL_LABELS[ch.network_type] || ch.network_type}</span>
                                                 </div>
                                                 <div className="flex items-center gap-3" style={{ fontSize: 11 }}>
-                                                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>{(ch.cost_micros / 1e6).toFixed(0)} zł</span>
-                                                    <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 40, textAlign: 'right' }}>{ch.cost_share_pct}%</span>
-                                                    <span style={{ color: isAlert ? '#F87171' : 'rgba(255,255,255,0.35)', minWidth: 50, textAlign: 'right', fontWeight: isAlert ? 600 : 400 }}>
+                                                    <span style={{ color: C.w50 }}>{(ch.cost_micros / 1e6).toFixed(0)} zł</span>
+                                                    <span style={{ color: C.textMuted, minWidth: 40, textAlign: 'right' }}>{ch.cost_share_pct}%</span>
+                                                    <span style={{ color: isAlert ? C.danger : C.textMuted, minWidth: 50, textAlign: 'right', fontWeight: isAlert ? 600 : 400 }}>
                                                         {ch.conv_share_pct}% conv
                                                     </span>
                                                 </div>
@@ -495,7 +489,7 @@ export default function DashboardPage() {
                                         )
                                     })}
                                     {imbalance && (
-                                        <div style={{ marginTop: 4, padding: '6px 10px', borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', fontSize: 11, color: '#F87171' }}>
+                                        <div style={{ marginTop: 4, padding: '6px 10px', borderRadius: 8, background: C.dangerBg, border: '1px solid rgba(248,113,113,0.2)', fontSize: 11, color: C.danger }}>
                                             ⚠ {imbalance.network_type}: {imbalance.cost_share_pct}% kosztów, tylko {imbalance.conv_share_pct}% konwersji
                                         </div>
                                     )}
@@ -512,12 +506,12 @@ export default function DashboardPage() {
                     {/* Device breakdown */}
                     {deviceData?.devices?.length > 0 && (
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 12, fontFamily: 'Syne' }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 12, fontFamily: 'Syne' }}>
                                 Urządzenia
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {deviceData.devices.map(d => {
-                                    const color = d.device === 'MOBILE' ? '#4F8EF7' : d.device === 'DESKTOP' ? '#7B5CE0' : '#FBBF24'
+                                    const color = d.device === 'MOBILE' ? C.accentBlue : d.device === 'DESKTOP' ? C.accentPurple : C.warning
                                     const isExpanded = expandedDevice === d.device
                                     const hasTrend = d.trend && d.trend.length >= 2
                                     return (
@@ -532,20 +526,20 @@ export default function DashboardPage() {
                                                         <ChevronRight
                                                             size={12}
                                                             style={{
-                                                                color: 'rgba(255,255,255,0.3)',
+                                                                color: C.w30,
                                                                 transform: isExpanded ? 'rotate(90deg)' : 'none',
                                                                 transition: 'transform 0.15s',
                                                             }}
                                                         />
                                                     )}
-                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0' }}>{{ MOBILE: 'Telefony', DESKTOP: 'Komputery', TABLET: 'Tablety' }[d.device] || d.device}</span>
+                                                    <span style={{ fontSize: 12, fontWeight: 500, color: C.textPrimary }}>{{ MOBILE: 'Telefony', DESKTOP: 'Komputery', TABLET: 'Tablety' }[d.device] || d.device}</span>
                                                 </div>
-                                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.share_clicks_pct}% kliknięć</span>
+                                                <span style={{ fontSize: 11, color: C.w40 }}>{d.share_clicks_pct}% kliknięć</span>
                                             </div>
-                                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                            <div style={{ height: 4, borderRadius: 2, background: C.w06 }}>
                                                 <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
                                             </div>
-                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: C.textMuted }}>
                                                 <span>CTR {d.ctr}% · CPC {d.cpc.toFixed(2)} zł</span>
                                                 <span>ROAS {d.roas}×</span>
                                             </div>
@@ -556,24 +550,24 @@ export default function DashboardPage() {
                                                     marginTop: 8,
                                                     padding: '12px 14px',
                                                     background: 'rgba(255,255,255,0.02)',
-                                                    border: '1px solid rgba(255,255,255,0.06)',
+                                                    border: B.subtle,
                                                     borderRadius: 8,
                                                 }}>
                                                     <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
                                                         {[
-                                                            { label: 'Kliknięcia', key: 'clicks', color: '#4F8EF7' },
-                                                            { label: 'Koszt', key: 'cost', color: '#FBBF24' },
-                                                            { label: 'Konwersje', key: 'conversions', color: '#4ADE80' },
+                                                            { label: 'Kliknięcia', key: 'clicks', color: C.accentBlue },
+                                                            { label: 'Koszt', key: 'cost', color: C.warning },
+                                                            { label: 'Konwersje', key: 'conversions', color: C.success },
                                                         ].map(m => {
                                                             const values = d.trend.map(t => t[m.key])
                                                             const avg = values.reduce((a, b) => a + b, 0) / values.length
                                                             return (
-                                                                <div key={m.key} style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>
+                                                                <div key={m.key} style={{ fontSize: 10, color: C.w40 }}>
                                                                     <span style={{ color: m.color, fontWeight: 600 }}>●</span>{' '}
-                                                                    {m.label}: <span style={{ color: '#F0F0F0' }}>
+                                                                    {m.label}: <span style={{ color: C.textPrimary }}>
                                                                         {m.key === 'cost' ? `${avg.toFixed(2)} zł` : avg.toFixed(1)}
                                                                     </span>
-                                                                    <span style={{ color: 'rgba(255,255,255,0.25)' }}> avg/d</span>
+                                                                    <span style={{ color: C.w25 }}> avg/d</span>
                                                                 </div>
                                                             )
                                                         })}
@@ -584,14 +578,14 @@ export default function DashboardPage() {
                                                             <XAxis
                                                                 dataKey="date"
                                                                 tickFormatter={v => { const dt = new Date(v); return `${dt.getDate()}.${(dt.getMonth()+1).toString().padStart(2,'0')}` }}
-                                                                tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.2)' }}
+                                                                tick={{ fontSize: 9, fill: C.w20 }}
                                                                 axisLine={false} tickLine={false}
                                                                 interval="preserveStartEnd"
                                                             />
                                                             <Tooltip
                                                                 contentStyle={{
-                                                                    background: '#1a1d24',
-                                                                    border: '1px solid rgba(255,255,255,0.12)',
+                                                                    background: C.surfaceElevated,
+                                                                    border: B.hover,
                                                                     borderRadius: 8,
                                                                     fontSize: 11,
                                                                 }}
@@ -615,7 +609,7 @@ export default function DashboardPage() {
                     {geoData?.cities?.length > 0 && (
                         <div className="v2-card" style={{ padding: '16px 20px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                                     Top miasta
                                 </span>
                             </div>
@@ -639,7 +633,7 @@ export default function DashboardPage() {
                                                     }}
                                                     style={{
                                                         padding: '4px 6px', fontSize: 10, fontWeight: 500,
-                                                        color: isSorted ? '#4F8EF7' : 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+                                                        color: isSorted ? C.accentBlue : C.textMuted, textTransform: 'uppercase',
                                                         letterSpacing: '0.08em', textAlign: h.key === 'city' ? 'left' : 'right',
                                                         cursor: 'pointer', userSelect: 'none',
                                                     }}
@@ -661,12 +655,12 @@ export default function DashboardPage() {
                                         if (typeof vA === 'string') return geoSortDir === 'desc' ? vB.localeCompare(vA) : vA.localeCompare(vB)
                                         return geoSortDir === 'desc' ? vB - vA : vA - vB
                                     }).slice(0, 8).map(c => (
-                                        <tr key={c.city} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                                            <td style={{ padding: '6px', fontSize: 12, color: '#F0F0F0' }}>{c.city}</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.clicks}</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? '—'} zł</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>{c.share_cost_pct != null ? `${c.share_cost_pct}%` : '—'}</td>
-                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? '#4ADE80' : (c.roas ?? 0) >= 1 ? '#FBBF24' : '#F87171' }}>{c.roas?.toFixed(2) ?? '—'}×</td>
+                                        <tr key={c.city} style={{ borderTop: `1px solid ${C.w04}` }}>
+                                            <td style={{ padding: '6px', fontSize: 12, color: C.textPrimary }}>{c.city}</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.clicks}</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.cost_usd?.toFixed(0) ?? '—'} zł</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w40, textAlign: 'right' }}>{c.share_cost_pct != null ? `${c.share_cost_pct}%` : '—'}</td>
+                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: (c.roas ?? 0) >= 3 ? C.success : (c.roas ?? 0) >= 1 ? C.warning : C.danger }}>{c.roas?.toFixed(2) ?? '—'}×</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -680,10 +674,10 @@ export default function DashboardPage() {
             {impressionShare?.summary && Object.keys(impressionShare.summary).length > 0 && (
                 <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                             Udział w wyświetleniach (Search)
                         </span>
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>
+                        <span style={{ fontSize: 10, color: C.w30, textTransform: 'uppercase' }}>
                             Avg. za okres
                         </span>
                     </div>
@@ -697,20 +691,20 @@ export default function DashboardPage() {
                             if (val == null) return null
                             const pct = (val * 100).toFixed(1)
                             const color = m.invert
-                                ? (val > (m.bad || 0.3) ? '#F87171' : val > 0.1 ? '#FBBF24' : '#4ADE80')
-                                : (val > (m.good || 0.5) ? '#4ADE80' : val > 0.3 ? '#FBBF24' : '#F87171')
+                                ? (val > (m.bad || 0.3) ? C.danger : val > 0.1 ? C.warning : C.success)
+                                : (val > (m.good || 0.5) ? C.success : val > 0.3 ? C.warning : C.danger)
                             return (
                                 <div key={m.key}>
-                                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                                         {m.label}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
                                         <span style={{ fontSize: 20, fontWeight: 700, color, fontFamily: 'Syne' }}>
                                             {pct}
                                         </span>
-                                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>%</span>
+                                        <span style={{ fontSize: 12, color: C.w40 }}>%</span>
                                     </div>
-                                    <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                    <div style={{ height: 4, borderRadius: 2, background: C.w06 }}>
                                         <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(parseFloat(pct), 100)}%`, transition: 'width 0.3s' }} />
                                     </div>
                                 </div>
@@ -724,10 +718,10 @@ export default function DashboardPage() {
             {recentActions.length > 0 && (
                 <div className="v2-card" style={{ padding: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <h3 style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', margin: 0 }}>Ostatnie akcje</h3>
+                        <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: 0 }}>Ostatnie akcje</h3>
                         <button
                             onClick={() => navigate('/action-history')}
-                            style={{ fontSize: 11, color: '#4F8EF7', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+                            style={{ fontSize: 11, color: C.accentBlue, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
                         >
                             Wszystkie <ChevronRight size={12} />
                         </button>
@@ -738,17 +732,17 @@ export default function DashboardPage() {
                                 display: 'flex', alignItems: 'center', gap: 10,
                                 padding: '6px 10px', borderRadius: 8,
                                 background: 'rgba(255,255,255,0.02)',
-                                border: '1px solid rgba(255,255,255,0.04)',
+                                border: `1px solid ${C.w04}`,
                                 fontSize: 12,
                             }}>
                                 <span style={{
                                     fontSize: 10, fontWeight: 600,
-                                    color: a.status === 'SUCCESS' ? '#4ADE80' : a.status === 'REVERTED' ? 'rgba(255,255,255,0.35)' : '#F87171',
+                                    color: a.status === 'SUCCESS' ? C.success : a.status === 'REVERTED' ? C.textMuted : C.danger,
                                 }}>{a.status}</span>
-                                <span style={{ color: 'rgba(255,255,255,0.7)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: C.w70, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {a.entity_name || a.action_type}
                                 </span>
-                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, flexShrink: 0 }}>
+                                <span style={{ color: C.w25, fontSize: 11, flexShrink: 0 }}>
                                     {a.executed_at ? new Date(a.executed_at).toLocaleDateString('pl-PL') : ''}
                                 </span>
                             </div>

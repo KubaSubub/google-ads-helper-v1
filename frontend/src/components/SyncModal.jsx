@@ -5,20 +5,21 @@ import {
 } from 'lucide-react'
 import { useSyncStream } from '../hooks/useSyncStream'
 import { getSyncCoverage, getSyncPresets } from '../api'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const PRESET_LIST = [
-    { key: 'incremental', color: '#4F8EF7' },
-    { key: 'full',        color: '#7B5CE0' },
-    { key: 'quick',       color: '#4ADE80' },
-    { key: 'metrics_only',color: '#FBBF24' },
+    { key: 'incremental', color: C.accentBlue },
+    { key: 'full',        color: C.accentPurple },
+    { key: 'quick',       color: C.success },
+    { key: 'metrics_only',color: C.warning },
 ]
 
 const STATUS_ICON = {
-    pending:  <Clock size={13} style={{ color: 'rgba(255,255,255,0.2)' }} />,
-    running:  <Loader2 size={13} style={{ color: '#4F8EF7' }} className="animate-spin" />,
-    done:     <CheckCircle2 size={13} style={{ color: '#4ADE80' }} />,
-    error:    <XCircle size={13} style={{ color: '#F87171' }} />,
-    skipped:  <MinusCircle size={13} style={{ color: 'rgba(255,255,255,0.2)' }} />,
+    pending:  <Clock size={13} style={{ color: C.w20 }} />,
+    running:  <Loader2 size={13} style={{ color: C.accentBlue }} className="animate-spin" />,
+    done:     <CheckCircle2 size={13} style={{ color: C.success }} />,
+    error:    <XCircle size={13} style={{ color: C.danger }} />,
+    skipped:  <MinusCircle size={13} style={{ color: C.w20 }} />,
 }
 
 function formatEta(seconds) {
@@ -112,11 +113,11 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
     if (stream.state === 'idle') {
         return (
             <div data-sync-modal style={OVERLAY} onClick={handleClose}>
-                <div style={MODAL} onClick={e => e.stopPropagation()}>
+                <div style={SYNC_MODAL} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                         <div>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>Synchronizacja</div>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne' }}>Synchronizacja</div>
+                            <div style={{ fontSize: 11, color: C.w40, marginTop: 2 }}>
                                 {clientName || `Klient #${clientId}`}
                             </div>
                         </div>
@@ -136,18 +137,18 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                                     style={{
                                         padding: '12px 14px',
                                         borderRadius: 10,
-                                        border: `1px solid ${active ? color : 'rgba(255,255,255,0.08)'}`,
-                                        background: active ? `${color}15` : 'rgba(255,255,255,0.03)',
+                                        border: `1px solid ${active ? color : C.w08}`,
+                                        background: active ? `${color}15` : C.w03,
                                         cursor: 'pointer',
                                         textAlign: 'left',
                                         transition: 'all 0.15s',
                                     }}
                                     className={!active ? 'hover:bg-white/[0.04]' : ''}
                                 >
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? color : '#F0F0F0', marginBottom: 3 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? color : C.textPrimary, marginBottom: 3 }}>
                                         {p.label}
                                     </div>
-                                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', lineHeight: 1.4 }}>
+                                    <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4 }}>
                                         {p.description}
                                     </div>
                                 </button>
@@ -161,7 +162,7 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                         style={{
                             display: 'flex', alignItems: 'center', gap: 6, width: '100%',
                             padding: '8px 0', background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'rgba(255,255,255,0.35)', fontSize: 11,
+                            color: C.textMuted, fontSize: 11,
                         }}
                     >
                         <ChevronDown size={12} style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
@@ -179,12 +180,12 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                                     <div key={groupKey} style={{ marginBottom: 10 }}>
                                         <div
                                             onClick={() => toggleGroup(groupKey)}
-                                            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4, userSelect: 'none' }}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 9, fontWeight: 500, color: C.w25, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4, userSelect: 'none' }}
                                         >
                                             <span style={{
                                                 width: 12, height: 12, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                border: `1px solid ${allExcluded ? 'rgba(255,255,255,0.12)' : '#4F8EF7'}`,
-                                                background: allExcluded ? 'transparent' : someExcluded ? 'rgba(79,142,247,0.3)' : '#4F8EF7',
+                                                border: `1px solid ${allExcluded ? C.w12 : C.accentBlue}`,
+                                                background: allExcluded ? 'transparent' : someExcluded ? C.infoBorder : C.accentBlue,
                                                 fontSize: 9, color: 'white', lineHeight: 1, flexShrink: 0,
                                             }}>
                                                 {!allExcluded && (someExcluded ? '–' : '✓')}
@@ -206,14 +207,14 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                                                     }}>
                                                     <span style={{
                                                         width: 12, height: 12, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                        border: `1px solid ${checked ? '#4F8EF7' : 'rgba(255,255,255,0.15)'}`,
-                                                        background: checked ? '#4F8EF7' : 'transparent',
+                                                        border: `1px solid ${checked ? C.accentBlue : C.w15}`,
+                                                        background: checked ? C.accentBlue : 'transparent',
                                                         fontSize: 8, color: 'white', lineHeight: 1, flexShrink: 0,
                                                     }}>
                                                         {checked && '✓'}
                                                     </span>
-                                                    <span style={{ flex: 1, color: 'rgba(255,255,255,0.5)' }}>{phaseInfo.label}</span>
-                                                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>
+                                                    <span style={{ flex: 1, color: C.w50 }}>{phaseInfo.label}</span>
+                                                    <span style={{ color: C.w25, fontSize: 10 }}>
                                                         {cov
                                                             ? cov.data_to
                                                                 ? `do ${cov.data_to}`
@@ -223,7 +224,7 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                                                             : 'brak danych'
                                                         }
                                                         {phaseInfo.max_days && (
-                                                            <span style={{ color: 'rgba(255,255,255,0.15)', marginLeft: 6 }}>
+                                                            <span style={{ color: C.w15, marginLeft: 6 }}>
                                                                 max {phaseInfo.max_days}d
                                                             </span>
                                                         )}
@@ -254,17 +255,17 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
 
     return (
         <div data-sync-modal style={OVERLAY}>
-            <div style={MODAL} onClick={e => e.stopPropagation()}>
+            <div style={SYNC_MODAL} onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                     <div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne' }}>
                             {isDone ? 'Synchronizacja zakończona' : isError ? 'Błąd synchronizacji' : 'Synchronizacja...'}
                         </div>
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: C.w40, marginTop: 2 }}>
                             {clientName || `Klient #${clientId}`}
                             {isSyncing && stream.eta > 0 && (
-                                <span style={{ marginLeft: 8, color: '#4F8EF7' }}>ETA: {formatEta(stream.eta)}</span>
+                                <span style={{ marginLeft: 8, color: C.accentBlue }}>ETA: {formatEta(stream.eta)}</span>
                             )}
                         </div>
                     </div>
@@ -276,14 +277,14 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                 {/* Progress bar */}
                 <div style={{
                     height: 6, borderRadius: 3,
-                    background: 'rgba(255,255,255,0.06)',
+                    background: C.w06,
                     marginBottom: 16, overflow: 'hidden',
                 }}>
                     <div style={{
                         height: '100%', borderRadius: 3,
-                        background: isError ? '#F87171' : isDone
-                            ? (stream.result?.total_errors > 0 ? '#FBBF24' : '#4ADE80')
-                            : '#4F8EF7',
+                        background: isError ? C.danger : isDone
+                            ? (stream.result?.total_errors > 0 ? C.warning : C.success)
+                            : C.accentBlue,
                         width: `${stream.progress}%`,
                         transition: 'width 0.3s ease',
                     }} />
@@ -293,8 +294,8 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                 {isError && stream.errorMsg && (
                     <div style={{
                         padding: '10px 14px', borderRadius: 8, marginBottom: 14,
-                        background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)',
-                        fontSize: 12, color: '#F87171',
+                        background: C.dangerBg, border: '1px solid rgba(248,113,113,0.15)',
+                        fontSize: 12, color: C.danger,
                     }}>
                         <AlertTriangle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
                         {stream.errorMsg}
@@ -308,30 +309,30 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                             flex: 1, padding: '10px 14px', borderRadius: 8,
                             background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.15)',
                         }}>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: '#4ADE80', fontFamily: 'Syne' }}>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: C.success, fontFamily: 'Syne' }}>
                                 {stream.result.total_synced?.toLocaleString('pl-PL') || 0}
                             </div>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Obiektów</div>
+                            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase' }}>Obiektów</div>
                         </div>
                         {stream.result.total_errors > 0 && (
                             <div style={{
                                 flex: 1, padding: '10px 14px', borderRadius: 8,
-                                background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)',
+                                background: C.dangerBg, border: '1px solid rgba(248,113,113,0.15)',
                             }}>
-                                <div style={{ fontSize: 18, fontWeight: 700, color: '#F87171', fontFamily: 'Syne' }}>
+                                <div style={{ fontSize: 18, fontWeight: 700, color: C.danger, fontFamily: 'Syne' }}>
                                     {stream.result.total_errors}
                                 </div>
-                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Błędów</div>
+                                <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase' }}>Błędów</div>
                             </div>
                         )}
                         <div style={{
                             flex: 1, padding: '10px 14px', borderRadius: 8,
-                            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+                            background: C.w03, border: B.card,
                         }}>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne' }}>
                                 {formatDuration(stream.result.elapsed_seconds)}
                             </div>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Czas</div>
+                            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase' }}>Czas</div>
                         </div>
                     </div>
                 )}
@@ -348,25 +349,25 @@ export default function SyncModal({ isOpen, clientId, clientName, onClose }) {
                             <span style={{
                                 flex: 1, fontSize: 12,
                                 fontWeight: p.status === 'running' ? 500 : 400,
-                                color: p.status === 'running' ? '#F0F0F0'
-                                    : p.status === 'done' ? 'rgba(255,255,255,0.6)'
-                                    : p.status === 'error' ? '#F87171'
-                                    : 'rgba(255,255,255,0.3)',
+                                color: p.status === 'running' ? C.textPrimary
+                                    : p.status === 'done' ? C.w60
+                                    : p.status === 'error' ? C.danger
+                                    : C.w30,
                             }}>
                                 {p.label}
                             </span>
                             {p.status === 'done' && p.count != null && (
-                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+                                <span style={{ fontSize: 10, color: C.w25 }}>
                                     {p.count.toLocaleString('pl-PL')}
                                 </span>
                             )}
                             {p.status === 'skipped' && (
-                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>
+                                <span style={{ fontSize: 10, color: C.w20, fontStyle: 'italic' }}>
                                     {p.reason || 'pominięto'}
                                 </span>
                             )}
                             {p.status === 'error' && (
-                                <span style={{ fontSize: 10, color: '#F87171' }} title={p.error}>
+                                <span style={{ fontSize: 10, color: C.danger }} title={p.error}>
                                     błąd
                                 </span>
                             )}
@@ -397,8 +398,8 @@ const OVERLAY = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
 
-const MODAL = {
-    background: '#1A1D24', border: '1px solid rgba(255,255,255,0.1)',
+const SYNC_MODAL = {
+    background: C.surfaceElevated, border: B.medium,
     borderRadius: 14, padding: '24px 28px', width: 480, maxWidth: '90vw',
     maxHeight: '85vh', overflowY: 'auto',
     boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
@@ -406,12 +407,12 @@ const MODAL = {
 
 const CLOSE_BTN = {
     background: 'none', border: 'none', cursor: 'pointer',
-    color: 'rgba(255,255,255,0.3)', padding: 4, borderRadius: 6,
+    color: C.w30, padding: 4, borderRadius: 6,
 }
 
 const PRIMARY_BTN = {
     width: '100%', padding: '11px 0', borderRadius: 8,
-    border: 'none', background: '#4F8EF7', color: 'white',
+    border: 'none', background: C.accentBlue, color: 'white',
     fontSize: 13, fontWeight: 600, cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
     transition: 'opacity 0.15s',
@@ -419,7 +420,7 @@ const PRIMARY_BTN = {
 
 const CANCEL_BTN = {
     width: '100%', padding: '11px 0', borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)',
-    color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: 500,
+    border: B.medium, background: C.w04,
+    color: C.w60, fontSize: 13, fontWeight: 500,
     cursor: 'pointer', transition: 'all 0.15s',
 }

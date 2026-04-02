@@ -15,6 +15,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { KpiCard, DeltaIndicator } from '../components/modules';
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 // ─── Polish month names ───
 const MONTH_NAMES = [
@@ -55,7 +56,7 @@ function MonthComparisonSection({ data }) {
             <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#fff', marginBottom: 10 }}>
                 Porównanie miesiąc do miesiąca
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: C.w30, marginBottom: 12 }}>
                 {data.period?.label} vs {data.previous_period?.label}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -72,7 +73,7 @@ function MonthComparisonSection({ data }) {
 function CampaignDetailSection({ data }) {
     if (!data || !Array.isArray(data) || data.length === 0) return null;
     const hasPrev = data.some(c => c.cost_delta_pct !== undefined);
-    const cellStyle = { padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', textAlign: 'right' };
+    const cellStyle = { padding: '6px 8px', borderBottom: `1px solid ${C.w05}`, color: C.w60, textAlign: 'right' };
     const headers = ['Kampania', 'Status', 'Budżet/d', 'Wydatki', ...(hasPrev ? ['m/m'] : []), 'Konw.', ...(hasPrev ? ['m/m'] : []), 'CPA', 'ROAS', 'IS%'];
     return (
         <div className="v2-card" style={{ padding: 16, marginBottom: 20, overflowX: 'auto' }}>
@@ -85,8 +86,8 @@ function CampaignDetailSection({ data }) {
                         {headers.map(h => (
                             <th key={h} style={{
                                 textAlign: h === 'Kampania' ? 'left' : 'right', padding: '6px 8px',
-                                borderBottom: '1px solid rgba(255,255,255,0.1)',
-                                fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
+                                borderBottom: B.medium,
+                                fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase',
                             }}>{h}</th>
                         ))}
                     </tr>
@@ -94,16 +95,16 @@ function CampaignDetailSection({ data }) {
                 <tbody>
                     {data.map((c, i) => (
                         <tr key={i}>
-                            <td style={{ ...cellStyle, color: '#F0F0F0', fontWeight: 500, textAlign: 'left', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</td>
+                            <td style={{ ...cellStyle, color: C.textPrimary, fontWeight: 500, textAlign: 'left', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</td>
                             <td style={cellStyle}>
                                 <span style={{
                                     fontSize: 10, padding: '2px 8px', borderRadius: 999,
-                                    background: c.status === 'ENABLED' ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.06)',
-                                    color: c.status === 'ENABLED' ? '#4ADE80' : 'rgba(255,255,255,0.4)',
+                                    background: c.status === 'ENABLED' ? 'rgba(74,222,128,0.12)' : C.w06,
+                                    color: c.status === 'ENABLED' ? C.success : C.w40,
                                 }}>{c.status}</span>
                             </td>
                             <td style={cellStyle}>{c.daily_budget_usd}</td>
-                            <td style={{ ...cellStyle, color: '#F0F0F0', fontWeight: 500 }}>{c.cost_usd ?? c.cost_30d_usd}</td>
+                            <td style={{ ...cellStyle, color: C.textPrimary, fontWeight: 500 }}>{c.cost_usd ?? c.cost_30d_usd}</td>
                             {hasPrev && <td style={cellStyle}><DeltaIndicator value={c.cost_delta_pct} invertColor /></td>}
                             <td style={cellStyle}>{c.conversions ?? c.conversions_30d}</td>
                             {hasPrev && <td style={cellStyle}><DeltaIndicator value={c.conv_delta_pct} /></td>}
@@ -128,8 +129,8 @@ function ChangeHistorySection({ data }) {
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
                 {data.by_operation && Object.entries(data.by_operation).map(([op, cnt]) => (
                     <div key={op} style={{ fontSize: 12 }}>
-                        <span style={{ color: 'rgba(255,255,255,0.4)' }}>{op}: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{cnt}</span>
+                        <span style={{ color: C.w40 }}>{op}: </span>
+                        <span style={{ color: C.textPrimary, fontWeight: 500 }}>{cnt}</span>
                     </div>
                 ))}
             </div>
@@ -138,8 +139,8 @@ function ChangeHistorySection({ data }) {
                     {Object.entries(data.by_resource_type).map(([type, cnt]) => (
                         <span key={type} style={{
                             fontSize: 11, padding: '3px 10px', borderRadius: 999,
-                            background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)',
-                            border: '1px solid rgba(255,255,255,0.08)',
+                            background: C.w06, color: C.w60,
+                            border: `1px solid ${C.w08}`,
                         }}>
                             {type}: {cnt}
                         </span>
@@ -148,24 +149,24 @@ function ChangeHistorySection({ data }) {
             )}
             {data.notable && data.notable.length > 0 && (
                 <div>
-                    <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
                         Ostatnie zmiany
                     </div>
                     {data.notable.slice(0, 8).map((n, i) => (
                         <div key={i} style={{
                             display: 'flex', gap: 10, alignItems: 'center', padding: '5px 0',
-                            borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 12,
+                            borderBottom: `1px solid ${C.w04}`, fontSize: 12,
                         }}>
-                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, minWidth: 100 }}>{n.date}</span>
+                            <span style={{ color: C.w30, fontSize: 11, minWidth: 100 }}>{n.date}</span>
                             <span style={{
                                 fontSize: 10, padding: '1px 6px', borderRadius: 4,
                                 background: n.operation === 'CREATE' ? 'rgba(74,222,128,0.12)' :
                                     n.operation === 'REMOVE' ? 'rgba(248,113,113,0.12)' : 'rgba(79,142,247,0.12)',
-                                color: n.operation === 'CREATE' ? '#4ADE80' :
-                                    n.operation === 'REMOVE' ? '#F87171' : '#4F8EF7',
+                                color: n.operation === 'CREATE' ? C.success :
+                                    n.operation === 'REMOVE' ? C.danger : C.accentBlue,
                             }}>{n.operation}</span>
-                            <span style={{ color: 'rgba(255,255,255,0.5)' }}>{n.type}</span>
-                            <span style={{ color: '#F0F0F0' }}>{n.name}</span>
+                            <span style={{ color: C.w50 }}>{n.type}</span>
+                            <span style={{ color: C.textPrimary }}>{n.name}</span>
                         </div>
                     ))}
                 </div>
@@ -183,38 +184,38 @@ function ChangeImpactSection({ data }) {
             </div>
             {data.map((item, i) => (
                 <div key={i} style={{
-                    padding: '10px 0', borderBottom: i < data.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                    padding: '10px 0', borderBottom: i < data.length - 1 ? `1px solid ${C.w05}` : 'none',
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                         <span style={{
                             fontSize: 10, padding: '2px 8px', borderRadius: 999,
                             background: item.change_type === 'budget_change' ? 'rgba(251,191,36,0.12)' :
                                 item.change_type === 'bidding_change' ? 'rgba(123,92,224,0.12)' : 'rgba(79,142,247,0.12)',
-                            color: item.change_type === 'budget_change' ? '#FBBF24' :
-                                item.change_type === 'bidding_change' ? '#7B5CE0' : '#4F8EF7',
+                            color: item.change_type === 'budget_change' ? C.warning :
+                                item.change_type === 'bidding_change' ? C.accentPurple : C.accentBlue,
                         }}>
                             {item.change_type === 'budget_change' ? 'Budzet' :
                                 item.change_type === 'bidding_change' ? 'Bidding' : 'Status'}
                         </span>
-                        <span style={{ fontSize: 12, color: '#F0F0F0', fontWeight: 500 }}>{item.entity_name}</span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{item.change_date}</span>
+                        <span style={{ fontSize: 12, color: C.textPrimary, fontWeight: 500 }}>{item.entity_name}</span>
+                        <span style={{ fontSize: 11, color: C.w30 }}>{item.change_date}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, color: C.w60, marginBottom: 4 }}>
                         Zmienione: {item.changed_fields?.join(', ')}
                     </div>
-                    <div style={{ fontSize: 13, color: '#4F8EF7', fontWeight: 500 }}>
+                    <div style={{ fontSize: 13, color: C.accentBlue, fontWeight: 500 }}>
                         {item.impact_summary}
                     </div>
                     <div style={{ display: 'flex', gap: 20, marginTop: 6, fontSize: 11 }}>
                         <div>
-                            <span style={{ color: 'rgba(255,255,255,0.3)' }}>Przed: </span>
-                            <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+                            <span style={{ color: C.w30 }}>Przed: </span>
+                            <span style={{ color: C.w60 }}>
                                 {item.before_7d?.cost_usd} PLN, {item.before_7d?.conversions} konw.
                             </span>
                         </div>
                         <div>
-                            <span style={{ color: 'rgba(255,255,255,0.3)' }}>Po: </span>
-                            <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+                            <span style={{ color: C.w30 }}>Po: </span>
+                            <span style={{ color: C.w60 }}>
                                 {item.after_7d?.cost_usd} PLN, {item.after_7d?.conversions} konw.
                             </span>
                         </div>
@@ -234,27 +235,27 @@ function BudgetPacingSection({ data }) {
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {data.campaigns.map((c, i) => {
-                    const statusColor = c.status === 'on_track' ? '#4ADE80' :
-                        c.status === 'underspend' ? '#FBBF24' : '#F87171';
+                    const statusColor = c.status === 'on_track' ? C.success :
+                        c.status === 'underspend' ? C.warning : C.danger;
                     return (
                         <div key={i} style={{
                             flex: '1 1 200px', maxWidth: 280, padding: '10px 14px',
-                            background: 'rgba(255,255,255,0.03)', borderRadius: 10,
-                            border: '1px solid rgba(255,255,255,0.07)',
+                            background: C.w03, borderRadius: 10,
+                            border: B.card,
                         }}>
-                            <div style={{ fontSize: 12, color: '#F0F0F0', fontWeight: 500, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 12, color: C.textPrimary, fontWeight: 500, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {c.campaign}
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Wydano</span>
-                                <span style={{ color: '#F0F0F0' }}>{c.actual_spend_usd} PLN</span>
+                                <span style={{ color: C.w40 }}>Wydano</span>
+                                <span style={{ color: C.textPrimary }}>{c.actual_spend_usd} PLN</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
-                                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Oczekiwano</span>
-                                <span style={{ color: 'rgba(255,255,255,0.5)' }}>{c.expected_spend_usd} PLN</span>
+                                <span style={{ color: C.w40 }}>Oczekiwano</span>
+                                <span style={{ color: C.w50 }}>{c.expected_spend_usd} PLN</span>
                             </div>
                             <div style={{
-                                height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+                                height: 4, borderRadius: 2, background: C.w08, overflow: 'hidden',
                             }}>
                                 <div style={{
                                     height: '100%', borderRadius: 2, background: statusColor,
@@ -275,9 +276,9 @@ function BudgetPacingSection({ data }) {
 // ─── Status pill ───
 function StatusPill({ status }) {
     const config = {
-        completed: { bg: 'rgba(74,222,128,0.12)', color: '#4ADE80', border: 'rgba(74,222,128,0.25)', label: 'Gotowy' },
-        generating: { bg: 'rgba(123,92,224,0.12)', color: '#7B5CE0', border: 'rgba(123,92,224,0.25)', label: 'Generowanie...' },
-        failed: { bg: 'rgba(248,113,113,0.12)', color: '#F87171', border: 'rgba(248,113,113,0.25)', label: 'Blad' },
+        completed: { bg: 'rgba(74,222,128,0.12)', color: C.success, border: 'rgba(74,222,128,0.25)', label: 'Gotowy' },
+        generating: { bg: 'rgba(123,92,224,0.12)', color: C.accentPurple, border: 'rgba(123,92,224,0.25)', label: 'Generowanie...' },
+        failed: { bg: 'rgba(248,113,113,0.12)', color: C.danger, border: 'rgba(248,113,113,0.25)', label: 'Blad' },
     };
     const s = config[status] || config.failed;
     return (
@@ -304,41 +305,41 @@ function TokenUsageBadge({ usage, model }) {
         <div style={{
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
             padding: '8px 14px', borderRadius: 10,
-            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-            fontSize: 11, color: 'rgba(255,255,255,0.5)',
+            background: C.w03, border: B.card,
+            fontSize: 11, color: C.w50,
         }}>
             {model && (
                 <span style={{
                     padding: '2px 8px', borderRadius: 999,
-                    background: 'rgba(123,92,224,0.12)', color: '#7B5CE0',
+                    background: 'rgba(123,92,224,0.12)', color: C.accentPurple,
                     border: '1px solid rgba(123,92,224,0.25)', fontSize: 10,
                 }}>{model}</span>
             )}
             {usage && (
                 <>
                     <span>
-                        <span style={{ color: 'rgba(255,255,255,0.3)' }}>in: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{input.toLocaleString('pl-PL')}</span>
+                        <span style={{ color: C.w30 }}>in: </span>
+                        <span style={{ color: C.textPrimary, fontWeight: 500 }}>{input.toLocaleString('pl-PL')}</span>
                     </span>
                     <span>
-                        <span style={{ color: 'rgba(255,255,255,0.3)' }}>out: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{output.toLocaleString('pl-PL')}</span>
+                        <span style={{ color: C.w30 }}>out: </span>
+                        <span style={{ color: C.textPrimary, fontWeight: 500 }}>{output.toLocaleString('pl-PL')}</span>
                     </span>
                     {cacheRead > 0 && (
                         <span>
-                            <span style={{ color: 'rgba(255,255,255,0.3)' }}>cache: </span>
-                            <span style={{ color: '#4F8EF7' }}>{cacheRead.toLocaleString('pl-PL')}</span>
+                            <span style={{ color: C.w30 }}>cache: </span>
+                            <span style={{ color: C.accentBlue }}>{cacheRead.toLocaleString('pl-PL')}</span>
                         </span>
                     )}
                     <span>
-                        <span style={{ color: 'rgba(255,255,255,0.3)' }}>total: </span>
-                        <span style={{ color: '#F0F0F0', fontWeight: 500 }}>{total.toLocaleString('pl-PL')}</span>
+                        <span style={{ color: C.w30 }}>total: </span>
+                        <span style={{ color: C.textPrimary, fontWeight: 500 }}>{total.toLocaleString('pl-PL')}</span>
                     </span>
                     {durationSec && (
-                        <span style={{ color: 'rgba(255,255,255,0.3)' }}>{durationSec}s</span>
+                        <span style={{ color: C.w30 }}>{durationSec}s</span>
                     )}
                     {cost != null && cost > 0 && (
-                        <span style={{ color: '#FBBF24' }}>${cost.toFixed(4)}</span>
+                        <span style={{ color: C.warning }}>${cost.toFixed(4)}</span>
                     )}
                 </>
             )}
@@ -545,7 +546,7 @@ export default function Reports() {
     if (!selectedClientId) {
         return (
             <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', padding: '80px 20px', color: 'rgba(255,255,255,0.3)' }}>
+                <div style={{ textAlign: 'center', padding: '80px 20px', color: C.w30 }}>
                     <FileBarChart2 size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
                     <p style={{ fontSize: 14, margin: 0 }}>Wybierz klienta w sidebar</p>
                 </div>
@@ -558,7 +559,7 @@ export default function Reports() {
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <FileBarChart2 size={22} style={{ color: '#7B5CE0' }} />
+                    <FileBarChart2 size={22} style={{ color: C.accentPurple }} />
                     <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#fff', margin: 0 }}>
                         Raporty
                     </h1>
@@ -566,7 +567,7 @@ export default function Reports() {
                         <span style={{
                             fontSize: 11, padding: '2px 10px', borderRadius: 999,
                             background: agentAvailable ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
-                            color: agentAvailable ? '#4ADE80' : '#F87171',
+                            color: agentAvailable ? C.success : C.danger,
                             border: `1px solid ${agentAvailable ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)'}`,
                         }}>
                             {agentAvailable ? 'Claude dostepny' : 'Claude niedostepny'}
@@ -587,9 +588,9 @@ export default function Reports() {
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: 5,
                                         padding: '7px 14px', borderRadius: 999, fontSize: 12, fontWeight: 500,
-                                        border: `1px solid ${active ? 'rgba(79,142,247,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                                        background: active ? 'rgba(79,142,247,0.12)' : 'rgba(255,255,255,0.04)',
-                                        color: active ? '#4F8EF7' : 'rgba(255,255,255,0.5)',
+                                        border: `1px solid ${active ? 'rgba(79,142,247,0.5)' : C.w10}`,
+                                        background: active ? 'rgba(79,142,247,0.12)' : C.w04,
+                                        color: active ? C.accentBlue : C.w50,
                                         cursor: generating ? 'not-allowed' : 'pointer',
                                         transition: 'all 0.15s',
                                     }}
@@ -607,8 +608,8 @@ export default function Reports() {
                             disabled={generating}
                             style={{
                                 padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-                                border: '1px solid rgba(255,255,255,0.15)',
-                                background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)',
+                                border: `1px solid ${C.w15}`,
+                                background: C.w06, color: C.w70,
                                 cursor: generating ? 'not-allowed' : 'pointer',
                                 outline: 'none',
                             }}
@@ -640,8 +641,8 @@ export default function Reports() {
                             onClick={() => window.print()}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)',
-                                background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.6)',
+                                padding: '8px 14px', borderRadius: 8, border: B.medium,
+                                background: C.w04, color: C.w60,
                                 fontSize: 12, cursor: 'pointer',
                             }}
                         >
@@ -655,27 +656,27 @@ export default function Reports() {
                 {/* Left: Report history */}
                 <div style={{ flex: '0 0 260px' }}>
                     <div style={{
-                        fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)',
+                        fontSize: 10, fontWeight: 500, color: C.textMuted,
                         textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10,
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     }}>
                         Zapisane raporty
                         <button onClick={loadReports} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
-                            <RefreshCw size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
+                            <RefreshCw size={11} style={{ color: C.w30 }} />
                         </button>
                     </div>
 
                     {loadingList && reports.length === 0 && (
                         <div style={{ textAlign: 'center', padding: 20 }}>
-                            <Loader2 size={16} className="animate-spin" style={{ color: 'rgba(255,255,255,0.3)' }} />
+                            <Loader2 size={16} className="animate-spin" style={{ color: C.w30 }} />
                         </div>
                     )}
 
                     {reports.length === 0 && !generating && !loadingList && (
                         <div style={{
-                            padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.3)',
+                            padding: 20, textAlign: 'center', color: C.w30,
                             fontSize: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 10,
-                            border: '1px solid rgba(255,255,255,0.05)',
+                            border: `1px solid ${C.w05}`,
                         }}>
                             Brak zapisanych raportow
                         </div>
@@ -691,25 +692,25 @@ export default function Reports() {
                                     style={{
                                         display: 'flex', flexDirection: 'column', gap: 4,
                                         padding: '10px 14px', borderRadius: 10, textAlign: 'left',
-                                        border: `1px solid ${isActive ? 'rgba(79,142,247,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                                        background: isActive ? 'rgba(79,142,247,0.08)' : 'rgba(255,255,255,0.03)',
+                                        border: `1px solid ${isActive ? 'rgba(79,142,247,0.4)' : C.w07}`,
+                                        background: isActive ? 'rgba(79,142,247,0.08)' : C.w03,
                                         cursor: 'pointer', transition: 'all 0.15s',
                                     }}
-                                    onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; } }}
-                                    onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; } }}
+                                    onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.background = C.w06; } }}
+                                    onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.background = C.w03; } }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span style={{ fontSize: 13, color: '#F0F0F0', fontWeight: 500 }}>
+                                        <span style={{ fontSize: 13, color: C.textPrimary, fontWeight: 500 }}>
                                             {formatPeriodLabel(r.period_label)}
                                         </span>
-                                        <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                                        <ChevronRight size={12} style={{ color: C.w20 }} />
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                         {r.report_type && r.report_type !== 'monthly' && (
                                             <span style={{
                                                 fontSize: 9, padding: '1px 6px', borderRadius: 999,
                                                 background: r.report_type === 'weekly' ? 'rgba(79,142,247,0.12)' : 'rgba(251,191,36,0.12)',
-                                                color: r.report_type === 'weekly' ? '#4F8EF7' : '#FBBF24',
+                                                color: r.report_type === 'weekly' ? C.accentBlue : C.warning,
                                                 border: `1px solid ${r.report_type === 'weekly' ? 'rgba(79,142,247,0.25)' : 'rgba(251,191,36,0.25)'}`,
                                                 textTransform: 'uppercase', fontWeight: 600,
                                             }}>
@@ -717,7 +718,7 @@ export default function Reports() {
                                             </span>
                                         )}
                                         <StatusPill status={r.status} />
-                                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+                                        <span style={{ fontSize: 10, color: C.w25 }}>
                                             {r.created_at ? new Date(r.created_at).toLocaleDateString('pl-PL') : ''}
                                         </span>
                                     </div>
@@ -736,24 +737,24 @@ export default function Reports() {
                             <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <Loader2 size={14} className="animate-spin" style={{ color: '#7B5CE0' }} />
-                                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{progress.label}</span>
+                                        <Loader2 size={14} className="animate-spin" style={{ color: C.accentPurple }} />
+                                        <span style={{ fontSize: 12, color: C.w60 }}>{progress.label}</span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                         {modelName && (
                                             <span style={{
                                                 fontSize: 10, padding: '2px 8px', borderRadius: 999,
-                                                background: 'rgba(123,92,224,0.12)', color: '#7B5CE0',
+                                                background: 'rgba(123,92,224,0.12)', color: C.accentPurple,
                                                 border: '1px solid rgba(123,92,224,0.25)',
                                             }}>{modelName}</span>
                                         )}
-                                        <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Syne', color: '#F0F0F0' }}>
+                                        <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'Syne', color: C.textPrimary }}>
                                             {progress.pct}%
                                         </span>
                                     </div>
                                 </div>
                                 <div style={{
-                                    height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+                                    height: 4, borderRadius: 2, background: C.w08, overflow: 'hidden',
                                 }}>
                                     <div style={{
                                         height: '100%', borderRadius: 2,
@@ -778,8 +779,8 @@ export default function Reports() {
                             {streamingText && (
                                 <div className="v2-card" style={{ padding: 20 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                        <Sparkles size={14} style={{ color: '#7B5CE0' }} />
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: '#7B5CE0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        <Sparkles size={14} style={{ color: C.accentPurple }} />
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: C.accentPurple, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                             Analiza AI
                                         </span>
                                     </div>
@@ -792,7 +793,7 @@ export default function Reports() {
                             {/* Token usage (appears after AI finishes) — collapsed by default */}
                             {tokenUsage && (
                                 <details style={{ marginTop: 12 }}>
-                                    <summary style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', userSelect: 'none' }}>Szczegóły techniczne</summary>
+                                    <summary style={{ fontSize: 11, color: C.w30, cursor: 'pointer', userSelect: 'none' }}>Szczegóły techniczne</summary>
                                     <div style={{ marginTop: 6 }}>
                                         <TokenUsageBadge usage={tokenUsage} model={modelName} />
                                     </div>
@@ -804,19 +805,19 @@ export default function Reports() {
                     {/* Error */}
                     {error && !generating && (
                         <div style={{
-                            background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)',
+                            background: C.dangerBg, border: '1px solid rgba(248,113,113,0.2)',
                             borderRadius: 10, padding: '12px 16px', marginBottom: 16,
                             display: 'flex', alignItems: 'center', gap: 8,
                         }}>
-                            <AlertTriangle size={14} style={{ color: '#F87171' }} />
-                            <span style={{ fontSize: 13, color: '#F87171' }}>{error}</span>
+                            <AlertTriangle size={14} style={{ color: C.danger }} />
+                            <span style={{ fontSize: 13, color: C.danger }}>{error}</span>
                         </div>
                     )}
 
                     {/* Loading specific report */}
                     {loadingReport && (
                         <div style={{ textAlign: 'center', padding: 40 }}>
-                            <Loader2 size={24} className="animate-spin" style={{ color: '#4F8EF7' }} />
+                            <Loader2 size={24} className="animate-spin" style={{ color: C.accentBlue }} />
                         </div>
                     )}
 
@@ -827,13 +828,13 @@ export default function Reports() {
                             <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                                        <Calendar size={14} style={{ color: '#4F8EF7' }} />
+                                        <Calendar size={14} style={{ color: C.accentBlue }} />
                                         <span style={{ fontSize: 18, fontWeight: 700, fontFamily: 'Syne', color: '#fff' }}>
                                             {formatPeriodLabel(activeReport.period_label)}
                                         </span>
                                         <StatusPill status={activeReport.status} />
                                     </div>
-                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                                    <div style={{ fontSize: 11, color: C.w30 }}>
                                         {activeReport.date_from} — {activeReport.date_to}
                                         {activeReport.completed_at && ` · Wygenerowano: ${new Date(activeReport.completed_at).toLocaleString('pl-PL')}`}
                                     </div>
@@ -855,8 +856,8 @@ export default function Reports() {
                             {activeReport.ai_narrative && (
                                 <div className="v2-card" style={{ padding: 20 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                        <Sparkles size={14} style={{ color: '#7B5CE0' }} />
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: '#7B5CE0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        <Sparkles size={14} style={{ color: C.accentPurple }} />
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: C.accentPurple, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                             Analiza AI i Rekomendacje
                                         </span>
                                     </div>
@@ -869,7 +870,7 @@ export default function Reports() {
                             {/* Token usage from saved report — collapsed */}
                             {(activeReport.input_tokens || activeReport.model_name) && (
                                 <details style={{ marginTop: 12 }}>
-                                    <summary style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', userSelect: 'none' }}>Szczegóły techniczne</summary>
+                                    <summary style={{ fontSize: 11, color: C.w30, cursor: 'pointer', userSelect: 'none' }}>Szczegóły techniczne</summary>
                                     <div style={{ marginTop: 6 }}>
                                         <TokenUsageBadge
                                             usage={activeReport.input_tokens ? {
@@ -888,10 +889,10 @@ export default function Reports() {
                             {/* Error message */}
                             {activeReport.error_message && (
                                 <div style={{
-                                    background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)',
+                                    background: C.dangerBg, border: '1px solid rgba(248,113,113,0.2)',
                                     borderRadius: 10, padding: '12px 16px', marginTop: 16,
                                 }}>
-                                    <span style={{ fontSize: 13, color: '#F87171' }}>{activeReport.error_message}</span>
+                                    <span style={{ fontSize: 13, color: C.danger }}>{activeReport.error_message}</span>
                                 </div>
                             )}
                         </div>
@@ -900,9 +901,9 @@ export default function Reports() {
                     {/* Empty state */}
                     {!generating && !activeReport && !loadingReport && !error && (
                         <div style={{
-                            textAlign: 'center', padding: '80px 20px', color: 'rgba(255,255,255,0.3)',
+                            textAlign: 'center', padding: '80px 20px', color: C.w30,
                             background: 'rgba(255,255,255,0.02)', borderRadius: 12,
-                            border: '1px solid rgba(255,255,255,0.05)',
+                            border: `1px solid ${C.w05}`,
                         }}>
                             <FileBarChart2 size={40} style={{ marginBottom: 12, opacity: 0.3 }} />
                             <p style={{ fontSize: 14, margin: '0 0 4px' }}>Wybierz raport z listy lub wygeneruj nowy</p>

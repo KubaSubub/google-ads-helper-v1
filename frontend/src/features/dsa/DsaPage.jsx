@@ -83,34 +83,34 @@ export default function DsaPage() {
       {coverage && (
         <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
           <div className="v2-card" style={{ padding: '12px 20px', borderRadius: 10, flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
               Kampanie DSA
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#4F8EF7' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: C.accentBlue }}>
               {coverage.dsa_campaign_count}
             </div>
           </div>
           <div className="v2-card" style={{ padding: '12px 20px', borderRadius: 10, flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
               Kampanie Search
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: 'rgba(255,255,255,0.8)' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: C.w80 }}>
               {coverage.total_search_campaigns}
             </div>
           </div>
           <div className="v2-card" style={{ padding: '12px 20px', borderRadius: 10, flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
               Cele DSA
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#7B5CE0' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: C.accentPurple }}>
               {targets.length}
             </div>
           </div>
           <div className="v2-card" style={{ padding: '12px 20px', borderRadius: 10, flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
               Nakladanie fraz
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#FBBF24' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: C.warning }}>
               {overlap.overlap_count || 0}
             </div>
           </div>
@@ -128,9 +128,9 @@ export default function DsaPage() {
               style={{
                 padding: '6px 18px',
                 borderRadius: 999,
-                border: active ? '1px solid #4F8EF7' : '1px solid rgba(255,255,255,0.1)',
-                background: active ? 'rgba(79,142,247,0.15)' : 'transparent',
-                color: active ? '#4F8EF7' : 'rgba(255,255,255,0.55)',
+                border: active ? '1px solid #4F8EF7' : B.medium,
+                background: active ? C.infoBg : 'transparent',
+                color: active ? C.accentBlue : C.textSecondary,
                 fontSize: 13,
                 fontWeight: active ? 600 : 400,
                 cursor: 'pointer',
@@ -145,7 +145,7 @@ export default function DsaPage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <Loader2 size={32} className="animate-spin" style={{ color: '#4F8EF7' }} />
+          <Loader2 size={32} className="animate-spin" style={{ color: C.accentBlue }} />
         </div>
       ) : (
         <div className="v2-card" style={{ borderRadius: 12, overflow: 'hidden' }}>
@@ -172,7 +172,7 @@ export default function DsaPage() {
                   </thead>
                   <tbody>
                     {targets.map((row, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                         <td style={TD}>
                           <span style={{
                             padding: '2px 8px',
@@ -180,15 +180,15 @@ export default function DsaPage() {
                             fontSize: 11,
                             fontWeight: 500,
                             background: row.target_type === 'URL_CONTAINS'
-                              ? 'rgba(79,142,247,0.15)'
+                              ? C.infoBg
                               : row.target_type === 'CATEGORY'
                                 ? 'rgba(123,92,224,0.15)'
-                                : 'rgba(255,255,255,0.07)',
+                                : C.w07,
                             color: row.target_type === 'URL_CONTAINS'
-                              ? '#4F8EF7'
+                              ? C.accentBlue
                               : row.target_type === 'CATEGORY'
-                                ? '#7B5CE0'
-                                : 'rgba(255,255,255,0.5)',
+                                ? C.accentPurple
+                                : C.w50,
                           }}>
                             {TARGET_TYPE_LABELS[row.target_type] || row.target_type}
                           </span>
@@ -196,7 +196,7 @@ export default function DsaPage() {
                         <td style={TD_DIM}>{row.target_value}</td>
                         <td style={TD}>
                           <span style={{
-                            color: row.status === 'ENABLED' ? '#4ADE80' : '#FBBF24',
+                            color: row.status === 'ENABLED' ? C.success : C.warning,
                             fontSize: 11,
                           }}>
                             {row.status}
@@ -237,12 +237,12 @@ export default function DsaPage() {
                   </thead>
                   <tbody>
                     {(headlines.headlines || []).map((row, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                         <td style={TD_DIM}>{row.search_term}</td>
-                        <td style={{ ...TD, color: '#4F8EF7', fontFamily: 'DM Sans', fontWeight: 500 }}>{row.generated_headline}</td>
+                        <td style={{ ...TD, color: C.accentBlue, fontFamily: 'DM Sans', fontWeight: 500 }}>{row.generated_headline}</td>
                         <td style={{ ...TD_DIM, fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           <a href={row.landing_page_url} target="_blank" rel="noopener noreferrer"
-                             style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>
+                             style={{ color: C.w40, textDecoration: 'none' }}>
                             {row.landing_page_url}
                           </a>
                         </td>
@@ -265,15 +265,15 @@ export default function DsaPage() {
               ? <EmptyState message="Brak nakladajacych sie fraz DSA i Search" />
               : (
                 <>
-                  <div style={{ padding: '12px 16px', display: 'flex', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                      Tylko DSA: <span style={{ color: '#4F8EF7', fontWeight: 600 }}>{overlap.dsa_only_count || 0}</span>
+                  <div style={{ padding: '12px 16px', display: 'flex', gap: 24, borderBottom: `1px solid ${C.w05}` }}>
+                    <div style={{ fontSize: 12, color: C.w50 }}>
+                      Tylko DSA: <span style={{ color: C.accentBlue, fontWeight: 600 }}>{overlap.dsa_only_count || 0}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                      Tylko Search: <span style={{ color: '#7B5CE0', fontWeight: 600 }}>{overlap.search_only_count || 0}</span>
+                    <div style={{ fontSize: 12, color: C.w50 }}>
+                      Tylko Search: <span style={{ color: C.accentPurple, fontWeight: 600 }}>{overlap.search_only_count || 0}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                      Wspolne: <span style={{ color: '#FBBF24', fontWeight: 600 }}>{overlap.overlap_count || 0}</span>
+                    <div style={{ fontSize: 12, color: C.w50 }}>
+                      Wspolne: <span style={{ color: C.warning, fontWeight: 600 }}>{overlap.overlap_count || 0}</span>
                     </div>
                   </div>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -294,7 +294,7 @@ export default function DsaPage() {
                       {(overlap.overlapping_terms || []).map((row, i) => {
                         const isDsaBetter = row.dsa_conversions > row.search_conversions;
                         return (
-                          <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <tr key={i} style={{ borderTop: `1px solid ${C.w05}` }}>
                             <td style={{ ...TD, fontWeight: 500 }}>{row.search_term}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(row.dsa_clicks)}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{fmtUsd(row.dsa_cost_usd)}</td>
@@ -302,11 +302,11 @@ export default function DsaPage() {
                             <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(row.search_clicks)}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{fmtUsd(row.search_cost_usd)}</td>
                             <td style={{ ...TD, textAlign: 'right' }}>{Number(row.search_conversions).toFixed(2)}</td>
-                            <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: '#FBBF24' }}>{fmtUsd(row.total_cost_usd)}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: C.warning }}>{fmtUsd(row.total_cost_usd)}</td>
                             <td style={{
                               ...TD,
                               fontSize: 11,
-                              color: isDsaBetter ? '#4ADE80' : '#F87171',
+                              color: isDsaBetter ? C.success : C.danger,
                               maxWidth: 220,
                             }}>
                               {row.recommendation}

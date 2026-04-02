@@ -19,24 +19,25 @@ import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
 import { getRecommendations, getAnomalies, getWastedSpend } from '../../api'
 import EmptyState from '../../components/EmptyState'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../../constants/designTokens'
 
 // ─── Design tokens ───
 const CARD = {
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.07)',
+    background: C.w03,
+    border: B.card,
     borderRadius: 12,
 }
 
 const PRIORITY_CONFIG = {
-    HIGH: { color: '#F87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)', label: 'HIGH', order: 0 },
-    MEDIUM: { color: '#FBBF24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)', label: 'MEDIUM', order: 1 },
-    LOW: { color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', label: 'LOW', order: 2 },
+    HIGH: { color: C.danger, bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.25)', label: 'HIGH', order: 0 },
+    MEDIUM: { color: C.warning, bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.25)', label: 'MEDIUM', order: 1 },
+    LOW: { color: C.textPlaceholder, bg: C.w06, border: C.w12, label: 'LOW', order: 2 },
 }
 
 const SOURCE_CONFIG = {
-    recommendation: { icon: Lightbulb, color: '#4F8EF7', label: 'Rekomendacja', route: '/recommendations' },
-    alert: { icon: AlertTriangle, color: '#FBBF24', label: 'Alert', route: '/alerts' },
-    wasted_spend: { icon: Ban, color: '#F87171', label: 'Zmarnowany budżet', route: '/audit-center' },
+    recommendation: { icon: Lightbulb, color: C.accentBlue, label: 'Rekomendacja', route: '/recommendations' },
+    alert: { icon: AlertTriangle, color: C.warning, label: 'Alert', route: '/alerts' },
+    wasted_spend: { icon: Ban, color: C.danger, label: 'Zmarnowany budżet', route: '/audit-center' },
 }
 
 // ─── localStorage helpers ───
@@ -93,8 +94,8 @@ function SourceBadge({ source }) {
                 fontWeight: 500,
                 padding: '2px 8px 2px 6px',
                 borderRadius: 999,
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: C.w04,
+                border: `1px solid ${C.w08}`,
                 color: cfg.color,
             }}
         >
@@ -109,14 +110,14 @@ function ProgressBar({ done, total }) {
     return (
         <div style={{ ...CARD, padding: '16px 20px', marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>
                     {done}/{total} {total === 1 ? 'zadanie wykonane' : total < 5 ? 'zadania wykonane' : 'zadań wykonanych'} dzisiaj
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: pct === 100 ? '#4ADE80' : '#4F8EF7' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: pct === 100 ? C.success : C.accentBlue }}>
                     {pct}%
                 </span>
             </div>
-            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <div style={{ height: 6, borderRadius: 3, background: C.w06, overflow: 'hidden' }}>
                 <div
                     style={{
                         height: '100%',
@@ -171,7 +172,7 @@ function TaskCard({ task, isDone, onToggle, onNavigate }) {
                 }}
                 title={isDone ? 'Oznacz jako niewykonane' : 'Oznacz jako wykonane'}
             >
-                {isDone && <CheckCircle2 size={14} style={{ color: '#4ADE80' }} />}
+                {isDone && <CheckCircle2 size={14} style={{ color: C.success }} />}
             </button>
 
             {/* Icon */}
@@ -198,7 +199,7 @@ function TaskCard({ task, isDone, onToggle, onNavigate }) {
                     {task.impact && (
                         <span style={{
                             fontSize: 10,
-                            color: 'rgba(255,255,255,0.4)',
+                            color: C.w40,
                             fontFamily: 'monospace',
                         }}>
                             {task.impact}
@@ -209,7 +210,7 @@ function TaskCard({ task, isDone, onToggle, onNavigate }) {
                     style={{
                         fontSize: 13,
                         fontWeight: 500,
-                        color: isDone ? 'rgba(255,255,255,0.35)' : '#F0F0F0',
+                        color: isDone ? C.textMuted : C.textPrimary,
                         textDecoration: isDone ? 'line-through' : 'none',
                         lineHeight: 1.4,
                         marginBottom: task.detail ? 4 : 0,
@@ -218,7 +219,7 @@ function TaskCard({ task, isDone, onToggle, onNavigate }) {
                     {task.description}
                 </div>
                 {task.detail && (
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.3 }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.3 }}>
                         {task.detail}
                     </div>
                 )}
@@ -261,9 +262,9 @@ function FilterPill({ active, onClick, children }) {
                 borderRadius: 999,
                 fontSize: 12,
                 fontWeight: active ? 500 : 400,
-                border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
-                background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
-                color: active ? 'white' : 'rgba(255,255,255,0.45)',
+                border: `1px solid ${active ? C.accentBlue : C.w10}`,
+                background: active ? C.accentBlueBg : 'transparent',
+                color: active ? 'white' : C.textPlaceholder,
                 cursor: 'pointer',
                 transition: 'all 0.15s',
                 whiteSpace: 'nowrap',
@@ -481,10 +482,10 @@ export default function TaskQueuePage() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0', margin: 0 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: C.textPrimary, margin: 0 }}>
                         Plan dnia
                     </h1>
-                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0 0' }}>
+                    <p style={{ fontSize: 13, color: C.w40, margin: '4px 0 0 0' }}>
                         Priorytetyzowana lista działań do wykonania dzisiaj
                     </p>
                 </div>
@@ -499,9 +500,9 @@ export default function TaskQueuePage() {
                         borderRadius: 999,
                         fontSize: 12,
                         fontWeight: 500,
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        background: 'rgba(255,255,255,0.04)',
-                        color: 'rgba(255,255,255,0.6)',
+                        border: B.medium,
+                        background: C.w04,
+                        color: C.w60,
                         cursor: loading ? 'not-allowed' : 'pointer',
                         transition: 'all 0.15s',
                     }}
@@ -526,7 +527,7 @@ export default function TaskQueuePage() {
                     Wykonane ({doneCount})
                 </FilterPill>
 
-                <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', margin: '0 4px' }} />
+                <div style={{ width: 1, background: C.w08, margin: '0 4px' }} />
 
                 <FilterPill active={sourceFilter === 'all'} onClick={() => setSourceFilter('all')}>
                     Wszystkie źródła
@@ -545,8 +546,8 @@ export default function TaskQueuePage() {
             {/* Loading state */}
             {loading && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
-                    <Loader2 size={24} className="animate-spin" style={{ color: 'rgba(255,255,255,0.3)' }} />
-                    <span style={{ marginLeft: 10, fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
+                    <Loader2 size={24} className="animate-spin" style={{ color: C.w30 }} />
+                    <span style={{ marginLeft: 10, fontSize: 13, color: C.textMuted }}>
                         Ładowanie planu dnia...
                     </span>
                 </div>
@@ -588,27 +589,27 @@ export default function TaskQueuePage() {
                     padding: '12px 16px',
                     borderRadius: 10,
                     background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.04)',
+                    border: `1px solid ${C.w04}`,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 16,
                     flexWrap: 'wrap',
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#F87171' }} />
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.danger }} />
+                        <span style={{ fontSize: 11, color: C.w40 }}>
                             HIGH: {tasks.filter(t => t.priority === 'HIGH').length}
                         </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#FBBF24' }} />
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.warning }} />
+                        <span style={{ fontSize: 11, color: C.w40 }}>
                             MEDIUM: {tasks.filter(t => t.priority === 'MEDIUM').length}
                         </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.3)' }} />
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.w30 }} />
+                        <span style={{ fontSize: 11, color: C.w40 }}>
                             LOW: {tasks.filter(t => t.priority === 'LOW').length}
                         </span>
                     </div>

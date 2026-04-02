@@ -348,6 +348,10 @@ export const dismissMccGoogleRecommendations = (data) =>
     api.post('/mcc/dismiss-google-recommendations', data)
 export const getMccNegativeKeywordLists = () =>
     api.get('/mcc/negative-keyword-lists')
+export const getMccSharedLists = () =>
+    api.get('/mcc/shared-lists')
+export const getMccBillingStatus = (customerId) =>
+    api.get('/mcc/billing-status', { params: { customer_id: customerId } })
 
 // History
 export const getChangeHistory = (clientId, params = {}) =>

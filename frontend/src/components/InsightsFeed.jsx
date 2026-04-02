@@ -1,6 +1,7 @@
 ﻿import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ChevronDown, ChevronUp, ChevronRight, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const SOURCE_LABELS = {
     ANALYTICS: 'Insight backendu',
@@ -12,23 +13,23 @@ const SOURCE_LABELS = {
 const PRIORITY_CONFIG = {
     HIGH: {
         icon: AlertTriangle,
-        color: '#F87171',
-        bg: 'rgba(248,113,113,0.08)',
-        border: 'rgba(248,113,113,0.2)',
+        color: C.danger,
+        bg: C.dangerBg,
+        border: C.dangerBorder,
         label: 'Wysoki',
     },
     MEDIUM: {
         icon: ShieldAlert,
-        color: '#FBBF24',
+        color: C.warning,
         bg: 'rgba(251,191,36,0.08)',
-        border: 'rgba(251,191,36,0.2)',
+        border: C.warningBorder,
         label: 'Średni',
     },
     LOW: {
         icon: TrendingUp,
-        color: '#4F8EF7',
+        color: C.accentBlue,
         bg: 'rgba(79,142,247,0.08)',
-        border: 'rgba(79,142,247,0.2)',
+        border: C.infoBorder,
         label: 'Info',
     },
 }
@@ -82,8 +83,8 @@ export default function InsightsFeed({ recommendations }) {
                 }}
             >
                 <div className="flex items-center gap-2">
-                    <Lightbulb size={15} style={{ color: '#FBBF24' }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                    <Lightbulb size={15} style={{ color: C.warning }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                         Automatyczne insighty
                     </span>
                     {hasInsights ? (
@@ -94,25 +95,25 @@ export default function InsightsFeed({ recommendations }) {
                                 padding: '2px 7px',
                                 borderRadius: 999,
                                 background: 'rgba(251,191,36,0.15)',
-                                color: '#FBBF24',
+                                color: C.warning,
                                 border: '1px solid rgba(251,191,36,0.25)',
                             }}
                         >
                             {insights.length}
                         </span>
                     ) : (
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                        <span style={{ fontSize: 11, color: C.w30 }}>
                             - wszystko wygląda dobrze
                         </span>
                     )}
                 </div>
                 {expanded
-                    ? <ChevronUp size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />
-                    : <ChevronDown size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />}
+                    ? <ChevronUp size={14} style={{ color: C.w30 }} />
+                    : <ChevronDown size={14} style={{ color: C.w30 }} />}
             </button>
 
             {expanded && hasInsights && (
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ borderTop: B.card, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div className="flex items-center gap-1" style={{ marginBottom: 4 }}>
                         {PRIORITY_PILLS.map(p => {
                             const active = filterPriority === p
@@ -124,9 +125,9 @@ export default function InsightsFeed({ recommendations }) {
                                     onClick={e => { e.stopPropagation(); setFilterPriority(p) }}
                                     style={{
                                         fontSize: 10, fontWeight: 500, padding: '3px 8px', borderRadius: 999,
-                                        border: `1px solid ${active ? 'rgba(79,142,247,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                                        border: `1px solid ${active ? C.infoBorder : C.w08}`,
                                         background: active ? 'rgba(79,142,247,0.12)' : 'transparent',
-                                        color: active ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                                        color: active ? C.accentBlue : C.w40,
                                         cursor: 'pointer',
                                     }}
                                 >
@@ -154,20 +155,20 @@ export default function InsightsFeed({ recommendations }) {
                                 <Icon size={14} style={{ color: cfg.color, flexShrink: 0, marginTop: 1 }} />
                                 <div style={{ flex: 1 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: '#F0F0F0' }}>
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: C.textPrimary }}>
                                             {insight.entity || 'Insight'}
                                         </span>
                                         <span style={{ fontSize: 10, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                                             {cfg.label}
                                         </span>
-                                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                        <span style={{ fontSize: 10, color: C.textMuted }}>
                                             {SOURCE_LABELS[insight.source] || insight.source}
                                         </span>
                                     </div>
                                     <div style={{ fontSize: 12, color: '#E8E8E8', lineHeight: 1.45, marginBottom: 4 }}>
                                         {insight.message}
                                     </div>
-                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
+                                    <div style={{ fontSize: 11, color: C.textPlaceholder, lineHeight: 1.5 }}>
                                         {insight.detail}
                                         {insight.expiresAt ? ` • wygasa ${new Date(insight.expiresAt).toLocaleString('pl-PL')}` : ''}
                                     </div>
@@ -175,7 +176,7 @@ export default function InsightsFeed({ recommendations }) {
                                 <button
                                     onClick={(e) => { e.stopPropagation(); navigate('/recommendations') }}
                                     style={{
-                                        background: 'rgba(79,142,247,0.1)',
+                                        background: C.infoBg,
                                         border: '1px solid rgba(79,142,247,0.25)',
                                         borderRadius: 6,
                                         padding: '4px 10px',
@@ -183,7 +184,7 @@ export default function InsightsFeed({ recommendations }) {
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: 4,
-                                        color: '#4F8EF7',
+                                        color: C.accentBlue,
                                         fontSize: 11,
                                         fontWeight: 500,
                                         whiteSpace: 'nowrap',
@@ -200,10 +201,10 @@ export default function InsightsFeed({ recommendations }) {
             )}
 
             {expanded && hasInsights && (
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 16px', textAlign: 'right' }}>
+                <div style={{ borderTop: B.card, padding: '10px 16px', textAlign: 'right' }}>
                     <span
                         onClick={() => navigate('/recommendations')}
-                        style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}
+                        style={{ fontSize: 11, color: C.accentBlue, cursor: 'pointer' }}
                     >
                         Wszystkie rekomendacje →
                     </span>
@@ -213,11 +214,11 @@ export default function InsightsFeed({ recommendations }) {
             {expanded && !hasInsights && (
                 <div
                     style={{
-                        borderTop: '1px solid rgba(255,255,255,0.07)',
+                        borderTop: B.card,
                         padding: '20px',
                         textAlign: 'center',
                         fontSize: 12,
-                        color: 'rgba(255,255,255,0.3)',
+                        color: C.w30,
                     }}
                 >
                     Brak aktywnych insightów backendowych.

@@ -2,8 +2,8 @@ import { TH, TD, TD_DIM } from '../../../../constants/designTokens'
 import MetricPill from '../../../../components/shared/MetricPill'
 
 export default function ConversionQualitySection({ data }) {
-    if (!data) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak danych konwersji.</div>
-    const scoreColor = data.quality_score >= 80 ? '#4ADE80' : data.quality_score >= 50 ? '#FBBF24' : '#F87171'
+    if (!data) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: C.w40 }}>Brak danych konwersji.</div>
+    const scoreColor = data.quality_score >= 80 ? C.success : data.quality_score >= 50 ? C.warning : C.danger
     return (
         <div style={{ padding: '0 16px 16px' }}>
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -14,25 +14,25 @@ export default function ConversionQualitySection({ data }) {
             {data.issues?.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                     {data.issues.map((iss, i) => (
-                        <div key={i} style={{ padding: '8px 12px', marginBottom: 6, borderRadius: 8, background: iss.severity === 'HIGH' ? 'rgba(248,113,113,0.08)' : iss.severity === 'MEDIUM' ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${iss.severity === 'HIGH' ? 'rgba(248,113,113,0.2)' : iss.severity === 'MEDIUM' ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.07)'}` }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: iss.severity === 'HIGH' ? '#F87171' : iss.severity === 'MEDIUM' ? '#FBBF24' : '#F0F0F0' }}>{iss.type}</div>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{iss.detail}</div>
-                            {iss.affected?.length > 0 && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{iss.affected.join(', ')}</div>}
+                        <div key={i} style={{ padding: '8px 12px', marginBottom: 6, borderRadius: 8, background: iss.severity === 'HIGH' ? C.dangerBg : iss.severity === 'MEDIUM' ? 'rgba(251,191,36,0.08)' : C.w03, border: `1px solid ${iss.severity === 'HIGH' ? C.dangerBorder : iss.severity === 'MEDIUM' ? C.warningBorder : C.w07}` }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: iss.severity === 'HIGH' ? C.danger : iss.severity === 'MEDIUM' ? C.warning : C.textPrimary }}>{iss.type}</div>
+                            <div style={{ fontSize: 11, color: C.w60, marginTop: 2 }}>{iss.detail}</div>
+                            {iss.affected?.length > 0 && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{iss.affected.join(', ')}</div>}
                         </div>
                     ))}
                 </div>
             )}
             {data.actions?.length > 0 && (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <thead><tr style={{ borderBottom: B.subtle }}>
                         {['Nazwa', 'Kategoria', 'Primary', 'Counting', 'Wartość dom.', 'Atrybucja', 'Lookback'].map(h =>
                             <th key={h} style={{ ...TH, textAlign: h === 'Nazwa' ? 'left' : 'right' }}>{h}</th>
                         )}
                     </tr></thead>
                     <tbody>
                         {data.actions.map((a, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</td>
+                            <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: C.textPrimary, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</td>
                                 <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.category}</td>
                                 <td style={{ ...TD, textAlign: 'right' }}>{a.primary_for_goal ? '✓' : '—'}</td>
                                 <td style={{ ...TD_DIM, textAlign: 'right' }}>{a.counting_type || '—'}</td>

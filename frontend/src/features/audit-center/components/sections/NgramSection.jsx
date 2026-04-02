@@ -11,19 +11,19 @@ export default function NgramSection({ data, ngramSize, setNgramSize }) {
                         onClick={() => setNgramSize(n)}
                         style={{
                             padding: '4px 11px', borderRadius: 999, fontSize: 11, cursor: 'pointer',
-                            border: `1px solid ${ngramSize === n ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
-                            background: ngramSize === n ? 'rgba(79,142,247,0.18)' : 'transparent',
-                            color: ngramSize === n ? '#4F8EF7' : 'rgba(255,255,255,0.4)',
+                            border: `1px solid ${ngramSize === n ? C.accentBlue : C.w10}`,
+                            background: ngramSize === n ? C.accentBlueBg : 'transparent',
+                            color: ngramSize === n ? C.accentBlue : C.w40,
                         }}
                     >
                         {n === 1 ? 'Słowa' : n === 2 ? 'Bigramy' : 'Trigramy'}
                     </button>
                 ))}
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginLeft: 8 }}>{data.total} wyników</span>
+                <span style={{ fontSize: 11, color: C.w30, marginLeft: 8 }}>{data.total} wyników</span>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr style={{ borderBottom: B.subtle }}>
                         <th style={TH}>N-gram</th>
                         <th style={TH}>Wystąpień</th>
                         <th style={TH}>Kliknięcia</th>
@@ -37,8 +37,8 @@ export default function NgramSection({ data, ngramSize, setNgramSize }) {
                     {data.ngrams.slice(0, 30).map((ng, i) => {
                         const isWaste = ng.conversions === 0 && ng.cost_usd > 10
                         return (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isWaste ? 'rgba(248,113,113,0.04)' : 'transparent' }}>
-                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: isWaste ? '#F87171' : '#F0F0F0' }}>{ng.ngram}</td>
+                            <tr key={i} style={{ borderBottom: `1px solid ${C.w04}`, background: isWaste ? 'rgba(248,113,113,0.04)' : 'transparent' }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: isWaste ? C.danger : C.textPrimary }}>{ng.ngram}</td>
                                 <td style={TD_DIM}>{ng.occurrences}</td>
                                 <td style={TD}>{ng.clicks.toLocaleString('pl-PL')}</td>
                                 <td style={TD}>{ng.cost_usd.toFixed(2)} zł</td>

@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
+import { markdownComponents } from '../components/MarkdownComponents'
 
 const QUICK_ACTIONS = [
     {
@@ -55,7 +57,6 @@ const QUICK_ACTIONS = [
     },
 ];
 
-import { markdownComponents } from '../components/MarkdownComponents';
 
 export default function Agent() {
     const { selectedClientId } = useApp();
@@ -216,7 +217,7 @@ export default function Agent() {
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                <Sparkles size={22} style={{ color: '#7B5CE0' }} />
+                <Sparkles size={22} style={{ color: C.accentPurple }} />
                 <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#fff', margin: 0 }}>
                     Asystent AI
                 </h1>
@@ -227,7 +228,7 @@ export default function Agent() {
                             padding: '2px 10px',
                             borderRadius: 999,
                             background: agentAvailable ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
-                            color: agentAvailable ? '#4ADE80' : '#F87171',
+                            color: agentAvailable ? C.success : C.danger,
                             border: `1px solid ${agentAvailable ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)'}`,
                         }}
                     >
@@ -239,8 +240,8 @@ export default function Agent() {
                         onClick={() => { setMessages([]); localStorage.removeItem('agent_chat') }}
                         style={{
                             fontSize: 11, padding: '2px 10px', borderRadius: 999,
-                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                            color: 'rgba(255,255,255,0.4)', cursor: 'pointer', marginLeft: 'auto',
+                            background: C.w04, border: `1px solid ${C.w08}`,
+                            color: C.w40, cursor: 'pointer', marginLeft: 'auto',
                         }}
                     >
                         Wyczyść historię
@@ -256,7 +257,7 @@ export default function Agent() {
                         style={{
                             flex: 1,
                             background: 'rgba(255,255,255,0.02)',
-                            border: '1px solid rgba(255,255,255,0.07)',
+                            border: B.card,
                             borderRadius: 12,
                             padding: 16,
                             overflowY: 'auto',
@@ -265,7 +266,7 @@ export default function Agent() {
                         }}
                     >
                         {messages.length === 0 && !isLoading && (
-                            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'rgba(255,255,255,0.3)' }}>
+                            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.w30 }}>
                                 <Bot size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
                                 <p style={{ fontSize: 14, margin: 0 }}>
                                     Wybierz typ raportu lub zadaj pytanie o swoje kampanie
@@ -287,9 +288,9 @@ export default function Agent() {
                                         maxWidth: msg.role === 'user' ? '70%' : '100%',
                                         padding: msg.role === 'user' ? '10px 16px' : '0',
                                         borderRadius: 10,
-                                        background: msg.role === 'user' ? 'rgba(79,142,247,0.15)' : 'transparent',
+                                        background: msg.role === 'user' ? C.infoBg : 'transparent',
                                         border: msg.role === 'user' ? '1px solid rgba(79,142,247,0.2)' : 'none',
-                                        color: msg.role === 'user' ? '#fff' : 'rgba(255,255,255,0.8)',
+                                        color: msg.role === 'user' ? '#fff' : C.w80,
                                         fontSize: 13.5,
                                         lineHeight: 1.6,
                                     }}
@@ -310,8 +311,8 @@ export default function Agent() {
 
                         {isLoading && status && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                                <Loader2 size={14} className="animate-spin" style={{ color: '#7B5CE0' }} />
-                                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>{status}</span>
+                                <Loader2 size={14} className="animate-spin" style={{ color: C.accentPurple }} />
+                                <span style={{ fontSize: 12, color: C.w40 }}>{status}</span>
                             </div>
                         )}
 
@@ -320,26 +321,26 @@ export default function Agent() {
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
                                 padding: '6px 12px', borderRadius: 8,
-                                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-                                fontSize: 11, color: 'rgba(255,255,255,0.5)',
+                                background: C.w03, border: B.card,
+                                fontSize: 11, color: C.w50,
                             }}>
                                 {modelName && (
                                     <span style={{
                                         padding: '1px 6px', borderRadius: 999, fontSize: 10,
-                                        background: 'rgba(123,92,224,0.12)', color: '#7B5CE0',
+                                        background: 'rgba(123,92,224,0.12)', color: C.accentPurple,
                                         border: '1px solid rgba(123,92,224,0.25)',
                                     }}>{modelName}</span>
                                 )}
-                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>in:</span> {(tokenUsage.input_tokens || 0).toLocaleString('pl-PL')}</span>
-                                <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>out:</span> {(tokenUsage.output_tokens || 0).toLocaleString('pl-PL')}</span>
+                                <span><span style={{ color: C.w30 }}>in:</span> {(tokenUsage.input_tokens || 0).toLocaleString('pl-PL')}</span>
+                                <span><span style={{ color: C.w30 }}>out:</span> {(tokenUsage.output_tokens || 0).toLocaleString('pl-PL')}</span>
                                 {tokenUsage.cache_read_tokens > 0 && (
-                                    <span><span style={{ color: 'rgba(255,255,255,0.3)' }}>cache:</span> <span style={{ color: '#4F8EF7' }}>{tokenUsage.cache_read_tokens.toLocaleString('pl-PL')}</span></span>
+                                    <span><span style={{ color: C.w30 }}>cache:</span> <span style={{ color: C.accentBlue }}>{tokenUsage.cache_read_tokens.toLocaleString('pl-PL')}</span></span>
                                 )}
                                 {tokenUsage.duration_ms > 0 && (
-                                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>{(tokenUsage.duration_ms / 1000).toFixed(1)}s</span>
+                                    <span style={{ color: C.w30 }}>{(tokenUsage.duration_ms / 1000).toFixed(1)}s</span>
                                 )}
                                 {tokenUsage.total_cost_usd > 0 && (
-                                    <span style={{ color: '#FBBF24' }}>${tokenUsage.total_cost_usd.toFixed(4)}</span>
+                                    <span style={{ color: C.warning }}>${tokenUsage.total_cost_usd.toFixed(4)}</span>
                                 )}
                             </div>
                         )}
@@ -368,8 +369,8 @@ export default function Agent() {
                                 flex: 1,
                                 padding: '10px 14px',
                                 borderRadius: 10,
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                background: 'rgba(255,255,255,0.04)',
+                                border: B.medium,
+                                background: C.w04,
                                 color: '#fff',
                                 fontSize: 13.5,
                                 resize: 'none',
@@ -390,8 +391,8 @@ export default function Agent() {
                                 padding: '10px 16px',
                                 borderRadius: 10,
                                 border: 'none',
-                                background: input.trim() && !isLoading ? '#4F8EF7' : 'rgba(255,255,255,0.08)',
-                                color: input.trim() && !isLoading ? '#fff' : 'rgba(255,255,255,0.3)',
+                                background: input.trim() && !isLoading ? C.accentBlue : C.w08,
+                                color: input.trim() && !isLoading ? '#fff' : C.w30,
                                 cursor: input.trim() && !isLoading ? 'pointer' : 'not-allowed',
                                 transition: 'all 0.15s',
                                 display: 'flex',
@@ -410,7 +411,7 @@ export default function Agent() {
                         style={{
                             fontSize: 10,
                             fontWeight: 500,
-                            color: 'rgba(255,255,255,0.35)',
+                            color: C.textMuted,
                             textTransform: 'uppercase',
                             letterSpacing: '0.1em',
                             marginBottom: 10,
@@ -433,9 +434,9 @@ export default function Agent() {
                                         gap: 10,
                                         padding: '10px 14px',
                                         borderRadius: 10,
-                                        border: '1px solid rgba(255,255,255,0.07)',
-                                        background: 'rgba(255,255,255,0.03)',
-                                        color: 'rgba(255,255,255,0.7)',
+                                        border: B.card,
+                                        background: C.w03,
+                                        color: C.w70,
                                         cursor: isLoading ? 'not-allowed' : 'pointer',
                                         fontSize: 13,
                                         textAlign: 'left',
@@ -444,18 +445,18 @@ export default function Agent() {
                                     }}
                                     onMouseEnter={(e) => {
                                         if (!isLoading) {
-                                            e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-                                            e.currentTarget.style.borderColor = 'rgba(79,142,247,0.3)';
+                                            e.currentTarget.style.background = C.w06;
+                                            e.currentTarget.style.borderColor = C.infoBorder;
                                             e.currentTarget.style.color = '#fff';
                                         }
                                     }}
                                     onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
-                                        e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
+                                        e.currentTarget.style.background = C.w03;
+                                        e.currentTarget.style.borderColor = C.w07;
+                                        e.currentTarget.style.color = C.w70;
                                     }}
                                 >
-                                    <Icon size={15} style={{ flexShrink: 0, color: '#7B5CE0' }} />
+                                    <Icon size={15} style={{ flexShrink: 0, color: C.accentPurple }} />
                                     <span>{action.label}</span>
                                 </button>
                             );

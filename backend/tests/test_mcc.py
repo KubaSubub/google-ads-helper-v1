@@ -224,3 +224,64 @@ def test_mcc_overview_alerts_count(db):
     result = svc.get_overview()
     acc = result["accounts"][0]
     assert acc["unresolved_alerts"] == 3
+
+
+def test_mcc_overview_full_metrics(db):
+    """Overview should include all account-level metrics."""
+    client = _client(db)
+    camp = _campaign(db, client.id)
+    today = date.today()
+
+    for i in range(3):
+        db.add(MetricDaily(
+            campaign_id=camp.id,
+            date=today - timedelta(days=i),
+            clicks=100,
+            impressions=2000,
+            cost_micros=5_000_000,  # $5
+            conversions=10.0,
+            conversion_value_micros=50_000_000,  # $50
+        ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview()
+    acc = result["accounts"][0]
+
+    assert acc["clicks_30d"] == 300
+    assert acc["impressions_30d"] == 6000
+    assert acc["ctr_pct"] == 5.0  # 300/6000*100
+    assert acc["avg_cpc_usd"] == 0.05  # $15/300
+    assert acc["conversions_30d"] == 30.0
+    assert acc["conversion_rate_pct"] == 10.0  # 30/300*100
+    assert acc["conversion_value_usd"] == 150.0
+    assert acc["cpa_usd"] == 0.5  # $15/30
+    assert acc["roas_pct"] == 1000.0  # $150/$15*100
+
+
+def test_mcc_overview_new_access_in_response(db):
+    """Overview should include new_access_emails per account."""
+    client = _client(db)
+    now = datetime.now(timezone.utc)
+
+    db.add(ChangeEvent(
+        client_id=client.id,
+        resource_name="res_intruder",
+        change_date_time=now - timedelta(days=2),
+        user_email="intruder@other.com",
+        client_type="GOOGLE_ADS_WEB_CLIENT",
+        change_resource_type="CAMPAIGN",
+        resource_change_operation="UPDATE",
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview()
+    acc = result["accounts"][0]
+    assert "intruder@other.com" in acc["new_access_emails"]
+
+
+def test_mcc_shared_lists_empty(db):
+    svc = MCCService(db)
+    result = svc.get_mcc_shared_lists()
+    assert isinstance(result, list)

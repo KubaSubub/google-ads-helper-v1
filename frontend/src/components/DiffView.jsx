@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 /**
  * Formats a value for display — converts micros fields to currency.
@@ -61,7 +62,7 @@ export default function DiffView({ oldJson, newJson, changedFields }) {
 
     if (fields.length === 0) {
         return (
-            <div style={{ padding: '12px 16px', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+            <div style={{ padding: '12px 16px', color: C.w40, fontSize: 13 }}>
                 Brak szczegółów zmian.
             </div>
         );
@@ -71,15 +72,15 @@ export default function DiffView({ oldJson, newJson, changedFields }) {
         <div style={{
             background: 'rgba(255,255,255,0.02)',
             borderRadius: 8,
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: B.subtle,
             overflow: 'hidden',
         }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                    <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                    <tr style={{ background: C.w04 }}>
                         <th style={thStyle}>Pole</th>
-                        <th style={{ ...thStyle, color: '#F87171' }}>Przed</th>
-                        <th style={{ ...thStyle, color: '#4ADE80' }}>Po</th>
+                        <th style={{ ...thStyle, color: C.danger }}>Przed</th>
+                        <th style={{ ...thStyle, color: C.success }}>Po</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -88,20 +89,20 @@ export default function DiffView({ oldJson, newJson, changedFields }) {
                         const newVal = newFlat[field];
                         const changed = String(oldVal ?? '') !== String(newVal ?? '');
                         return (
-                            <tr key={field} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                                <td style={{ ...tdStyle, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace' }}>
+                            <tr key={field} style={{ borderTop: `1px solid ${C.w05}` }}>
+                                <td style={{ ...tdStyle, color: C.w60, fontFamily: 'monospace' }}>
                                     {field}
                                 </td>
                                 <td style={{
                                     ...tdStyle,
-                                    color: changed ? '#F87171' : 'rgba(255,255,255,0.35)',
+                                    color: changed ? C.danger : C.textMuted,
                                     background: changed ? 'rgba(248,113,113,0.06)' : 'transparent',
                                 }}>
                                     {formatValue(field, oldVal)}
                                 </td>
                                 <td style={{
                                     ...tdStyle,
-                                    color: changed ? '#4ADE80' : 'rgba(255,255,255,0.35)',
+                                    color: changed ? C.success : C.textMuted,
                                     background: changed ? 'rgba(74,222,128,0.06)' : 'transparent',
                                 }}>
                                     {formatValue(field, newVal)}
@@ -122,7 +123,7 @@ const thStyle = {
     fontWeight: 500,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    color: 'rgba(255,255,255,0.35)',
+    color: C.textMuted,
 };
 
 const tdStyle = {

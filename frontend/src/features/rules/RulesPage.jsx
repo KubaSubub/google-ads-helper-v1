@@ -20,12 +20,13 @@ import {
 import { useApp } from '../../contexts/AppContext'
 import { getRules, createRule, updateRule, deleteRule, dryRunRule, executeRule } from '../../api'
 import EmptyState from '../../components/EmptyState'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../../constants/designTokens'
 
 // ── Design tokens ──────────────────────────────────────────────────────
 
 const CARD = {
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.07)',
+    background: C.w03,
+    border: B.card,
     borderRadius: 12,
 }
 
@@ -36,9 +37,9 @@ const ENTITY_TYPES = [
 ]
 
 const ACTION_TYPES = [
-    { value: 'PAUSE', label: 'Wstrzymaj', icon: Pause, color: '#FBBF24' },
-    { value: 'ADD_NEGATIVE', label: 'Dodaj wykluczenie', icon: Ban, color: '#F87171' },
-    { value: 'ALERT', label: 'Utworz alert', icon: Bell, color: '#4F8EF7' },
+    { value: 'PAUSE', label: 'Wstrzymaj', icon: Pause, color: C.warning },
+    { value: 'ADD_NEGATIVE', label: 'Dodaj wykluczenie', icon: Ban, color: C.danger },
+    { value: 'ALERT', label: 'Utworz alert', icon: Bell, color: C.accentBlue },
 ]
 
 const OPERATORS = ['>', '<', '>=', '<=', '=', '!=', 'contains']
@@ -108,9 +109,9 @@ function EntityBadge({ entityType }) {
                 fontWeight: 500,
                 padding: '2px 8px',
                 borderRadius: 999,
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.5)',
+                background: C.w04,
+                border: `1px solid ${C.w08}`,
+                color: C.w50,
             }}
         >
             {cfg?.label || entityType}
@@ -131,7 +132,7 @@ function ConditionsSummary({ conditions }) {
                         borderRadius: 4,
                         background: 'rgba(79,142,247,0.08)',
                         border: '1px solid rgba(79,142,247,0.15)',
-                        color: 'rgba(255,255,255,0.55)',
+                        color: C.textSecondary,
                         fontFamily: 'monospace',
                     }}
                 >
@@ -152,7 +153,7 @@ function ToggleSwitch({ enabled, onChange, disabled }) {
                 height: 20,
                 borderRadius: 10,
                 border: 'none',
-                background: enabled ? '#4ADE80' : 'rgba(255,255,255,0.12)',
+                background: enabled ? C.success : C.w12,
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 position: 'relative',
                 transition: 'background 0.2s',
@@ -182,12 +183,12 @@ function SelectInput({ value, onChange, options, placeholder, style: extraStyle 
             value={value}
             onChange={e => onChange(e.target.value)}
             style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: C.w05,
+                border: B.medium,
                 borderRadius: 8,
                 padding: '8px 12px',
                 fontSize: 13,
-                color: '#F0F0F0',
+                color: C.textPrimary,
                 outline: 'none',
                 cursor: 'pointer',
                 ...extraStyle,
@@ -209,12 +210,12 @@ function TextInput({ value, onChange, placeholder, style: extraStyle, type = 'te
             onChange={e => onChange(e.target.value)}
             placeholder={placeholder}
             style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: C.w05,
+                border: B.medium,
                 borderRadius: 8,
                 padding: '8px 12px',
                 fontSize: 13,
-                color: '#F0F0F0',
+                color: C.textPrimary,
                 outline: 'none',
                 width: '100%',
                 ...extraStyle,
@@ -232,9 +233,9 @@ function PillButton({ active, onClick, children }) {
                 borderRadius: 999,
                 fontSize: 12,
                 fontWeight: active ? 500 : 400,
-                border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
-                background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
-                color: active ? 'white' : 'rgba(255,255,255,0.45)',
+                border: `1px solid ${active ? C.accentBlue : C.w10}`,
+                background: active ? C.accentBlueBg : 'transparent',
+                color: active ? 'white' : C.textPlaceholder,
                 cursor: 'pointer',
                 transition: 'all 0.15s',
                 whiteSpace: 'nowrap',
@@ -277,8 +278,8 @@ function ConditionRow({ condition, index, entityType, onChange, onRemove }) {
                     padding: 6,
                     borderRadius: 6,
                     border: '1px solid rgba(248,113,113,0.2)',
-                    background: 'rgba(248,113,113,0.08)',
-                    color: '#F87171',
+                    background: C.dangerBg,
+                    color: C.danger,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -347,7 +348,7 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
     return (
         <div style={{ ...CARD, padding: 20, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#F0F0F0', margin: 0 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: C.textPrimary, margin: 0 }}>
                     {initialData ? 'Edytuj regule' : 'Nowa regula'}
                 </h3>
                 <button
@@ -355,9 +356,9 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
                     style={{
                         padding: 6,
                         borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        border: `1px solid ${C.w08}`,
                         background: 'transparent',
-                        color: 'rgba(255,255,255,0.4)',
+                        color: C.w40,
                         cursor: 'pointer',
                     }}
                 >
@@ -367,7 +368,7 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
 
             {/* Name */}
             <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 4, display: 'block' }}>
+                <label style={{ fontSize: 11, color: C.w40, marginBottom: 4, display: 'block' }}>
                     Nazwa reguly
                 </label>
                 <TextInput value={name} onChange={setName} placeholder="np. Wstrzymaj drogie slowa bez konwersji" />
@@ -376,7 +377,7 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
             {/* Entity type + Action type row */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 4, display: 'block' }}>
+                    <label style={{ fontSize: 11, color: C.w40, marginBottom: 4, display: 'block' }}>
                         Typ encji
                     </label>
                     <SelectInput
@@ -390,7 +391,7 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
                     />
                 </div>
                 <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 4, display: 'block' }}>
+                    <label style={{ fontSize: 11, color: C.w40, marginBottom: 4, display: 'block' }}>
                         Akcja
                     </label>
                     <SelectInput
@@ -401,7 +402,7 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
                     />
                 </div>
                 <div style={{ flex: '0 0 120px' }}>
-                    <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 4, display: 'block' }}>
+                    <label style={{ fontSize: 11, color: C.w40, marginBottom: 4, display: 'block' }}>
                         Interwal (h)
                     </label>
                     <TextInput
@@ -416,7 +417,7 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
 
             {/* Conditions */}
             <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, display: 'block' }}>
+                <label style={{ fontSize: 11, color: C.w40, marginBottom: 8, display: 'block' }}>
                     Warunki
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -442,9 +443,9 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
                         borderRadius: 999,
                         fontSize: 11,
                         fontWeight: 500,
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        background: 'rgba(255,255,255,0.03)',
-                        color: 'rgba(255,255,255,0.5)',
+                        border: `1px solid ${C.w08}`,
+                        background: C.w03,
+                        color: C.w50,
                         cursor: 'pointer',
                     }}
                 >
@@ -461,9 +462,9 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
                         borderRadius: 999,
                         fontSize: 12,
                         fontWeight: 500,
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: B.medium,
                         background: 'transparent',
-                        color: 'rgba(255,255,255,0.5)',
+                        color: C.w50,
                         cursor: 'pointer',
                     }}
                 >
@@ -478,8 +479,8 @@ function RuleForm({ initialData, onSave, onCancel, saving }) {
                         fontSize: 12,
                         fontWeight: 500,
                         border: '1px solid #4F8EF7',
-                        background: 'rgba(79,142,247,0.18)',
-                        color: isValid && !saving ? 'white' : 'rgba(255,255,255,0.3)',
+                        background: C.accentBlueBg,
+                        color: isValid && !saving ? 'white' : C.w30,
                         cursor: isValid && !saving ? 'pointer' : 'not-allowed',
                         display: 'flex',
                         alignItems: 'center',
@@ -500,21 +501,21 @@ function DryRunResults({ result, onClose }) {
     if (!result) return null
     const details = result.details || []
     return (
-        <div style={{ ...CARD, padding: 16, marginTop: 8, borderColor: 'rgba(79,142,247,0.2)' }}>
+        <div style={{ ...CARD, padding: 16, marginTop: 8, borderColor: C.infoBorder }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#4F8EF7' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.accentBlue }}>
                     {result.dry_run ? 'Podglad (dry run)' : 'Wynik wykonania'} — {result.matches_found} dopasowani{result.matches_found === 1 ? 'e' : result.matches_found < 5 ? 'a' : ''}
                     {!result.dry_run && `, ${result.actions_taken} akcji`}
                 </span>
                 <button
                     onClick={onClose}
-                    style={{ padding: 4, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}
+                    style={{ padding: 4, background: 'transparent', border: 'none', color: C.w40, cursor: 'pointer' }}
                 >
                     <X size={14} />
                 </button>
             </div>
             {details.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0 }}>Brak dopasowanych encji.</p>
+                <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>Brak dopasowanych encji.</p>
             ) : (
                 <div style={{ maxHeight: 240, overflowY: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -526,11 +527,11 @@ function DryRunResults({ result, onClose }) {
                                         style={{
                                             fontSize: 10,
                                             fontWeight: 500,
-                                            color: 'rgba(255,255,255,0.35)',
+                                            color: C.textMuted,
                                             textTransform: 'uppercase',
                                             textAlign: 'left',
                                             padding: '4px 8px',
-                                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                            borderBottom: B.subtle,
                                         }}
                                     >
                                         {h}
@@ -551,8 +552,8 @@ function DryRunResults({ result, onClose }) {
                                             fontSize: 10,
                                             padding: '1px 6px',
                                             borderRadius: 4,
-                                            background: d.action_result === 'dry_run' ? 'rgba(79,142,247,0.1)' : d.action_result?.startsWith?.('error') ? 'rgba(248,113,113,0.1)' : 'rgba(74,222,128,0.1)',
-                                            color: d.action_result === 'dry_run' ? '#4F8EF7' : d.action_result?.startsWith?.('error') ? '#F87171' : '#4ADE80',
+                                            background: d.action_result === 'dry_run' ? C.infoBg : d.action_result?.startsWith?.('error') ? C.dangerBg : C.successBg,
+                                            color: d.action_result === 'dry_run' ? C.accentBlue : d.action_result?.startsWith?.('error') ? C.danger : C.success,
                                         }}>
                                             {d.action_result || 'dry_run'}
                                         </span>
@@ -567,7 +568,7 @@ function DryRunResults({ result, onClose }) {
     )
 }
 
-const tdStyle = { fontSize: 12, color: 'rgba(255,255,255,0.6)', padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)' }
+const tdStyle = { fontSize: 12, color: C.w60, padding: '6px 8px', borderBottom: `1px solid ${C.w04}` }
 
 // ── Rule Card ──────────────────────────────────────────────────────────
 
@@ -589,7 +590,7 @@ function RuleCard({ rule, onToggle, onEdit, onDelete, onDryRun, onExecute, dryRu
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: '#F0F0F0' }}>{rule.name}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{rule.name}</span>
                         <EntityBadge entityType={rule.entity_type} />
                         <ActionBadge actionType={rule.action_type} />
                     </div>
@@ -597,13 +598,13 @@ function RuleCard({ rule, onToggle, onEdit, onDelete, onDryRun, onExecute, dryRu
                     <ConditionsSummary conditions={rule.conditions} />
 
                     <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>
                             Ostatnie uruchomienie: {lastRun}
                         </span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>
                             Dopasowania: {rule.matches_last_run ?? 0}
                         </span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>
                             Interwal: {rule.check_interval_hours}h
                         </span>
                     </div>
@@ -614,7 +615,7 @@ function RuleCard({ rule, onToggle, onEdit, onDelete, onDryRun, onExecute, dryRu
                     <button
                         onClick={() => onDryRun(rule)}
                         disabled={actionLoading}
-                        style={iconBtnStyle('#4F8EF7')}
+                        style={iconBtnStyle(C.accentBlue)}
                         title="Dry run (podglad)"
                     >
                         {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -622,28 +623,28 @@ function RuleCard({ rule, onToggle, onEdit, onDelete, onDryRun, onExecute, dryRu
                     <button
                         onClick={() => onExecute(rule)}
                         disabled={actionLoading}
-                        style={iconBtnStyle('#4ADE80')}
+                        style={iconBtnStyle(C.success)}
                         title="Wykonaj"
                     >
                         <Zap size={14} />
                     </button>
                     <button
                         onClick={() => onEdit(rule)}
-                        style={iconBtnStyle('rgba(255,255,255,0.4)')}
+                        style={iconBtnStyle(C.w40)}
                         title="Edytuj"
                     >
                         <PenLine size={14} />
                     </button>
                     <button
                         onClick={() => onDelete(rule)}
-                        style={iconBtnStyle('#F87171')}
+                        style={iconBtnStyle(C.danger)}
                         title="Usun"
                     >
                         <Trash2 size={14} />
                     </button>
                     <button
                         onClick={() => setExpanded(p => !p)}
-                        style={{ ...iconBtnStyle('rgba(255,255,255,0.3)'), border: 'none' }}
+                        style={{ ...iconBtnStyle(C.w30), border: 'none' }}
                         title={expanded ? 'Zwin' : 'Rozwin'}
                     >
                         {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -653,18 +654,18 @@ function RuleCard({ rule, onToggle, onEdit, onDelete, onDryRun, onExecute, dryRu
 
             {/* Expanded: show conditions detail */}
             {expanded && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>Warunki:</div>
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.w05}` }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>Warunki:</div>
                     {(rule.conditions || []).map((c, i) => (
-                        <div key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginBottom: 2, fontFamily: 'monospace' }}>
-                            {i > 0 && <span style={{ color: 'rgba(255,255,255,0.25)' }}>AND </span>}
-                            {c.field} <span style={{ color: '#4F8EF7' }}>{c.op}</span> {String(c.value)}
+                        <div key={i} style={{ fontSize: 12, color: C.textSecondary, marginBottom: 2, fontFamily: 'monospace' }}>
+                            {i > 0 && <span style={{ color: C.w25 }}>AND </span>}
+                            {c.field} <span style={{ color: C.accentBlue }}>{c.op}</span> {String(c.value)}
                         </div>
                     ))}
                     {rule.action_params && Object.keys(rule.action_params).length > 0 && (
                         <>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 8, marginBottom: 4 }}>Parametry akcji:</div>
-                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>
+                            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 8, marginBottom: 4 }}>Parametry akcji:</div>
+                            <div style={{ fontSize: 12, color: C.w50, fontFamily: 'monospace' }}>
                                 {JSON.stringify(rule.action_params)}
                             </div>
                         </>
@@ -821,10 +822,10 @@ export default function RulesPage() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0', margin: 0 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: C.textPrimary, margin: 0 }}>
                         Reguly automatyczne
                     </h1>
-                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0 0' }}>
+                    <p style={{ fontSize: 13, color: C.w40, margin: '4px 0 0 0' }}>
                         Automatyzuj powtarzalne dzialania optymalizacyjne
                     </p>
                 </div>
@@ -840,9 +841,9 @@ export default function RulesPage() {
                             borderRadius: 999,
                             fontSize: 12,
                             fontWeight: 500,
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            background: 'rgba(255,255,255,0.04)',
-                            color: 'rgba(255,255,255,0.6)',
+                            border: B.medium,
+                            background: C.w04,
+                            color: C.w60,
                             cursor: loading ? 'not-allowed' : 'pointer',
                         }}
                     >
@@ -860,7 +861,7 @@ export default function RulesPage() {
                             fontSize: 12,
                             fontWeight: 500,
                             border: '1px solid #4F8EF7',
-                            background: 'rgba(79,142,247,0.18)',
+                            background: C.accentBlueBg,
                             color: 'white',
                             cursor: 'pointer',
                         }}
@@ -875,16 +876,16 @@ export default function RulesPage() {
             {rules.length > 0 && (
                 <div style={{ ...CARD, padding: '12px 18px', marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                     <div>
-                        <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0' }}>{rules.length}</span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginLeft: 6 }}>regul</span>
+                        <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: C.textPrimary }}>{rules.length}</span>
+                        <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 6 }}>regul</span>
                     </div>
                     <div>
-                        <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: '#4ADE80' }}>{enabledCount}</span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginLeft: 6 }}>aktywnych</span>
+                        <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: C.success }}>{enabledCount}</span>
+                        <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 6 }}>aktywnych</span>
                     </div>
                     <div>
-                        <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: 'rgba(255,255,255,0.4)' }}>{rules.length - enabledCount}</span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginLeft: 6 }}>wstrzymanych</span>
+                        <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: C.w40 }}>{rules.length - enabledCount}</span>
+                        <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 6 }}>wstrzymanych</span>
                     </div>
                 </div>
             )}
@@ -926,8 +927,8 @@ export default function RulesPage() {
             {/* Loading */}
             {loading && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
-                    <Loader2 size={24} className="animate-spin" style={{ color: 'rgba(255,255,255,0.3)' }} />
-                    <span style={{ marginLeft: 10, fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
+                    <Loader2 size={24} className="animate-spin" style={{ color: C.w30 }} />
+                    <span style={{ marginLeft: 10, fontSize: 13, color: C.textMuted }}>
                         Ladowanie regul...
                     </span>
                 </div>

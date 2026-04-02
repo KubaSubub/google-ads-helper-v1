@@ -5,11 +5,12 @@ import { getAnomalies, resolveAnomaly } from '../api';
 import EmptyState from '../components/EmptyState';
 import { useNavigateTo } from '../hooks/useNavigateTo';
 import { Bell, CheckCircle, Loader2, AlertTriangle, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
+import { C, SEVERITY, PILL, R, B, TRANSITION } from '../constants/designTokens';
 
 const SEVERITY_COLORS = {
-    HIGH:   { color: '#F87171', bg: 'rgba(248,113,113,0.1)',  border: 'rgba(248,113,113,0.2)',  label: 'Wysoki'  },
-    MEDIUM: { color: '#FBBF24', bg: 'rgba(251,191,36,0.1)',   border: 'rgba(251,191,36,0.2)',   label: 'Średni'  },
-    LOW:    { color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',   border: 'rgba(79,142,247,0.2)',   label: 'Niski'   },
+    HIGH:   { ...SEVERITY.HIGH,   label: 'Wysoki'  },
+    MEDIUM: { ...SEVERITY.MEDIUM, label: 'Średni'  },
+    LOW:    { ...SEVERITY.LOW,    label: 'Niski'   },
 };
 
 const METRICS = [
@@ -25,16 +26,9 @@ function PillTab({ active, onClick, children }) {
         <button
             onClick={onClick}
             style={{
-                padding: '4px 14px',
-                borderRadius: 999,
-                fontSize: 12,
+                ...PILL.base, ...PILL.lg,
+                ...(active ? PILL.active : { ...PILL.inactive, background: 'transparent', border: B.medium }),
                 fontWeight: active ? 500 : 400,
-                border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
-                background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
-                color: active ? 'white' : 'rgba(255,255,255,0.45)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                whiteSpace: 'nowrap',
             }}
         >
             {children}
@@ -47,15 +41,8 @@ function PillButton({ active, onClick, children }) {
         <button
             onClick={onClick}
             style={{
-                padding: '4px 12px',
-                borderRadius: 999,
-                fontSize: 11,
-                fontWeight: 500,
-                border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.08)'}`,
-                background: active ? 'rgba(79,142,247,0.18)' : 'rgba(255,255,255,0.04)',
-                color: active ? 'white' : 'rgba(255,255,255,0.45)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
+                ...PILL.base, ...PILL.md,
+                ...(active ? PILL.active : PILL.inactive),
             }}
         >
             {children}
@@ -116,7 +103,7 @@ function AlertsTab({ selectedClientId, setAlertCount, showToast, navigateTo }) {
 
             {loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
-                    <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                    <Loader2 size={28} style={{ color: C.accentBlue }} className="animate-spin" />
                 </div>
             ) : alerts.length === 0 ? (
                 <EmptyState
@@ -139,20 +126,20 @@ function AlertsTab({ selectedClientId, setAlertCount, showToast, navigateTo }) {
                                             }}>
                                                 {sev.label}
                                             </span>
-                                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                            <span style={{ fontSize: 10, color: C.w30, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                                                 {alert.alert_type}
                                             </span>
                                         </div>
-                                        <div style={{ fontSize: 13, fontWeight: 500, color: '#F0F0F0', marginBottom: 3 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 500, color: C.textPrimary, marginBottom: 3 }}>
                                             {alert.title}
                                         </div>
-                                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
+                                        <div style={{ fontSize: 12, color: C.textPlaceholder, lineHeight: 1.5 }}>
                                             {alert.description}
                                         </div>
                                         {alert.campaign_name && (
                                             <span
                                                 onClick={() => navigateTo && navigateTo('campaigns')}
-                                                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#4F8EF7', cursor: 'pointer', marginTop: 6 }}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: C.accentBlue, cursor: 'pointer', marginTop: 6 }}
                                             >
                                                 {alert.campaign_name} <ArrowRight size={12} />
                                             </span>
@@ -165,9 +152,9 @@ function AlertsTab({ selectedClientId, setAlertCount, showToast, navigateTo }) {
                                             style={{
                                                 display: 'flex', alignItems: 'center', gap: 5,
                                                 padding: '5px 12px', borderRadius: 7, fontSize: 12,
-                                                background: 'rgba(74,222,128,0.1)',
+                                                background: C.successBg,
                                                 border: '1px solid rgba(74,222,128,0.25)',
-                                                color: '#4ADE80', cursor: 'pointer', flexShrink: 0,
+                                                color: C.success, cursor: 'pointer', flexShrink: 0,
                                                 opacity: resolving === alert.id ? 0.5 : 1,
                                             }}
                                         >
@@ -220,7 +207,7 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
             <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16 }}>
                 <div className="flex flex-wrap gap-5 items-center">
                     <div>
-                        <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Metryka</div>
+                        <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Metryka</div>
                         <div className="flex gap-1.5">
                             {METRICS.map(m => (
                                 <PillButton key={m.value} active={metric === m.value} onClick={() => setMetric(m.value)}>
@@ -230,7 +217,7 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
                         </div>
                     </div>
                     <div>
-                        <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Próg (z-score)</div>
+                        <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Próg (z-score)</div>
                         <div className="flex gap-1.5">
                             {[1.5, 2.0, 2.5, 3.0].map(t => (
                                 <PillButton key={t} active={threshold === t} onClick={() => setThreshold(t)}>
@@ -240,7 +227,7 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
                         </div>
                     </div>
                     <div>
-                        <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Okres</div>
+                        <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Okres</div>
                         <div className="flex gap-1.5">
                             {[30, 60, 90].map(d => (
                                 <PillButton key={d} active={days === d} onClick={() => setDays(d)}>
@@ -254,15 +241,15 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
 
             {loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
-                    <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                    <Loader2 size={28} style={{ color: C.accentBlue }} className="animate-spin" />
                 </div>
             ) : error ? (
                 <div className="v2-card" style={{ padding: 24, textAlign: 'center' }}>
-                    <p style={{ color: '#F87171', fontSize: 13, marginBottom: 8 }}>{error}</p>
+                    <p style={{ color: C.danger, fontSize: 13, marginBottom: 8 }}>{error}</p>
                     <button onClick={loadData} style={{
                         padding: '5px 14px', borderRadius: 7, fontSize: 12,
-                        background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
-                        color: '#4F8EF7', cursor: 'pointer',
+                        background: C.infoBg, border: '1px solid rgba(79,142,247,0.3)',
+                        color: C.accentBlue, cursor: 'pointer',
                     }}>
                         Spróbuj ponownie
                     </button>
@@ -275,19 +262,19 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
                             <span style={{ display: 'block', fontSize: 22, fontWeight: 700, color: 'white', fontFamily: 'Syne' }}>
                                 {data?.anomalies?.length || 0}
                             </span>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Anomalie</span>
+                            <span style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Anomalie</span>
                         </div>
                         <div className="v2-card" style={{ padding: '14px 18px', textAlign: 'center' }}>
                             <span style={{ display: 'block', fontSize: 22, fontWeight: 700, color: 'white', fontFamily: 'Syne' }}>
                                 {data?.mean?.toFixed(1)}
                             </span>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Średnia</span>
+                            <span style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Średnia</span>
                         </div>
                         <div className="v2-card" style={{ padding: '14px 18px', textAlign: 'center' }}>
                             <span style={{ display: 'block', fontSize: 22, fontWeight: 700, color: 'white', fontFamily: 'Syne' }}>
                                 ±{data?.std?.toFixed(1)}
                             </span>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odch. std.</span>
+                            <span style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odch. std.</span>
                         </div>
                     </div>
 
@@ -297,31 +284,31 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
                             <div style={{ overflowX: 'auto' }}>
                                 <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                                            <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Data</th>
-                                            <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Kampania</th>
-                                            <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Wartość</th>
-                                            <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Z-score</th>
-                                            <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Typ</th>
+                                        <tr style={{ borderBottom: B.card }}>
+                                            <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Data</th>
+                                            <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Kampania</th>
+                                            <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Wartość</th>
+                                            <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Z-score</th>
+                                            <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Typ</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {data.anomalies.map((a, i) => (
-                                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{a.date}</td>
-                                                <td style={{ padding: '10px 16px', color: '#4F8EF7', fontSize: 12, cursor: 'pointer' }} onClick={() => navigateTo && navigateTo('campaigns')}>
+                                            <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                                <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: C.w60, fontSize: 12 }}>{a.date}</td>
+                                                <td style={{ padding: '10px 16px', color: C.accentBlue, fontSize: 12, cursor: 'pointer' }} onClick={() => navigateTo && navigateTo('campaigns')}>
                                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                                         {a.campaign_name || `ID: ${a.campaign_id}`} <ArrowRight size={12} />
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', color: 'white', fontWeight: 500, fontSize: 12 }}>{a.value}</td>
                                                 <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                                                    <span style={{ fontFamily: 'monospace', fontWeight: 500, fontSize: 12, color: a.z_score > 3 ? '#F87171' : '#FBBF24' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 500, fontSize: 12, color: a.z_score > 3 ? C.danger : C.warning }}>
                                                         {a.z_score.toFixed(2)}σ
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '10px 16px' }}>
-                                                    <span className="flex items-center gap-1" style={{ fontSize: 12, fontWeight: 500, color: a.direction === 'spike' ? '#F87171' : '#4F8EF7' }}>
+                                                    <span className="flex items-center gap-1" style={{ fontSize: 12, fontWeight: 500, color: a.direction === 'spike' ? C.danger : C.accentBlue }}>
                                                         {a.direction === 'spike' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                                                         {a.direction === 'spike' ? 'Skok' : 'Spadek'}
                                                     </span>
@@ -334,9 +321,9 @@ function AnomaliesTab({ selectedClientId, navigateTo }) {
                         </div>
                     ) : (
                         <div className="v2-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
-                            <AlertTriangle size={28} style={{ color: 'rgba(255,255,255,0.15)', margin: '0 auto 10px' }} />
-                            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13 }}>Brak anomalii przy progu {threshold}σ</p>
-                            <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, marginTop: 4 }}>Spróbuj obniżyć próg lub zwiększyć okres</p>
+                            <AlertTriangle size={28} style={{ color: C.w15, margin: '0 auto 10px' }} />
+                            <p style={{ color: C.textPlaceholder, fontSize: 13 }}>Brak anomalii przy progu {threshold}σ</p>
+                            <p style={{ color: C.w25, fontSize: 11, marginTop: 4 }}>Spróbuj obniżyć próg lub zwiększyć okres</p>
                         </div>
                     )}
                 </>
@@ -358,10 +345,10 @@ export default function Alerts() {
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 24 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Monitoring
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         Alerty biznesowe i wykrywanie anomalii statystycznych
                     </p>
                 </div>

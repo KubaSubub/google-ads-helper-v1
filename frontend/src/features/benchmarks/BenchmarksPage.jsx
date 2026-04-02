@@ -19,9 +19,9 @@ const METRIC_CONFIG = {
 // ─── Verdict badge ──────────────────────────────────────────────────────────
 function VerdictBadge({ verdict }) {
   const map = {
-    above:  { label: 'Powyzej',  color: '#4ADE80', bg: 'rgba(74,222,128,0.12)', icon: TrendingUp },
-    below:  { label: 'Ponizej',  color: '#F87171', bg: 'rgba(248,113,113,0.12)', icon: TrendingDown },
-    on_par: { label: 'W normie', color: '#FBBF24', bg: 'rgba(251,191,36,0.12)', icon: Minus },
+    above:  { label: 'Powyzej',  color: C.success, bg: 'rgba(74,222,128,0.12)', icon: TrendingUp },
+    below:  { label: 'Ponizej',  color: C.danger, bg: 'rgba(248,113,113,0.12)', icon: TrendingDown },
+    on_par: { label: 'W normie', color: C.warning, bg: 'rgba(251,191,36,0.12)', icon: Minus },
   };
   const cfg = map[verdict] || map.on_par;
   const Icon = cfg.icon;
@@ -46,15 +46,15 @@ function ComparisonBar({ clientVal, benchVal, goodDir }) {
     ? clientVal >= benchVal
     : clientVal <= benchVal;
 
-  const clientColor = isGood ? '#4ADE80' : '#F87171';
-  const benchColor = 'rgba(255,255,255,0.15)';
+  const clientColor = isGood ? C.success : C.danger;
+  const benchColor = C.w15;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
       {/* Client bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', width: 50, textAlign: 'right' }}>Klient</span>
-        <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+        <span style={{ fontSize: 10, color: C.w40, width: 50, textAlign: 'right' }}>Klient</span>
+        <div style={{ flex: 1, height: 8, borderRadius: 4, background: C.w06, overflow: 'hidden' }}>
           <div style={{
             width: `${Math.min((clientVal / maxVal) * 100, 100)}%`,
             height: '100%', borderRadius: 4, background: clientColor,
@@ -64,8 +64,8 @@ function ComparisonBar({ clientVal, benchVal, goodDir }) {
       </div>
       {/* Benchmark bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', width: 50, textAlign: 'right' }}>Branza</span>
-        <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+        <span style={{ fontSize: 10, color: C.w40, width: 50, textAlign: 'right' }}>Branza</span>
+        <div style={{ flex: 1, height: 8, borderRadius: 4, background: C.w06, overflow: 'hidden' }}>
           <div style={{
             width: `${Math.min((benchVal / maxVal) * 100, 100)}%`,
             height: '100%', borderRadius: 4, background: benchColor,
@@ -84,7 +84,7 @@ function BenchmarkMetricCard({ item }) {
 
   const isGood = item.verdict === 'above';
   const isBad = item.verdict === 'below';
-  const accentColor = isGood ? '#4ADE80' : isBad ? '#F87171' : '#FBBF24';
+  const accentColor = isGood ? C.success : isBad ? C.danger : C.warning;
 
   return (
     <div
@@ -109,7 +109,7 @@ function BenchmarkMetricCard({ item }) {
       {/* Values row */}
       <div style={{ display: 'flex', gap: 24 }}>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+          <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
             Twoj wynik
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: accentColor }}>
@@ -117,20 +117,20 @@ function BenchmarkMetricCard({ item }) {
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+          <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
             Srednia branzy
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: 'rgba(255,255,255,0.6)' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: C.w60 }}>
             {cfg.fmt(item.benchmark_value)}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+          <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
             Roznica
           </div>
           <div style={{
             fontSize: 20, fontWeight: 700, fontFamily: 'Syne',
-            color: item.pct_diff > 0 ? (cfg.goodDir === 'higher' ? '#4ADE80' : '#F87171') : (cfg.goodDir === 'higher' ? '#F87171' : '#4ADE80'),
+            color: item.pct_diff > 0 ? (cfg.goodDir === 'higher' ? C.success : C.danger) : (cfg.goodDir === 'higher' ? C.danger : C.success),
           }}>
             {item.pct_diff > 0 ? '+' : ''}{item.pct_diff}%
           </div>
@@ -151,11 +151,11 @@ function SummaryKpi({ label, value, accent, icon: Icon }) {
       style={{
         flex: 1, minWidth: 160,
         borderRadius: 12, padding: '18px 20px',
-        borderLeft: `3px solid ${accent || '#4F8EF7'}`,
+        borderLeft: `3px solid ${accent || C.accentBlue}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {label}
         </span>
         {Icon && (
@@ -186,7 +186,7 @@ function IndustryTab({ selectedClientId, days, showToast }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-        <Loader2 size={32} className="animate-spin" style={{ color: '#4F8EF7' }} />
+        <Loader2 size={32} className="animate-spin" style={{ color: C.accentBlue }} />
       </div>
     );
   }
@@ -318,10 +318,10 @@ function ClientComparisonTab({ days, showToast }) {
   function CellVal({ metric, val, fmt }) {
     const best = isBest(metric, val);
     const worst = isWorst(metric, val);
-    let color = 'rgba(255,255,255,0.8)';
+    let color = C.w80;
     let bg = 'transparent';
-    if (best) { color = '#4ADE80'; bg = 'rgba(74,222,128,0.08)'; }
-    if (worst) { color = '#F87171'; bg = 'rgba(248,113,113,0.08)'; }
+    if (best) { color = C.success; bg = 'rgba(74,222,128,0.08)'; }
+    if (worst) { color = C.danger; bg = C.dangerBg; }
     return (
       <td style={{ ...TD, textAlign: 'right', color, background: bg, fontWeight: best || worst ? 700 : 400 }}>
         {fmt ? fmt(val) : val}
@@ -332,7 +332,7 @@ function ClientComparisonTab({ days, showToast }) {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-        <Loader2 size={32} className="animate-spin" style={{ color: '#4F8EF7' }} />
+        <Loader2 size={32} className="animate-spin" style={{ color: C.accentBlue }} />
       </div>
     );
   }
@@ -361,7 +361,7 @@ function ClientComparisonTab({ days, showToast }) {
           </thead>
           <tbody>
             {sorted.map((c, i) => (
-              <tr key={c.client_id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <tr key={c.client_id} style={{ borderTop: `1px solid ${C.w05}` }}>
                 <td style={{ ...TD_DIM, textAlign: 'center', fontSize: 11 }}>{i + 1}</td>
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 600, color: '#fff' }}>
                   {c.client_name}
@@ -413,9 +413,9 @@ export default function BenchmarksPage() {
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '7px 16px', borderRadius: 999,
                 fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                border: active ? '1px solid rgba(79,142,247,0.5)' : '1px solid rgba(255,255,255,0.1)',
-                background: active ? 'rgba(79,142,247,0.12)' : 'rgba(255,255,255,0.04)',
-                color: active ? '#4F8EF7' : 'rgba(255,255,255,0.55)',
+                border: active ? '1px solid rgba(79,142,247,0.5)' : B.medium,
+                background: active ? 'rgba(79,142,247,0.12)' : C.w04,
+                color: active ? C.accentBlue : C.textSecondary,
                 transition: 'all 0.15s ease',
               }}
             >

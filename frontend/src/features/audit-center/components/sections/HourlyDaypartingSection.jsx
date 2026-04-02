@@ -14,17 +14,17 @@ export default function HourlyDaypartingSection({ data }) {
                             style={{
                                 height: 56, borderRadius: 6, cursor: 'default',
                                 background: `rgba(79,142,247,${0.08 + intensity * 0.72})`,
-                                border: `1px solid ${isBusinessHour ? 'rgba(79,142,247,0.2)' : 'rgba(255,255,255,0.05)'}`,
+                                border: `1px solid ${isBusinessHour ? C.infoBorder : C.w05}`,
                                 display: 'flex', flexDirection: 'column',
                                 alignItems: 'center', justifyContent: 'flex-end',
                                 paddingBottom: 4, position: 'relative',
                             }}>
                             {h.conversions > 0 && (
-                                <span style={{ fontSize: 8, color: '#4ADE80', fontWeight: 600, marginBottom: 1 }}>
+                                <span style={{ fontSize: 8, color: C.success, fontWeight: 600, marginBottom: 1 }}>
                                     {h.conversions.toFixed(0)}
                                 </span>
                             )}
-                            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>
+                            <span style={{ fontSize: 8, color: C.w50 }}>
                                 {h.hour}
                             </span>
                         </div>
@@ -33,7 +33,7 @@ export default function HourlyDaypartingSection({ data }) {
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr style={{ borderBottom: B.subtle }}>
                         <th style={TH}>Godzina</th>
                         <th style={TH}>Kliknięcia</th>
                         <th style={TH}>Koszt</th>
@@ -49,7 +49,7 @@ export default function HourlyDaypartingSection({ data }) {
                         const isBizHour = h.hour >= 9 && h.hour <= 18
                         return (
                             <tr key={h.hour} style={{
-                                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                borderBottom: `1px solid ${C.w04}`,
                                 background: isBizHour ? 'rgba(79,142,247,0.03)' : 'transparent',
                             }}>
                                 <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500 }}>{h.hour_label}</td>

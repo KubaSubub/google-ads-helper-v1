@@ -1,13 +1,13 @@
 import { TH, TD, TD_DIM } from '../../../../constants/designTokens'
 
 export default function TargetVsActualSection({ data }) {
-    if (!data?.items?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Brak kampanii Smart Bidding z celami.</div>
-    const statusColor = { ON_TARGET: '#4ADE80', OVER_TARGET: '#F87171', UNDER_TARGET: '#FBBF24', NO_TARGET: 'rgba(255,255,255,0.4)' }
+    if (!data?.items?.length) return <div style={{ padding: '0 16px 16px', fontSize: 12, color: C.w40 }}>Brak kampanii Smart Bidding z celami.</div>
+    const statusColor = { ON_TARGET: C.success, OVER_TARGET: C.danger, UNDER_TARGET: C.warning, NO_TARGET: C.w40 }
     const statusLabel = { ON_TARGET: 'W celu', OVER_TARGET: 'Powyżej', UNDER_TARGET: 'Poniżej', NO_TARGET: 'Brak celu' }
     return (
         <div style={{ padding: '0 16px 16px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <thead><tr style={{ borderBottom: B.subtle }}>
                     {['Kampania', 'Strategia', 'Cel', 'Aktualny', 'Odchylenie', 'Status'].map(h =>
                         <th key={h} style={{ ...TH, textAlign: h === 'Kampania' ? 'left' : 'right' }}>{h}</th>
                     )}
@@ -18,8 +18,8 @@ export default function TargetVsActualSection({ data }) {
                         const target = isCpa ? (item.target_cpa_usd ? `$${item.target_cpa_usd}` : '—') : (item.target_roas ? `${item.target_roas}x` : '—')
                         const actual = isCpa ? (item.actual_cpa_usd ? `$${item.actual_cpa_usd}` : '—') : (item.actual_roas ? `${item.actual_roas}x` : '—')
                         return (
-                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.campaign_name}</td>
+                            <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500, color: C.textPrimary, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.campaign_name}</td>
                                 <td style={{ ...TD_DIM, textAlign: 'right' }}>{item.bidding_strategy}</td>
                                 <td style={{ ...TD, textAlign: 'right' }}>{target}</td>
                                 <td style={{ ...TD, textAlign: 'right' }}>{actual}</td>

@@ -27,11 +27,11 @@ function KpiCard({ label, value, accent, icon: Icon }) {
         minWidth: 180,
         borderRadius: 12,
         padding: '18px 20px',
-        borderLeft: `3px solid ${accent || '#4F8EF7'}`,
+        borderLeft: `3px solid ${accent || C.accentBlue}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {label}
         </span>
         {Icon && (
@@ -47,15 +47,15 @@ function KpiCard({ label, value, accent, icon: Icon }) {
 
 // ─── Horizontal bar for metric visualization ─────────────────────────────────
 function MetricBar({ value, maxValue, color }) {
-  if (value == null || maxValue <= 0) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
+  if (value == null || maxValue <= 0) return <span style={{ color: C.w30 }}>—</span>;
   const pct = Number(value) * 100;
   const widthPct = Math.min((pct / maxValue) * 100, 100);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-      <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)', minWidth: 44, textAlign: 'right' }}>
+      <span style={{ fontSize: 12, fontFamily: 'monospace', color: C.w80, minWidth: 44, textAlign: 'right' }}>
         {pct.toFixed(1)}%
       </span>
-      <div style={{ width: 80, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', flexShrink: 0 }}>
+      <div style={{ width: 80, height: 6, borderRadius: 3, background: C.w06, overflow: 'hidden', flexShrink: 0 }}>
         <div
           style={{
             width: `${widthPct}%`,
@@ -72,16 +72,16 @@ function MetricBar({ value, maxValue, color }) {
 
 // ─── Impression share badge (reused for own-row highlight) ───────────────────
 function ImpressionShareBar({ value, maxValue, isSelf }) {
-  if (value == null) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
+  if (value == null) return <span style={{ color: C.w30 }}>—</span>;
   const pct = Number(value) * 100;
   const widthPct = maxValue > 0 ? Math.min((pct / maxValue) * 100, 100) : 0;
-  const color = isSelf ? '#4F8EF7' : pct >= 30 ? '#4ADE80' : pct >= 15 ? '#FBBF24' : '#F87171';
+  const color = isSelf ? C.accentBlue : pct >= 30 ? C.success : pct >= 15 ? C.warning : C.danger;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
       <span style={{ fontSize: 12, fontFamily: 'monospace', color, fontWeight: isSelf ? 700 : 500, minWidth: 44, textAlign: 'right' }}>
         {pct.toFixed(1)}%
       </span>
-      <div style={{ width: 80, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', flexShrink: 0 }}>
+      <div style={{ width: 80, height: 6, borderRadius: 3, background: C.w06, overflow: 'hidden', flexShrink: 0 }}>
         <div
           style={{
             width: `${widthPct}%`,
@@ -157,7 +157,7 @@ export default function CompetitivePage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <Loader2 size={32} className="animate-spin" style={{ color: '#4F8EF7' }} />
+          <Loader2 size={32} className="animate-spin" style={{ color: C.accentBlue }} />
         </div>
       ) : (
         <>
@@ -199,10 +199,10 @@ export default function CompetitivePage() {
                 borderLeft: '3px solid #4F8EF7',
               }}
             >
-              <Trophy size={16} style={{ color: '#4F8EF7', flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+              <Trophy size={16} style={{ color: C.accentBlue, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: C.w70 }}>
                 Jesteś na pozycji{' '}
-                <span style={{ fontWeight: 700, color: '#4F8EF7', fontFamily: 'Syne' }}>
+                <span style={{ fontWeight: 700, color: C.accentBlue, fontFamily: 'Syne' }}>
                   {selfPosition}
                 </span>
                 {' '}z{' '}
@@ -216,7 +216,7 @@ export default function CompetitivePage() {
 
           {/* ── Section label + search ── */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Auction Insights
             </div>
             {insights.length > 0 && (
@@ -228,7 +228,7 @@ export default function CompetitivePage() {
                     left: 10,
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    color: 'rgba(255,255,255,0.3)',
+                    color: C.w30,
                     pointerEvents: 'none',
                   }}
                 />
@@ -241,8 +241,8 @@ export default function CompetitivePage() {
                     width: '100%',
                     padding: '6px 10px 6px 30px',
                     borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
+                    border: B.medium,
+                    background: C.w04,
                     color: '#fff',
                     fontSize: 12,
                     outline: 'none',
@@ -280,7 +280,7 @@ export default function CompetitivePage() {
                       <tr
                         key={i}
                         style={{
-                          borderTop: '1px solid rgba(255,255,255,0.05)',
+                          borderTop: `1px solid ${C.w05}`,
                           background: isSelf ? 'rgba(79,142,247,0.08)' : 'transparent',
                         }}
                       >
@@ -289,15 +289,15 @@ export default function CompetitivePage() {
                           {rank}
                         </td>
                         {/* Domain */}
-                        <td style={{ ...TD_DIM, fontWeight: isSelf ? 700 : 400, color: isSelf ? '#4F8EF7' : TD_DIM.color }}>
+                        <td style={{ ...TD_DIM, fontWeight: isSelf ? 700 : 400, color: isSelf ? C.accentBlue : TD_DIM.color }}>
                           {row.display_domain || '—'}
                           {isSelf && (
                             <span style={{
                               marginLeft: 8,
                               fontSize: 10,
                               fontWeight: 600,
-                              color: '#4F8EF7',
-                              background: 'rgba(79,142,247,0.15)',
+                              color: C.accentBlue,
+                              background: C.infoBg,
                               borderRadius: 4,
                               padding: '1px 6px',
                               verticalAlign: 'middle',
@@ -333,7 +333,7 @@ export default function CompetitivePage() {
           </div>
 
           {/* Competitor trends placeholder */}
-          <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Trendy konkurencji
           </div>
           <div className="v2-card" style={{ borderRadius: 12 }}>

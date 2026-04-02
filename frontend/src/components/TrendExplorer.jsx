@@ -7,8 +7,9 @@ import { Plus, X, TrendingUp } from 'lucide-react'
 import { getCorrelationMatrix, getTrends } from '../api'
 import { useFilter } from '../contexts/FilterContext'
 import { useApp } from '../contexts/AppContext'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
-const METRIC_COLORS = ['#4F8EF7', '#7B5CE0', '#4ADE80', '#FBBF24', '#F87171']
+const METRIC_COLORS = [C.accentBlue, C.accentPurple, C.success, C.warning, C.danger]
 
 const METRIC_OPTIONS = [
     { key: 'cost', label: 'Koszt (zł)', unit: 'PLN' },
@@ -69,14 +70,14 @@ const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null
     return (
         <div style={{
-            background: '#1a1d24',
-            border: '1px solid rgba(255,255,255,0.12)',
+            background: C.surfaceElevated,
+            border: B.hover,
             borderRadius: 8,
             padding: '10px 14px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             fontSize: 12,
         }}>
-            <div style={{ color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>{label}</div>
+            <div style={{ color: C.w50, marginBottom: 6 }}>{label}</div>
             {payload.map((p, i) => (
                 <div key={i} style={{ color: p.color, marginBottom: 2 }}>
                     {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL') ?? p.value}</strong>
@@ -214,8 +215,8 @@ export default function TrendExplorer({ campaignIds = [] }) {
             {/* Header */}
             <div className="flex items-center justify-between mb-4" style={{ flexWrap: 'wrap', gap: 12 }}>
                 <div className="flex items-center gap-2">
-                    <TrendingUp size={16} style={{ color: '#4F8EF7' }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                    <TrendingUp size={16} style={{ color: C.accentBlue }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                         Trend Explorer
                     </span>
                 </div>
@@ -241,7 +242,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                 {activeMetrics.length > 1 && (
                                     <button
                                         onClick={() => removeMetric(key)}
-                                        style={{ color: 'rgba(255,255,255,0.4)', lineHeight: 1 }}
+                                        style={{ color: C.w40, lineHeight: 1 }}
                                         className="hover:text-white/70"
                                     >
                                         <X size={12} />
@@ -258,12 +259,12 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                 onClick={() => setShowDropdown(v => !v)}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
-                                    background: 'rgba(255,255,255,0.04)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    background: C.w04,
+                                    border: B.medium,
                                     borderRadius: 999,
                                     padding: '3px 12px',
                                     fontSize: 12,
-                                    color: 'rgba(255,255,255,0.5)',
+                                    color: C.w50,
                                     cursor: 'pointer',
                                 }}
                                 className="hover:border-white/20 hover:text-white/70"
@@ -275,8 +276,8 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                 <div
                                     style={{
                                         position: 'absolute', top: '100%', right: 0, marginTop: 6,
-                                        background: '#1a1d24',
-                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        background: C.surfaceElevated,
+                                        border: B.hover,
                                         borderRadius: 8,
                                         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                                         zIndex: 50,
@@ -293,7 +294,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                                 textAlign: 'left',
                                                 padding: '8px 14px',
                                                 fontSize: 12,
-                                                color: 'rgba(255,255,255,0.7)',
+                                                color: C.w70,
                                                 cursor: 'pointer',
                                                 background: 'transparent',
                                                 border: 'none',
@@ -315,11 +316,11 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                 onClick={() => setShowCorrelationPopup(v => !v)}
                                 style={{
                                     fontSize: 11,
-                                    color: 'rgba(255,255,255,0.4)',
+                                    color: C.w40,
                                     paddingLeft: 8,
                                     background: 'none',
                                     border: 'none',
-                                    borderLeft: '1px solid rgba(255,255,255,0.08)',
+                                    borderLeft: `1px solid ${C.w08}`,
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -327,18 +328,18 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                 }}
                                 className="hover:text-white/60"
                             >
-                                <span style={{ color: 'rgba(255,255,255,0.3)' }}>
+                                <span style={{ color: C.w30 }}>
                                     Kor.
                                 </span>
                                 <span style={{
-                                    color: Math.abs(correlationData.best.r) > 0.7 ? '#4ADE80'
-                                         : Math.abs(correlationData.best.r) > 0.4 ? '#FBBF24'
-                                         : 'rgba(255,255,255,0.35)',
+                                    color: Math.abs(correlationData.best.r) > 0.7 ? C.success
+                                         : Math.abs(correlationData.best.r) > 0.4 ? C.warning
+                                         : C.textMuted,
                                 }}>
                                     {correlationData.best.r > 0 ? '+' : ''}{correlationData.best.r.toFixed(2)}
                                 </span>
                                 {correlationData.pairs.length > 1 && (
-                                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)' }}>
+                                    <span style={{ fontSize: 9, color: C.w25 }}>
                                         ({correlationData.pairs.length} par)
                                     </span>
                                 )}
@@ -351,8 +352,8 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                         top: '100%',
                                         right: 0,
                                         marginTop: 6,
-                                        background: '#1a1d24',
-                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        background: C.surfaceElevated,
+                                        border: B.hover,
                                         borderRadius: 8,
                                         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                                         zIndex: 50,
@@ -364,17 +365,17 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                         padding: '0 14px 8px',
                                         fontSize: 11,
                                         fontWeight: 600,
-                                        color: 'rgba(255,255,255,0.5)',
-                                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                        color: C.w50,
+                                        borderBottom: B.subtle,
                                         marginBottom: 4,
                                     }}>
                                         Macierz korelacji (Pearson)
                                     </div>
                                     {correlationData.pairs.map((pair, i) => {
                                         const absR = Math.abs(pair.r)
-                                        const rColor = absR > 0.7 ? '#4ADE80'
-                                                      : absR > 0.4 ? '#FBBF24'
-                                                      : 'rgba(255,255,255,0.35)'
+                                        const rColor = absR > 0.7 ? C.success
+                                                      : absR > 0.4 ? C.warning
+                                                      : C.textMuted
                                         return (
                                             <div
                                                 key={i}
@@ -386,8 +387,8 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                                     fontSize: 11,
                                                 }}
                                             >
-                                                <span style={{ color: 'rgba(255,255,255,0.6)', flex: 1 }}>
-                                                    {pair.a} <span style={{ color: 'rgba(255,255,255,0.2)' }}>vs</span> {pair.b}
+                                                <span style={{ color: C.w60, flex: 1 }}>
+                                                    {pair.a} <span style={{ color: C.w20 }}>vs</span> {pair.b}
                                                 </span>
                                                 <span style={{ color: rColor, fontWeight: 600, marginLeft: 12, whiteSpace: 'nowrap' }}>
                                                     {pair.r > 0 ? '+' : ''}{pair.r.toFixed(2)}
@@ -411,7 +412,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
                     padding: '10px 14px',
                     marginBottom: 12,
                     fontSize: 12,
-                    color: '#FBBF24',
+                    color: C.warning,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
@@ -423,11 +424,11 @@ export default function TrendExplorer({ campaignIds = [] }) {
 
             {/* Chart */}
             {loading ? (
-                <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>
+                <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
                     Ładowanie danych…
                 </div>
             ) : data.length === 0 ? (
-                <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>
+                <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
                     Brak danych dla wybranych filtrów
                 </div>
             ) : (
@@ -437,13 +438,13 @@ export default function TrendExplorer({ campaignIds = [] }) {
                         <XAxis
                             dataKey="date"
                             tickFormatter={formatDate}
-                            tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }}
+                            tick={{ fontSize: 10, fill: C.w30 }}
                             axisLine={false}
                             tickLine={false}
                         />
                         <YAxis
                             yAxisId="left"
-                            tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }}
+                            tick={{ fontSize: 10, fill: C.w30 }}
                             axisLine={false}
                             tickLine={false}
                             width={40}
@@ -452,7 +453,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
                             <YAxis
                                 yAxisId="right"
                                 orientation="right"
-                                tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.3)' }}
+                                tick={{ fontSize: 10, fill: C.w30 }}
                                 axisLine={false}
                                 tickLine={false}
                                 width={40}

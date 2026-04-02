@@ -101,6 +101,172 @@ class MCCService:
         self.db.commit()
         return {"dismissed": count}
 
+    def get_mcc_shared_lists(self) -> list[dict]:
+        """Return MCC-level shared negative keyword lists (queried from manager account).
+
+        MCC-level lists are stored with client_id=0 convention, or sourced from
+        the manager account via sync_mcc_shared_sets(). Falls back to showing
+        all GOOGLE_ADS_SYNC lists if no MCC-specific lists exist.
+        """
+        from app.models import MccLink
+
+        # Find manager customer ID from config or MCC links
+        manager_ids = set()
+        mcc_links = self.db.query(MccLink.manager_customer_id).distinct().all()
+        for row in mcc_links:
+            if row[0]:
+                manager_ids.add(row[0])
+
+        # MCC-level lists: look for lists where source indicates they came from
+        # manager account sync, or client_id matches a manager account
+        manager_client_ids = set()
+        if manager_ids:
+            for mid in manager_ids:
+                mc = self.db.query(Client).filter(
+                    Client.google_customer_id == mid
+                ).first()
+                if mc:
+                    manager_client_ids.add(mc.id)
+
+        # Query: MCC-level lists (from manager clients) + fallback to all synced lists
+        if manager_client_ids:
+            lists = (
+                self.db.query(NegativeKeywordList)
+                .filter(NegativeKeywordList.client_id.in_(manager_client_ids))
+                .order_by(NegativeKeywordList.name)
+                .all()
+            )
+        else:
+            # Fallback: show all Google-synced lists across all accounts
+            lists = (
+                self.db.query(NegativeKeywordList)
+                .filter(NegativeKeywordList.source == "GOOGLE_ADS_SYNC")
+                .order_by(NegativeKeywordList.name)
+                .all()
+            )
+
+        # Count items per list
+        item_counts = {}
+        if lists:
+            list_ids = [nkl.id for nkl in lists]
+            rows = (
+                self.db.query(
+                    NegativeKeywordListItem.list_id,
+                    func.count(NegativeKeywordListItem.id),
+                )
+                .filter(NegativeKeywordListItem.list_id.in_(list_ids))
+                .group_by(NegativeKeywordListItem.list_id)
+                .all()
+            )
+            item_counts = {r[0]: r[1] for r in rows}
+
+        # Client name lookup
+        client_ids = {nkl.client_id for nkl in lists}
+        clients = {
+            c.id: c.name
+            for c in self.db.query(Client).filter(Client.id.in_(client_ids)).all()
+        } if client_ids else {}
+
+        return [
+            {
+                "id": nkl.id,
+                "client_id": nkl.client_id,
+                "client_name": clients.get(nkl.client_id, "MCC"),
+                "name": nkl.name,
+                "description": nkl.description,
+                "source": nkl.source,
+                "status": nkl.status,
+                "member_count": item_counts.get(nkl.id, 0),
+                "level": "mcc" if nkl.client_id in manager_client_ids else "account",
+            }
+            for nkl in lists
+        ]
+
+    def get_negative_keyword_lists_overview(self) -> list[dict]:
+        """Return all NKL across all clients, grouped by client."""
+        lists = (
+            self.db.query(NegativeKeywordList)
+            .join(Client, NegativeKeywordList.client_id == Client.id)
+            .order_by(Client.name, NegativeKeywordList.name)
+            .all()
+        )
+
+        client_ids = {nkl.client_id for nkl in lists}
+        clients = {
+            c.id: c.name
+            for c in self.db.query(Client).filter(Client.id.in_(client_ids)).all()
+        } if client_ids else {}
+
+        item_counts = {}
+        if lists:
+            list_ids = [nkl.id for nkl in lists]
+            rows = (
+                self.db.query(
+                    NegativeKeywordListItem.list_id,
+                    func.count(NegativeKeywordListItem.id),
+                )
+                .filter(NegativeKeywordListItem.list_id.in_(list_ids))
+                .group_by(NegativeKeywordListItem.list_id)
+                .all()
+            )
+            item_counts = {r[0]: r[1] for r in rows}
+
+        return [
+            {
+                "id": nkl.id,
+                "client_id": nkl.client_id,
+                "client_name": clients.get(nkl.client_id, "?"),
+                "name": nkl.name,
+                "description": nkl.description,
+                "source": nkl.source,
+                "status": nkl.status,
+                "member_count": item_counts.get(nkl.id, 0),
+            }
+            for nkl in lists
+        ]
+
+    def get_billing_status(self, customer_id: str) -> dict:
+        """Try to fetch billing/payment status from Google Ads API.
+
+        Returns payment status info or 'unknown' if API access insufficient.
+        """
+        try:
+            from app.services.google_ads import google_ads_service
+
+            if not google_ads_service.is_connected:
+                return {"status": "unknown", "reason": "API not connected"}
+
+            client = google_ads_service.client
+            ga_service = client.get_service("GoogleAdsService")
+
+            # Try billing_setup query
+            query = """
+                SELECT
+                    billing_setup.id,
+                    billing_setup.status,
+                    billing_setup.payments_account_info.payments_account_name
+                FROM billing_setup
+                WHERE billing_setup.status = 'APPROVED'
+                LIMIT 1
+            """
+            clean_id = customer_id.replace("-", "")
+            response = ga_service.search(customer_id=clean_id, query=query)
+
+            for row in response:
+                return {
+                    "status": "ok",
+                    "billing_status": str(row.billing_setup.status.name),
+                    "payments_account": row.billing_setup.payments_account_info.payments_account_name or None,
+                }
+
+            return {"status": "no_billing", "reason": "No approved billing setup found"}
+
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "authorization" in error_msg or "permission" in error_msg:
+                return {"status": "no_access", "reason": "Billing API access not available"}
+            return {"status": "unknown", "reason": str(e)[:100]}
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -109,15 +275,24 @@ class MCCService:
         cid = client.id
         today = date.today()
 
-        # 1. Spend + conversions 30d
+        # 1. Full metrics 30d
         start_30d = today - timedelta(days=30)
         start_60d = today - timedelta(days=60)
-        spend_30d = self._sum_spend(cid, start_30d, today)
-        spend_prev_30d = self._sum_spend(cid, start_60d, start_30d)
-        conversions_30d = self._sum_conversions(cid, start_30d, today)
-        conv_value_30d = self._sum_conv_value(cid, start_30d, today)
-        cpa = round(spend_30d / conversions_30d, 2) if conversions_30d > 0 else None
-        roas = round(conv_value_30d / spend_30d * 100, 1) if spend_30d > 0 else None
+        metrics = self._aggregate_metrics(cid, start_30d, today)
+        prev_metrics = self._aggregate_metrics(cid, start_60d, start_30d)
+
+        spend = metrics["cost_usd"]
+        prev_spend = prev_metrics["cost_usd"]
+        conversions = metrics["conversions"]
+        conv_value = metrics["conversion_value_usd"]
+        clicks = metrics["clicks"]
+        impressions = metrics["impressions"]
+
+        cpa = round(spend / conversions, 2) if conversions > 0 else None
+        roas = round(conv_value / spend * 100, 1) if spend > 0 else None
+        ctr = round(clicks / impressions * 100, 2) if impressions > 0 else None
+        avg_cpc = round(spend / clicks, 2) if clicks > 0 else None
+        conv_rate = round(conversions / clicks * 100, 2) if clicks > 0 else None
 
         # 2. Budget pacing (aggregated per client)
         pacing = self._compute_pacing(cid, today)
@@ -175,27 +350,69 @@ class MCCService:
             .scalar()
         ) or 0
 
+        # 8. New access detection
+        new_access = self.detect_new_access(cid, days=30)
+
         return {
             "client_id": cid,
             "client_name": client.name,
             "google_customer_id": client.google_customer_id,
-            "spend_30d_usd": round(spend_30d, 2),
-            "spend_prev_30d_usd": round(spend_prev_30d, 2),
+            # Full metrics
+            "clicks_30d": clicks,
+            "impressions_30d": impressions,
+            "ctr_pct": ctr,
+            "avg_cpc_usd": avg_cpc,
+            "spend_30d_usd": round(spend, 2),
+            "spend_prev_30d_usd": round(prev_spend, 2),
             "spend_change_pct": (
-                round((spend_30d - spend_prev_30d) / spend_prev_30d * 100, 1)
-                if spend_prev_30d > 0
+                round((spend - prev_spend) / prev_spend * 100, 1)
+                if prev_spend > 0
                 else None
             ),
-            "conversions_30d": round(conversions_30d, 1),
+            "conversions_30d": round(conversions, 1),
+            "conversion_rate_pct": conv_rate,
+            "conversion_value_usd": round(conv_value, 2),
             "cpa_usd": cpa,
             "roas_pct": roas,
+            # Pacing & health
             "pacing": pacing,
             "health": health,
+            # Activity
             "total_changes_30d": total_changes,
             "external_changes_30d": external_changes,
+            "new_access_emails": new_access,
+            # Recs & alerts
             "google_recs_pending": google_recs_pending,
             "unresolved_alerts": unresolved_alerts,
+            # Sync
             "last_synced_at": last_sync,
+        }
+
+    def _aggregate_metrics(self, client_id: int, start: date, end: date) -> dict:
+        """Aggregate all key metrics for a client over a date range."""
+        row = (
+            self._campaign_metrics_query(client_id, start, end)
+            .with_entities(
+                func.sum(MetricDaily.clicks),
+                func.sum(MetricDaily.impressions),
+                func.sum(MetricDaily.cost_micros),
+                func.sum(MetricDaily.conversions),
+                func.sum(MetricDaily.conversion_value_micros),
+            )
+            .first()
+        )
+        clicks = int(row[0] or 0)
+        impressions = int(row[1] or 0)
+        cost_micros = int(row[2] or 0)
+        conversions = float(row[3] or 0)
+        conv_value_micros = int(row[4] or 0)
+
+        return {
+            "clicks": clicks,
+            "impressions": impressions,
+            "cost_usd": micros_to_currency(cost_micros),
+            "conversions": conversions,
+            "conversion_value_usd": micros_to_currency(conv_value_micros),
         }
 
     def _campaign_metrics_query(self, client_id: int, start: date, end: date):
@@ -208,30 +425,6 @@ class MCCService:
                 MetricDaily.date <= end,
             )
         )
-
-    def _sum_spend(self, client_id: int, start: date, end: date) -> float:
-        total = (
-            self._campaign_metrics_query(client_id, start, end)
-            .with_entities(func.sum(MetricDaily.cost_micros))
-            .scalar()
-        ) or 0
-        return micros_to_currency(total)
-
-    def _sum_conversions(self, client_id: int, start: date, end: date) -> float:
-        total = (
-            self._campaign_metrics_query(client_id, start, end)
-            .with_entities(func.sum(MetricDaily.conversions))
-            .scalar()
-        ) or 0
-        return float(total)
-
-    def _sum_conv_value(self, client_id: int, start: date, end: date) -> float:
-        total = (
-            self._campaign_metrics_query(client_id, start, end)
-            .with_entities(func.sum(MetricDaily.conversion_value_micros))
-            .scalar()
-        ) or 0
-        return micros_to_currency(total)
 
     def _compute_pacing(self, client_id: int, today: date) -> dict:
         month_start = today.replace(day=1)
@@ -283,51 +476,6 @@ class MCCService:
             "budget_usd": round(total_monthly_budget, 2),
             "spent_usd": round(actual_spend, 2),
         }
-
-    def get_negative_keyword_lists_overview(self) -> list[dict]:
-        """Return all NKL across all clients, grouped by client."""
-        lists = (
-            self.db.query(NegativeKeywordList)
-            .join(Client, NegativeKeywordList.client_id == Client.id)
-            .order_by(Client.name, NegativeKeywordList.name)
-            .all()
-        )
-
-        # Build client name lookup
-        client_ids = {nkl.client_id for nkl in lists}
-        clients = {
-            c.id: c.name
-            for c in self.db.query(Client).filter(Client.id.in_(client_ids)).all()
-        } if client_ids else {}
-
-        # Count items per list
-        item_counts = {}
-        if lists:
-            list_ids = [nkl.id for nkl in lists]
-            rows = (
-                self.db.query(
-                    NegativeKeywordListItem.list_id,
-                    func.count(NegativeKeywordListItem.id),
-                )
-                .filter(NegativeKeywordListItem.list_id.in_(list_ids))
-                .group_by(NegativeKeywordListItem.list_id)
-                .all()
-            )
-            item_counts = {r[0]: r[1] for r in rows}
-
-        return [
-            {
-                "id": nkl.id,
-                "client_id": nkl.client_id,
-                "client_name": clients.get(nkl.client_id, "?"),
-                "name": nkl.name,
-                "description": nkl.description,
-                "source": nkl.source,
-                "status": nkl.status,
-                "member_count": item_counts.get(nkl.id, 0),
-            }
-            for nkl in lists
-        ]
 
     def _get_health_score(self, client_id: int) -> dict | None:
         try:

@@ -7,6 +7,7 @@ import DataTable from '../components/DataTable';
 import DiffView from '../components/DiffView';
 import EmptyState from '../components/EmptyState';
 import DarkSelect from '../components/DarkSelect';
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, TRANSITION, FONT } from '../constants/designTokens';
 import {
     Undo2, Loader2, ChevronDown, ChevronRight, Download,
     Megaphone, KeyRound, Search, Users, Zap, Globe, Settings2, LayoutGrid
@@ -42,9 +43,9 @@ const SOURCE_LABELS = {
 };
 
 const SOURCE_COLORS = {
-    GOOGLE_ADS_WEB_CLIENT: { bg: 'rgba(79,142,247,0.12)', text: '#4F8EF7' },
-    GOOGLE_ADS_API: { bg: 'rgba(123,92,224,0.12)', text: '#7B5CE0' },
-    GOOGLE_ADS_HELPER: { bg: 'rgba(74,222,128,0.12)', text: '#4ADE80' },
+    GOOGLE_ADS_WEB_CLIENT: { bg: 'rgba(79,142,247,0.12)', text: C.accentBlue },
+    GOOGLE_ADS_API: { bg: 'rgba(123,92,224,0.12)', text: C.accentPurple },
+    GOOGLE_ADS_HELPER: { bg: 'rgba(74,222,128,0.12)', text: C.success },
 };
 
 const OP_LABELS = {
@@ -64,11 +65,11 @@ const OP_LABELS = {
 };
 
 const STATUS_COLORS = {
-    SUCCESS: '#4ADE80',
-    FAILED: '#F87171',
-    BLOCKED: '#FBBF24',
-    DRY_RUN: '#4F8EF7',
-    REVERTED: 'rgba(255,255,255,0.35)',
+    SUCCESS: C.success,
+    FAILED: C.danger,
+    BLOCKED: C.warning,
+    DRY_RUN: C.accentBlue,
+    REVERTED: C.textMuted,
 };
 
 const STATUS_TOOLTIPS = {
@@ -143,37 +144,37 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
                 style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '10px 14px', cursor: 'pointer',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    borderBottom: `1px solid ${C.w04}`,
                     transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                onMouseEnter={e => e.currentTarget.style.background = C.w03}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
                 {/* Expand arrow */}
-                <div style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>
+                <div style={{ color: C.w25, flexShrink: 0 }}>
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </div>
 
                 {/* Resource icon */}
                 <div style={{
-                    width: 28, height: 28, borderRadius: 6,
-                    background: 'rgba(255,255,255,0.05)',
+                    width: 28, height: 28, borderRadius: R.sm,
+                    background: C.w05,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
                 }}>
-                    <Icon size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                    <Icon size={14} style={{ color: C.w50 }} />
                 </div>
 
                 {/* Description */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
-                        fontSize: 13, color: '#E0E0E0',
+                        fontSize: 13, color: C.textPrimary,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                         {buildDescription(entry)}
                     </div>
                     {entry.campaign_name && entry.source === 'external' && (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
+                        <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>
                             {entry.campaign_name}
                         </div>
                     )}
@@ -185,7 +186,7 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
                         title={STATUS_TOOLTIPS[entry.status]}
                         style={{
                             fontSize: 10, fontWeight: 600,
-                            color: STATUS_COLORS[entry.status] || 'rgba(255,255,255,0.4)',
+                            color: STATUS_COLORS[entry.status] || C.w40,
                         }}
                     >
                         {entry.status}
@@ -194,17 +195,16 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
 
                 {/* Source badge */}
                 <span style={{
-                    fontSize: 10, fontWeight: 500,
-                    padding: '2px 8px', borderRadius: 999,
+                    ...PILL.base, ...PILL.sm,
                     background: srcColor.bg, color: srcColor.text,
-                    whiteSpace: 'nowrap', flexShrink: 0,
+                    flexShrink: 0,
                 }}>
                     {srcLabel}
                 </span>
 
                 {/* Timestamp */}
                 <span style={{
-                    fontSize: 11, color: 'rgba(255,255,255,0.3)',
+                    fontSize: 11, color: C.textDim,
                     whiteSpace: 'nowrap', flexShrink: 0, minWidth: 85, textAlign: 'right',
                 }}>
                     {timeStr}
@@ -217,7 +217,7 @@ function TimelineEntry({ entry, isExpanded, onToggle, onRevert }) {
                         style={{
                             display: 'flex', alignItems: 'center', gap: 3,
                             fontSize: 10, fontWeight: 500,
-                            color: '#FBBF24', background: 'none', border: 'none',
+                            color: C.warning, background: 'none', border: 'none',
                             cursor: 'pointer', flexShrink: 0,
                         }}
                     >
@@ -247,15 +247,15 @@ function TimelineGroup({ title, entries, expandedId, onToggle, onRevert }) {
         <div style={{ marginBottom: 16 }}>
             <div style={{
                 fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-                letterSpacing: '0.06em', color: 'rgba(255,255,255,0.25)',
+                letterSpacing: '0.06em', color: C.w25,
                 padding: '8px 14px',
             }}>
                 {title} ({entries.length})
             </div>
             <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: 12, overflow: 'hidden',
+                background: C.w03,
+                border: B.card,
+                borderRadius: R.card, overflow: 'hidden',
             }}>
                 {entries.map((entry) => {
                     const id = entry.action_log_id
@@ -278,19 +278,19 @@ function TimelineGroup({ title, entries, expandedId, onToggle, onRevert }) {
 
 // â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const IMPACT_COLORS = {
-    POSITIVE: { bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)', text: '#4ADE80', label: 'Poprawa' },
-    NEGATIVE: { bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)', text: '#F87171', label: 'Pogorszenie' },
-    NEUTRAL: { bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', text: 'rgba(255,255,255,0.5)', label: 'Neutralny' },
+    POSITIVE: { bg: 'rgba(74,222,128,0.08)', border: C.successBorder, text: C.success, label: 'Poprawa' },
+    NEGATIVE: { bg: C.dangerBg, border: C.dangerBorder, text: C.danger, label: 'Pogorszenie' },
+    NEUTRAL: { bg: C.w03, border: C.w08, text: C.w50, label: 'Neutralny' },
 };
 
-const TD_IMPACT = { padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.8)' };
-const TH_IMPACT = { padding: '8px 12px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', textAlign: 'left' };
+const TD_IMPACT = { ...T.td };
+const TH_IMPACT = { ...T.th };
 
 function DeltaPill({ value, inverse }) {
-    if (value === 0 || value === undefined) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
+    if (value === 0 || value === undefined) return <span style={{ color: C.textDim }}>—</span>;
     const positive = inverse ? value < 0 : value > 0;
     return (
-        <span style={{ color: positive ? '#4ADE80' : '#F87171', fontWeight: 600 }}>
+        <span style={{ color: positive ? C.success : C.danger, fontWeight: 600 }}>
             {value > 0 ? '+' : ''}{value}%
         </span>
     );
@@ -302,19 +302,19 @@ function ChangeImpactView({ data }) {
     return (
         <div>
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                {[{ label: 'Poprawa', value: summary.positive, color: '#4ADE80' },
-                  { label: 'Neutralny', value: summary.neutral, color: 'rgba(255,255,255,0.5)' },
-                  { label: 'Pogorszenie', value: summary.negative, color: '#F87171' },
+                {[{ label: 'Poprawa', value: summary.positive, color: C.success },
+                  { label: 'Neutralny', value: summary.neutral, color: C.w50 },
+                  { label: 'Pogorszenie', value: summary.negative, color: C.danger },
                 ].map(s => (
-                    <div key={s.label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</span>
-                        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: s.color }}>{s.value}</span>
+                    <div key={s.label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '8px 14px', borderRadius: R.lg, background: C.w03, border: B.card }}>
+                        <span style={{ ...T.caption, marginBottom: 2 }}>{s.label}</span>
+                        <span style={{ ...T.metricValue, fontFamily: FONT.display, color: s.color }}>{s.value}</span>
                     </div>
                 ))}
             </div>
             <div className="v2-card" style={{ overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <thead><tr style={{ borderBottom: B.subtle }}>
                         {['Data', 'Akcja', 'Encja', 'Wpływ', 'Koszt Δ', 'Konw. Δ', 'CPA Δ', 'CTR Δ', 'ROAS Δ'].map(h =>
                             <th key={h} style={{ ...TH_IMPACT, textAlign: h === 'Data' || h === 'Akcja' || h === 'Encja' ? 'left' : 'right' }}>{h}</th>
                         )}
@@ -323,10 +323,10 @@ function ChangeImpactView({ data }) {
                         {data.changes.map((c, i) => {
                             const ic = IMPACT_COLORS[c.impact] || IMPACT_COLORS.NEUTRAL;
                             return (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: ic.bg }}>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}`, background: ic.bg }}>
                                     <td style={{ ...TD_IMPACT, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{new Date(c.executed_at).toLocaleDateString('pl-PL')}</td>
                                     <td style={{ ...TD_IMPACT, fontFamily: 'inherit' }}>{OP_LABELS[c.action_type] || c.action_type}</td>
-                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', color: '#F0F0F0', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.entity_name || `${c.entity_type} #${c.entity_id}`}</td>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', color: C.textPrimary, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.entity_name || `${c.entity_type} #${c.entity_id}`}</td>
                                     <td style={{ ...TD_IMPACT, textAlign: 'right', fontFamily: 'inherit' }}>
                                         <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: ic.bg, color: ic.text, border: `1px solid ${ic.border}` }}>{ic.label}</span>
                                     </td>
@@ -350,19 +350,19 @@ function StrategyImpactView({ data }) {
     return (
         <div>
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                {[{ label: 'Poprawa', value: data.summary.positive, color: '#4ADE80' },
-                  { label: 'Neutralny', value: data.summary.neutral, color: 'rgba(255,255,255,0.5)' },
-                  { label: 'Pogorszenie', value: data.summary.negative, color: '#F87171' },
+                {[{ label: 'Poprawa', value: data.summary.positive, color: C.success },
+                  { label: 'Neutralny', value: data.summary.neutral, color: C.w50 },
+                  { label: 'Pogorszenie', value: data.summary.negative, color: C.danger },
                 ].map(s => (
-                    <div key={s.label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</span>
+                    <div key={s.label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '8px 14px', borderRadius: 10, background: C.w03, border: B.card }}>
+                        <span style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</span>
                         <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: s.color }}>{s.value}</span>
                     </div>
                 ))}
             </div>
             <div className="v2-card" style={{ overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <thead><tr style={{ borderBottom: B.subtle }}>
                         {['Data', 'Kampania', 'Stara strategia', 'Nowa strategia', 'Wpływ', 'Konw. Δ', 'CPA Δ', 'ROAS Δ'].map(h =>
                             <th key={h} style={{ ...TH_IMPACT, textAlign: h === 'Data' || h === 'Kampania' || h === 'Stara strategia' || h === 'Nowa strategia' ? 'left' : 'right' }}>{h}</th>
                         )}
@@ -371,11 +371,11 @@ function StrategyImpactView({ data }) {
                         {data.strategy_changes.map((s, i) => {
                             const ic = IMPACT_COLORS[s.impact] || IMPACT_COLORS.NEUTRAL;
                             return (
-                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: ic.bg }}>
+                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}`, background: ic.bg }}>
                                     <td style={{ ...TD_IMPACT, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{new Date(s.change_date).toLocaleDateString('pl-PL')}</td>
-                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', color: '#F0F0F0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.campaign_name}</td>
-                                    <td style={{ ...TD_IMPACT, color: 'rgba(255,255,255,0.5)' }}>{s.old_strategy || '—'}</td>
-                                    <td style={{ ...TD_IMPACT, color: '#4F8EF7' }}>{s.new_strategy || '—'}</td>
+                                    <td style={{ ...TD_IMPACT, fontFamily: 'inherit', color: C.textPrimary, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.campaign_name}</td>
+                                    <td style={{ ...TD_IMPACT, color: C.w50 }}>{s.old_strategy || '—'}</td>
+                                    <td style={{ ...TD_IMPACT, color: C.accentBlue }}>{s.new_strategy || '—'}</td>
                                     <td style={{ ...TD_IMPACT, textAlign: 'right', fontFamily: 'inherit' }}>
                                         <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: ic.bg, color: ic.text, border: `1px solid ${ic.border}` }}>{ic.label}</span>
                                     </td>
@@ -559,7 +559,7 @@ export default function ActionHistory() {
                     : type === 'search_term' ? `/search-terms?search=${encodeURIComponent(name || '')}`
                     : null;
                 if (linkTo && name) {
-                    return <Link to={linkTo} style={{ color: '#4F8EF7', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{label}</Link>;
+                    return <Link to={linkTo} style={{ color: C.accentBlue, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{label}</Link>;
                 }
                 return <span>{label}</span>;
             },
@@ -568,7 +568,7 @@ export default function ActionHistory() {
             accessorKey: 'campaign_name',
             header: 'Kampania',
             cell: ({ getValue }) => (
-                <span style={{ color: 'rgba(255,255,255,0.4)' }}>{getValue() || '—'}</span>
+                <span style={{ color: C.w40 }}>{getValue() || '—'}</span>
             ),
         },
         {
@@ -577,7 +577,7 @@ export default function ActionHistory() {
             cell: ({ getValue }) => (
                 <span
                     title={STATUS_TOOLTIPS[getValue()]}
-                    style={{ color: STATUS_COLORS[getValue()] || 'rgba(255,255,255,0.4)', cursor: 'help' }}
+                    style={{ color: STATUS_COLORS[getValue()] || C.w40, cursor: 'help' }}
                 >
                     {getValue()}
                 </span>
@@ -593,7 +593,7 @@ export default function ActionHistory() {
                         style={{
                             display: 'flex', alignItems: 'center', gap: 4,
                             fontSize: 11, fontWeight: 500,
-                            color: '#FBBF24', background: 'none', border: 'none',
+                            color: C.warning, background: 'none', border: 'none',
                             cursor: 'pointer',
                         }}
                     >
@@ -638,23 +638,23 @@ export default function ActionHistory() {
             {/* Header */}
             <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Historia zmian
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         Rejestr wszystkich zmian na koncie Google Ads — z Helpera i zewnętrznych
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                     <button
                         onClick={() => { window.location.href = `/api/v1/export/actions?client_id=${selectedClientId}&format=csv`; }}
-                        style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                        style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: C.w04, border: B.medium, color: C.w50, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                     >
                         <Download size={11} />CSV
                     </button>
                     <button
                         onClick={() => { window.location.href = `/api/v1/export/actions?client_id=${selectedClientId}&format=xlsx`; }}
-                        style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                        style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: C.success, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                     >
                         <Download size={11} />XLSX
                     </button>
@@ -674,9 +674,9 @@ export default function ActionHistory() {
                                 borderRadius: 999,
                                 fontSize: 12,
                                 fontWeight: 500,
-                                border: active ? '1px solid rgba(79,142,247,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                                border: active ? '1px solid rgba(79,142,247,0.4)' : B.medium,
                                 background: active ? 'rgba(79,142,247,0.12)' : 'transparent',
-                                color: active ? '#4F8EF7' : 'rgba(255,255,255,0.5)',
+                                color: active ? C.accentBlue : C.w50,
                                 cursor: 'pointer',
                                 transition: 'all 0.15s',
                             }}
@@ -691,18 +691,18 @@ export default function ActionHistory() {
             {activeTab === 'helper' && helperActions.length > 0 && (
                 <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
                     {[
-                        { label: 'Dzisiaj', value: quickStats.today, color: '#4F8EF7' },
-                        { label: 'Łącznie', value: quickStats.total, color: 'rgba(255,255,255,0.6)' },
-                        { label: 'Cofnięte', value: quickStats.reverted, color: '#FBBF24' },
-                        { label: 'Zablokowane', value: quickStats.blocked, color: '#F87171' },
+                        { label: 'Dzisiaj', value: quickStats.today, color: C.accentBlue },
+                        { label: 'Łącznie', value: quickStats.total, color: C.w60 },
+                        { label: 'Cofnięte', value: quickStats.reverted, color: C.warning },
+                        { label: 'Zablokowane', value: quickStats.blocked, color: C.danger },
                     ].map(s => (
                         <div key={s.label} style={{
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '6px 14px', borderRadius: 10,
-                            background: 'rgba(255,255,255,0.03)',
-                            border: '1px solid rgba(255,255,255,0.07)',
+                            background: C.w03,
+                            border: B.card,
                         }}>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{s.label}</span>
+                            <span style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase' }}>{s.label}</span>
                             <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne', color: s.color }}>{s.value}</span>
                         </div>
                     ))}
@@ -715,7 +715,7 @@ export default function ActionHistory() {
                     display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16,
                     padding: '10px 14px',
                     background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    border: B.subtle,
                     borderRadius: 10,
                     alignItems: 'center',
                 }}>
@@ -726,16 +726,16 @@ export default function ActionHistory() {
                             onClick={() => applyDatePreset(p.days)}
                             style={{
                                 padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 500,
-                                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
-                                color: 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.15s',
+                                border: B.medium, background: 'transparent',
+                                color: C.w50, cursor: 'pointer', transition: 'all 0.15s',
                             }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(79,142,247,0.4)'; e.currentTarget.style.color = '#4F8EF7'; }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(79,142,247,0.4)'; e.currentTarget.style.color = C.accentBlue; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = C.w10; e.currentTarget.style.color = C.w50; }}
                         >
                             {p.label}
                         </button>
                     ))}
-                    <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
+                    <div style={{ width: 1, height: 20, background: C.w08, margin: '0 2px' }} />
                     <input
                         type="date"
                         value={filters.dateFrom}
@@ -816,7 +816,7 @@ export default function ActionHistory() {
                         <button
                             onClick={() => setFilters({ dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '', actionType: '', campaignName: '' })}
                             style={{
-                                fontSize: 11, color: '#F87171', background: 'none',
+                                fontSize: 11, color: C.danger, background: 'none',
                                 border: 'none', cursor: 'pointer', padding: '4px 8px',
                             }}
                         >
@@ -829,7 +829,7 @@ export default function ActionHistory() {
             {/* Loading */}
             {loading && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
-                    <Loader2 size={28} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                    <Loader2 size={28} style={{ color: C.accentBlue }} className="animate-spin" />
                 </div>
             )}
 
@@ -896,10 +896,10 @@ export default function ActionHistory() {
                 <div style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     marginTop: 16, padding: '8px 14px',
-                    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(255,255,255,0.02)', border: B.subtle,
                     borderRadius: 10,
                 }}>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                    <span style={{ fontSize: 11, color: C.textMuted }}>
                         {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalCount)} z {totalCount}
                     </span>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -908,14 +908,14 @@ export default function ActionHistory() {
                             disabled={currentPage <= 1}
                             style={{
                                 padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 500,
-                                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
-                                color: currentPage <= 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
+                                border: B.medium, background: 'transparent',
+                                color: currentPage <= 1 ? C.w20 : C.w60,
                                 cursor: currentPage <= 1 ? 'default' : 'pointer',
                             }}
                         >
                             ← Poprzednia
                         </button>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', padding: '0 6px' }}>
+                        <span style={{ fontSize: 11, color: C.w50, display: 'flex', alignItems: 'center', padding: '0 6px' }}>
                             {currentPage} / {Math.ceil(totalCount / PAGE_SIZE)}
                         </span>
                         <button
@@ -923,8 +923,8 @@ export default function ActionHistory() {
                             disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE)}
                             style={{
                                 padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 500,
-                                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
-                                color: currentPage >= Math.ceil(totalCount / PAGE_SIZE) ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
+                                border: B.medium, background: 'transparent',
+                                color: currentPage >= Math.ceil(totalCount / PAGE_SIZE) ? C.w20 : C.w60,
                                 cursor: currentPage >= Math.ceil(totalCount / PAGE_SIZE) ? 'default' : 'pointer',
                             }}
                         >
@@ -953,8 +953,8 @@ const filterInputStyle = {
     padding: '5px 10px',
     fontSize: 12,
     borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(255,255,255,0.04)',
+    border: B.medium,
+    background: C.w04,
     color: '#E0E0E0',
     outline: 'none',
     minWidth: 100,

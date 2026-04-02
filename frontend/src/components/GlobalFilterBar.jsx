@@ -6,6 +6,7 @@ import DarkSelect from './DarkSelect'
 import { Search } from 'lucide-react'
 import { getCampaigns } from '../api'
 import { useState, useEffect } from 'react'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 function FilterField({ label, children }) {
     return (
@@ -48,7 +49,7 @@ export default function GlobalFilterBar() {
 
     return (
         <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 24 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne', marginBottom: 12 }}>
                 Filtry kampanii
             </div>
 
@@ -78,7 +79,7 @@ export default function GlobalFilterBar() {
                             left: 10,
                             top: '50%',
                             transform: 'translateY(-50%)',
-                            color: 'rgba(255,255,255,0.25)',
+                            color: C.w25,
                             pointerEvents: 'none',
                         }} />
                         <input
@@ -92,14 +93,14 @@ export default function GlobalFilterBar() {
                                 padding: '0 10px 0 30px',
                                 borderRadius: 8,
                                 fontSize: 13,
-                                color: '#F0F0F0',
-                                background: 'rgba(255,255,255,0.04)',
-                                border: '1px solid rgba(255,255,255,0.08)',
+                                color: C.textPrimary,
+                                background: C.w04,
+                                border: `1px solid ${C.w08}`,
                                 outline: 'none',
                                 transition: 'border-color 0.15s',
                             }}
                             onFocus={(e) => e.target.style.borderColor = 'rgba(79,142,247,0.4)'}
-                            onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
+                            onBlur={(e) => e.target.style.borderColor = C.w08}
                         />
                     </div>
                 </FilterField>

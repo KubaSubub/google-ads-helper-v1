@@ -13,16 +13,17 @@ import {
     BarChart3, GitCompare,
 } from 'lucide-react'
 import { MetricTooltip } from '../components/MetricTooltip'
+import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 // ─── Bulk actions API ───
 const bulkAddNegative = (data) => api.post('/search-terms/bulk-add-negative', data)
 const bulkAddKeyword = (data) => api.post('/search-terms/bulk-add-keyword', data)
 
 const SEGMENT_CONFIG = {
-    HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: '#4ADE80', bg: 'rgba(74,222,128,0.1)',   border: 'rgba(74,222,128,0.2)'  },
-    WASTE:          { label: 'Strata',           icon: AlertTriangle, color: '#F87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
-    IRRELEVANT:     { label: 'Nieistotne',       icon: XCircle,       color: 'rgba(255,255,255,0.4)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.1)' },
-    OTHER:          { label: 'Inne',             icon: LayoutGrid,    color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',  border: 'rgba(79,142,247,0.2)'  },
+    HIGH_PERFORMER: { label: 'Top Performerzy', icon: TrendingUp,    color: C.success, bg: C.successBg,   border: C.successBorder  },
+    WASTE:          { label: 'Strata',           icon: AlertTriangle, color: C.danger, bg: C.dangerBg, border: C.dangerBorder },
+    IRRELEVANT:     { label: 'Nieistotne',       icon: XCircle,       color: C.w40, bg: C.w06, border: C.w10 },
+    OTHER:          { label: 'Inne',             icon: LayoutGrid,    color: C.accentBlue, bg: C.infoBg,  border: C.infoBorder  },
 }
 
 
@@ -67,15 +68,15 @@ function BulkActionBar({ selectedCount, onAddNegative, onAddKeyword, onClear, lo
             padding: '10px 16px', marginBottom: 12,
             display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#4F8EF7' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.accentBlue }}>
                 {selectedCount} zaznaczonych
             </span>
             <div style={{ flex: 1 }} />
             <button onClick={onAddNegative} disabled={bulkLoading} style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 500,
-                background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
-                color: '#F87171', cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
+                background: C.dangerBg, border: '1px solid rgba(248,113,113,0.3)',
+                color: C.danger, cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
             }}>
                 {bulkLoading ? <Loader2 size={11} className="animate-spin" /> : <MinusCircle size={11} />}
                 Dodaj jako negatywy (EXACT)
@@ -83,16 +84,16 @@ function BulkActionBar({ selectedCount, onAddNegative, onAddKeyword, onClear, lo
             <button onClick={onAddKeyword} disabled={bulkLoading} style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 500,
-                background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)',
-                color: '#4ADE80', cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
+                background: C.successBg, border: '1px solid rgba(74,222,128,0.3)',
+                color: C.success, cursor: 'pointer', opacity: bulkLoading ? 0.5 : 1,
             }}>
                 {bulkLoading ? <Loader2 size={11} className="animate-spin" /> : <PlusCircle size={11} />}
                 Dodaj jako słowa kluczowe
             </button>
             <button onClick={onClear} style={{
                 padding: '5px 10px', borderRadius: 7, fontSize: 11,
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
+                background: C.w04, border: B.medium,
+                color: C.w40, cursor: 'pointer',
             }}>
                 <X size={11} />
             </button>
@@ -283,16 +284,16 @@ export default function SearchTerms() {
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1.2 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
                         Wyszukiwane frazy
                     </h1>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                    <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         {viewMode === 'segments' ? `${segData?.summary?.total || 0} wyszukiwań` : `${data.total} wyszukiwań`}
                         {campaignName && (
                             <span style={{
                                 marginLeft: 8, padding: '2px 8px', borderRadius: 999, fontSize: 11,
                                 background: 'rgba(123,92,224,0.12)', border: '1px solid rgba(123,92,224,0.25)',
-                                color: '#7B5CE0', display: 'inline-flex', alignItems: 'center', gap: 4,
+                                color: C.accentPurple, display: 'inline-flex', alignItems: 'center', gap: 4,
                             }}>
                                 {decodeURIComponent(campaignName)}
                                 <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={clearCampaignFilter} />
@@ -315,9 +316,9 @@ export default function SearchTerms() {
                                 <button key={v} onClick={() => setViewMode(v)} style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
                                     padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: active ? 500 : 400,
-                                    border: `1px solid ${active ? '#4F8EF7' : 'rgba(255,255,255,0.1)'}`,
-                                    background: active ? 'rgba(79,142,247,0.18)' : 'transparent',
-                                    color: active ? 'white' : 'rgba(255,255,255,0.45)', cursor: 'pointer',
+                                    border: `1px solid ${active ? C.accentBlue : C.w10}`,
+                                    background: active ? C.accentBlueBg : 'transparent',
+                                    color: active ? 'white' : C.textPlaceholder, cursor: 'pointer',
                                 }}>
                                     <Icon size={12} />{label}
                                 </button>
@@ -328,32 +329,32 @@ export default function SearchTerms() {
                     {viewMode === 'list' && (
                         <form onSubmit={handleSearch} className="flex items-center gap-2">
                             <div style={{ position: 'relative' }}>
-                                <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)' }} />
+                                <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.w30 }} />
                                 <input
                                     type="text" value={search}
                                     onChange={e => setSearch(e.target.value)}
                                     placeholder="Szukaj frazy..."
                                     style={{
                                         paddingLeft: 30, paddingRight: 12, paddingTop: 6, paddingBottom: 6,
-                                        borderRadius: 7, background: 'rgba(255,255,255,0.04)',
-                                        border: '1px solid rgba(255,255,255,0.1)', color: '#F0F0F0',
+                                        borderRadius: 7, background: C.w04,
+                                        border: B.medium, color: C.textPrimary,
                                         fontSize: 12, width: 200, outline: 'none',
                                     }}
                                 />
                             </div>
                             <button type="submit" style={{
                                 padding: '6px 12px', borderRadius: 7, fontSize: 12, fontWeight: 500,
-                                background: '#4F8EF7', color: 'white', border: 'none', cursor: 'pointer',
+                                background: C.accentBlue, color: 'white', border: 'none', cursor: 'pointer',
                             }}>Szukaj</button>
                         </form>
                     )}
 
                     {/* Export */}
                     <div className="flex items-center gap-1">
-                        <button onClick={() => handleExport('csv')} title="CSV" style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <button onClick={() => handleExport('csv')} title="CSV" style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: C.w04, border: B.medium, color: C.w50, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Download size={11} />CSV
                         </button>
-                        <button onClick={() => handleExport('xlsx')} title="Excel" style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <button onClick={() => handleExport('xlsx')} title="Excel" style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', color: C.success, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Download size={11} />XLSX
                         </button>
                     </div>
@@ -394,10 +395,10 @@ export default function SearchTerms() {
 
                     {/* Waste callout */}
                     {segData?.summary?.waste_cost > 0 && (
-                        <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <AlertTriangle size={15} style={{ color: '#F87171', flexShrink: 0 }} />
+                        <div style={{ background: C.dangerBg, border: '1px solid rgba(248,113,113,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <AlertTriangle size={15} style={{ color: C.danger, flexShrink: 0 }} />
                             <div>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: '#F87171' }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: C.danger }}>
                                     Zmarnowany budżet: {segData.summary.waste_cost.toFixed(2)} zł
                                 </span>
                                 <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.6)', marginLeft: 8 }}>
@@ -427,17 +428,17 @@ export default function SearchTerms() {
                     <div className="v2-card" style={{ overflow: 'hidden' }}>
                         {loading ? (
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
-                                <Loader2 size={24} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                                <Loader2 size={24} style={{ color: C.accentBlue }} className="animate-spin" />
                             </div>
                         ) : (
                             <div style={{ overflowX: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <tr style={{ borderBottom: B.subtle }}>
                                             <th style={{ ...TH_STYLE, width: 36, textAlign: 'center' }}>
-                                                <button onClick={() => toggleSelectAll(segmentItems)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'rgba(255,255,255,0.3)' }}>
+                                                <button onClick={() => toggleSelectAll(segmentItems)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.w30 }}>
                                                     {segmentItems.length > 0 && segmentItems.every(t => selectedIds.has(t.id))
-                                                        ? <CheckSquare size={13} style={{ color: '#4F8EF7' }} />
+                                                        ? <CheckSquare size={13} style={{ color: C.accentBlue }} />
                                                         : <Square size={13} />}
                                                 </button>
                                             </th>
@@ -453,21 +454,21 @@ export default function SearchTerms() {
                                                 { f: null, label: 'Akcje' },
                                             ].map(h => (
                                                 <th key={h.label}
-                                                    style={{ ...TH_STYLE, cursor: h.f ? 'pointer' : 'default', color: h.f && segSortBy === h.f ? '#4F8EF7' : undefined }}
+                                                    style={{ ...TH_STYLE, cursor: h.f ? 'pointer' : 'default', color: h.f && segSortBy === h.f ? C.accentBlue : undefined }}
                                                     onClick={h.f ? () => {
                                                         if (segSortBy === h.f) setSegSortDir(d => d === 'desc' ? 'asc' : 'desc')
                                                         else { setSegSortBy(h.f); setSegSortDir('desc') }
                                                     } : undefined}
                                                 >
                                                     {h.metric ? <MetricTooltip term="CVR" inline>{h.label}</MetricTooltip> : h.label}
-                                                    {h.f && segSortBy === h.f && <ArrowUpDown size={10} style={{ marginLeft: 3, verticalAlign: 'middle', color: '#4F8EF7' }} />}
+                                                    {h.f && segSortBy === h.f && <ArrowUpDown size={10} style={{ marginLeft: 3, verticalAlign: 'middle', color: C.accentBlue }} />}
                                                 </th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {segmentItems.length === 0 ? (
-                                            <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Brak wyników</td></tr>
+                                            <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', fontSize: 12, color: C.w30 }}>Brak wyników</td></tr>
                                         ) : segmentItems.map((t, i) => {
                                             const seg = segmentMap[t.id] || 'OTHER'
                                             const showAddKw = seg === 'HIGH_PERFORMER'
@@ -476,7 +477,7 @@ export default function SearchTerms() {
                                             return (
                                                 <tr key={t.id || i}
                                                     style={{
-                                                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                                        borderBottom: `1px solid ${C.w04}`,
                                                         transition: 'background 0.12s',
                                                         background: isSelected ? 'rgba(79,142,247,0.06)' : 'transparent',
                                                     }}
@@ -484,22 +485,22 @@ export default function SearchTerms() {
                                                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                                                 >
                                                     <td style={{ padding: '10px 6px', textAlign: 'center', width: 36 }}>
-                                                        <button onClick={() => !t.already_negative && toggleSelect(t.id)} style={{ background: 'none', border: 'none', cursor: t.already_negative ? 'default' : 'pointer', padding: 2, color: 'rgba(255,255,255,0.3)', opacity: t.already_negative ? 0.25 : 1 }}>
-                                                            {isSelected ? <CheckSquare size={13} style={{ color: '#4F8EF7' }} /> : <Square size={13} />}
+                                                        <button onClick={() => !t.already_negative && toggleSelect(t.id)} style={{ background: 'none', border: 'none', cursor: t.already_negative ? 'default' : 'pointer', padding: 2, color: C.w30, opacity: t.already_negative ? 0.25 : 1 }}>
+                                                            {isSelected ? <CheckSquare size={13} style={{ color: C.accentBlue }} /> : <Square size={13} />}
                                                         </button>
                                                     </td>
                                                     <td style={{ padding: '10px 12px' }}><SegmentBadge seg={seg} /></td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 280 }}>
+                                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: C.textPrimary, maxWidth: 280 }}>
                                                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
                                                     </td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 11, color: 'rgba(255,255,255,0.4)', maxWidth: 160 }}>
+                                                    <td style={{ padding: '10px 12px', fontSize: 11, color: C.w40, maxWidth: 160 }}>
                                                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.campaign_name || '—'}</span>
                                                     </td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString('pl-PL') ?? '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost != null ? `${t.cost.toFixed(2)} zł` : '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions?.toFixed(1) ?? '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.cvr != null ? `${t.cvr.toFixed(2)}%` : '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 11, color: 'rgba(255,255,255,0.4)', maxWidth: 200 }}>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.w70 }}>{t.clicks?.toLocaleString('pl-PL') ?? '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.w70 }}>{t.cost != null ? `${t.cost.toFixed(2)} zł` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.w70 }}>{t.conversions?.toFixed(1) ?? '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.textPlaceholder }}>{t.cvr != null ? `${t.cvr.toFixed(2)}%` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 11, color: C.w40, maxWidth: 200 }}>
                                                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.segment_reason || '—'}</span>
                                                     </td>
                                                     <td style={{ padding: '10px 12px' }}>
@@ -513,7 +514,7 @@ export default function SearchTerms() {
                                                             )}
                                                             {showAddNeg && (
                                                                 t.already_negative ? (
-                                                                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>Już wykluczone</span>
+                                                                    <span style={{ fontSize: 10, color: C.textMuted, border: B.medium, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>Już wykluczone</span>
                                                                 ) : (
                                                                     <InlineAction
                                                                         icon={MinusCircle} label="Wyklucz"
@@ -552,14 +553,14 @@ export default function SearchTerms() {
                 <div className="v2-card" style={{ overflow: 'hidden' }}>
                     {loading ? (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
-                            <Loader2 size={24} style={{ color: '#4F8EF7' }} className="animate-spin" />
+                            <Loader2 size={24} style={{ color: C.accentBlue }} className="animate-spin" />
                         </div>
                     ) : (
                         <>
                             <div style={{ overflowX: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                        <tr style={{ borderBottom: B.subtle }}>
                                             {[
                                                 { f: 'text', label: 'Fraza' },
                                                 { f: 'clicks', label: 'Kliknięcia' },
@@ -575,7 +576,7 @@ export default function SearchTerms() {
                                                 >
                                                     <span className="flex items-center gap-1">
                                                         {metric ? <MetricTooltip term={metric} inline>{label}</MetricTooltip> : label}
-                                                        {f && sortBy === f && <ArrowUpDown size={10} style={{ color: '#4F8EF7' }} />}
+                                                        {f && sortBy === f && <ArrowUpDown size={10} style={{ color: C.accentBlue }} />}
                                                     </span>
                                                 </th>
                                             ))}
@@ -586,22 +587,22 @@ export default function SearchTerms() {
                                             const isWaste = t.cost_usd > 20 && (t.conversions == null || t.conversions < 0.01)
                                             return (
                                                 <tr key={t.id || i}
-                                                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isWaste ? 'rgba(248,113,113,0.03)' : 'transparent', transition: 'background 0.12s' }}
+                                                    style={{ borderBottom: `1px solid ${C.w04}`, background: isWaste ? 'rgba(248,113,113,0.03)' : 'transparent', transition: 'background 0.12s' }}
                                                     onMouseEnter={e => e.currentTarget.style.background = isWaste ? 'rgba(248,113,113,0.06)' : 'rgba(255,255,255,0.025)'}
                                                     onMouseLeave={e => e.currentTarget.style.background = isWaste ? 'rgba(248,113,113,0.03)' : 'transparent'}
                                                 >
-                                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: '#F0F0F0', maxWidth: 320 }}>
+                                                    <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 500, color: C.textPrimary, maxWidth: 320 }}>
                                                         <span className="flex items-center gap-2">
                                                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
-                                                            {isWaste && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(248,113,113,0.15)', color: '#F87171', flexShrink: 0 }}>STRATA</span>}
+                                                            {isWaste && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: 'rgba(248,113,113,0.15)', color: C.danger, flexShrink: 0 }}>STRATA</span>}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.clicks?.toLocaleString('pl-PL')}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.impressions?.toLocaleString('pl-PL')}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.cost_usd != null ? `${t.cost_usd.toFixed(2)} zł` : '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.7)' }}>{t.conversions != null ? t.conversions.toFixed(1) : '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>{t.ctr != null ? `${t.ctr.toFixed(2)}%` : '—'}</td>
-                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.45)' }}>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.w70 }}>{t.clicks?.toLocaleString('pl-PL')}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.textPlaceholder }}>{t.impressions?.toLocaleString('pl-PL')}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.w70 }}>{t.cost_usd != null ? `${t.cost_usd.toFixed(2)} zł` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.w70 }}>{t.conversions != null ? t.conversions.toFixed(1) : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.textPlaceholder }}>{t.ctr != null ? `${t.ctr.toFixed(2)}%` : '—'}</td>
+                                                    <td style={{ padding: '10px 12px', fontSize: 12, fontFamily: 'monospace', color: C.textPlaceholder }}>
                                                         {t.cost_per_conversion_usd > 0 ? `${t.cost_per_conversion_usd.toFixed(2)} zł` : '—'}
                                                     </td>
                                                 </tr>
@@ -611,11 +612,11 @@ export default function SearchTerms() {
                                 </table>
                             </div>
                             {/* Pagination */}
-                            <div className="flex items-center justify-between" style={{ padding: '10px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Strona {data.page} z {data.total_pages} ({data.total} wyników)</span>
+                            <div className="flex items-center justify-between" style={{ padding: '10px 16px', borderTop: B.subtle }}>
+                                <span style={{ fontSize: 11, color: C.w30 }}>Strona {data.page} z {data.total_pages} ({data.total} wyników)</span>
                                 <div className="flex items-center gap-1">
-                                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: '5px 8px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', opacity: page <= 1 ? 0.3 : 1 }}><ChevronLeft size={13} /></button>
-                                    <button onClick={() => setPage(p => Math.min(data.total_pages, p + 1))} disabled={page >= data.total_pages} style={{ padding: '5px 8px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', opacity: page >= data.total_pages ? 0.3 : 1 }}><ChevronRight size={13} /></button>
+                                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: '5px 8px', borderRadius: 7, background: C.w04, border: `1px solid ${C.w08}`, color: C.w50, cursor: 'pointer', opacity: page <= 1 ? 0.3 : 1 }}><ChevronLeft size={13} /></button>
+                                    <button onClick={() => setPage(p => Math.min(data.total_pages, p + 1))} disabled={page >= data.total_pages} style={{ padding: '5px 8px', borderRadius: 7, background: C.w04, border: `1px solid ${C.w08}`, color: C.w50, cursor: 'pointer', opacity: page >= data.total_pages ? 0.3 : 1 }}><ChevronRight size={13} /></button>
                                 </div>
                             </div>
                         </>
@@ -628,17 +629,17 @@ export default function SearchTerms() {
                 <div>
                     {error && <ErrorMessage message={error} />}
                     {trendsLoading ? (
-                        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: '#4F8EF7' }} /></div>
+                        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: C.accentBlue }} /></div>
                     ) : trendsData ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>
                                 {trendsData.total_terms} unikalnych fraz w ostatnich {trendsData.period_days} dniach
                             </div>
 
                             {/* Rising */}
                             {trendsData.rising?.length > 0 && (
                                 <div className="v2-card" style={{ padding: 16 }}>
-                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#4ADE80', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: C.success, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <TrendingUp size={16} /> Rosnące frazy ({trendsData.rising.length})
                                     </div>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -651,13 +652,13 @@ export default function SearchTerms() {
                                         </thead>
                                         <tbody>
                                             {trendsData.rising.slice(0, 15).map((t, i) => (
-                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500 }}>{t.text}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.clicks_early}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{t.clicks_recent}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#4ADE80', fontWeight: 600 }}>+{t.change_pct}%</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.total_cost_usd} zł</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{t.conversions}</td>
+                                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                                    <td style={{ padding: '8px 12px', color: C.textPrimary, fontWeight: 500 }}>{t.text}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w50 }}>{t.clicks_early}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textPrimary }}>{t.clicks_recent}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.success, fontWeight: 600 }}>+{t.change_pct}%</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w50 }}>{t.total_cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w70 }}>{t.conversions}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -668,7 +669,7 @@ export default function SearchTerms() {
                             {/* Declining */}
                             {trendsData.declining?.length > 0 && (
                                 <div className="v2-card" style={{ padding: 16 }}>
-                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#F87171', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: C.danger, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <TrendingDown size={16} /> Spadające frazy ({trendsData.declining.length})
                                     </div>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -681,13 +682,13 @@ export default function SearchTerms() {
                                         </thead>
                                         <tbody>
                                             {trendsData.declining.slice(0, 15).map((t, i) => (
-                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500 }}>{t.text}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.clicks_early}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{t.clicks_recent}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F87171', fontWeight: 600 }}>{t.change_pct}%</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.total_cost_usd} zł</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{t.conversions}</td>
+                                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                                    <td style={{ padding: '8px 12px', color: C.textPrimary, fontWeight: 500 }}>{t.text}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w50 }}>{t.clicks_early}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textPrimary }}>{t.clicks_recent}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.danger, fontWeight: 600 }}>{t.change_pct}%</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w50 }}>{t.total_cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w70 }}>{t.conversions}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -698,7 +699,7 @@ export default function SearchTerms() {
                             {/* New terms */}
                             {trendsData.new_terms?.length > 0 && (
                                 <div className="v2-card" style={{ padding: 16 }}>
-                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: '#4F8EF7', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Syne', color: C.accentBlue, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <PlusCircle size={16} /> Nowe frazy ({trendsData.new_terms.length})
                                     </div>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -711,11 +712,11 @@ export default function SearchTerms() {
                                         </thead>
                                         <tbody>
                                             {trendsData.new_terms.slice(0, 15).map((t, i) => (
-                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500 }}>{t.text}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{t.clicks}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{t.cost_usd} zł</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{t.conversions}</td>
+                                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                                    <td style={{ padding: '8px 12px', color: C.textPrimary, fontWeight: 500 }}>{t.text}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textPrimary }}>{t.clicks}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w50 }}>{t.cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w70 }}>{t.conversions}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -736,7 +737,7 @@ export default function SearchTerms() {
                 <div>
                     {error && <ErrorMessage message={error} />}
                     {variantsLoading ? (
-                        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: '#4F8EF7' }} /></div>
+                        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={20} className="animate-spin" style={{ color: C.accentBlue }} /></div>
                     ) : variantsData ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             {/* Summary */}
@@ -749,8 +750,8 @@ export default function SearchTerms() {
                                         { label: 'Koszt wariantów', value: `${variantsData.summary.variant_cost_usd} zł` },
                                     ].map(({ label, value }) => (
                                         <div key={label} className="v2-card" style={{ padding: '12px 14px' }}>
-                                            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
-                                            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0' }}>{value}</div>
+                                            <div style={{ fontSize: 10, fontWeight: 500, color: C.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+                                            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Syne', color: C.textPrimary }}>{value}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -772,16 +773,16 @@ export default function SearchTerms() {
                                         </thead>
                                         <tbody>
                                             {variantsData.variants.slice(0, 25).map((v, i) => (
-                                                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                    <td style={{ padding: '8px 12px', color: '#F0F0F0', fontWeight: 500, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.search_term}</td>
-                                                    <td style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.6)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.matched_keyword}</td>
+                                                <tr key={i} style={{ borderBottom: `1px solid ${C.w04}` }}>
+                                                    <td style={{ padding: '8px 12px', color: C.textPrimary, fontWeight: 500, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.search_term}</td>
+                                                    <td style={{ padding: '8px 12px', color: C.w60, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.matched_keyword}</td>
                                                     <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                                                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, background: 'rgba(79,142,247,0.1)', color: '#4F8EF7', border: '1px solid rgba(79,142,247,0.2)' }}>{v.match_type}</span>
+                                                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, background: C.infoBg, color: C.accentBlue, border: '1px solid rgba(79,142,247,0.2)' }}>{v.match_type}</span>
                                                     </td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#F0F0F0' }}>{v.clicks}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{v.cost_usd} zł</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>{v.conversions}</td>
-                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>{v.ctr}%</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textPrimary }}>{v.clicks}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w70 }}>{v.cost_usd} zł</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w70 }}>{v.conversions}</td>
+                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: C.w50 }}>{v.ctr}%</td>
                                                 </tr>
                                             ))}
                                         </tbody>
