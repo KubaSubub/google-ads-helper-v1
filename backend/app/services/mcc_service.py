@@ -121,11 +121,11 @@ class MCCService:
         # manager account sync, or client_id matches a manager account
         manager_client_ids = set()
         if manager_ids:
-            for mid in manager_ids:
-                mc = self.db.query(Client).filter(
-                    Client.google_customer_id == mid
-                ).first()
-                if mc:
+            # Normalize: MccLink stores without dashes, Client may have dashes
+            all_clients = self.db.query(Client).all()
+            for mc in all_clients:
+                normalized = mc.google_customer_id.replace("-", "") if mc.google_customer_id else ""
+                if normalized in manager_ids:
                     manager_client_ids.add(mc.id)
 
         # Query: MCC-level lists (from manager clients) + fallback to all synced lists

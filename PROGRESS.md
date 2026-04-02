@@ -60,28 +60,24 @@
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
 
 ## MCC Overview — Cross-Account Landing Page (2026-04-02)
-- New landing page at `/mcc-overview` — default entry point (/ redirects to /mcc-overview)
-- Backend: `MCCService` with 4 endpoints (`/mcc/overview`, `/mcc/new-access`, `/mcc/dismiss-google-recommendations`, `/mcc/negative-keyword-lists`)
+- New landing page `MccOverviewPage.jsx` (`features/mcc-overview/`) at `/mcc-overview` — default entry point (/ redirects to /mcc-overview)
+- Backend: `mcc.py` router with 6 endpoints:
+  - `GET /mcc/overview` — aggregated KPIs, health scores, pacing, change activity for all clients
+  - `GET /mcc/new-access` — detect new user emails in change history
+  - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google recommendations
+  - `GET /mcc/negative-keyword-lists` — negative keyword lists across all clients
+  - `GET /mcc/shared-lists` — MCC-level shared negative keyword lists
+  - `GET /mcc/billing-status` — billing/payment status per customer
 - Per-account metrics: spend 30d (with delta %), conversions, CPA, ROAS, budget pacing (75%/120% thresholds), health score (6-pillar tooltip), change activity (total + external), Google recs pending, unresolved alerts, last sync
+- Full account metrics (clicks, impressions, CTR, CPC, CVR, conv value), new access badges, dismiss Google recs button, MCC shared lists, billing status endpoint
 - Sortable table columns, deep-links from cells to per-account pages (Recommendations, Action History, Alerts, Keywords)
 - Collapsible NKL cross-account section (lazy-loaded)
 - Link "Open in Google Ads" per row, alert badge (Bell) per account
 - Sidebar: "Wszystkie konta" always visible, ClientSelector/CampaignTypePills hidden on MCC page
 - Dashboard breadcrumb "← Wszystkie konta" when navigating from MCC
 - Config: `SPECIALIST_EMAILS` env var for external change detection
+- Reuses `BudgetPacingModule` and `KpiCard` shared components
 - 13 backend tests, frontend build OK, ads review pipeline complete (ads-user → ads-expert 7.5/10 → ads-verify Sprint 1+2 done)
-- Phase 2: full account metrics (clicks, impressions, CTR, CPC, CVR, conv value), new access badges, dismiss Google recs button, MCC shared lists, billing status endpoint, design tokens migration (C/B/T/R/S)
-
-## MCC Overview Landing Page (2026-04-02)
-- New landing page `MccOverviewPage.jsx` (`features/mcc-overview/`) — cross-account aggregation dashboard.
-- New backend router `mcc.py` with 4 endpoints:
-  - `GET /mcc/overview` — aggregated KPIs, health scores, pacing, change activity for all clients
-  - `GET /mcc/new-access` — detect new user emails in change history
-  - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google recommendations
-  - `GET /mcc/negative-keyword-lists` — negative keyword lists across all clients
-- Route: `/mcc-overview`, set as default landing page (redirect from `/`).
-- Per-account health score with 6-pillar breakdown, pacing status, unresolved alerts, last sync.
-- Reuses `BudgetPacingModule` and `KpiCard` shared components.
 
 ## Reusable UI Modules — BudgetPacingModule + KpiCard (2026-04-01)
 - Extracted `BudgetPacingModule` and `KpiCard` from duplicated inline code across 5+ pages into `frontend/src/components/modules/`.

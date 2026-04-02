@@ -3,7 +3,7 @@
 from datetime import date, datetime, timedelta, timezone
 
 from app.models import (
-    Alert, Campaign, ChangeEvent, Client, MetricDaily,
+    Alert, Campaign, ChangeEvent, Client, MccLink, MetricDaily,
     NegativeKeywordList, NegativeKeywordListItem, Recommendation, SyncLog,
 )
 from app.services.mcc_service import MCCService
@@ -285,3 +285,56 @@ def test_mcc_shared_lists_empty(db):
     svc = MCCService(db)
     result = svc.get_mcc_shared_lists()
     assert isinstance(result, list)
+
+
+def test_mcc_shared_lists_from_manager(db):
+    """MCC shared lists should return lists from manager account via MccLink."""
+    # Create manager client
+    manager = _client(db, "MCC Manager", "999-000-0001")
+    child = _client(db, "Child Account", "999-000-0002")
+
+    # Create MCC link
+    db.add(MccLink(
+        manager_customer_id="9990000001",
+        client_customer_id="9990000002",
+        client_descriptive_name="Child Account",
+        local_client_id=child.id,
+    ))
+    db.commit()
+
+    # Add NKL to manager account (MCC-level)
+    mcc_nkl = NegativeKeywordList(client_id=manager.id, name="MCC Exclusions", source="GOOGLE_ADS_SYNC")
+    db.add(mcc_nkl)
+    db.commit()
+
+    db.add(NegativeKeywordListItem(list_id=mcc_nkl.id, text="spam"))
+    db.add(NegativeKeywordListItem(list_id=mcc_nkl.id, text="free"))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_mcc_shared_lists()
+
+    assert len(result) >= 1
+    mcc_list = next(r for r in result if r["name"] == "MCC Exclusions")
+    assert mcc_list["client_name"] == "MCC Manager"
+    assert mcc_list["member_count"] == 2
+    assert mcc_list["level"] == "mcc"
+
+
+def test_billing_status_without_api(db):
+    """Billing status should return 'unknown' when API not connected."""
+    svc = MCCService(db)
+    result = svc.get_billing_status("123-456-7890")
+    assert result["status"] in ("unknown", "no_access")
+
+
+def test_billing_status_endpoint_returns_dict(db):
+    """GET /mcc/billing-status should return a dict with status field."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    resp = client.get("/api/v1/mcc/billing-status", params={"customer_id": "123-456-7890"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "status" in data

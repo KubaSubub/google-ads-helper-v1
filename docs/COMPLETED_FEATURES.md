@@ -384,7 +384,8 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - External changes detection (`/mcc/new-access`), Google recommendations pending count.
 - Negative keyword lists overview across all accounts (`/mcc/negative-keyword-lists`).
 - Bulk dismiss Google recommendations (`/mcc/dismiss-google-recommendations`).
-- Backend: `mcc.py` router with 4 endpoints (overview, new-access, dismiss-google-recommendations, negative-keyword-lists).
+- MCC shared lists overview (`/mcc/shared-lists`), billing status check (`/mcc/billing-status`).
+- Backend: `mcc.py` router with 6 endpoints (overview, new-access, dismiss-google-recommendations, negative-keyword-lists, shared-lists, billing-status).
 - Reuses `BudgetPacingModule` and `KpiCard` shared components.
 
 ## PERFORMANCE_MAX / PMAX Naming Consistency

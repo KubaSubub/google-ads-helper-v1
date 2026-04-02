@@ -4,11 +4,11 @@ import {
     RefreshCw, TrendingUp, TrendingDown, ArrowRight,
     AlertTriangle, CheckCircle, Minus, Bell, ExternalLink,
     ChevronDown, ChevronRight, ChevronUp, Shield, List,
-    UserPlus, X,
+    UserPlus, X, CreditCard, Columns,
 } from 'lucide-react'
 import {
     getMccOverview, getMccNegativeKeywordLists, getMccSharedLists,
-    dismissMccGoogleRecommendations, syncClient,
+    getMccBillingStatus, dismissMccGoogleRecommendations, syncClient,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { C, B, T, R, S, CARD, STATUS_COLORS } from '../../constants/designTokens'
@@ -149,7 +149,9 @@ export default function MCCOverviewPage() {
     const [sortBy, setSortBy] = useState('spend_30d_usd')
     const [sortDir, setSortDir] = useState('desc')
     const [hoveredHealth, setHoveredHealth] = useState(null)
-    const [dismissingAll, setDismissingAll] = useState(null) // client_id being dismissed
+    const [dismissingAll, setDismissingAll] = useState(null)
+    const [compactMode, setCompactMode] = useState(false)
+    const [billingStatuses, setBillingStatuses] = useState({}) // {customerId: {status, ...}}
 
     const load = useCallback(async () => {
         try {
@@ -164,6 +166,18 @@ export default function MCCOverviewPage() {
     }, [showToast])
 
     useEffect(() => { load() }, [load])
+
+    // Lazy load billing status per account
+    useEffect(() => {
+        if (!data?.accounts?.length) return
+        data.accounts.forEach(acc => {
+            const cid = acc.google_customer_id
+            if (billingStatuses[cid]) return
+            getMccBillingStatus(cid)
+                .then(result => setBillingStatuses(prev => ({ ...prev, [cid]: result })))
+                .catch(() => setBillingStatuses(prev => ({ ...prev, [cid]: { status: 'error' } })))
+        })
+    }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Lazy load collapsible sections
     useEffect(() => {
@@ -260,13 +274,22 @@ export default function MCCOverviewPage() {
                         Przegląd MCC — {accounts.length} {accounts.length === 1 ? 'konto' : 'kont'}
                     </p>
                 </div>
-                <button onClick={handleSyncAll} style={{
-                    display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
-                    borderRadius: R.md, background: C.infoBg, border: B.info,
-                    color: C.accentBlue, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                }}>
-                    <RefreshCw size={13} /> Synchronizuj nieaktualne
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => setCompactMode(p => !p)} title={compactMode ? 'Pokaż wszystkie kolumny' : 'Tryb kompaktowy'} style={{
+                        display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 10px',
+                        borderRadius: R.md, background: compactMode ? C.infoBg : C.w04, border: compactMode ? B.info : B.subtle,
+                        color: compactMode ? C.accentBlue : C.w50, fontSize: 12, cursor: 'pointer',
+                    }}>
+                        <Columns size={13} />
+                    </button>
+                    <button onClick={handleSyncAll} style={{
+                        display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
+                        borderRadius: R.md, background: C.infoBg, border: B.info,
+                        color: C.accentBlue, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                    }}>
+                        <RefreshCw size={13} /> Synchronizuj nieaktualne
+                    </button>
+                </div>
             </div>
 
             {/* KPI strip */}
@@ -303,17 +326,18 @@ export default function MCCOverviewPage() {
                             <tr style={{ borderBottom: B.card }}>
                                 <SortHeader label="Konto" field="client_name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                                 <SortHeader label="Wydatki" field="spend_30d_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="Kliknięcia" field="clicks_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="Wyśw." field="impressions_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="CTR" field="ctr_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="CPC" field="avg_cpc_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {!compactMode && <SortHeader label="Kliknięcia" field="clicks_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                {!compactMode && <SortHeader label="Wyśw." field="impressions_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                {!compactMode && <SortHeader label="CTR" field="ctr_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                {!compactMode && <SortHeader label="CPC" field="avg_cpc_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 <SortHeader label="Conv." field="conversions_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="CVR" field="conversion_rate_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="Wart. konw." field="conversion_value_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {!compactMode && <SortHeader label="CVR" field="conversion_rate_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                {!compactMode && <SortHeader label="Wart. konw." field="conversion_value_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 <SortHeader label="CPA" field="cpa_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <SortHeader label="ROAS" field="roas_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <th style={TH}>Pacing</th>
                                 <SortHeader label="Health" field="health" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="center" />
+                                <th style={{ ...TH, textAlign: 'center' }}>Płatności</th>
                                 <SortHeader label="Zmiany" field="total_changes_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <SortHeader label="Rek." field="google_recs_pending" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <th style={{ ...TH, textAlign: 'center' }}>Sync</th>
@@ -359,20 +383,14 @@ export default function MCCOverviewPage() {
                                             <div>{fmtUsd(acc.spend_30d_usd)}</div>
                                             <SpendChange pct={acc.spend_change_pct} />
                                         </td>
-                                        {/* Kliknięcia */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.clicks_30d)}</td>
-                                        {/* Wyświetlenia */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.impressions_30d)}</td>
-                                        {/* CTR */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.ctr_pct != null ? `${acc.ctr_pct}%` : <span style={{ color: C.w30 }}>—</span>}</td>
-                                        {/* CPC */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.avg_cpc_usd != null ? fmtUsd(acc.avg_cpc_usd) : <span style={{ color: C.w30 }}>—</span>}</td>
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.clicks_30d)}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.impressions_30d)}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.ctr_pct != null ? `${acc.ctr_pct}%` : <span style={{ color: C.w30 }}>—</span>}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.avg_cpc_usd != null ? fmtUsd(acc.avg_cpc_usd) : <span style={{ color: C.w30 }}>—</span>}</td>}
                                         {/* Konwersje */}
                                         <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.conversions_30d, 1)}</td>
-                                        {/* CVR */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_rate_pct != null ? `${acc.conversion_rate_pct}%` : <span style={{ color: C.w30 }}>—</span>}</td>
-                                        {/* Wartość konwersji */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value_usd > 0 ? fmtUsd(acc.conversion_value_usd) : <span style={{ color: C.w30 }}>—</span>}</td>
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_rate_pct != null ? `${acc.conversion_rate_pct}%` : <span style={{ color: C.w30 }}>—</span>}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value_usd > 0 ? fmtUsd(acc.conversion_value_usd) : <span style={{ color: C.w30 }}>—</span>}</td>}
                                         {/* CPA */}
                                         <td style={{ ...TD, textAlign: 'right' }}>{acc.cpa_usd != null ? fmtUsd(acc.cpa_usd) : <span style={{ color: C.w30 }}>—</span>}</td>
                                         {/* ROAS */}
@@ -405,6 +423,10 @@ export default function MCCOverviewPage() {
                                                     {hoveredHealth === acc.client_id && <HealthTooltip health={acc.health} />}
                                                 </span>
                                             ) : <Minus size={14} style={{ color: C.w20 }} />}
+                                        </td>
+                                        {/* Płatności */}
+                                        <td style={{ ...TD, textAlign: 'center' }}>
+                                            <BillingBadge status={billingStatuses[acc.google_customer_id]} />
                                         </td>
                                         {/* Zmiany */}
                                         <td style={{ ...TD, textAlign: 'right', cursor: 'pointer' }} onClick={(e) => handleDeepLink(acc, '/action-history', e)} title="Otwórz historię zmian">
@@ -526,6 +548,15 @@ function LoadingPlaceholder() {
 
 function EmptyPlaceholder({ text }) {
     return <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>{text}</div>
+}
+
+function BillingBadge({ status }) {
+    if (!status) return <RefreshCw size={11} style={{ color: C.w20, animation: 'spin 1s linear infinite' }} />
+    if (status.status === 'ok') return <CreditCard size={13} style={{ color: C.success }} title="Płatności OK" />
+    if (status.status === 'no_billing') return <CreditCard size={13} style={{ color: C.danger }} title="Brak aktywnego billing setup" />
+    if (status.status === 'no_access') return <CreditCard size={13} style={{ color: C.w30 }} title="Brak dostępu do billing API" />
+    if (status.status === 'error') return <CreditCard size={13} style={{ color: C.danger }} title="Błąd sprawdzania płatności" />
+    return <CreditCard size={13} style={{ color: C.w30 }} title={status.reason || 'Status nieznany'} />
 }
 
 function NklTable({ data, onRowClick, showLevel }) {
