@@ -13,6 +13,7 @@ import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
 import EmptyState from '../../components/EmptyState'
 import { LoadingSpinner, ErrorMessage } from '../../components/UI'
+import { BudgetPacingModule } from '../../components/modules'
 import DarkSelect from '../../components/DarkSelect'
 import CampaignKpiRow from './components/CampaignKpiRow'
 import CampaignTrendExplorer from './components/CampaignTrendExplorer'
@@ -656,38 +657,10 @@ export default function CampaignsPage() {
                             />
 
                             {/* 3. Budget Pacing */}
-                            {budgetPacing && (
-                                <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', marginBottom: 10, fontFamily: 'Syne' }}>
-                                        Pacing budżetu
-                                    </div>
-                                    {(() => {
-                                        const c = budgetPacing
-                                        const color = c.status === 'overspend' ? '#F87171' : c.status === 'underspend' ? '#FBBF24' : '#4ADE80'
-                                        const bg = c.status === 'overspend' ? 'rgba(248,113,113,0.08)' : c.status === 'underspend' ? 'rgba(251,191,36,0.08)' : 'rgba(74,222,128,0.08)'
-                                        const label = c.status === 'overspend' ? 'Przekroczenie' : c.status === 'underspend' ? 'Niedostateczne' : 'Na torze'
-                                        return (
-                                            <div>
-                                                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                                                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                                                        {c.actual_spend_usd?.toFixed(0)} / {c.expected_spend_usd?.toFixed(0)} zł (proj. {c.projected_spend_usd?.toFixed(0)} zł)
-                                                    </span>
-                                                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: bg, color, border: `1px solid ${color}30` }}>
-                                                        {label}
-                                                    </span>
-                                                </div>
-                                                <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)' }}>
-                                                    <div style={{ height: '100%', borderRadius: 3, background: color, width: `${Math.min(c.pacing_pct, 100)}%`, transition: 'width 0.3s' }} />
-                                                </div>
-                                                <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-                                                    <span>Dzień {c.days_elapsed} / {c.days_in_month}</span>
-                                                    <span style={{ color }}>{c.pacing_pct}%</span>
-                                                </div>
-                                            </div>
-                                        )
-                                    })()}
-                                </div>
-                            )}
+                            <BudgetPacingModule
+                                campaigns={budgetPacing ? [budgetPacing] : []}
+                                title="Pacing budżetu"
+                            />
 
                             {/* 4. Device + Geo Breakdown */}
                             {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (

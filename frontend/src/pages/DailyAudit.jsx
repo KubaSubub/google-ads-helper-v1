@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import EmptyState from '../components/EmptyState'
+import { BudgetPacingModule, KpiCard as KpiChip } from '../components/modules'
 import api from '../api'
 
 // ─── API calls ───
@@ -36,26 +37,7 @@ function pluralize(n, one, few, many) {
     return many
 }
 
-// ─── KPI chip ───
-function KpiChip({ label, current, previous, prefix = '', suffix = '' }) {
-    const pct = previous > 0 ? ((current - previous) / previous * 100) : 0
-    const isUp = pct > 0
-    return (
-        <div style={{ ...CARD, padding: '12px 16px', flex: '1 1 140px', minWidth: 120 }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#F0F0F0', fontFamily: 'Syne', lineHeight: 1 }}>
-                {prefix}{typeof current === 'number' ? current.toLocaleString('pl-PL', { maximumFractionDigits: 2 }) : '—'}{suffix}
-            </div>
-            {previous != null && previous > 0 && (
-                <div style={{ fontSize: 10, marginTop: 4, display: 'flex', alignItems: 'center', gap: 3,
-                    color: isUp ? '#4ADE80' : pct < 0 ? '#F87171' : 'rgba(255,255,255,0.25)' }}>
-                    {isUp ? <TrendingUp size={10} /> : pct < 0 ? <TrendingDown size={10} /> : null}
-                    <span>{Math.abs(pct).toFixed(1)}% vs poprz. okres</span>
-                </div>
-            )}
-        </div>
-    )
-}
+// KpiChip imported from components/modules (aliased as KpiChip, uses size="sm")
 
 // ─── Category labels ───
 const CATEGORY_LABELS = {
@@ -422,9 +404,9 @@ export default function DailyAudit() {
                 </div>
             ) : (
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-                    <KpiChip label="Wydatki" current={kpi.current_spend} previous={kpi.previous_spend} suffix=" zł" />
-                    <KpiChip label="Kliknięcia" current={kpi.current_clicks} previous={kpi.previous_clicks} />
-                    <KpiChip label="Konwersje" current={kpi.current_conversions} previous={kpi.previous_conversions} />
+                    <KpiChip label="Wydatki" current={kpi.current_spend} previous={kpi.previous_spend} suffix=" zł" size="sm" />
+                    <KpiChip label="Kliknięcia" current={kpi.current_clicks} previous={kpi.previous_clicks} size="sm" />
+                    <KpiChip label="Konwersje" current={kpi.current_conversions} previous={kpi.previous_conversions} size="sm" />
                 </div>
             )}
 
@@ -573,101 +555,11 @@ export default function DailyAudit() {
             </div>
 
             {/* ROW 4: Budget pacing overview (yesterday's data) */}
-            {(d.budget_pacing || []).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...SECTION_TITLE }}>
-                        <span>Pacing budżetu kampanii</span>
-                        {d.budget_pacing[0]?.reference_date && (
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic', textTransform: 'none', letterSpacing: 0 }}>
-                                (dane z {d.budget_pacing[0].reference_date})
-                            </span>
-                        )}
-                    </div>
-                    <div className="v2-card" style={{ overflow: 'hidden' }}>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                        {['Kampania', 'Budżet dzienny', 'Wydane', 'Pacing', 'Status'].map(h => (
-                                            <th key={h} style={{
-                                                padding: '8px 12px', fontSize: 10, fontWeight: 500,
-                                                color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
-                                                letterSpacing: '0.08em', textAlign: 'left',
-                                            }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(d.budget_pacing || []).map((c, i) => {
-                                        const pct = c.pacing_pct || 0
-                                        // Red = underspending (<50%), Yellow = moderate (50-80%), Green = on track (80%+), Red again if overspend (>120%)
-                                        const barColor = pct > 120 ? '#F87171' : pct >= 80 ? '#4ADE80' : pct >= 50 ? '#FBBF24' : '#F87171'
-                                        // Build LIMITED tooltip
-                                        const limitedParts = []
-                                        if (c.budget_lost_is > 0) limitedParts.push(`IS utracone: ${c.budget_lost_is}%`)
-                                        if (c.budget_lost_top_is > 0) limitedParts.push(`Top IS utracone: ${c.budget_lost_top_is}%`)
-                                        if (c.budget_lost_abs_top_is > 0) limitedParts.push(`Abs Top IS utracone: ${c.budget_lost_abs_top_is}%`)
-                                        const limitedTooltip = limitedParts.join(' | ')
-                                        return (
-                                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                <td style={{ padding: '8px 12px', fontSize: 12, color: '#F0F0F0', fontWeight: 500, maxWidth: 250 }}>
-                                                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.campaign_name}</span>
-                                                </td>
-                                                <td style={{ padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' }}>
-                                                    {c.daily_budget?.toFixed(2)} zł
-                                                </td>
-                                                <td style={{ padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' }}>
-                                                    {(c.spent ?? c.spent_today)?.toFixed(2)} zł
-                                                </td>
-                                                <td style={{ padding: '8px 12px', width: 160 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                        <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
-                                                            <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', borderRadius: 2, background: barColor, transition: 'width 0.3s' }} />
-                                                        </div>
-                                                        <span style={{ fontSize: 10, color: barColor, fontWeight: 600, minWidth: 32, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '8px 12px' }}>
-                                                    {c.is_limited && (
-                                                        <span style={{
-                                                            fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 999,
-                                                            background: 'rgba(251,191,36,0.12)', color: '#FBBF24',
-                                                            border: '1px solid rgba(251,191,36,0.25)',
-                                                        }}>
-                                                            LIMITED
-                                                        </span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                        {/* Legend */}
-                        <div style={{
-                            padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.04)',
-                            display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
-                        }}>
-                            {[
-                                { color: '#F87171', label: '< 50% — niedostateczne wydawanie' },
-                                { color: '#FBBF24', label: '50–80% — umiarkowane' },
-                                { color: '#4ADE80', label: '80–120% — zgodnie z planem' },
-                                { color: '#F87171', label: '> 120% — przekroczenie budżetu' },
-                            ].map((item, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                    <div style={{ width: 8, height: 8, borderRadius: 2, background: item.color, flexShrink: 0 }} />
-                                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>{item.label}</span>
-                                </div>
-                            ))}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 4px', borderRadius: 3, background: 'rgba(251,191,36,0.12)', color: '#FBBF24' }}>LIMITED</span>
-                                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>— kampania traci IS z powodu budżetu (najedź aby zobaczyć szczegóły)</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <BudgetPacingModule
+                campaigns={d.budget_pacing}
+                variant="table"
+                showLegend
+            />
 
             {resultModal && (
                 <ScriptResultModal

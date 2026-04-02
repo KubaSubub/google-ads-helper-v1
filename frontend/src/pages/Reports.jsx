@@ -6,8 +6,6 @@ import {
     Loader2,
     Calendar,
     TrendingUp,
-    TrendingDown,
-    Minus,
     AlertTriangle,
     Sparkles,
     ChevronRight,
@@ -16,6 +14,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { KpiCard, DeltaIndicator } from '../components/modules';
 
 // ─── Polish month names ───
 const MONTH_NAMES = [
@@ -43,40 +42,7 @@ import { markdownComponents } from '../components/MarkdownComponents';
 
 // ─── Structural sections ───
 
-function DeltaIndicator({ value, invertColor = false }) {
-    if (value === null || value === undefined) return <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>;
-    const isPositive = value > 0;
-    const isGood = invertColor ? !isPositive : isPositive;
-    const color = Math.abs(value) < 1 ? 'rgba(255,255,255,0.4)' : isGood ? '#4ADE80' : '#F87171';
-    const Icon = value > 0 ? TrendingUp : value < 0 ? TrendingDown : Minus;
-    return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color, fontSize: 12, fontWeight: 500 }}>
-            <Icon size={12} />
-            {value > 0 ? '+' : ''}{value}%
-        </span>
-    );
-}
-
-function KpiCard({ label, current, previous, delta, invertColor = false }) {
-    return (
-        <div className="v2-card" style={{ padding: '14px 16px', flex: '1 1 0' }}>
-            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-                {label}
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Syne', color: '#F0F0F0' }}>
-                {current}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <DeltaIndicator value={delta} invertColor={invertColor} />
-                {previous !== undefined && (
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                        vs {previous}
-                    </span>
-                )}
-            </div>
-        </div>
-    );
-}
+// KpiCard and DeltaIndicator imported from components/modules
 
 function MonthComparisonSection({ data }) {
     if (!data || data.note) return null;

@@ -13,6 +13,7 @@ import {
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
+import { BudgetPacingModule } from '../../components/modules'
 import InsightsFeed from '../../components/InsightsFeed'
 import TrendExplorer from '../../components/TrendExplorer'
 import WoWChart from '../../components/WoWChart'
@@ -406,46 +407,12 @@ export default function DashboardPage() {
             </div>
 
             {/* ── Budget Pacing ─────────────────────────────────────────── */}
-            {budgetPacing?.campaigns?.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
-                            Pacing budżetu ({budgetPacing.month})
-                        </span>
-                        <span onClick={() => navigate('/campaigns')} style={{ fontSize: 11, color: '#4F8EF7', cursor: 'pointer' }}>
-                            Wszystkie →
-                        </span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-                        {budgetPacing.campaigns.map(c => {
-                            const color = c.status === 'overspend' ? '#F87171' : c.status === 'underspend' ? '#FBBF24' : '#4ADE80'
-                            const bg = c.status === 'overspend' ? 'rgba(248,113,113,0.08)' : c.status === 'underspend' ? 'rgba(251,191,36,0.08)' : 'rgba(74,222,128,0.08)'
-                            const label = c.status === 'overspend' ? 'Przekroczenie' : c.status === 'underspend' ? 'Niedostateczne' : 'Na torze'
-                            const progressPct = Math.min(c.pacing_pct, 150)
-                            return (
-                                <div key={c.campaign_id} className="v2-card" style={{ padding: '12px 14px' }}>
-                                    <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                                        <span style={{ fontSize: 12, fontWeight: 500, color: '#F0F0F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
-                                            {c.campaign_name}
-                                        </span>
-                                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: bg, color, border: `1px solid ${color}30` }}>
-                                            {label}
-                                        </span>
-                                    </div>
-                                    {/* Progress bar */}
-                                    <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', marginBottom: 6 }}>
-                                        <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(progressPct, 100)}%`, transition: 'width 0.3s' }} />
-                                    </div>
-                                    <div className="flex items-center justify-between" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                                        <span>{c.actual_spend_usd?.toFixed(0) ?? '—'} / {c.expected_spend_usd?.toFixed(0) ?? '—'} zł</span>
-                                        <span style={{ color }}>{c.pacing_pct}%</span>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                </div>
-            )}
+            <BudgetPacingModule
+                campaigns={budgetPacing?.campaigns}
+                month={budgetPacing?.month}
+                linkTo="/campaigns"
+                onNavigate={navigate}
+            />
 
             {/* ── PMax Channel Split ────────────────────────────────────── */}
             {pmaxChannels?.channels?.length > 0 && (
