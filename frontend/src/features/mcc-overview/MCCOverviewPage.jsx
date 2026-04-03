@@ -3,41 +3,30 @@ import { useNavigate } from 'react-router-dom'
 import {
     RefreshCw, TrendingUp, TrendingDown, ArrowRight,
     AlertTriangle, CheckCircle, Minus, Bell, ExternalLink,
-    ChevronDown, ChevronRight, ChevronUp, Shield, List,
-    UserPlus, X, CreditCard, Columns,
+    ChevronDown, ChevronRight, Shield, List,
+    UserPlus, CreditCard, Columns, EyeOff,
 } from 'lucide-react'
 import {
-    getMccOverview, getMccNegativeKeywordLists, getMccSharedLists,
-    getMccBillingStatus, dismissMccGoogleRecommendations, syncClient,
+    getMccOverview, getMccSharedLists,
+    dismissMccGoogleRecommendations, syncClient,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
+import { useFilter } from '../../contexts/FilterContext'
+import PacingProgressBar from '../../components/modules/PacingProgressBar'
 import { C, B, T, R, S, CARD, STATUS_COLORS } from '../../constants/designTokens'
 
 const TH = T.th
 const TD = T.td
 const TD_DIM = T.tdDim
 
-const PACING_STATUS = {
-    on_track: { label: 'Na planie', color: STATUS_COLORS.ok },
-    underspend: { label: 'Niedowydanie', color: STATUS_COLORS.warning },
-    overspend: { label: 'Przekroczenie', color: STATUS_COLORS.danger },
-    no_data: { label: 'Brak danych', color: STATUS_COLORS.neutral },
+function fmtNum(n, decimals = 0) {
+    if (n == null) return '—'
+    return n.toLocaleString('pl-PL', { maximumFractionDigits: decimals })
 }
 
-const PILLAR_LABELS = {
-    performance: 'Wyniki',
-    quality: 'Jakość',
-    efficiency: 'Efektywność',
-    coverage: 'Zasięg',
-    stability: 'Stabilność',
-    structure: 'Struktura',
-}
-
-function healthColor(score) {
-    if (score == null) return STATUS_COLORS.neutral
-    if (score >= 70) return STATUS_COLORS.ok
-    if (score >= 40) return STATUS_COLORS.warning
-    return STATUS_COLORS.danger
+function fmtMoney(n) {
+    if (n == null) return '—'
+    return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function SpendChange({ pct }) {
@@ -53,55 +42,12 @@ function SpendChange({ pct }) {
     )
 }
 
-function StatusPill({ label, color }) {
-    return (
-        <span style={{
-            display: 'inline-block', padding: '2px 8px', borderRadius: R.pill,
-            fontSize: 10, fontWeight: 500,
-            background: color.border, color: color.valueFill,
-            border: `1px solid ${color.border}`,
-        }}>
-            {label}
-        </span>
-    )
-}
-
 function SyncIndicator({ lastSyncedAt, syncing }) {
     if (syncing) return <RefreshCw size={13} style={{ color: C.accentBlue, animation: 'spin 1s linear infinite' }} />
-    if (!lastSyncedAt) return <span style={{ color: C.w30, fontSize: 11 }}>Nigdy</span>
-    const ago = Date.now() - new Date(lastSyncedAt).getTime()
-    const hours = Math.floor(ago / 3_600_000)
-    const label = hours < 1 ? '<1h' : `${hours}h`
-    const stale = hours > 6
-    return (
-        <span style={{ fontSize: 11, color: stale ? C.warning : C.w50 }}>
-            {stale && <AlertTriangle size={11} style={{ marginRight: 3, verticalAlign: -1 }} />}
-            {label}
-        </span>
-    )
-}
-
-function HealthTooltip({ health }) {
-    if (!health?.pillars || Object.keys(health.pillars).length === 0) return null
-    return (
-        <div style={{
-            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-            marginBottom: 6, padding: '8px 10px', borderRadius: R.md, minWidth: 140,
-            background: C.surfaceElevated, border: B.hover,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 10,
-            fontSize: 11, color: C.w70,
-        }}>
-            {Object.entries(health.pillars).map(([key, score]) => {
-                const hc = healthColor(score)
-                return (
-                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '2px 0' }}>
-                        <span>{PILLAR_LABELS[key] || key}</span>
-                        <span style={{ color: hc.valueFill, fontWeight: 600 }}>{score ?? '—'}</span>
-                    </div>
-                )
-            })}
-        </div>
-    )
+    if (!lastSyncedAt) return <span style={{ color: C.w30, fontSize: 11 }}>—</span>
+    const d = new Date(lastSyncedAt)
+    const label = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
+    return <span style={{ fontSize: 11, color: C.w50 }}>{label}</span>
 }
 
 function SortHeader({ label, field, sortBy, sortDir, onSort, align }) {
@@ -111,22 +57,57 @@ function SortHeader({ label, field, sortBy, sortDir, onSort, align }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 {label}
                 {active && (sortDir === 'asc'
-                    ? <ChevronUp size={10} style={{ opacity: 0.6 }} />
-                    : <ChevronDown size={10} style={{ opacity: 0.6 }} />
+                    ? <TrendingUp size={10} style={{ opacity: 0.6 }} />
+                    : <TrendingDown size={10} style={{ opacity: 0.6 }} />
                 )}
             </span>
         </th>
     )
 }
 
-function fmtNum(n, decimals = 0) {
-    if (n == null) return '—'
-    return n.toLocaleString('en-US', { maximumFractionDigits: decimals })
+function AlertTooltip({ alerts }) {
+    if (!alerts?.length) return null
+    return (
+        <div style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            marginBottom: 6, padding: '8px 10px', borderRadius: R.md, minWidth: 200, maxWidth: 300,
+            background: C.surfaceElevated, border: B.hover,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 10,
+            fontSize: 11, color: C.w70,
+        }}>
+            {alerts.map((a, i) => (
+                <div key={i} style={{ padding: '3px 0', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ color: a.severity === 'HIGH' ? C.danger : C.warning, fontWeight: 600, fontSize: 9, marginTop: 1 }}>
+                        {a.severity === 'HIGH' ? '!!!' : '!!'}
+                    </span>
+                    <span>{a.title}</span>
+                </div>
+            ))}
+        </div>
+    )
 }
 
-function fmtUsd(n) {
-    if (n == null) return '—'
-    return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function BillingTooltip({ status }) {
+    if (!status) return null
+    const messages = {
+        ok: 'Płatności skonfigurowane poprawnie',
+        no_billing: 'Brak aktywnego billing setup — konto może mieć problemy z płatnościami',
+        no_access: 'Brak dostępu do API billing — nie można sprawdzić statusu płatności',
+        unknown: status?.reason || 'Status płatności nieznany',
+        error: 'Błąd sprawdzania statusu płatności',
+    }
+    const colors = { ok: C.success, no_billing: C.danger, no_access: C.w40, unknown: C.w40, error: C.danger }
+    return (
+        <div style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            marginBottom: 6, padding: '8px 10px', borderRadius: R.md, minWidth: 180, maxWidth: 260,
+            background: C.surfaceElevated, border: B.hover,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 10,
+            fontSize: 11, color: colors[status.status] || C.w50,
+        }}>
+            {messages[status.status] || messages.unknown}
+        </div>
+    )
 }
 
 function googleAdsUrl(googleCustomerId) {
@@ -139,53 +120,52 @@ function googleAdsUrl(googleCustomerId) {
 export default function MCCOverviewPage() {
     const navigate = useNavigate()
     const { setSelectedClientId, showToast } = useApp()
+    const { filters } = useFilter()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [syncingIds, setSyncingIds] = useState(new Set())
-    const [nklData, setNklData] = useState(null)
-    const [nklOpen, setNklOpen] = useState(false)
     const [sharedLists, setSharedLists] = useState(null)
     const [sharedOpen, setSharedOpen] = useState(false)
-    const [sortBy, setSortBy] = useState('spend_30d_usd')
+    const [sortBy, setSortBy] = useState('spend')
     const [sortDir, setSortDir] = useState('desc')
-    const [hoveredHealth, setHoveredHealth] = useState(null)
+    const [compactMode, setCompactMode] = useState(true)
+    const [billingStatuses, setBillingStatuses] = useState({})
+    const [hoveredAlert, setHoveredAlert] = useState(null)
+    const [hoveredBilling, setHoveredBilling] = useState(null)
     const [dismissingAll, setDismissingAll] = useState(null)
-    const [compactMode, setCompactMode] = useState(false)
-    const [billingStatuses, setBillingStatuses] = useState({}) // {customerId: {status, ...}}
 
     const load = useCallback(async () => {
         try {
             setLoading(true)
-            const result = await getMccOverview()
+            const params = {}
+            if (filters.dateFrom) params.date_from = filters.dateFrom
+            if (filters.dateTo) params.date_to = filters.dateTo
+            const result = await getMccOverview(params)
             setData(result)
         } catch {
             showToast?.('Błąd ładowania MCC overview', 'error')
         } finally {
             setLoading(false)
         }
-    }, [showToast])
+    }, [showToast, filters.dateFrom, filters.dateTo])
 
     useEffect(() => { load() }, [load])
 
-    // Lazy load billing status per account
+    // Lazy load billing
     useEffect(() => {
         if (!data?.accounts?.length) return
         data.accounts.forEach(acc => {
             const cid = acc.google_customer_id
             if (billingStatuses[cid]) return
-            getMccBillingStatus(cid)
-                .then(result => setBillingStatuses(prev => ({ ...prev, [cid]: result })))
-                .catch(() => setBillingStatuses(prev => ({ ...prev, [cid]: { status: 'error' } })))
+            import('../../api').then(({ getMccBillingStatus }) =>
+                getMccBillingStatus(cid)
+                    .then(r => setBillingStatuses(prev => ({ ...prev, [cid]: r })))
+                    .catch(() => setBillingStatuses(prev => ({ ...prev, [cid]: { status: 'error' } })))
+            )
         })
     }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Lazy load collapsible sections
-    useEffect(() => {
-        if (nklOpen && !nklData) {
-            getMccNegativeKeywordLists().then(setNklData).catch(() => {})
-        }
-    }, [nklOpen, nklData])
-
+    // Lazy load shared lists
     useEffect(() => {
         if (sharedOpen && !sharedLists) {
             getMccSharedLists().then(setSharedLists).catch(() => {})
@@ -231,15 +211,15 @@ export default function MCCOverviewPage() {
         for (const acc of stale.slice(0, 3)) handleSync(acc.client_id, { stopPropagation: () => {} })
     }
 
-    const handleDismissAll = async (clientId, e) => {
+    const handleDismissRecs = async (clientId, e) => {
         e.stopPropagation()
         setDismissingAll(clientId)
         try {
             const result = await dismissMccGoogleRecommendations({ client_id: clientId, dismiss_all: true })
-            showToast?.(`Odrzucono ${result.dismissed} rekomendacji`, 'success')
-            load() // refresh data
+            showToast?.(`Ukryto ${result.dismissed} rekomendacji w aplikacji`, 'success')
+            load()
         } catch {
-            showToast?.('Błąd odrzucania rekomendacji', 'error')
+            showToast?.('Błąd ukrywania rekomendacji', 'error')
         } finally {
             setDismissingAll(null)
         }
@@ -250,19 +230,18 @@ export default function MCCOverviewPage() {
     const accounts = useMemo(() => {
         const sorted = [...rawAccounts]
         sorted.sort((a, b) => {
-            let va, vb
-            if (sortBy === 'health') { va = a.health?.score ?? -1; vb = b.health?.score ?? -1 }
-            else { va = a[sortBy] ?? -Infinity; vb = b[sortBy] ?? -Infinity }
+            const va = a[sortBy] ?? -Infinity
+            const vb = b[sortBy] ?? -Infinity
             return sortDir === 'asc' ? va - vb : vb - va
         })
         return sorted
     }, [rawAccounts, sortBy, sortDir])
 
-    // Aggregated totals
-    const totalSpend = accounts.reduce((s, a) => s + (a.spend_30d_usd || 0), 0)
-    const totalClicks = accounts.reduce((s, a) => s + (a.clicks_30d || 0), 0)
-    const totalConv = accounts.reduce((s, a) => s + (a.conversions_30d || 0), 0)
-    const totalImpr = accounts.reduce((s, a) => s + (a.impressions_30d || 0), 0)
+    const totalSpend = accounts.reduce((s, a) => s + (a.spend || 0), 0)
+    const totalClicks = accounts.reduce((s, a) => s + (a.clicks || 0), 0)
+    const totalConv = accounts.reduce((s, a) => s + (a.conversions || 0), 0)
+    const totalImpr = accounts.reduce((s, a) => s + (a.impressions || 0), 0)
+    const activeCount = accounts.filter(a => (a.spend || 0) > 0).length
 
     return (
         <div style={{ padding: '24px 32px', maxWidth: 1600 }}>
@@ -272,9 +251,14 @@ export default function MCCOverviewPage() {
                     <h1 style={T.pageTitle}>Wszystkie konta</h1>
                     <p style={T.pageSubtitle}>
                         Przegląd MCC — {accounts.length} {accounts.length === 1 ? 'konto' : 'kont'}
+                        {data?.date_from && data?.date_to && (
+                            <span style={{ marginLeft: 8, color: C.w40 }}>
+                                ({data.date_from} — {data.date_to})
+                            </span>
+                        )}
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button onClick={() => setCompactMode(p => !p)} title={compactMode ? 'Pokaż wszystkie kolumny' : 'Tryb kompaktowy'} style={{
                         display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 10px',
                         borderRadius: R.md, background: compactMode ? C.infoBg : C.w04, border: compactMode ? B.info : B.subtle,
@@ -293,20 +277,25 @@ export default function MCCOverviewPage() {
             </div>
 
             {/* KPI strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: S.xl, marginBottom: S['4xl'] }}>
-                {[
-                    { label: 'Wydatki 30d', value: fmtUsd(totalSpend) },
-                    { label: 'Kliknięcia', value: fmtNum(totalClicks) },
-                    { label: 'Wyświetlenia', value: fmtNum(totalImpr) },
+            {(() => {
+                const kpis = [
+                    { label: 'Wydatki', value: fmtMoney(totalSpend) },
+                    totalClicks > 0 && { label: 'Kliknięcia', value: fmtNum(totalClicks) },
+                    totalImpr > 0 && { label: 'Wyświetlenia', value: fmtNum(totalImpr) },
                     { label: 'Konwersje', value: fmtNum(totalConv, 1) },
-                    { label: 'Avg. CTR', value: totalImpr > 0 ? `${(totalClicks / totalImpr * 100).toFixed(2)}%` : '—' },
-                ].map(kpi => (
-                    <div key={kpi.label} className={CARD} style={{ padding: '14px 16px' }}>
-                        <div style={T.kpiLabel}>{kpi.label}</div>
-                        <div style={{ ...T.kpiValue, fontSize: 18, marginTop: 2 }}>{kpi.value}</div>
+                    { label: 'Aktywne konta', value: `${activeCount} / ${accounts.length}` },
+                ].filter(Boolean)
+                return (
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${kpis.length}, 1fr)`, gap: S.xl, marginBottom: S['4xl'] }}>
+                        {kpis.map(kpi => (
+                            <div key={kpi.label} className={CARD} style={{ padding: '14px 16px' }}>
+                                <div style={T.kpiLabel}>{kpi.label}</div>
+                                <div style={{ ...T.kpiValue, fontSize: 18, marginTop: 2 }}>{kpi.value}</div>
+                            </div>
+                        ))}
                     </div>
-                ))}
-            </div>
+                )
+            })()}
 
             {/* Accounts table */}
             <div className={CARD} style={{ overflow: 'visible' }}>
@@ -325,32 +314,37 @@ export default function MCCOverviewPage() {
                         <thead>
                             <tr style={{ borderBottom: B.card }}>
                                 <SortHeader label="Konto" field="client_name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                                <SortHeader label="Wydatki" field="spend_30d_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                {!compactMode && <SortHeader label="Kliknięcia" field="clicks_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
-                                {!compactMode && <SortHeader label="Wyśw." field="impressions_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                <SortHeader label="Wydatki" field="spend" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {!compactMode && <SortHeader label="Kliknięcia" field="clicks" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                {!compactMode && <SortHeader label="Wyśw." field="impressions" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 {!compactMode && <SortHeader label="CTR" field="ctr_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
-                                {!compactMode && <SortHeader label="CPC" field="avg_cpc_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
-                                <SortHeader label="Conv." field="conversions_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {!compactMode && <SortHeader label="CPC" field="avg_cpc" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                <SortHeader label="Konwersje" field="conversions" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 {!compactMode && <SortHeader label="CVR" field="conversion_rate_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
-                                {!compactMode && <SortHeader label="Wart. konw." field="conversion_value_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
-                                <SortHeader label="CPA" field="cpa_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {!compactMode && <SortHeader label="Wart. konw." field="conversion_value" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                <SortHeader label="CPA" field="cpa" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <SortHeader label="ROAS" field="roas_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <th style={TH}>Pacing</th>
-                                <SortHeader label="Health" field="health" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="center" />
+                                <th style={{ ...TH, minWidth: 120 }}>Pacing</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Płatności</th>
-                                <SortHeader label="Zmiany" field="total_changes_30d" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="Rek." field="google_recs_pending" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                <SortHeader label="Zmiany" field="total_changes" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                <th style={{ ...TH, minWidth: 100 }}>Rekomendacje Google</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Sync</th>
-                                <th style={{ ...TH, width: 60 }}></th>
+                                <th style={{ ...TH, width: 50 }}></th>
                             </tr>
                         </thead>
                         <tbody>
                             {accounts.map(acc => {
-                                const pacing = PACING_STATUS[acc.pacing?.status] || PACING_STATUS.no_data
-                                const healthScore = acc.health?.score ?? null
-                                const hc = healthColor(healthScore)
                                 const syncing = syncingIds.has(acc.client_id)
                                 const hasNewAccess = acc.new_access_emails?.length > 0
+                                const billing = billingStatuses[acc.google_customer_id]
+                                const billingColor = billing?.status === 'ok' ? C.success
+                                    : billing?.status === 'no_billing' ? C.danger
+                                    : C.w30
+                                const pacingPct = acc.pacing?.pacing_pct || 0
+                                const pacingColor = acc.pacing?.status === 'on_track' ? C.success
+                                    : acc.pacing?.status === 'overspend' ? C.danger
+                                    : acc.pacing?.status === 'underspend' ? C.warning : C.w30
+
                                 return (
                                     <tr
                                         key={acc.client_id}
@@ -359,7 +353,7 @@ export default function MCCOverviewPage() {
                                         onMouseEnter={e => e.currentTarget.style.background = C.w03}
                                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                     >
-                                        {/* Konto */}
+                                        {/* Konto + badges */}
                                         <td style={TD}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                                 <div>
@@ -367,12 +361,18 @@ export default function MCCOverviewPage() {
                                                     <div style={{ fontSize: 10, color: C.w30, marginTop: 1 }}>{acc.google_customer_id}</div>
                                                 </div>
                                                 {acc.unresolved_alerts > 0 && (
-                                                    <span title={`${acc.unresolved_alerts} alertów`} onClick={(e) => handleDeepLink(acc, '/alerts', e)} style={{ cursor: 'pointer' }}>
+                                                    <span
+                                                        style={{ cursor: 'default', position: 'relative' }}
+                                                        onMouseEnter={() => setHoveredAlert(acc.client_id)}
+                                                        onMouseLeave={() => setHoveredAlert(null)}
+                                                        onClick={e => e.stopPropagation()}
+                                                    >
                                                         <Bell size={13} style={{ color: C.danger }} />
+                                                        {hoveredAlert === acc.client_id && <AlertTooltip alerts={acc.alert_details} />}
                                                     </span>
                                                 )}
                                                 {hasNewAccess && (
-                                                    <span title={`Nowe dostępy: ${acc.new_access_emails.join(', ')}`} onClick={(e) => handleDeepLink(acc, '/action-history', e)} style={{ cursor: 'pointer' }}>
+                                                    <span title={`Nowe dostępy: ${acc.new_access_emails.join(', ')}`} style={{ cursor: 'default' }} onClick={e => e.stopPropagation()}>
                                                         <UserPlus size={13} style={{ color: C.warning }} />
                                                     </span>
                                                 )}
@@ -380,83 +380,96 @@ export default function MCCOverviewPage() {
                                         </td>
                                         {/* Wydatki */}
                                         <td style={{ ...TD, textAlign: 'right' }}>
-                                            <div>{fmtUsd(acc.spend_30d_usd)}</div>
+                                            <div>{fmtMoney(acc.spend)}</div>
                                             <SpendChange pct={acc.spend_change_pct} />
                                         </td>
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.clicks_30d)}</td>}
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.impressions_30d)}</td>}
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.ctr_pct != null ? `${acc.ctr_pct}%` : <span style={{ color: C.w30 }}>—</span>}</td>}
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.avg_cpc_usd != null ? fmtUsd(acc.avg_cpc_usd) : <span style={{ color: C.w30 }}>—</span>}</td>}
+                                        {/* Opcjonalne kolumny */}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.clicks)}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.impressions)}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.ctr_pct != null ? `${acc.ctr_pct}%` : '—'}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.avg_cpc != null ? fmtMoney(acc.avg_cpc) : '—'}</td>}
                                         {/* Konwersje */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.conversions_30d, 1)}</td>
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_rate_pct != null ? `${acc.conversion_rate_pct}%` : <span style={{ color: C.w30 }}>—</span>}</td>}
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value_usd > 0 ? fmtUsd(acc.conversion_value_usd) : <span style={{ color: C.w30 }}>—</span>}</td>}
+                                        <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.conversions, 1)}</td>
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_rate_pct != null ? `${acc.conversion_rate_pct}%` : '—'}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value > 0 ? fmtMoney(acc.conversion_value) : '—'}</td>}
                                         {/* CPA */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.cpa_usd != null ? fmtUsd(acc.cpa_usd) : <span style={{ color: C.w30 }}>—</span>}</td>
+                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.cpa != null ? fmtMoney(acc.cpa) : '—'}</td>
                                         {/* ROAS */}
                                         <td style={{ ...TD, textAlign: 'right' }}>
                                             {acc.roas_pct != null
                                                 ? <span style={{ color: acc.roas_pct >= 400 ? C.success : acc.roas_pct >= 200 ? C.accentBlue : C.warning }}>{acc.roas_pct.toFixed(0)}%</span>
-                                                : <span style={{ color: C.w30 }}>—</span>}
+                                                : '—'}
                                         </td>
-                                        {/* Pacing */}
-                                        <td style={TD}>
-                                            <StatusPill label={pacing.label} color={pacing.color} />
-                                            {acc.pacing?.pacing_pct > 0 && (
-                                                <span style={{ fontSize: 10, color: C.w40, marginLeft: 6 }}>{acc.pacing.pacing_pct}%</span>
+                                        {/* Pacing — progress bars */}
+                                        <td style={{ ...TD, minWidth: 120 }}>
+                                            {acc.pacing?.status === 'no_data' ? (
+                                                <span style={{ fontSize: 10, color: C.w30 }}>Brak danych</span>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 100 }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: C.w40 }}>
+                                                        <span>Budżet</span>
+                                                        <span>{Math.round(pacingPct)}%</span>
+                                                    </div>
+                                                    <PacingProgressBar pct={pacingPct} color={pacingColor} height={4} />
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: C.w40 }}>
+                                                        <span>Miesiąc</span>
+                                                        <span>{acc.pacing?.days_elapsed}/{acc.pacing?.days_in_month}d</span>
+                                                    </div>
+                                                    <PacingProgressBar pct={acc.pacing?.month_progress_pct || 0} color={C.accentBlue} height={3} />
+                                                </div>
                                             )}
                                         </td>
-                                        {/* Health */}
-                                        <td style={{ ...TD, textAlign: 'center', position: 'relative' }}>
-                                            {healthScore != null ? (
-                                                <span
-                                                    onMouseEnter={() => setHoveredHealth(acc.client_id)}
-                                                    onMouseLeave={() => setHoveredHealth(null)}
-                                                    style={{
-                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                        width: 32, height: 32, borderRadius: '50%',
-                                                        background: hc.border, color: hc.valueFill,
-                                                        fontSize: 12, fontWeight: 600, cursor: 'default',
-                                                    }}
-                                                >
-                                                    {healthScore}
-                                                    {hoveredHealth === acc.client_id && <HealthTooltip health={acc.health} />}
-                                                </span>
-                                            ) : <Minus size={14} style={{ color: C.w20 }} />}
-                                        </td>
                                         {/* Płatności */}
-                                        <td style={{ ...TD, textAlign: 'center' }}>
-                                            <BillingBadge status={billingStatuses[acc.google_customer_id]} />
+                                        <td style={{ ...TD, textAlign: 'center', position: 'relative' }}>
+                                            <span
+                                                style={{ cursor: 'default' }}
+                                                onMouseEnter={() => setHoveredBilling(acc.client_id)}
+                                                onMouseLeave={() => setHoveredBilling(null)}
+                                                onClick={e => e.stopPropagation()}
+                                            >
+                                                {!billing
+                                                    ? <RefreshCw size={11} style={{ color: C.w20, animation: 'spin 1s linear infinite' }} />
+                                                    : <CreditCard size={14} style={{ color: billingColor }} />
+                                                }
+                                                {hoveredBilling === acc.client_id && billing && <BillingTooltip status={billing} />}
+                                            </span>
                                         </td>
                                         {/* Zmiany */}
                                         <td style={{ ...TD, textAlign: 'right', cursor: 'pointer' }} onClick={(e) => handleDeepLink(acc, '/action-history', e)} title="Otwórz historię zmian">
-                                            <span style={{ color: acc.external_changes_30d > 0 ? C.warning : C.w50 }}>{acc.total_changes_30d}</span>
-                                            {acc.external_changes_30d > 0 && <div style={{ fontSize: 10, color: C.warning }}>{acc.external_changes_30d} zewn.</div>}
+                                            <span style={{ color: acc.external_changes > 0 ? C.warning : C.w50 }}>
+                                                {acc.total_changes}
+                                            </span>
+                                            {acc.external_changes > 0 && <div style={{ fontSize: 10, color: C.warning }}>{acc.external_changes} zewn.</div>}
+                                            {acc.change_breakdown && Object.keys(acc.change_breakdown).length > 0 && (
+                                                <div style={{ fontSize: 9, color: C.w30, marginTop: 1 }}>
+                                                    {Object.entries(acc.change_breakdown).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ')}
+                                                </div>
+                                            )}
                                         </td>
-                                        {/* Rekomendacje Google + dismiss */}
-                                        <td style={{ ...TD, textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                                        {/* Rekomendacje Google */}
+                                        <td style={{ ...TD, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                                             {acc.google_recs_pending > 0 ? (
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                                                     <span
                                                         style={{ color: C.accentBlue, fontWeight: 500, cursor: 'pointer' }}
                                                         onClick={(e) => handleDeepLink(acc, '/recommendations', e)}
-                                                        title="Otwórz rekomendacje"
                                                     >
-                                                        {acc.google_recs_pending}
+                                                        {acc.google_recs_pending} rek.
                                                     </span>
                                                     <button
-                                                        onClick={(e) => handleDismissAll(acc.client_id, e)}
+                                                        onClick={(e) => handleDismissRecs(acc.client_id, e)}
                                                         disabled={dismissingAll === acc.client_id}
-                                                        title="Odrzuć wszystkie rekomendacje Google"
+                                                        title="Ukryj w aplikacji (nie wpływa na Google Ads)"
                                                         style={{
-                                                            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                                                            color: C.w30, opacity: dismissingAll === acc.client_id ? 0.3 : 1,
+                                                            background: C.w04, border: B.subtle, borderRadius: R.sm,
+                                                            cursor: 'pointer', padding: '2px 6px',
+                                                            color: C.w40, fontSize: 9, opacity: dismissingAll === acc.client_id ? 0.3 : 1,
                                                         }}
                                                     >
-                                                        <X size={12} />
+                                                        <EyeOff size={10} />
                                                     </button>
                                                 </div>
-                                            ) : <CheckCircle size={13} style={{ color: C.w15 }} />}
+                                            ) : <span style={{ color: C.w20, fontSize: 11 }}>Brak</span>}
                                         </td>
                                         {/* Sync */}
                                         <td style={{ ...TD, textAlign: 'center' }}>
@@ -466,7 +479,7 @@ export default function MCCOverviewPage() {
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                                 <a href={googleAdsUrl(acc.google_customer_id)} target="_blank" rel="noopener noreferrer"
-                                                    onClick={(e) => e.stopPropagation()} title="Otwórz w Google Ads"
+                                                    onClick={e => e.stopPropagation()} title="Otwórz w Google Ads"
                                                     style={{ color: C.w20, padding: 2 }}>
                                                     <ExternalLink size={13} />
                                                 </a>
@@ -482,134 +495,62 @@ export default function MCCOverviewPage() {
                 )}
             </div>
 
-            {/* MCC Shared Lists */}
-            <CollapsibleSection
-                open={sharedOpen}
-                onToggle={() => setSharedOpen(p => !p)}
-                icon={<Shield size={14} style={{ color: C.accentPurple }} />}
-                title="Listy wykluczeń MCC"
-                count={sharedLists?.length}
-            >
-                {!sharedLists ? <LoadingPlaceholder /> : sharedLists.length === 0 ? (
-                    <EmptyPlaceholder text="Brak list wykluczeń na poziomie MCC." />
-                ) : (
-                    <NklTable data={sharedLists} onRowClick={(nkl) => { setSelectedClientId(nkl.client_id); navigate('/keywords') }} showLevel />
+            {/* MCC Shared Lists only (no per-account) */}
+            <div className={CARD} style={{ marginTop: S['3xl'], overflow: 'hidden' }}>
+                <button onClick={() => setSharedOpen(p => !p)} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '12px 16px', background: 'none', border: 'none',
+                    color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                }}>
+                    {sharedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <Shield size={14} style={{ color: C.accentPurple }} />
+                    Listy wykluczeń MCC
+                    {sharedLists && <span style={{ fontSize: 11, color: C.w40, marginLeft: 4 }}>({sharedLists.length})</span>}
+                </button>
+                {sharedOpen && (
+                    <div style={{ borderTop: B.card }}>
+                        {!sharedLists ? (
+                            <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>
+                                <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite', marginBottom: 4 }} />
+                                <div>Ładowanie...</div>
+                            </div>
+                        ) : sharedLists.length === 0 ? (
+                            <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>
+                                Brak list wykluczeń na poziomie MCC. Listy zarządzane z poziomu konta managera pojawią się tutaj po synchronizacji.
+                            </div>
+                        ) : (
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: B.card }}>
+                                        <th style={TH}>Nazwa listy</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Słów</th>
+                                        <th style={TH}>Typ</th>
+                                        <th style={TH}>Źródło</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sharedLists.map(nkl => (
+                                        <tr key={nkl.id} style={{ borderBottom: `1px solid ${C.w05}` }}>
+                                            <td style={TD}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <List size={12} style={{ color: C.accentPurple, flexShrink: 0 }} />
+                                                    {nkl.name}
+                                                </div>
+                                                {nkl.description && <div style={{ fontSize: 10, color: C.w30, marginTop: 1 }}>{nkl.description}</div>}
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'right' }}>{nkl.member_count}</td>
+                                            <td style={TD_DIM}>Wykluczające słowa</td>
+                                            <td style={TD_DIM}>{nkl.source === 'GOOGLE_ADS_SYNC' ? 'Google' : 'Lokalna'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
                 )}
-            </CollapsibleSection>
-
-            {/* Per-account NKL */}
-            <CollapsibleSection
-                open={nklOpen}
-                onToggle={() => setNklOpen(p => !p)}
-                icon={<List size={14} style={{ color: C.w50 }} />}
-                title="Listy wykluczeń per konto"
-                count={nklData?.length}
-            >
-                {!nklData ? <LoadingPlaceholder /> : nklData.length === 0 ? (
-                    <EmptyPlaceholder text="Brak list wykluczających słów kluczowych." />
-                ) : (
-                    <NklTable data={nklData} onRowClick={(nkl) => { setSelectedClientId(nkl.client_id); navigate('/keywords') }} />
-                )}
-            </CollapsibleSection>
+            </div>
 
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>
-    )
-}
-
-// ─── Shared sub-components ───────────────────────────────────────────────────
-
-function CollapsibleSection({ open, onToggle, icon, title, count, children }) {
-    return (
-        <div className={CARD} style={{ marginTop: S['3xl'], overflow: 'hidden' }}>
-            <button onClick={onToggle} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                padding: '12px 16px', background: 'none', border: 'none',
-                color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-            }}>
-                {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                {icon}
-                {title}
-                {count != null && <span style={{ fontSize: 11, color: C.w40, marginLeft: 4 }}>({count})</span>}
-            </button>
-            {open && <div style={{ borderTop: B.card }}>{children}</div>}
-        </div>
-    )
-}
-
-function LoadingPlaceholder() {
-    return (
-        <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>
-            <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite', marginBottom: 4 }} />
-            <div>Ładowanie...</div>
-        </div>
-    )
-}
-
-function EmptyPlaceholder({ text }) {
-    return <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>{text}</div>
-}
-
-function BillingBadge({ status }) {
-    if (!status) return <RefreshCw size={11} style={{ color: C.w20, animation: 'spin 1s linear infinite' }} />
-    if (status.status === 'ok') return <CreditCard size={13} style={{ color: C.success }} title="Płatności OK" />
-    if (status.status === 'no_billing') return <CreditCard size={13} style={{ color: C.danger }} title="Brak aktywnego billing setup" />
-    if (status.status === 'no_access') return <CreditCard size={13} style={{ color: C.w30 }} title="Brak dostępu do billing API" />
-    if (status.status === 'error') return <CreditCard size={13} style={{ color: C.danger }} title="Błąd sprawdzania płatności" />
-    return <CreditCard size={13} style={{ color: C.w30 }} title={status.reason || 'Status nieznany'} />
-}
-
-function NklTable({ data, onRowClick, showLevel }) {
-    return (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-                <tr style={{ borderBottom: B.card }}>
-                    <th style={TH}>Konto</th>
-                    <th style={TH}>Nazwa listy</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Słów</th>
-                    <th style={TH}>Źródło</th>
-                    {showLevel && <th style={TH}>Poziom</th>}
-                    <th style={TH}>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {data.map(nkl => (
-                    <tr key={nkl.id} style={{ borderBottom: `1px solid ${C.w05}`, cursor: 'pointer' }}
-                        onClick={() => onRowClick(nkl)}
-                        onMouseEnter={e => e.currentTarget.style.background = C.w03}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <td style={TD_DIM}>{nkl.client_name}</td>
-                        <td style={TD}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <List size={12} style={{ color: C.accentPurple, flexShrink: 0 }} />
-                                {nkl.name}
-                            </div>
-                            {nkl.description && <div style={{ fontSize: 10, color: C.w30, marginTop: 1 }}>{nkl.description}</div>}
-                        </td>
-                        <td style={{ ...TD, textAlign: 'right' }}>{nkl.member_count}</td>
-                        <td style={TD_DIM}>
-                            <StatusPill
-                                label={nkl.source === 'GOOGLE_ADS_SYNC' ? 'Google' : 'Lokalna'}
-                                color={nkl.source === 'GOOGLE_ADS_SYNC' ? STATUS_COLORS.info : STATUS_COLORS.neutral}
-                            />
-                        </td>
-                        {showLevel && (
-                            <td style={TD_DIM}>
-                                <StatusPill
-                                    label={nkl.level === 'mcc' ? 'MCC' : 'Konto'}
-                                    color={nkl.level === 'mcc' ? STATUS_COLORS.info : STATUS_COLORS.neutral}
-                                />
-                            </td>
-                        )}
-                        <td style={TD_DIM}>
-                            <StatusPill
-                                label={nkl.status === 'ENABLED' ? 'Aktywna' : nkl.status}
-                                color={nkl.status === 'ENABLED' ? STATUS_COLORS.ok : STATUS_COLORS.neutral}
-                            />
-                        </td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
     )
 }

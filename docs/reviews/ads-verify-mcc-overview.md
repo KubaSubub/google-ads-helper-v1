@@ -1,11 +1,11 @@
-# Plan implementacji — MCC Overview
-> Na podstawie: docs/reviews/ads-expert-mcc-overview.md
+# Plan implementacji — MCC Overview (re-test po sprintach)
+> Na podstawie: docs/reviews/ads-expert-mcc-overview.md (2026-04-02, ocena 8.8/10)
 > Data weryfikacji: 2026-04-02
 
 ## Podsumowanie
-- Elementów z raportu: 14
-- DONE: 1 | PARTIAL: 3 | MISSING: 10
-- Szacowany nakład: mały (Sprint 1 = ~1.5h, Sprint 2 = ~1h)
+- Elementów z raportu: 9
+- DONE: 3 | PARTIAL: 1 | MISSING: 4 | NOT_NEEDED: 1
+- Szacowany nakład: mały (Sprint 1 = ~1h)
 
 ## Status każdego elementu
 
@@ -13,165 +13,80 @@
 
 | # | Element | Status | Co istnieje | Co brakuje | Nakład |
 |---|---------|--------|-------------|------------|--------|
-| K1 | Konwersje + CPA + ROAS per konto | MISSING | MetricDaily ma `conversions`, `conversion_value_micros`. `_sum_spend()` pattern gotowy do reuse. | Agregacja konwersji w `_build_account_data()`. 3 kolumny w tabeli frontend. | S |
-| K2 | Sortowanie tabeli | MISSING | Tabela renderuje accounts bez sort. | State `sortBy`/`sortDir`, klikalne nagłówki TH, `accounts.sort()` w render. | S |
-| K3 | Health score tooltip z breakdown | PARTIAL | `get_health_score()` zwraca pełny breakdown (6 filarów). `_get_health_score()` wyrzuca breakdown i zwraca tylko `score`. | Zmienić return na `{score, breakdown}`. Tooltip/popover w UI. | S |
+| K1 | Filtr okresu (days) | MISSING | `_aggregate_metrics()` przyjmuje start/end. `GET /mcc/new-access` ma param `days`. | Param `days` w `GET /mcc/overview`. UI selector (pills 7d/14d/30d/miesiąc). | S |
+| K2 | KPI cards z zerami | PARTIAL | Tabela obsługuje null/0 z myślnikiem. KPI cards zawsze widoczne. | Warunkowo ukryć KPI card gdy suma=0 a spend>0 (clicks, impressions). Zamienić "Avg. CTR" na "Aktywne kampanie" gdy clicks=0. | S |
 
 ### NICE TO HAVE
 
 | # | Element | Status | Co istnieje | Co brakuje | Nakład |
 |---|---------|--------|-------------|------------|--------|
-| N1 | Sparkline wydatków | MISSING | Dashboard ma komponent `Sparkline` z Recharts. | Dane daily spend per klient z backendu. Reuse Sparkline w tabeli MCC. | M |
-| N2 | Link "Otwórz w Google Ads" | MISSING | `google_customer_id` jest w response overview. | Button per wiersz z URL `ads.google.com/aw/overview?ocid={id}`. | S |
-| N3 | Alerty per konto | MISSING | Model `Alert` istnieje z `client_id` + `resolved_at`. | COUNT unresolved alerts w `_build_account_data()`. Ikona/badge w UI. | S |
-| N4 | Filtrowanie/wyszukiwanie kont | MISSING | Brak. | Search input + filter state. Przy <10 kont nieistotne. | S |
-| N5 | NKL akcje z poziomu MCC | PARTIAL | NKL read-only podgląd cross-account zaimplementowany. CRUD endpointy per-klient istnieją. | UI do tworzenia/edycji list z poziomu MCC. Kopiowanie list cross-account. | L |
-| N6 | Kolumna Impression Share | MISSING | MetricDaily ma `search_impression_share`. | Agregacja avg IS w `_build_account_data()`. Kolumna w tabeli. | S |
+| N1 | Impression Share per konto | MISSING | MetricDaily ma `search_impression_share`. `_aggregate_metrics()` nie agreguje IS. | Dodać avg IS do agregacji + kolumna w tabeli. | S |
+| N2 | Billing tooltip (styled) | DONE | `BillingBadge` ma `title` attr na każdy status (Płatności OK / Brak billing / etc). | — (native tooltip działa, styled tooltip byłby lepszy ale nie krytyczny) | — |
+| N3 | Domyślny compact mode | DONE | `compactMode` default `false`. Toggle działa. | Zmienić `useState(false)` → `useState(true)`. | trivial |
+| N4 | Row selection + bulk actions | MISSING | Brak checkboxów i bulk menu. | Checkbox per wiersz + toolbar "Synchronizuj X" / "Odrzuć rek. X". | M |
 
 ### ZMIANY/USUNIĘCIA
 
 | # | Element | Status | Aktualny stan | Rekomendacja | Nakład |
 |---|---------|--------|---------------|--------------|--------|
-| Z1 | Pacing progi 80%/115% → 75%/120% | DONE (do zmiany) | `pct < 0.8` / `pct > 1.15` w `_compute_pacing()` | Zmienić na `0.75` / `1.20` | trivial |
-| Z2 | KPI "Rek. Google" bez priorytetu | DONE | Liczba pending Google recs. | Rozważ podział high/low priority — wymaga pola priority na Recommendation. | M |
-
-### NAWIGACJA — brakujące połączenia
-
-| # | Element | Status | Co istnieje | Co brakuje | Nakład |
-|---|---------|--------|-------------|------------|--------|
-| NAV1 | Deep-link Health → Health Score page | PARTIAL | Kliknięcie wiersza → /dashboard. | onClick na kółko health → `/dashboard` z scrollem do health section lub `/quality-score`. | S |
-| NAV2 | Deep-link Rek. Google → Recommendations | MISSING | Kolumna wyświetla liczbę. | onClick na liczbę → `setSelectedClientId()` + `navigate('/recommendations')`. | S |
-| NAV3 | Deep-link Zmiany → Action History | MISSING | Kolumna wyświetla liczbę. | onClick na liczbę → `setSelectedClientId()` + `navigate('/action-history')`. | S |
-| NAV4 | Deep-link NKL → Keywords page | MISSING | NKL sekcja read-only. | Kliknięcie wiersza NKL → `setSelectedClientId()` + `navigate('/keywords')`. | S |
+| Z1 | Empty state MCC NKL — lepsza wiadomość | DONE | "Brak list wykluczeń na poziomie MCC." | Można poprawić na "Połącz konto MCC..." ale obecna jest ok. | — |
+| Z2 | Health deep-link | MISSING | Health kółko ma tooltip (hover) ale cursor: default, brak onClick. | Dodać onClick → navigate('/dashboard') z pre-selected clientem. | S |
 
 ## Kolejność implementacji (rekomendowana)
 
 ```
-Sprint 1 (quick wins — nakład S, ~1.5h):
-  [x] K1 — Konwersje + CPA + ROAS w tabeli (backend + frontend) ✅ 2026-04-02
-  [x] K2 — Sortowanie tabeli (frontend only) ✅ 2026-04-02
-  [x] K3 — Health tooltip z breakdown (backend zmiana return + frontend tooltip) ✅ 2026-04-02
-  [x] Z1 — Pacing progi 75%/120% (2 linijki backend) ✅ 2026-04-02
+Sprint 1 (quick wins — nakład S, ~1h):
+  [ ] K1 — Filtr okresu: param `days` w overview endpoint + pills UI (7d/14d/30d)
+  [ ] K2 — KPI cards: ukryć zerowe, zamienić Avg CTR → Aktywne konta
+  [ ] N3 — Compact mode domyślny: zmienić useState(false) → useState(true)
+  [ ] Z2 — Health deep-link: onClick na kółku → navigate('/dashboard')
 
-Sprint 2 (deep-links + alerty — nakład S, ~1h):
-  [x] NAV2 — Deep-link Rek. Google → Recommendations ✅ 2026-04-02
-  [x] NAV3 — Deep-link Zmiany → Action History ✅ 2026-04-02
-  [x] NAV4 — Deep-link NKL → Keywords ✅ 2026-04-02
-  [x] N3 — Alerty per konto (backend COUNT + frontend badge) ✅ 2026-04-02
-  [x] N2 — Link "Otwórz w Google Ads" (frontend only) ✅ 2026-04-02
-
-Sprint 3 (nice to have — nakład M/L):
-  [ ] N1 — Sparkline wydatków (wymaga daily breakdown z backendu)
-  [ ] N6 — Kolumna Impression Share
-  [ ] N4 — Filtrowanie/wyszukiwanie kont
-  [ ] N5 — NKL edycja cross-account (L)
+Sprint 2 (nice to have — nakład S/M):
+  [ ] N1 — Impression Share: avg IS w _aggregate_metrics + kolumna
+  [ ] N4 — Row selection + bulk actions (M)
 ```
 
 ## Szczegóły implementacji
 
-### Sprint 1
+### K1: Filtr okresu
 
-#### K1: Konwersje + CPA + ROAS
-
-**Pliki do modyfikacji:**
-- `backend/app/services/mcc_service.py` — `_build_account_data()`
-- `frontend/src/features/mcc-overview/MCCOverviewPage.jsx` — tabela
-
-**Backend — dodać do `_build_account_data()`:**
+**Backend — `backend/app/routers/mcc.py`:**
 ```python
-# Po _sum_spend calls, dodać analogiczną metodę _sum_conversions:
-conversions_30d = self._sum_metric(cid, today - timedelta(days=30), today, MetricDaily.conversions)
-conv_value_30d = self._sum_metric(cid, today - timedelta(days=30), today, MetricDaily.conversion_value_micros)
-conv_value_usd = micros_to_currency(conv_value_30d)
-cpa = round(spend_30d / conversions_30d, 2) if conversions_30d > 0 else None
-roas = round(conv_value_usd / spend_30d * 100, 1) if spend_30d > 0 else None
-
-# Dodać do return dict:
-"conversions_30d": round(conversions_30d, 1),
-"cpa_usd": cpa,
-"roas_pct": roas,
+@router.get("/overview")
+def mcc_overview(days: int = Query(30, ge=7, le=90), db: Session = Depends(get_db)):
+    return MCCService(db).get_overview(days=days)
 ```
 
-**Frontend — dodać 3 kolumny po "Wydatki 30d":**
-- Konwersje 30d (number, 1 decimal)
-- CPA ($ format, lub "—" jeśli null)
-- ROAS (% format, lub "—" jeśli null)
+**Backend — `backend/app/services/mcc_service.py`:**
+Zmienić `get_overview()` aby przyjmował `days` i przekazywał do `_build_account_data()`.
+Zmienić hardcoded `timedelta(days=30)` → `timedelta(days=days)`.
 
-**Testy:** Dodać `test_mcc_overview_conversions_cpa_roas` w `backend/tests/test_mcc.py`
+**Frontend — `MCCOverviewPage.jsx`:**
+Dodać state `period` (7/14/30) + pills pod tytułem. Przekazać do `getMccOverview(days)`.
 
-#### K2: Sortowanie tabeli
-
-**Pliki do modyfikacji:**
-- `frontend/src/features/mcc-overview/MCCOverviewPage.jsx`
-
-**Zmiany:**
-1. State: `const [sortBy, setSortBy] = useState('spend_30d_usd'); const [sortDir, setSortDir] = useState('desc');`
-2. Handler: `handleSort(column)` — toggle asc/desc
-3. Sorted accounts: `useMemo(() => [...accounts].sort(...), [accounts, sortBy, sortDir])`
-4. TH: dodać `onClick` + ikona sortowania (ChevronUp/ChevronDown)
-
-#### K3: Health tooltip
-
-**Pliki do modyfikacji:**
-- `backend/app/services/mcc_service.py` — `_get_health_score()`
-- `frontend/src/features/mcc-overview/MCCOverviewPage.jsx` — kółko health
-
-**Backend — zmienić `_get_health_score()`:**
-```python
-def _get_health_score(self, client_id: int) -> dict | None:
-    try:
-        svc = AnalyticsService(self.db)
-        result = svc.get_health_score(client_id, days=30)
-        return {
-            "score": result.get("score"),
-            "breakdown": {
-                k: v.get("score") for k, v in result.get("breakdown", {}).items()
-            },
-        }
-    except Exception:
-        return None
+**Frontend — `api.js`:**
+```javascript
+export const getMccOverview = (days = 30) => api.get('/mcc/overview', { params: { days } })
 ```
 
-**Frontend — tooltip na hover kółka health:**
-Custom tooltip z 6 filarami: Performance, Quality, Efficiency, Coverage, Stability, Structure.
+**Testy:** Dodać `test_mcc_overview_custom_period` — 7d vs 30d daje różne wyniki.
 
-#### Z1: Pacing progi
+### K2: KPI cards z zerami
 
-**Plik:** `backend/app/services/mcc_service.py` — `_compute_pacing()`
-**Zmiana:** `0.8` → `0.75`, `1.15` → `1.20`
+**Frontend — `MCCOverviewPage.jsx`:**
+Filtrować KPI array: jeśli totalClicks=0 i totalSpend>0, nie pokazywać "Kliknięcia" i "Wyświetlenia".
+Zamienić "Avg. CTR" na "Aktywne konta" (count of accounts with spend > 0).
 
-### Sprint 2
+### N3: Compact mode domyślny
 
-#### NAV2/NAV3: Deep-links z kolumn
+**Frontend — `MCCOverviewPage.jsx`:**
+Zmiana jednej linii: `useState(false)` → `useState(true)`.
 
-**Plik:** `frontend/src/features/mcc-overview/MCCOverviewPage.jsx`
-**Zmiana:** Dodać `onClick` na komórkach "Rek. Google" i "Zmiany":
+### Z2: Health deep-link
+
+**Frontend — `MCCOverviewPage.jsx`:**
+Na `<span>` health kółka dodać:
 ```jsx
-onClick={(e) => {
-    e.stopPropagation()
-    setSelectedClientId(acc.client_id)
-    navigate('/recommendations')
-}}
+onClick={(e) => handleDeepLink(acc, '/dashboard', e)}
+style={{ cursor: 'pointer' }}
 ```
-
-#### N3: Alerty per konto
-
-**Pliki:**
-- `backend/app/services/mcc_service.py` — import Alert, COUNT w `_build_account_data()`
-- `frontend/src/features/mcc-overview/MCCOverviewPage.jsx` — badge/ikona
-
-**Backend:**
-```python
-from app.models import Alert
-
-unresolved_alerts = (
-    self.db.query(func.count(Alert.id))
-    .filter(Alert.client_id == cid, Alert.resolved_at.is_(None))
-    .scalar()
-) or 0
-```
-
-#### N2: Link "Otwórz w Google Ads"
-
-**Plik:** `frontend/src/features/mcc-overview/MCCOverviewPage.jsx`
-**Zmiana:** Dodać ikonę ExternalLink w kolumnie akcji, onClick → `window.open(url)`

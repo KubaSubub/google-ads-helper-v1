@@ -50,8 +50,11 @@ def test_mcc_overview_spend_and_conversions(db):
     client = _client(db)
     camp = _campaign(db, client.id)
     today = date.today()
+    month_start = today.replace(day=1)
 
-    for i in range(5):
+    # Seed data within current month
+    days_in_month = (today - month_start).days + 1
+    for i in range(min(days_in_month, 5)):
         db.add(MetricDaily(
             campaign_id=camp.id,
             date=today - timedelta(days=i),
@@ -66,10 +69,9 @@ def test_mcc_overview_spend_and_conversions(db):
     svc = MCCService(db)
     result = svc.get_overview()
     acc = result["accounts"][0]
-    assert acc["spend_30d_usd"] == 5.0
-    assert acc["conversions_30d"] == 10.0
-    assert acc["cpa_usd"] == 0.5  # $5 / 10 conv
-    assert acc["roas_pct"] == 500.0  # $25 value / $5 spend * 100
+    expected_days = min(days_in_month, 5)
+    assert acc["spend"] == expected_days * 1.0
+    assert acc["conversions"] == expected_days * 2.0
 
 
 def test_mcc_overview_pacing_status(db):
@@ -196,8 +198,9 @@ def test_mcc_overview_health_returns_breakdown(db):
     result = svc.get_overview()
     acc = result["accounts"][0]
     # health is None (no data) or dict with score + pillars
-    health = acc["health"]
-    assert health is None or ("score" in health and "pillars" in health)
+    # health is removed from MCC overview response
+    assert "pacing" in acc
+    assert "total_changes" in acc
 
 
 def test_mcc_overview_alerts_count(db):
@@ -227,7 +230,7 @@ def test_mcc_overview_alerts_count(db):
 
 
 def test_mcc_overview_full_metrics(db):
-    """Overview should include all account-level metrics."""
+    """Overview should include all account-level metrics with explicit date range."""
     client = _client(db)
     camp = _campaign(db, client.id)
     today = date.today()
@@ -245,18 +248,19 @@ def test_mcc_overview_full_metrics(db):
     db.commit()
 
     svc = MCCService(db)
-    result = svc.get_overview()
+    # Use explicit date range to ensure all 3 days are included
+    result = svc.get_overview(date_from=today - timedelta(days=5), date_to=today)
     acc = result["accounts"][0]
 
-    assert acc["clicks_30d"] == 300
-    assert acc["impressions_30d"] == 6000
-    assert acc["ctr_pct"] == 5.0  # 300/6000*100
-    assert acc["avg_cpc_usd"] == 0.05  # $15/300
-    assert acc["conversions_30d"] == 30.0
-    assert acc["conversion_rate_pct"] == 10.0  # 30/300*100
-    assert acc["conversion_value_usd"] == 150.0
-    assert acc["cpa_usd"] == 0.5  # $15/30
-    assert acc["roas_pct"] == 1000.0  # $150/$15*100
+    assert acc["clicks"] == 300
+    assert acc["impressions"] == 6000
+    assert acc["ctr_pct"] == 5.0
+    assert acc["avg_cpc"] == 0.05
+    assert acc["conversions"] == 30.0
+    assert acc["conversion_rate_pct"] == 10.0
+    assert acc["conversion_value"] == 150.0
+    assert acc["cpa"] == 0.5
+    assert acc["roas_pct"] == 1000.0
 
 
 def test_mcc_overview_new_access_in_response(db):

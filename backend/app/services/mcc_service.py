@@ -37,13 +37,27 @@ class MCCService:
     # Public API
     # ------------------------------------------------------------------
 
-    def get_overview(self) -> dict:
+    def get_overview(self, date_from: date | None = None, date_to: date | None = None) -> dict:
+        today = date.today()
+        if not date_from:
+            date_from = today.replace(day=1)  # 1st of current month
+        if not date_to:
+            date_to = today
+
+        # Filter out demo client
+        demo_cid = settings.demo_google_customer_id
         clients = self.db.query(Client).all()
+        if demo_cid:
+            clients = [c for c in clients if c.google_customer_id != demo_cid]
+
         accounts = []
         for client in clients:
-            accounts.append(self._build_account_data(client))
+            accounts.append(self._build_account_data(client, date_from, date_to))
+
         return {
             "synced_at": datetime.now(timezone.utc).isoformat(),
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
             "accounts": accounts,
         }
 
@@ -271,15 +285,15 @@ class MCCService:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_account_data(self, client: Client) -> dict:
+    def _build_account_data(self, client: Client, period_start: date, period_end: date) -> dict:
         cid = client.id
         today = date.today()
+        period_days = (period_end - period_start).days or 1
 
-        # 1. Full metrics 30d
-        start_30d = today - timedelta(days=30)
-        start_60d = today - timedelta(days=60)
-        metrics = self._aggregate_metrics(cid, start_30d, today)
-        prev_metrics = self._aggregate_metrics(cid, start_60d, start_30d)
+        # 1. Full metrics for the requested period + previous period
+        metrics = self._aggregate_metrics(cid, period_start, period_end)
+        prev_start = period_start - timedelta(days=period_days)
+        prev_metrics = self._aggregate_metrics(cid, prev_start, period_start)
 
         spend = metrics["cost_usd"]
         prev_spend = prev_metrics["cost_usd"]
@@ -297,21 +311,18 @@ class MCCService:
         # 2. Budget pacing (aggregated per client)
         pacing = self._compute_pacing(cid, today)
 
-        # 3. Health score (with breakdown)
-        health = self._get_health_score(cid)
-
-        # 4. Change activity (30d)
-        cutoff_30d = datetime.now(timezone.utc) - timedelta(days=30)
+        # 3. Change activity (within period)
+        cutoff = datetime.combine(period_start, datetime.min.time()).replace(tzinfo=timezone.utc)
         total_changes = (
             self.db.query(func.count(ChangeEvent.id))
-            .filter(ChangeEvent.client_id == cid, ChangeEvent.change_date_time >= cutoff_30d)
+            .filter(ChangeEvent.client_id == cid, ChangeEvent.change_date_time >= cutoff)
             .scalar()
         ) or 0
 
         specialist = _specialist_emails()
         external_q = self.db.query(func.count(ChangeEvent.id)).filter(
             ChangeEvent.client_id == cid,
-            ChangeEvent.change_date_time >= cutoff_30d,
+            ChangeEvent.change_date_time >= cutoff,
         )
         if specialist:
             external_q = external_q.filter(
@@ -322,7 +333,15 @@ class MCCService:
             external_q = external_q.filter(ChangeEvent.client_type != "GOOGLE_ADS_API")
         external_changes = external_q.scalar() or 0
 
-        # 5. Google recommendations pending
+        # Change type breakdown
+        change_types = dict(
+            self.db.query(ChangeEvent.resource_change_operation, func.count(ChangeEvent.id))
+            .filter(ChangeEvent.client_id == cid, ChangeEvent.change_date_time >= cutoff)
+            .group_by(ChangeEvent.resource_change_operation)
+            .all()
+        )
+
+        # 4. Google recommendations pending
         google_recs_pending = (
             self.db.query(func.count(Recommendation.id))
             .filter(
@@ -333,7 +352,7 @@ class MCCService:
             .scalar()
         ) or 0
 
-        # 6. Last sync
+        # 5. Last sync
         last_sync = (
             self.db.query(func.max(SyncLog.finished_at))
             .filter(
@@ -343,14 +362,20 @@ class MCCService:
             .scalar()
         )
 
-        # 7. Unresolved alerts
-        unresolved_alerts = (
-            self.db.query(func.count(Alert.id))
+        # 6. Unresolved alerts with details
+        alerts = (
+            self.db.query(Alert.title, Alert.severity, Alert.alert_type)
             .filter(Alert.client_id == cid, Alert.resolved_at.is_(None))
-            .scalar()
-        ) or 0
+            .order_by(Alert.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        alert_details = [
+            {"title": a.title, "severity": a.severity, "type": a.alert_type}
+            for a in alerts
+        ]
 
-        # 8. New access detection
+        # 7. New access detection
         new_access = self.detect_new_access(cid, days=30)
 
         return {
@@ -358,32 +383,33 @@ class MCCService:
             "client_name": client.name,
             "google_customer_id": client.google_customer_id,
             # Full metrics
-            "clicks_30d": clicks,
-            "impressions_30d": impressions,
+            "clicks": clicks,
+            "impressions": impressions,
             "ctr_pct": ctr,
-            "avg_cpc_usd": avg_cpc,
-            "spend_30d_usd": round(spend, 2),
-            "spend_prev_30d_usd": round(prev_spend, 2),
+            "avg_cpc": avg_cpc,
+            "spend": round(spend, 2),
+            "spend_prev": round(prev_spend, 2),
             "spend_change_pct": (
                 round((spend - prev_spend) / prev_spend * 100, 1)
                 if prev_spend > 0
                 else None
             ),
-            "conversions_30d": round(conversions, 1),
+            "conversions": round(conversions, 1),
             "conversion_rate_pct": conv_rate,
-            "conversion_value_usd": round(conv_value, 2),
-            "cpa_usd": cpa,
+            "conversion_value": round(conv_value, 2),
+            "cpa": cpa,
             "roas_pct": roas,
-            # Pacing & health
+            # Pacing
             "pacing": pacing,
-            "health": health,
             # Activity
-            "total_changes_30d": total_changes,
-            "external_changes_30d": external_changes,
+            "total_changes": total_changes,
+            "external_changes": external_changes,
+            "change_breakdown": change_types,
             "new_access_emails": new_access,
             # Recs & alerts
             "google_recs_pending": google_recs_pending,
-            "unresolved_alerts": unresolved_alerts,
+            "unresolved_alerts": len(alert_details),
+            "alert_details": alert_details,
             # Sync
             "last_synced_at": last_sync,
         }
@@ -439,7 +465,9 @@ class MCCService:
         )
 
         if not campaigns:
-            return {"status": "no_data", "pacing_pct": 0, "budget_usd": 0, "spent_usd": 0}
+            return {"status": "no_data", "pacing_pct": 0, "budget": 0, "spent": 0,
+                    "month_progress_pct": round(days_elapsed / days_in_month * 100, 1),
+                    "days_elapsed": days_elapsed, "days_in_month": days_in_month}
 
         total_monthly_budget = sum(
             micros_to_currency(c.budget_micros or 0) * days_in_month for c in campaigns
@@ -470,11 +498,16 @@ class MCCService:
             else:
                 status = "on_track"
 
+        month_progress_pct = round(days_elapsed / days_in_month * 100, 1)
+
         return {
             "status": status,
             "pacing_pct": round(pct * 100, 1),
-            "budget_usd": round(total_monthly_budget, 2),
-            "spent_usd": round(actual_spend, 2),
+            "budget": round(total_monthly_budget, 2),
+            "spent": round(actual_spend, 2),
+            "month_progress_pct": month_progress_pct,
+            "days_elapsed": days_elapsed,
+            "days_in_month": days_in_month,
         }
 
     def _get_health_score(self, client_id: int) -> dict | None:

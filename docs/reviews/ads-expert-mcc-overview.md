@@ -1,115 +1,103 @@
-# Ocena eksperta Google Ads — MCC Overview
-> Data: 2026-04-02 | Średnia ocena: 7.3/10 | Werdykt: ZMODYFIKOWAĆ
+# Ocena eksperta Google Ads — MCC Overview (re-test po sprintach)
+> Data: 2026-04-02 | Średnia ocena: 8.8/10 | Werdykt: ZACHOWAĆ (minor polish needed)
 
 ## TL;DR
 
-MCC Overview to wartościowy widok którego brakuje w standardowym Google Ads MCC. Agregacja health score, pacing i zewnętrznych zmian per konto w jednej tabeli realnie oszczędza czas rano. Jednak brak konwersji/CPA/ROAS jest krytyczny — specjalista nie podejmie decyzji o priorytetyzacji kont bez metryk wynikowych.
+MCC Overview przeszedł z 7.5/10 do 8.8/10 — z prostej tabeli wydatków w kompletny poranny dashboard z 11 sortowalnymi metrykami, health breakdown, dismiss rekomendacji, billing status i compact toggle. Teraz realnie konkuruje z Google Ads MCC i daje wartości których natywny UI nie oferuje. Pozostałe issues to polish (KPI zera z seed data, billing tooltip, filtr okresu).
 
 ## Oceny
 
 | Kryterium | Ocena | Komentarz |
 |-----------|-------|-----------|
-| Potrzebność | 9/10 | Specjalista z 8+ kontami POTRZEBUJE szybkiego przeglądu zanim wchodzi w detale. Playbook mówi 15-30 min/konto na daily checks — ten widok skraca triaging do 2 min. |
-| Kompletność | 5/10 | Brakuje metryk wynikowych (konwersje, CPA, ROAS). Brak sortowania. Brak quick actions. NKL read-only. Tabela jest informacyjna ale nie actionable. |
-| Wartość dodana vs Google Ads UI | 8/10 | Google Ads MCC ma ubogi widok listy kont — brak health score, brak pacing per konto, brak wykrywania zewnętrznych zmian. Te 3 rzeczy to realny game-changer. |
-| Priorytet MVP | 8/10 | Landing page aplikacji = pierwsze co widzi user. Musi być dobry. Przy wielu kontach to "must have". |
-| **ŚREDNIA** | **7.5/10** | |
+| Potrzebność | 9/10 | Poranny dashboard dla specjalisty z wieloma kontami — must have. Playbook: "15-30 min/konto na daily checks" — ten widok skraca triaging do 2 min. |
+| Kompletność | 8/10 | 11 metryk + pacing + health + billing + alerts + new access + dismiss recs + NKL. Brakuje filtra okresu i impression share. |
+| Wartość dodana vs Google Ads UI | 9/10 | 7 unikalnych wartości których GAds MCC nie ma (health breakdown, external changes, new access alert, one-click dismiss, compact toggle, NKL cross-account, pacing per konto). |
+| Priorytet MVP | 9/10 | Landing page = first impression. Musi być dobry. Jest. |
+| **ŚREDNIA** | **8.8/10** | |
 
 ## Co robi dobrze
 
-- **Health score per konto w jednym widoku** — w Google Ads MCC nie istnieje. Specjalista musi wchodzić w każde konto i sam oceniać stan. Tu ma kółko 0-100 na pierwszy rzut oka.
-- **Pacing zagregowany per klient** — Google Ads pokazuje pacing per kampania. Agregacja do poziomu konta to wartościowy insight ("konto X jako całość underspenduje").
-- **Wykrywanie zewnętrznych zmian** — kolumna "Zmiany" z wyróżnieniem "zewn." to coś czego GAds nie oferuje bez ręcznego filtrowania Change History. Dla agencji zarządzającej kontami klientów to krytyczne.
-- **Czysty sidebar na MCC** — ukrycie selektora klienta i kampanii na tej stronie to prawidłowa decyzja UX. MCC to inny poziom nawigacji.
-- **Lazy-load NKL** — ładowanie danych NKL dopiero po rozwinięciu sekcji — dobra optymalizacja.
+- **Pełne metryki jak w GAds MCC** — clicks, impressions, CTR, CPC, conversions, CVR, conv value, CPA, ROAS. Specjalista nie musi otwierać GAds żeby zobaczyć performance.
+- **Health score z tooltip breakdown** — hover na kółku pokazuje 6 filarów (Wyniki, Jakość, Efektywność, Zasięg, Stabilność, Struktura). GAds nie ma nic porównywalnego.
+- **External changes detection** — "X zewn." z żółtym wyróżnieniem. Krytyczne dla agencji — natychmiast widzę że klient grzebał na koncie.
+- **New access alert (UserPlus)** — żółta ikona gdy nowy email pojawił się w Change History. Wykrywanie nieautoryzowanego dostępu.
+- **One-click dismiss rekomendacji Google** — X button per konto. W GAds to multi-click per rekomendacja per konto.
+- **Compact mode toggle** — ukrywa 6 kolumn drugorzędnych. Ratuje UX przy wielu kolumnach.
+- **Deep-links z kolumn** — kliknięcie "Zmiany" → Action History, "Rek." → Recommendations, Bell → Alerts. Zero navigation overhead.
+- **Dwie sekcje NKL** — MCC-level i per-account. Rozdzielenie jest prawidłowe — inne zakresy list.
+- **Billing status column** — ikona karty kredytowej per konto. Nawet jeśli API nie daje pełnych danych, sam fakt że widok to uwzględnia jest ważny.
 
 ## Co brakuje (krytyczne)
 
-### K1: Konwersje i CPA/ROAS per konto
-**Specjalista priorytetyzuje konta po wynikach, nie po wydatkach.** Konto z $60k spend i 0 konwersji to pożar. Konto z $1k spend i ROAS 800% to złoto. Bez tych metryk tabela jest jak pulpit samochodu bez prędkościomierza.
+### K1: Filtr okresu
+Tabela jest hardcoded na 30d. Specjalista potrzebuje przełączać: 7d (szybki scan), 14d (trend), 30d (standard), bieżący miesiąc (budget review).
+- **Playbook ref:** "Performance Analysis — Porównanie Last 7 days vs Previous 7 days"
+- **Implementacja:** `_aggregate_metrics()` już przyjmuje start/end — wystarczy dodać period selector w UI i parametr do `GET /mcc/overview?days=X`
+- **Nakład:** S
 
-- **Dane dostępne:** MetricDaily ma `conversions`, `conversion_value_micros` — wystarczy je zagregować per klient analogicznie do `_sum_spend()`.
-- **Kolumny do dodania:** `Konwersje 30d`, `CPA` (spend/conversions), `ROAS` (conv_value/spend)
-- **Playbook ref:** "Sprawdzenie wydatku" + "Performance Analysis" — ZAWSZE obok spend jest conversions i CPA/ROAS
-- **Nakład:** S — dodanie 3 metryk do `_build_account_data()` + 3 kolumny w tabeli
-
-### K2: Sortowanie tabeli
-Tabela 4 kont jest ok bez sortowania. Tabela 15 kont bez sortowania to chaos. Specjalista chce posortować: po spend desc (gdzie idą pieniądze), po health asc (co wymaga uwagi), po rekomendacjach desc (co actionable).
-
-- **Nakład:** S — state `sortBy`/`sortDir` + `accounts.sort()` w render
-
-### K3: Tooltip na health score
-Kółko z "68" nic nie mówi. Specjalista potrzebuje wiedzieć: "Performance: 75%, Quality: 45%, Efficiency: 82%". Kliknięcie lub hover powinien pokazać breakdown 6 filarów.
-
-- **Dane dostępne:** `get_health_score()` zwraca pełny breakdown — wystarczy go przekazać do frontendu zamiast samego `score`
-- **Nakład:** S — zmiana w `_get_health_score()` + tooltip/popover w UI
+### K2: KPI cards z zerami
+"Kliknięcia: 0" i "Wyświetlenia: 0" przy $60k wydatków to red flag dla usera. Seed data prawdopodobnie nie ma clicks/impressions w MetricDaily dla niektórych kont.
+- **Rozwiązanie:** Albo doseedować clicks/impressions (jednorazowo), albo ukryć KPI card gdy wartość = 0 i spend > 0.
+- **Nakład:** S
 
 ## Co brakuje (nice to have)
 
-### N1: Sparkline wydatków
-Mini wykres trendu 30d w kolumnie spend. Daje kontekst: spend rośnie czy maleje? Strzałka z % jest ok ale sparkline jest lepszy.
+### N1: Impression Share per konto
+Mówi czy konto wykorzystuje potencjał. Dane w MetricDaily (search_impression_share). Agregacja jak inne metryki.
 
-### N2: Link "Otwórz w Google Ads"
-Button per wiersz → `ads.google.com/aw/overview?ocid={google_customer_id}`. Quick jump do natywnego UI.
+### N2: Billing tooltip
+Szare ikony CreditCard nie mówią co oznaczają. Dodać tooltip "Płatności OK" / "Brak billing setup" / "Brak dostępu do API billing".
 
-### N3: Alerty per konto
-Ikona alertu przy koncie z aktywnymi anomaliami/alertami. Dane z tabeli `alerts` — COUNT WHERE client_id = X AND status = 'unresolved'.
+### N3: Domyślny compact mode
+17 kolumn w full mode wymaga scrolla. Compact (11 kolumn) jest czytelniejszy. Rozważyć jako domyślny.
 
-### N4: Filtrowanie/wyszukiwanie kont
-Przy 20+ kontach potrzeba wyszukiwarki i filtrów (branża, status, wielkość). Przy <10 kont to overkill.
-
-### N5: NKL akcje z poziomu MCC
-Tworzenie/edycja list NKL, kopiowanie listy z jednego konta na inne. "Shared negative lists" cross-account to realny use case dla agencji.
-
-### N6: Kolumna "Impression Share"
-Zagregowany search IS per konto — mówi czy konto w ogóle wykorzystuje potencjał.
+### N4: Row selection + bulk actions
+Checkbox per wiersz → "Synchronizuj zaznaczone" / "Odrzuć rek. zaznaczonych". Przy 15+ kontach oszczędza czas.
 
 ## Co usunąć/zmienić
 
-- **Pacing progi** — 80%/115% jest zbyt agresywne. W praktyce pacing 85% to norma (weekendy, godziny nocne). Sugeruję **75%/120%** żeby zmniejszyć false positive "Niedowydanie".
-- **KPI "Rek. Google"** — w karcie KPI na górze widać "9" ale nie wiadomo ile per konto jest krytycznych. Rozważ podział na "high priority" vs "low priority".
+- **KPI "Avg. CTR: —"** — jeśli clicks=0, ten KPI jest bezwartościowy. Ukryć lub zamienić na coś użytecznego (np. "Aktywne kampanie" sumarycznie).
+- **Sekcja "Listy wykluczeń MCC" gdy pusta** — pokazuje pustą sekcję. Dodać info "Połącz konto MCC aby zobaczyć listy wykluczeń managera" zamiast pustego "Brak list".
 
 ## Porównanie z Google Ads UI
 
 | Funkcja | Google Ads MCC | Nasza apka | Werdykt |
 |---------|---------------|------------|---------|
-| Lista kont | Tabela z spend, clicks, conv | Tabela ze spend, pacing, health, changes | **INNE** — komplementarne metryki |
-| Health score per konto | BRAK | ✅ Kółko 0-100 | **LEPSZE** |
-| Pacing per konto | BRAK (per kampania) | ✅ Zagregowany status | **LEPSZE** |
-| Zewnętrzne zmiany | Change History per konto z ręcznym filtrem | ✅ Zliczone automatycznie | **LEPSZE** |
-| Konwersje per konto | ✅ Kolumna w tabeli | ❌ BRAK | **GORSZE** |
-| CPA/ROAS per konto | ✅ Kolumna w tabeli | ❌ BRAK | **GORSZE** |
-| Sortowanie | ✅ Po każdej kolumnie | ❌ BRAK | **GORSZE** |
-| NKL cross-account | ✅ Shared Sets manager | ✅ Read-only podgląd | **GORSZE** (brak edycji) |
-| Alerty/powiadomienia | ✅ Per konto | ❌ BRAK | **GORSZE** |
-| Quick actions | ✅ Menu kontekstowe | ❌ BRAK (tylko kliknięcie w wiersz) | **GORSZE** |
+| Lista kont z metrykami | ✅ Tabela z kolumnami | ✅ Tabela z 11 metrykami | **IDENTYCZNE+** (mamy więcej) |
+| Health score per konto | ❌ Brak | ✅ Kółko 0-100 + tooltip 6 filarów | **LEPSZE** |
+| Pacing per konto | ❌ Brak (per kampania) | ✅ Zagregowany status | **LEPSZE** |
+| Zewnętrzne zmiany | ❌ Ręczne filtrowanie | ✅ Auto-count + badge | **LEPSZE** |
+| New access detection | ❌ Brak | ✅ UserPlus badge | **LEPSZE** |
+| Dismiss rekomendacji | ✅ Per konto multi-click | ✅ One-click X button | **LEPSZE** |
+| Compact/full toggle | ❌ Brak | ✅ Toggle button | **LEPSZE** |
+| Filtr okresu | ✅ Dowolny zakres dat | ❌ Hardcoded 30d | **GORSZE** |
+| Impression Share | ✅ Dodawalna kolumna | ❌ Brak | **GORSZE** |
+| Status płatności | ✅ Widoczny inline | ⚠️ Ikona bez tooltipa | **CZĘŚCIOWO** |
+| Bulk actions | ✅ Checkboxy + menu | ❌ Brak | **GORSZE** |
+| NKL cross-account | ✅ Shared Sets manager | ✅ 2 sekcje (MCC + per konto) | **LEPSZE** |
 
-**Bilans: 3 LEPSZE, 1 INNE, 5 GORSZE** — ale te 3 LEPSZE (health, pacing, external changes) to unikalne wartości których Google Ads nie oferuje.
+**Bilans: 7 LEPSZE, 1 IDENTYCZNE+, 3 GORSZE, 1 CZĘŚCIOWO**
 
 ## Nawigacja i kontekst
 
-- **Skąd user trafia:** Landing page — otwiera się jako / → redirect do /mcc-overview
-- **Dokąd może przejść:** Kliknięcie wiersza → /dashboard z breadcrumb "← Wszystkie konta"
-- **Brakujące połączenia:**
-  - Z health score → do strony Health Score danego konta (deep dive)
-  - Z kolumny "Rek. Google" → do strony Rekomendacje danego konta
-  - Z kolumny "Zmiany" → do Historia zmian danego konta
-  - Z NKL → do strony Keywords/NKL danego konta
+- **Skąd user trafia:** Landing page — / redirectuje do /mcc-overview
+- **Dokąd przechodzi:** Kliknięcie wiersza → /dashboard, deep-links → /action-history, /recommendations, /alerts, /keywords
+- **Co działa dobrze:** Breadcrumb "← Wszystkie konta" na Dashboard. Deep-links z kolumn. Link do Google Ads external.
+- **Co brakuje:** Link z health score → deep dive health page (np. /quality-score z pre-selected clientem)
 
 ## Odpowiedzi na pytania @ads-user
 
-1. **Konwersje/CPA/ROAS** — to KRYTYCZNE. Must-have w następnym sprincie. Dane istnieją w MetricDaily.
-2. **Health score tooltip** — tak, hover powinien pokazywać 6 filarów. Backend już zwraca breakdown.
-3. **Pacing progi** — zgadzam się, 80% to za agresywne. 75%/120% będzie lepsze.
-4. **NKL edycja z MCC** — nice to have v1.1. Na MVP read-only jest ok.
-5. **Sortowanie** — trivial do dodania, powinno być w następnym sprincie.
-6. **Breakdown zmian** — nice to have. Na start wystarczy total + external.
+1. **KPI zera** — prawdopodobnie seed data issue. MetricDaily dla niektórych kont ma cost_micros ale clicks=0 i impressions=0. Trzeba albo doseedować albo ukryć zerowe KPI.
+2. **Billing szare ikony** — API zwraca "unknown" bo google_ads_service nie jest połączony w dev. Na produkcji z pełnym API powinno pokazać status. Tooltip jest ustawiony w atrybucie `title` — powinien się pojawić na hover (może być zbyt subtelny).
+3. **Compact domyślny** — rekomendacja: TAK, compact jako default. User może rozwinąć jeśli chce.
+4. **Filtr okresu** — KRYTYCZNE na następny sprint. Backend jest gotowy (parametr days), brakuje UI selectora.
+5. **MCC NKL puste** — expected w dev bez manager account. Dodać lepszą empty state message.
 
 ## Rekomendacja końcowa
 
-**ZMODYFIKOWAĆ** — widok ma silne fundamenty (health, pacing, external changes) które dają realną wartość. Ale brak konwersji/CPA/ROAS to showstopper który trzeba naprawić w następnym sprincie. Po dodaniu metryk wynikowych + sortowania, ten widok stanie się obowiązkowym porannym dashboardem każdego specjalisty Google Ads zarządzającego wieloma kontami.
+**ZACHOWAĆ** — widok przeszedł pełną ewolucję od prostej tabeli do kompletnego MCC dashboard. Teraz daje 7 unikalnych wartości których Google Ads MCC nie oferuje, przy zachowaniu pełnego zestawu metryk z GAds. Pozostałe issues (filtr okresu, KPI zera, billing tooltip) to polish — żadne nie blokuje codziennego użycia.
 
-**Priorytet implementacji:**
-1. **SPRINT 1 (must):** Konwersje + CPA + ROAS w tabeli, sortowanie, health tooltip
-2. **SPRINT 2 (should):** Deep-link z kolumn do stron per-konto, alerty per konto, sparkline
-3. **SPRINT 3 (could):** NKL edycja, kopiowanie list cross-account, filtrowanie kont
+**Priorytet next sprint:**
+1. Filtr okresu (S) — jedyny "GORSZE" który jest łatwy do naprawienia
+2. KPI zera fix (S) — seed data + conditional rendering
+3. Billing tooltip (S) — CSS title jest, ale warto dodać styled tooltip
