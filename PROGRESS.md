@@ -1,5 +1,5 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-02
+# Updated: 2026-04-03
 
 ## Status
 - Backend: 503 tests passing
@@ -58,6 +58,14 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## Google Ads API Version Fix (2026-04-03)
+- Discovered silent SDK upgrade: `google-ads>=25.1.0` (loose pin) installed SDK 29.1.0 (API v23), while documentation said API v18
+- Pinned SDK to `google-ads==29.1.0` in `requirements.txt`
+- Added explicit `version="v23"` to `GoogleAdsClient.load_from_dict()` in `google_ads.py`
+- Added ADR-019 (pin SDK + declare API version explicitly)
+- Updated ADR-018, SOURCE_OF_TRUTH.md — all API version references now correct
+- PMax campaign-level negative keywords: now officially AVAILABLE (API v20+ requirement met by v23)
 
 ## MCC Overview — Cross-Account Landing Page (2026-04-02)
 - New landing page `MccOverviewPage.jsx` (`features/mcc-overview/`) at `/mcc-overview` — default entry point (/ redirects to /mcc-overview)
