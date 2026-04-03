@@ -98,3 +98,20 @@
 **Rule:** If generation is already in progress, the next request returns a busy SSE error and closes with `done`.
 **Trade-off:** No concurrent report generation in the same backend process; users must retry after completion.
 **Revisit if:** Multi-user/server mode or queued background report jobs become a product requirement.
+
+## ADR-018: Google Ads API version tracking and upgrade policy
+**Decision:** Track the Google Ads API version (via `google-ads` Python SDK) as a first-class dependency. Before implementing any new Google Ads feature, verify the minimum API version required and check if our SDK version supports it.
+**Current state:** `google-ads==29.1.0` (API v23, explicitly pinned). Client initialized with `version="v23"`.
+**Why:** Google frequently unlocks new capabilities in newer API versions (e.g., PMax campaign-level negatives require API v20, June 2025). Building features against an unsupported API version wastes effort and creates silent failures. The SDK version is the single source of truth for what the API can do.
+**Rule:** When planning features that touch Google Ads mutations or new resource types, check the [Google Ads API release notes](https://developers.google.com/google-ads/api/docs/release-notes) for minimum version. Document the required version in the feature task. Update `requirements.txt` and test before shipping.
+**Known version gates:**
+- API v23 (SDK 29.1.0): current pinned version — all existing features + PMax negatives unlocked
+- API v20+ (SDK >=27.x): PMax campaign-level negative keywords (limit 10k/campaign), PMax granular reporting — AVAILABLE since SDK 29.1.0
+- API v18 (SDK >=25.x): historical baseline (superseded)
+**Revisit:** On every major feature that touches Google Ads API write operations.
+
+## ADR-019: Pin Google Ads SDK version and declare API version explicitly
+**Decision:** Pin `google-ads==29.1.0` in requirements.txt (was `>=25.1.0`) and pass `version="v23"` explicitly to `GoogleAdsClient.load_from_dict()`.
+**Why:** The loose pin `>=25.1.0` caused a silent upgrade from SDK 25.x (API v18) to SDK 29.1.0 (API v23). Documentation and ADR-018 still referenced API v18, while production code was already running on v23. This created a documentation-reality mismatch: PMax negatives were technically available but not recognized as such.
+**Rule:** Always pin the SDK to an exact version (`==`). Always pass the API version explicitly to the client constructor. Update both when upgrading.
+**Trade-off:** Requires manual `requirements.txt` update for SDK upgrades — this is intentional to force conscious version management.

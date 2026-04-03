@@ -17,6 +17,12 @@ Content from archived docs (PRD, Blueprint, Technical Spec, deep-research report
 ## Recent Incident Notes
 - `docs/INCIDENT_NEGATIVE_KEYWORD_MAPPING_2026-03-13.md` - root cause, fix, and guardrails for the negative keyword mapping incident
 
+## Google Ads API Version
+- Python SDK: `google-ads==29.1.0` (API v23, explicitly pinned — see ADR-019)
+- Client initialized with `version="v23"` in `google_ads.py`
+- PMax negative keywords: AVAILABLE (API v20+ requirement met)
+- Policy: see ADR-018/ADR-019 in DECISIONS.md — always verify API version before building new Google Ads features
+
 ## Current Baseline
 - Backend routers: 17 (including agent.py, reports.py, semantic.py, scheduled_sync.py, rules.py)
 - Backend utils: sse.py (SSE streaming helper), date_utils.py (date resolution)

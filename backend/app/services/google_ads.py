@@ -134,8 +134,8 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             if login_customer_id:
                 config["login_customer_id"] = login_customer_id
 
-            self.client = GoogleAdsClient.load_from_dict(config)
-            logger.info("Google Ads API client initialized successfully")
+            self.client = GoogleAdsClient.load_from_dict(config, version="v23")
+            logger.info("Google Ads API client initialized successfully (API v23, SDK 29.1.0)")
         except Exception as e:
             logger.error(f"Failed to initialize Google Ads client: {e}")
             self.client = None
