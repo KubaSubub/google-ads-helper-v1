@@ -112,66 +112,90 @@ Read in this order when context is needed:
 8. `google_ads_optimization_playbook.md`
 9. `SEARCH_CAMPAIGN_WORKFLOW.md`
 
-## 7) Claude Slash Commands
+## 7) Skills & Commands
 
-Project command prompts are stored in `.claude/commands/`:
-- `start.md`
-- `debug.md`
-- `review.md`
-- `refactor.md`
-- `endpoint.md`
-- `frontend-page.md`
-- `sync-check.md`
-- `seed.md`
-- `audit.md`
-- `commit.md`
-- `docs-sync.md` — synchronizacja dokumentacji z kodem
-- `pm-check.md` — PM review (kod jako zrodlo prawdy)
-- `done.md` — zamkniecie zadania: testy → commit → docs-sync → push (z PM gate)
-- `ads-user.md` — symulacja specjalisty PPC klikajacego po zakladce (UX review oczami end-usera)
-- `ads-expert.md` — ocena zakladki przez specjaliste Google Ads (potrzebnosc, kompletnosc, wartosc vs Google Ads UI)
-- `ads-verify.md` — weryfikacja co z raportu ads-expert juz istnieje w kodzie + plan implementacji
-- `ads-check.md` — weryfikacja czy taski z ads-verify zostaly wdrozone (QA gate)
-- `competitor.md` — "czlowiek-konkurent" (devil's advocate) — brutalny CTO konkurencji wytyka slabosci
+### Skills (`.claude/skills/` — izolowane, z frontmatter)
 
-Use them as workflow helpers, but keep behavior aligned with `AGENTS.md`.
+Skill'e dzialaja w **fork context** — nie zjadaja glownego okna konwersacji:
 
-## 7a) Automation Pipeline
+| Skill | Opis | Izolacja |
+|-------|------|----------|
+| `/build {opis}` | **MASTER PIPELINE** — plan → build → verify → test → domain → ship | main context (orchestrator) |
+| `/review` | Parallel review: 3 agenty (code-quality + security + domain) | `context: fork` |
+| `/docs-sync` | Synchronizacja PROGRESS.md, API_ENDPOINTS.md z kodem | `context: fork` |
+| `/ads-user {tab}` | Symulacja PPC specjalisty (persona Marek) | `context: fork` |
+| `/ads-expert {tab}` | Ocena eksperta Google Ads (4 kryteria) | `context: fork` |
+| `/pm-check` | PM gate — skanuje kod, score >= 7/10 pozwala na push | `context: fork` |
 
-Po zakonczeniu zadania uzyj `/done`. Pipeline:
+### Custom Agents (`.claude/agents/` — wyspecjalizowane review)
+
+| Agent | Rola | Tools |
+|-------|------|-------|
+| `code-quality-reviewer` | Pattern matching, DRY/SOLID, naming, dead code | Read, Grep, Glob |
+| `security-reviewer` | OWASP top 10, SQL injection, XSS, secrets | Read, Grep, Glob |
+| `domain-expert` | Micros, conversions float, circuit breaker, playbook | Read, Grep, Glob |
+
+### Commands (`.claude/commands/` — legacy, main context)
+
+Komendy ktore MUSZA edytowac pliki w glownym kontekscie:
+- `/cto` — smart router, deleguje do /feature, /bugfix, /endpoint
+- `/feature`, `/bugfix`, `/endpoint`, `/frontend-page`, `/refactor` — implementacja
+- `/done` — zamkniecie zadania (orchestruje /commit + /docs-sync + push)
+- `/commit`, `/start`, `/seed`, `/debug` — utility
+- `/sprint {tab}`, `/ads-verify {tab}`, `/ads-check {tab}` — implementation pipeline
+- `/audit`, `/sync-check`, `/visual-check`, `/competitor`, `/strategist`, `/ceo` — analityczne
+
+## 7a) Build Pipeline (GLOWNY)
+
+**Uzyj `/build {opis}` dla kazdego nowego zadania.** Pipeline:
+
 ```
-/done
-  ├─ pytest (fail = stop)
-  ├─ git commit
-  ├─ /docs-sync (aktualizacja PROGRESS.md, API_ENDPOINTS.md)
-  ├─ git commit docs
-  └─ git push
-       └─ pre-push hook: /pm-check (blokuje jesli ocena < 7/10)
+/build {feature/bug/endpoint}
+  │
+  ├─ FAZA 1: PLAN (3 Explore agents ‖)
+  │   ├─ Backend Scout
+  │   ├─ Frontend Scout
+  │   └─ Test Scout
+  │
+  ├─ FAZA 2: BUILD (task-by-task + auto-test hooks)
+  │
+  ├─ FAZA 3: VERIFY (3 review agents ‖)
+  │   ├─ code-quality-reviewer
+  │   ├─ security-reviewer
+  │   └─ domain-expert
+  │   └─ Gate: srednia >= 7/10
+  │
+  ├─ FAZA 4: TEST (‖ pytest + npm build)
+  │
+  ├─ FAZA 5: DOMAIN CHECK (opcjonalne, UI only)
+  │   └─ /ads-user → /ads-expert
+  │
+  └─ FAZA 6: SHIP
+      ├─ /commit
+      ├─ /docs-sync (fork)
+      ├─ /pm-check (fork, gate >= 7/10)
+      └─ git push
 ```
 
-Hooki automatyczne:
-- `SessionStart` — wyswietla status projektu (ostatnie commity, TODO count, niezcommitowane pliki)
-- `Stop` — wyswietla podsumowanie sesji (zmienione pliki, przypomnienie o /done)
-- `post-commit` (git) — odpala /docs-sync w tle
-- `pre-push` (git) — odpala /pm-check, blokuje push jesli < 7/10
+## 7b) Hooks (automatyczne)
 
-## 7b) Ads Review Pipeline
+| Hook | Event | Timeout | Dzialanie |
+|------|-------|---------|-----------|
+| `session-start.sh` | SessionStart | 10s | Status projektu |
+| `stop.sh` | Stop | 10s | Podsumowanie sesji |
+| `post-edit-test.sh` | PostToolUse (Write/Edit) | 60s | Auto-test po edycji |
+| `pre-push.sh` | PreToolUse (Bash) | 10s | Gate: wymaga pm-review-pass |
+| `pre-compact.sh` | PreCompact | 10s | Zapis kontekstu |
+| `task-completed.sh` | TaskCompleted | 10s | Auto-commit taskow |
 
-Pipeline do oceny i iteracji zakladek z perspektywy specjalisty Google Ads:
+## 7c) Ads Review Pipeline
+
 ```
-/ads-user {tab}          ← symulacja PPCowca, notatki UX
-  └─ /ads-expert {tab}   ← automatycznie: ocena ekspercka 4 kryteria
-       └─ /ads-verify {tab}  ← automatycznie: plan implementacji
-            └─ [dev implementuje sprinty]
-                 └─ /ads-check {tab}  ← QA: czy taski wdrozone?
-                      └─ /ads-user {tab}  ← automatycznie jesli GOTOWE: re-test
+/ads-user {tab} (fork) → /ads-expert {tab} (fork) → /ads-verify {tab} → /sprint {tab}
+  → /ads-check {tab} → jesli GOTOWE: /ads-user re-test
 ```
 
-Raporty zapisywane w `docs/reviews/`:
-- `ads-user-{tab}.md` — notatki usera
-- `ads-expert-{tab}.md` — raport eksperta
-- `ads-verify-{tab}.md` — plan implementacji ze statusami
-- `ads-check-{tab}.md` — wynik weryfikacji QA
+Raporty w `docs/reviews/`: ads-user-{tab}.md, ads-expert-{tab}.md, ads-verify-{tab}.md, ads-check-{tab}.md
 
 ## 8) Current State
 
