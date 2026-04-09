@@ -1,6 +1,6 @@
 ﻿# Source of Truth - Google Ads Helper
 
-Last updated: 2026-03-25
+Last updated: 2026-04-03
 Owner: Product + Engineering
 
 ## Document Priority
@@ -24,9 +24,9 @@ Content from archived docs (PRD, Blueprint, Technical Spec, deep-research report
 - Policy: see ADR-018/ADR-019 in DECISIONS.md — always verify API version before building new Google Ads features
 
 ## Current Baseline
-- Backend routers: 17 (including agent.py, reports.py, semantic.py, scheduled_sync.py, rules.py)
+- Backend routers: 18 (including agent.py, reports.py, semantic.py, scheduled_sync.py, rules.py, mcc.py)
 - Backend utils: sse.py (SSE streaming helper), date_utils.py (date resolution)
-- Frontend pages: 15
+- Frontend pages: 26 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview)
 - Recommendation engine: 34 playbook rules + analytics stream + optional Google Ads native ingest
 - Human-centered budget guardrails: enabled
 - Sync trigger: `POST /api/v1/sync/trigger`

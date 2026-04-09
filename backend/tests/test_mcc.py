@@ -342,3 +342,64 @@ def test_billing_status_endpoint_returns_dict(db):
     assert resp.status_code == 200
     data = resp.json()
     assert "status" in data
+
+
+def test_mcc_overview_impression_share(db):
+    """Overview should include avg search_impression_share per account."""
+    client = _client(db)
+    camp = _campaign(db, client.id)
+    today = date.today()
+
+    for i in range(3):
+        db.add(MetricDaily(
+            campaign_id=camp.id,
+            date=today - timedelta(days=i),
+            clicks=10,
+            impressions=100,
+            cost_micros=1_000_000,
+            search_impression_share=0.45,
+        ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview(date_from=today - timedelta(days=5), date_to=today)
+    acc = result["accounts"][0]
+    assert acc["search_impression_share_pct"] == 45.0
+
+
+def test_mcc_overview_custom_period(db):
+    """Overview with different date ranges should return different metrics."""
+    client = _client(db)
+    camp = _campaign(db, client.id)
+    today = date.today()
+
+    # Data 3 days ago
+    db.add(MetricDaily(
+        campaign_id=camp.id,
+        date=today - timedelta(days=3),
+        clicks=100,
+        impressions=1000,
+        cost_micros=10_000_000,
+    ))
+    # Data 20 days ago
+    db.add(MetricDaily(
+        campaign_id=camp.id,
+        date=today - timedelta(days=20),
+        clicks=50,
+        impressions=500,
+        cost_micros=5_000_000,
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+
+    # 7-day range should only include recent data
+    result_7d = svc.get_overview(date_from=today - timedelta(days=6), date_to=today)
+    acc_7d = result_7d["accounts"][0]
+
+    # 30-day range should include both
+    result_30d = svc.get_overview(date_from=today - timedelta(days=29), date_to=today)
+    acc_30d = result_30d["accounts"][0]
+
+    assert acc_7d["clicks"] == 100
+    assert acc_30d["clicks"] == 150

@@ -1,92 +1,93 @@
-# Plan implementacji — MCC Overview (re-test po sprintach)
-> Na podstawie: docs/reviews/ads-expert-mcc-overview.md (2026-04-02, ocena 8.8/10)
-> Data weryfikacji: 2026-04-02
+# Plan implementacji — MCC Overview (re-test #2)
+> Na podstawie: docs/reviews/ads-expert-mcc-overview.md (2026-04-08, ocena 9.2/10)
+> Data weryfikacji: 2026-04-08
 
 ## Podsumowanie
-- Elementów z raportu: 9
-- DONE: 3 | PARTIAL: 1 | MISSING: 4 | NOT_NEEDED: 1
-- Szacowany nakład: mały (Sprint 1 = ~1h)
+- Elementow z raportu: 7
+- DONE: 0 | PARTIAL: 2 | MISSING: 3 | NOT_NEEDED: 2
+- Szacowany naklad: maly (Sprint 1 = 4 taski S)
 
-## Status każdego elementu
+## Status kazdego elementu
 
 ### KRYTYCZNE (must implement)
 
-| # | Element | Status | Co istnieje | Co brakuje | Nakład |
-|---|---------|--------|-------------|------------|--------|
-| K1 | Filtr okresu (days) | MISSING | `_aggregate_metrics()` przyjmuje start/end. `GET /mcc/new-access` ma param `days`. | Param `days` w `GET /mcc/overview`. UI selector (pills 7d/14d/30d/miesiąc). | S |
-| K2 | KPI cards z zerami | PARTIAL | Tabela obsługuje null/0 z myślnikiem. KPI cards zawsze widoczne. | Warunkowo ukryć KPI card gdy suma=0 a spend>0 (clicks, impressions). Zamienić "Avg. CTR" na "Aktywne kampanie" gdy clicks=0. | S |
+Brak — wszystkie krytyczne z poprzedniego raportu naprawione.
 
 ### NICE TO HAVE
 
-| # | Element | Status | Co istnieje | Co brakuje | Nakład |
+| # | Element | Status | Co istnieje | Co brakuje | Naklad |
 |---|---------|--------|-------------|------------|--------|
-| N1 | Impression Share per konto | MISSING | MetricDaily ma `search_impression_share`. `_aggregate_metrics()` nie agreguje IS. | Dodać avg IS do agregacji + kolumna w tabeli. | S |
-| N2 | Billing tooltip (styled) | DONE | `BillingBadge` ma `title` attr na każdy status (Płatności OK / Brak billing / etc). | — (native tooltip działa, styled tooltip byłby lepszy ale nie krytyczny) | — |
-| N3 | Domyślny compact mode | DONE | `compactMode` default `false`. Toggle działa. | Zmienić `useState(false)` → `useState(true)`. | trivial |
-| N4 | Row selection + bulk actions | MISSING | Brak checkboxów i bulk menu. | Checkbox per wiersz + toolbar "Synchronizuj X" / "Odrzuć rek. X". | M |
+| N1 | IS seed data | NOT_NEEDED | Seed generuje IS ale tylko dla Demo Meble (wykluczone z MCC). Konta z API maja IS jesli zsynchronizowane. | W dev widac "—" bo brak realnych danych. Nie bug — data issue. | — |
+| N2 | Waluta przy kwotach | MISSING | Model Client nie ma pola currency. OfflineConversion ma currency_code="PLN". | Pole currency na Client + wyswietlanie w tabeli. | M |
+| N3 | Budget kwota w pacing | PARTIAL | Response ma `pacing.budget` i `pacing.spent`. Frontend renderuje progress bar bez tooltipa. | Tooltip na pacing z "Budzet: X, Wydano: Y". | S |
+| N4 | Optimization Score per konto | PARTIAL | `_get_health_score()` istnieje w MCCService:518. Nie jest wolana w `_build_account_data`. | Wywolac metode + dodac kolumne w UI. | S |
+| N5 | Sparkline trendu wydatkow | MISSING | Brak. Recharts LineChart uzywany na innych stronach (Dashboard, Forecast). | Nowy endpoint z daily spend data + mini LineChart. | M |
 
-### ZMIANY/USUNIĘCIA
+### ZMIANY/USUNIECIA
 
-| # | Element | Status | Aktualny stan | Rekomendacja | Nakład |
+| # | Element | Status | Aktualny stan | Rekomendacja | Naklad |
 |---|---------|--------|---------------|--------------|--------|
-| Z1 | Empty state MCC NKL — lepsza wiadomość | DONE | "Brak list wykluczeń na poziomie MCC." | Można poprawić na "Połącz konto MCC..." ale obecna jest ok. | — |
-| Z2 | Health deep-link | MISSING | Health kółko ma tooltip (hover) ale cursor: default, brak onClick. | Dodać onClick → navigate('/dashboard') z pre-selected clientem. | S |
+| Z1 | ROAS 0% przy braku konwersji | MISSING | `roas = conv_value/spend*100 if spend>0` — zwraca 0 gdy conv=0. CPA poprawnie zwraca None. | Dodac warunek `and conv_value > 0` lub zostawic (GAds tez pokazuje 0%). Decyzja produktowa. | S |
+| Z2 | IS auto-hide gdy brak danych | MISSING | Kolumna IS zawsze widoczna. | Sprawdzac czy ktorekolwiek konto ma IS — jesli nie, ukryc kolumne. | S |
 
-## Kolejność implementacji (rekomendowana)
+## Kolejnosc implementacji (rekomendowana)
 
 ```
-Sprint 1 (quick wins — nakład S, ~1h):
-  [ ] K1 — Filtr okresu: param `days` w overview endpoint + pills UI (7d/14d/30d)
-  [ ] K2 — KPI cards: ukryć zerowe, zamienić Avg CTR → Aktywne konta
-  [ ] N3 — Compact mode domyślny: zmienić useState(false) → useState(true)
-  [ ] Z2 — Health deep-link: onClick na kółku → navigate('/dashboard')
+Sprint 1 (quick wins — naklad S, ~1.5h):
+  [ ] N3 — Pacing tooltip: dodac title attr z "Budzet: X, Wydano: Y" na pacing bar
+  [ ] N4 — Health score kolumna: wywolac _get_health_score + kolumna w tabeli
+  [ ] Z1 — ROAS consistency: dodac `and conv_value > 0` do warunku
+  [ ] Z2 — IS auto-hide: sprawdzac dane, ukryc kolumne gdy brak
 
-Sprint 2 (nice to have — nakład S/M):
-  [ ] N1 — Impression Share: avg IS w _aggregate_metrics + kolumna
-  [ ] N4 — Row selection + bulk actions (M)
+Sprint 2 (sredni naklad — M, v1.1+):
+  [ ] N2 — Waluta: pole currency na Client + wyswietlanie (wymaga reseed)
+  [ ] N5 — Sparkline: endpoint daily_spend + mini LineChart per konto
 ```
 
-## Szczegóły implementacji
+## Szczegoly implementacji
 
-### K1: Filtr okresu
-
-**Backend — `backend/app/routers/mcc.py`:**
-```python
-@router.get("/overview")
-def mcc_overview(days: int = Query(30, ge=7, le=90), db: Session = Depends(get_db)):
-    return MCCService(db).get_overview(days=days)
-```
-
-**Backend — `backend/app/services/mcc_service.py`:**
-Zmienić `get_overview()` aby przyjmował `days` i przekazywał do `_build_account_data()`.
-Zmienić hardcoded `timedelta(days=30)` → `timedelta(days=days)`.
+### N3: Pacing tooltip z kwotami
 
 **Frontend — `MCCOverviewPage.jsx`:**
-Dodać state `period` (7/14/30) + pills pod tytułem. Przekazać do `getMccOverview(days)`.
-
-**Frontend — `api.js`:**
-```javascript
-export const getMccOverview = (days = 30) => api.get('/mcc/overview', { params: { days } })
-```
-
-**Testy:** Dodać `test_mcc_overview_custom_period` — 7d vs 30d daje różne wyniki.
-
-### K2: KPI cards z zerami
-
-**Frontend — `MCCOverviewPage.jsx`:**
-Filtrować KPI array: jeśli totalClicks=0 i totalSpend>0, nie pokazywać "Kliknięcia" i "Wyświetlenia".
-Zamienić "Avg. CTR" na "Aktywne konta" (count of accounts with spend > 0).
-
-### N3: Compact mode domyślny
-
-**Frontend — `MCCOverviewPage.jsx`:**
-Zmiana jednej linii: `useState(false)` → `useState(true)`.
-
-### Z2: Health deep-link
-
-**Frontend — `MCCOverviewPage.jsx`:**
-Na `<span>` health kółka dodać:
+Na div z pacing bar dodac `title`:
 ```jsx
-onClick={(e) => handleDeepLink(acc, '/dashboard', e)}
-style={{ cursor: 'pointer' }}
+<div title={`Budżet: ${fmtMoney(acc.pacing?.budget)} | Wydano: ${fmtMoney(acc.pacing?.spent)}`}>
 ```
+Dane `pacing.budget` i `pacing.spent` juz sa w API response.
+
+### N4: Health score kolumna
+
+**Backend — `mcc_service.py`:**
+W `_build_account_data`, dodac:
+```python
+health = self._get_health_score(cid)
+```
+I w return dict:
+```python
+"health_score": health.get("score") if health else None,
+```
+
+**Frontend — `MCCOverviewPage.jsx`:**
+Dodac kolumne po IS:
+```jsx
+<SortHeader label="Health" field="health_score" ... />
+```
+Cell: kolko SVG z kolorem (>=80 zielony, >=50 zolty, <50 czerwony).
+
+### Z1: ROAS consistency
+
+**Backend — `mcc_service.py:306`:**
+```python
+# Przed:
+roas = round(conv_value / spend * 100, 1) if spend > 0 else None
+# Po:
+roas = round(conv_value / spend * 100, 1) if spend > 0 and conv_value > 0 else None
+```
+
+### Z2: IS auto-hide
+
+**Frontend — `MCCOverviewPage.jsx`:**
+```jsx
+const hasAnyIS = accounts.some(a => a.search_impression_share_pct != null)
+```
+Warunkowo renderowac kolumne IS tylko gdy `hasAnyIS`.

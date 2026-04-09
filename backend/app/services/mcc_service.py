@@ -307,6 +307,7 @@ class MCCService:
         ctr = round(clicks / impressions * 100, 2) if impressions > 0 else None
         avg_cpc = round(spend / clicks, 2) if clicks > 0 else None
         conv_rate = round(conversions / clicks * 100, 2) if clicks > 0 else None
+        is_pct = round(metrics["search_impression_share"] * 100, 1) if metrics.get("search_impression_share") is not None else None
 
         # 2. Budget pacing (aggregated per client)
         pacing = self._compute_pacing(cid, today)
@@ -399,6 +400,7 @@ class MCCService:
             "conversion_value": round(conv_value, 2),
             "cpa": cpa,
             "roas_pct": roas,
+            "search_impression_share_pct": is_pct,
             # Pacing
             "pacing": pacing,
             # Activity
@@ -424,6 +426,7 @@ class MCCService:
                 func.sum(MetricDaily.cost_micros),
                 func.sum(MetricDaily.conversions),
                 func.sum(MetricDaily.conversion_value_micros),
+                func.avg(MetricDaily.search_impression_share),
             )
             .first()
         )
@@ -432,6 +435,7 @@ class MCCService:
         cost_micros = int(row[2] or 0)
         conversions = float(row[3] or 0)
         conv_value_micros = int(row[4] or 0)
+        avg_is = round(float(row[5]), 4) if row[5] is not None else None
 
         return {
             "clicks": clicks,
@@ -439,6 +443,7 @@ class MCCService:
             "cost_usd": micros_to_currency(cost_micros),
             "conversions": conversions,
             "conversion_value_usd": micros_to_currency(conv_value_micros),
+            "search_impression_share": avg_is,
         }
 
     def _campaign_metrics_query(self, client_id: int, start: date, end: date):

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     RefreshCw, TrendingUp, TrendingDown, ArrowRight,
-    AlertTriangle, CheckCircle, Minus, Bell, ExternalLink,
+    Bell, ExternalLink,
     ChevronDown, ChevronRight, Shield, List,
     UserPlus, CreditCard, Columns, EyeOff,
 } from 'lucide-react'
@@ -11,7 +11,6 @@ import {
     dismissMccGoogleRecommendations, syncClient,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
-import { useFilter } from '../../contexts/FilterContext'
 import PacingProgressBar from '../../components/modules/PacingProgressBar'
 import { C, B, T, R, S, CARD, STATUS_COLORS } from '../../constants/designTokens'
 
@@ -117,10 +116,16 @@ function googleAdsUrl(googleCustomerId) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const PERIODS = [
+    { label: '7d', value: 7 },
+    { label: '14d', value: 14 },
+    { label: '30d', value: 30 },
+    { label: 'MTD', value: 'mtd' },
+]
+
 export default function MCCOverviewPage() {
     const navigate = useNavigate()
     const { setSelectedClientId, showToast } = useApp()
-    const { filters } = useFilter()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [syncingIds, setSyncingIds] = useState(new Set())
@@ -133,13 +138,24 @@ export default function MCCOverviewPage() {
     const [hoveredAlert, setHoveredAlert] = useState(null)
     const [hoveredBilling, setHoveredBilling] = useState(null)
     const [dismissingAll, setDismissingAll] = useState(null)
+    const [period, setPeriod] = useState(30)
+    const [selectedIds, setSelectedIds] = useState(new Set())
 
     const load = useCallback(async () => {
         try {
             setLoading(true)
+            const today = new Date()
+            const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
             const params = {}
-            if (filters.dateFrom) params.date_from = filters.dateFrom
-            if (filters.dateTo) params.date_to = filters.dateTo
+            if (period === 'mtd') {
+                params.date_from = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+                params.date_to = fmt(today)
+            } else {
+                const start = new Date(today)
+                start.setDate(start.getDate() - period + 1)
+                params.date_from = fmt(start)
+                params.date_to = fmt(today)
+            }
             const result = await getMccOverview(params)
             setData(result)
         } catch {
@@ -147,7 +163,7 @@ export default function MCCOverviewPage() {
         } finally {
             setLoading(false)
         }
-    }, [showToast, filters.dateFrom, filters.dateTo])
+    }, [showToast, period])
 
     useEffect(() => { load() }, [load])
 
@@ -243,6 +259,39 @@ export default function MCCOverviewPage() {
     const totalImpr = accounts.reduce((s, a) => s + (a.impressions || 0), 0)
     const activeCount = accounts.filter(a => (a.spend || 0) > 0).length
 
+    const toggleSelect = (clientId, e) => {
+        e.stopPropagation()
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(clientId)) next.delete(clientId)
+            else next.add(clientId)
+            return next
+        })
+    }
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === accounts.length) setSelectedIds(new Set())
+        else setSelectedIds(new Set(accounts.map(a => a.client_id)))
+    }
+
+    const handleBulkSync = () => {
+        for (const id of selectedIds) handleSync(id, { stopPropagation: () => {} })
+    }
+
+    const handleBulkDismissRecs = async () => {
+        const ids = [...selectedIds]
+        try {
+            await Promise.all(ids.map(id =>
+                dismissMccGoogleRecommendations({ client_id: id, dismiss_all: true })
+            ))
+            showToast?.(`Rekomendacje odrzucone dla ${ids.length} kont`, 'success')
+        } catch {
+            showToast?.('Błąd odrzucania rekomendacji', 'error')
+        }
+        setSelectedIds(new Set())
+        load()
+    }
+
     return (
         <div style={{ padding: '24px 32px', maxWidth: 1600 }}>
             {/* Header */}
@@ -259,6 +308,23 @@ export default function MCCOverviewPage() {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 4, marginRight: 8 }}>
+                        {PERIODS.map(p => (
+                            <button
+                                key={p.label}
+                                onClick={() => setPeriod(p.value)}
+                                style={{
+                                    padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                    border: `1px solid ${period === p.value ? C.accentBlue : C.w08}`,
+                                    background: period === p.value ? C.accentBlueBg : C.w04,
+                                    color: period === p.value ? 'white' : C.textPlaceholder,
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
                     <button onClick={() => setCompactMode(p => !p)} title={compactMode ? 'Pokaż wszystkie kolumny' : 'Tryb kompaktowy'} style={{
                         display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 10px',
                         borderRadius: R.md, background: compactMode ? C.infoBg : C.w04, border: compactMode ? B.info : B.subtle,
@@ -299,6 +365,30 @@ export default function MCCOverviewPage() {
 
             {/* Accounts table */}
             <div className={CARD} style={{ overflow: 'visible' }}>
+                {selectedIds.size > 0 && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '8px 16px', background: C.infoBg, borderBottom: B.info,
+                    }}>
+                        <span style={{ fontSize: 12, color: C.accentBlue, fontWeight: 500 }}>
+                            Zaznaczono: {selectedIds.size}
+                        </span>
+                        <button onClick={handleBulkSync} style={{
+                            display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
+                            borderRadius: R.md, background: C.w04, border: B.subtle,
+                            color: C.accentBlue, fontSize: 11, cursor: 'pointer',
+                        }}>
+                            <RefreshCw size={11} /> Synchronizuj
+                        </button>
+                        <button onClick={handleBulkDismissRecs} style={{
+                            display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
+                            borderRadius: R.md, background: C.w04, border: B.subtle,
+                            color: C.w50, fontSize: 11, cursor: 'pointer',
+                        }}>
+                            <EyeOff size={11} /> Odrzuć rekomendacje
+                        </button>
+                    </div>
+                )}
                 {loading ? (
                     <div style={{ padding: 40, textAlign: 'center', color: C.w30 }}>
                         <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
@@ -313,6 +403,14 @@ export default function MCCOverviewPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ borderBottom: B.card }}>
+                                <th style={{ ...TH, width: 36, textAlign: 'center', padding: '8px 4px' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.size === accounts.length && accounts.length > 0}
+                                        onChange={toggleSelectAll}
+                                        style={{ cursor: 'pointer', accentColor: C.accentBlue }}
+                                    />
+                                </th>
                                 <SortHeader label="Konto" field="client_name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                                 <SortHeader label="Wydatki" field="spend" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 {!compactMode && <SortHeader label="Kliknięcia" field="clicks" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
@@ -324,6 +422,7 @@ export default function MCCOverviewPage() {
                                 {!compactMode && <SortHeader label="Wart. konw." field="conversion_value" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 <SortHeader label="CPA" field="cpa" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <SortHeader label="ROAS" field="roas_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                <SortHeader label="IS" field="search_impression_share_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <th style={{ ...TH, minWidth: 120 }}>Pacing</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Płatności</th>
                                 <SortHeader label="Zmiany" field="total_changes" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
@@ -353,6 +452,10 @@ export default function MCCOverviewPage() {
                                         onMouseEnter={e => e.currentTarget.style.background = C.w03}
                                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                     >
+                                        {/* Checkbox */}
+                                        <td style={{ ...TD, textAlign: 'center', width: 36, padding: '8px 4px' }} onClick={e => toggleSelect(acc.client_id, e)}>
+                                            <input type="checkbox" checked={selectedIds.has(acc.client_id)} readOnly style={{ cursor: 'pointer', accentColor: C.accentBlue }} />
+                                        </td>
                                         {/* Konto + badges */}
                                         <td style={TD}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -398,6 +501,14 @@ export default function MCCOverviewPage() {
                                         <td style={{ ...TD, textAlign: 'right' }}>
                                             {acc.roas_pct != null
                                                 ? <span style={{ color: acc.roas_pct >= 400 ? C.success : acc.roas_pct >= 200 ? C.accentBlue : C.warning }}>{acc.roas_pct.toFixed(0)}%</span>
+                                                : '—'}
+                                        </td>
+                                        {/* Impression Share */}
+                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                            {acc.search_impression_share_pct != null
+                                                ? <span style={{ color: acc.search_impression_share_pct >= 60 ? C.success : acc.search_impression_share_pct >= 30 ? C.warning : C.danger }}>
+                                                    {acc.search_impression_share_pct.toFixed(1)}%
+                                                </span>
                                                 : '—'}
                                         </td>
                                         {/* Pacing — progress bars */}

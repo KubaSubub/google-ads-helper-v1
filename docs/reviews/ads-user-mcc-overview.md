@@ -1,79 +1,92 @@
-# Notatki usera: MCC Overview (re-test po sprintach)
+# Notatki usera: MCC Overview (re-test #2 po sprint 2026-04-08)
 
-**Kto:** Marek, specjalista GAds, 6 lat doświadczenia, 8 kont
-**Testowane na:** live data, 5 kont (Demo Meble, Sushi Naka Naka, Ohtime AN, KlimFix, tanie-materialy.pl)
-**Data:** 2026-04-02
+**Kto:** Marek, specjalista GAds, 6 lat doswiadczenia, 8 kont
+**Testowane na:** 4 konta (Sushi Naka Naka, Ohtime AN, Klimfix, tanie-materialy.pl)
+**Data:** 2026-04-08
+**Poprzedni test:** 2026-04-02, ocena 9/10
 
 ---
 
-## Co widzę po wejściu
+## Co widze po wejsciu
 
-Otwieram aplikację i od razu ląduję na "Wszystkie konta" — to jest teraz strona startowa. Pierwsze wrażenie: **dużo danych**. Na górze 5 KPI cards (Wydatki $60k, Kliknięcia 0, Wyświetlenia 0, Konwersje 1,795, Avg CTR z kreską). Pod spodem tabela z 5 kontami i MNÓSTWEM kolumn — doliczam się 17: Konto, Wydatki, Kliknięcia, Wyśw., CTR, CPC, Conv., CVR, Wart. konw., CPA, ROAS, Pacing, Health, Płatności, Zmiany, Rek., Sync + ikonki na końcu.
+Otwieram aplikacje i laduje na "Wszystkie konta" — to domyslna strona startowa. Naglowek "Wszystkie konta", pod spodem "Przeglad MCC — 4 kont (2026-03-10 — 2026-04-08)". Od razu wiem zakres dat.
 
-Widzę przycisk z ikoną kolumn obok "Synchronizuj nieaktualne" — to pewnie toggle widoku. Pod tabelą dwie rozwijane sekcje: "Listy wykluczeń MCC" i "Listy wykluczeń per konto".
+Na gorze 5 KPI kart: Wydatki (1 739,56), Klikniecia (948), Wyswietlenia (15 926), Konwersje (211,2), Aktywne konta (2/4). Widze od razu ze 2 konta nic nie wydaja. KPI klikniecia/wyswietlenia pojawiaja sie teraz z danymi — wczesniej byly zera. Dobrze.
 
-Sidebar jest czysty — tylko "Wszystkie konta" jako aktywny link. Brak selektora klienta. Podoba mi się.
+**NOWE** od ostatniego testu:
+- **Pilulki 7d/14d/30d/MTD** w prawym gornym rogu. 30d aktywne (niebieskie). Klikam 7d — tabela sie odswi
+eza z nowymi liczbami. Super, tego brakowalo!
+- **Checkboxy** przy kazdym koncie — zaznaczam 2 i pojawia sie toolbar "Zaznaczono: 2 | Synchronizuj | Odrzuc rekomendacje". Bulk actions dzialaja!
+- **Kolumna IS** po ROAS — same myslniki ale naglowek jest, sortowanie tez.
 
-## Co mogę zrobić
+Tryb kompaktowy domyslnie wlaczony. Tabela ma ~11 kolumn, czytelna bez scrolla. Dobrze — ostatnio prosilem o to.
 
-1. **Sortować po każdej kolumnie** — klikam nagłówek, strzałka wskazuje kierunek. Działa.
-2. **Kliknąć wiersz** → przechodzi do Dashboard konta z breadcrumbem "← Wszystkie konta"
-3. **Odrzucić rekomendacje Google** — przy liczbie rek. jest X, kliknięcie odrzuca wszystkie. 
-4. **Przełączyć tryb kompaktowy** — ikona kolumn ukrywa Kliknięcia, Wyświetlenia, CTR, CPC, CVR, Wart. konw. Zostaje 11 kolumn — dużo czytelniej!
-5. **Kliknąć w "Zmiany"** → otwiera Historię zmian danego konta
-6. **Kliknąć w liczbę rekomendacji** → otwiera Rekomendacje
-7. **Kliknąć ikonę alertu (dzwonek)** → otwiera Monitoring
-8. **Kliknąć ikonę nowego dostępu (osoba+)** → otwiera Historię (żółta ikona przy koncie z nowym emailem)
-9. **Link do Google Ads** — ikona external link per wiersz
-10. **Synchronizuj nieaktualne** — syncuje konta z sync > 6h
-11. **Rozwinąć sekcje NKL** — listy wykluczeń MCC-level i per konto
+## Co moge zrobic (pelna lista)
 
-## Co mam WIĘCEJ niż w Google Ads UI
+1. **Zmieniac okres** — pilulki 7d/14d/30d/MTD (nowe!)
+2. **Zaznaczac konta** — checkboxy + select all + bulk toolbar (nowe!)
+3. **Sortowac** — klikalne naglowki z kierunkiem
+4. **Kliknac wiersz** — dashboard konta
+5. **Kliknac "Zmiany"** — historia zmian konta
+6. **Kliknac rekomendacje** — strona rekomendacji
+7. **Odrzucic rek. per konto** — ikonka EyeOff
+8. **Bulk odrzucenie rek.** — checkbox + toolbar (nowe!)
+9. **Bulk sync** — checkbox + toolbar (nowe!)
+10. **Sync nieaktualne** — przycisk globalny
+11. **Otworzyc w Google Ads** — external link
+12. **Compact/full mode** — toggle kolumn
+13. **Listy wykluczen MCC** — zwijana sekcja
 
-1. **Health score z tooltipem** — najeżdżam na kółko "86" i widzę breakdown: Wyniki 92, Jakość 78, Efektywność 85, Zasięg 72, Stabilność 90, Struktura 88. W Google Ads MCC tego po prostu NIE MA.
-2. **Zewnętrzne zmiany** — kolumna "Zmiany" z wyróżnieniem "X zewn." oznacza że ktoś spoza mojej agencji grzebał na koncie. W GAds muszę wchodzić w Change History per konto i ręcznie filtrować.
-3. **Alert nowych dostępów** — żółta ikona UserPlus gdy pojawił się nowy email na koncie. W GAds nie mam takiego powiadomienia.
-4. **Odrzucanie rekomendacji Google jednym klikiem** — w GAds muszę wchodzić per konto, otworzyć Recommendations, i odrzucać po jednej.
-5. **Pacing per konto** — zagregowany status budżetowy całego konta. W GAds widzę pacing per kampania.
-6. **Tryb kompaktowy** — toggle na mniej kolumn. Google Ads MCC nie ma czegoś takiego.
-7. **Dwie sekcje NKL** — listy wykluczeń MCC-level i per konto w jednym widoku.
+## Co mam WIECEJ niz w Google Ads UI
+
+1. **Pacing w jednym rzucie oka** — podwojny progress bar per konto. W GAds MCC musze wchodzic w kazde konto. Tu na screenie widze "Budzet 6%, Miesiac 8/30d" — od razu wiem kto underspenduje.
+2. **Zewnetrzne zmiany** — "5 zewn." na zolto. W GAds nie mam crossowego widoku kto grzebal.
+3. **Rekomendacje Google crossowo** — "Brak" lub "X rek." per konto + bulk dismiss.
+4. **KPI aggregowane** — sumaryczne metryki na gorze. W GAds MCC mam "Account Performance" ale trzeba konfigurowacc.
+5. **Period pills** — 7/14/30/MTD jednym kliknieciem (nowe!). W GAds MCC date picker wymaga kilku klikniec.
+6. **New access detection** — zolta ikonka UserPlus. GAds tego nie ma.
+7. **Billing status** — ikona karty + tooltip na hover. Nie musze wchodzic w Billing per konto.
+8. **Listy wykluczen MCC** — shared NKL w jednym widoku.
+9. **Bulk actions** — zaznacz 3 konta, syncuj albo odrzuc rek. jednym guzikiem (nowe!).
 
 ## Czego MI BRAKUJE vs Google Ads UI
 
-1. **Kliknięcia i wyświetlenia na KPI cards pokazują "0"** — to pewnie seed data bez clicks/impressions, ale wygląda jakby coś nie działało. KPI card "Kliknięcia: 0" przy wydatkach $60k to alarm — user pomyśli że jest bug.
-2. **Kolumna "Płatności" — same szare ikony** — widzę ikonę karty kredytowej przy każdym koncie ale wszystkie szare. Nie wiem czy to znaczy "OK" czy "brak informacji". Brak tooltipa widocznego na screenshocie.
-3. **Brak filtra po okresie** — tabela pokazuje "30d" (bo tak jest w KPI), ale nie mogę zmienić na 7d, 14d, 90d. W Google Ads MCC mogę ustawić dowolny zakres dat.
-4. **Brak porównania okresów** — w GAds MCC mogę porównać "ten tydzień vs zeszły tydzień". Tu mam tylko `spend_change_pct` ale nie dla wszystkich metryk.
-5. **Brak kolumny "Impression Share"** — w Google Ads MCC mogę dodać IS jako kolumnę. Tu go nie ma.
+1. **Optimization Score** — w GAds MCC widze OptScore per konto. Tu brak. IS to nie to samo.
+2. **Filtr "tylko aktywne"** — 2 z 4 kont maja 0 wydatkow. Chcialbym je ukryc jednym kliknieciem.
+3. **Budget jako liczba** — widze pacing bar ale nie widze "budzet: 5000 PLN/mies". Musze przeliczac z %. Dodajcie tooltip na pacing z budzetem.
+4. **Waluta** — 1729.19 czego? Brak oznaczenia PLN/USD/EUR. Jak mam konta w roznych walutach, to jest problem.
+5. **Sparkline trendu** — strzalka +23.6% to ok, ale ksztalt krzywej dałby wiecej informacji.
+6. **Porownanie okresow** — chce widziec "30d vs prev 30d" obok siebie, nie tylko % zmiany spend.
 
 ## Co mnie irytuje / myli
 
-1. **KPI "Kliknięcia: 0" i "Wyświetlenia: 0"** — wygląda na buga. Jeśli seed nie ma tych danych, to lepiej nie pokazywać tych KPI niż pokazywać zera przy $60k wydatków.
-2. **"Avg. CTR: —"** na KPI — spójne z zerami ale wzmacnia wrażenie że coś nie działa.
-3. **17 kolumn w trybie full** — trzeba skrolować horyzontalnie. Tryb kompaktowy ratuje sytuację, ale może powinien być domyślny?
-4. **Kolumna "Płatności" — nie wiem co szare ikony znaczą** — potrzebuję tooltip albo legendy. Czy szare = "OK"? Czy "brak danych"? Czy "błąd"?
-5. **Sekcja "Listy wykluczeń MCC" jest pusta** — bo nie mam MCC managera w danych. Specjalista może pomyśleć że feature nie działa.
+1. **IS kolumna — same myslniki** — pusta kolumna zajmuje miejsce. Albo seed nie ma IS, albo sync nie ciagnie IS. Tak czy siak, wyglada to na buga dla usera. Sugestia: ukryc kolumne gdy 0% kont ma dane.
+2. **ROAS 0% przy Ohtime** — konto ma 10.37 spend, 0 konwersji. CPA poprawnie pokazuje "—", ale ROAS pokazuje "0%" (na zolto). To niespojne — powinno byc "—" tak jak CPA, bo nie ma z czego liczyc ROAS.
+3. **Compact toggle bez tooltipa** — ikona kolumn nie mowi jakie kolumny ukrywa. Tooltip "Pokaż: Kliknięcia, Wyśw., CTR, CPC, CVR, Wart. konw." bylby przydatny.
+4. **"Rekomendacje Google: Brak"** — tekst zamiast liczby. Drobnostka, ale "0" byloby czytelniejsze.
 
-## Co bym chciał
+## Co bym chcial (wishlist)
 
-1. **Filtr okresu** — dropdown "30d / 14d / 7d / Ten miesiąc" nad tabelą
-2. **Domyślny compact mode** — włączony od razu, full mode na życzenie
-3. **Tooltip na billing ikonie** — "Płatności OK" / "Brak billing setup" / "Brak dostępu"
-4. **Row selection z bulk actions** — checkbox per wiersz, button "Synchronizuj zaznaczone" / "Odrzuć rek. zaznaczonych"
-5. **Mini sparkline w kolumnie wydatków** — trend 30d zamiast samej liczby
+1. **Export CSV** — tabele do arkusza raz w tygodniu dla klienta
+2. **Alert summary** — "3 konta z alertami, 2 HIGH" na gorze
+3. **Quick sync per wiersz** — bez zaznaczania checkboxa
+4. **Notatki per konto** — "czeka na landing page"
+5. **Campaign type breakdown** — "3x Search, 2x PMax, 1x Shopping"
 
 ## Verdykt
 
-**Ogromny postęp od pierwszego review.** Tabela ma teraz WSZYSTKIE metryki jak w Google Ads MCC plus rzeczy których GAds nie ma (health score, external changes, new access). Tryb kompaktowy rozwiązuje problem z 17 kolumnami. Przycisk "Odrzuć" na rekomendacjach oszczędza realne minuty dziennie. To jest widok na który WCHODZĘ rano jako pierwszy — szybki scan, sortowanie po ROAS żeby zobaczyć które konto performuje, po health żeby zobaczyć co wymaga uwagi. Kliknięcie → Dashboard. Jedyny minus to zera w KPI kliknięć/wyświetleń (pewnie seed data) i nieprzejrzysta kolumna Płatności.
+Wszystko co prosilem w poprzednim tescie (okres, compact domyslny, bulk actions) zostalo zrobione. Strona jest teraz pelna narzedzi — pills, checkboxy, bulk sync, bulk dismiss. Jako codzienny widok poranny: otwieram, szybki scan, klikam 7d zeby zobaczyc co sie dzialo w tym tygodniu, sortuje po ROAS, widze kto ma zmiany zewnetrzne, zaznaczam 2 konta i syncuje.
 
-**Ocena: 8/10 → teraz 9/10** (punkt w dół za KPI zera + billing UX)
+Minusy: IS pusta kolumna, brak OptScore, ROAS 0% zamiast "—", brak waluty. Ale to drobnostki vs wartosc jaka daje.
+
+**Ocena: 8.5/10** (w dol z 9 bo IS kolumna pusta + ROAS 0% niespojne)
 
 ---
 
 ## Pytania do @ads-expert
 
-1. KPI "Kliknięcia: 0" przy $60k wydatków — czy seed data nie ma clicks/impressions w MetricDaily? Jeśli tak, to powinniśmy albo doseedować te dane albo ukryć puste KPI.
-2. Kolumna "Płatności" — same szare ikony bez tooltipa. Czy billing API działa na tych kontach? Potrzebuję wiedzieć co szary kolor oznacza.
-3. Czy tryb kompaktowy powinien być domyślny? Przy 17 kolumnach full mode wymaga scrolla.
-4. Brak filtra okresu (30d hardcoded) — czy to planowane? W GAds MCC to podstawa.
-5. Sekcja "Listy wykluczeń MCC" jest pusta — czy to expected behavior przy braku manager account w danych?
+1. IS kolumna pusta — czy MetricDaily ma dane search_impression_share w seeded DB? Jesli nie, moze ukryc kolumne automatycznie gdy brak danych?
+2. ROAS 0% przy 0 konwersji — nie powinno byc "—"? CPA poprawnie zwraca None, ROAS tez powinien.
+3. Czy jest plan na Optimization Score per konto? W GAds MCC to kluczowa metryka i brak jej tu jest odczuwalny.
+4. Waluta — czy konta moga byc w roznych walutach? Jesli tak, trzeba dodac walute do tabeli.
+5. Pacing — czy mozna dodac tooltip z kwota budzetu i wydanej kwoty? Teraz widze tylko %.
