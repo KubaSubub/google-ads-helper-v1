@@ -13,6 +13,7 @@ import {
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
+import { LineChart, Line } from 'recharts'
 import PacingProgressBar from '../../components/modules/PacingProgressBar'
 import { C, B, T, R, S, CARD, STATUS_COLORS } from '../../constants/designTokens'
 
@@ -28,6 +29,30 @@ function fmtNum(n, decimals = 0) {
 function fmtMoney(n) {
     if (n == null) return '—'
     return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function currSym(currency) {
+    if (currency === 'USD') return '$'
+    if (currency === 'EUR') return '€'
+    return 'zł'
+}
+
+function fmtMoneyC(n, currency) {
+    if (n == null) return '—'
+    const formatted = fmtMoney(n)
+    const sym = currSym(currency)
+    return currency === 'USD' ? `$${formatted}` : `${formatted} ${sym}`
+}
+
+function SpendSparkline({ data }) {
+    if (!data || data.length < 2) return null
+    return (
+        <div style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 6 }}>
+            <LineChart width={56} height={20} data={data}>
+                <Line type="monotone" dataKey="spend" stroke={C.accentBlue} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+            </LineChart>
+        </div>
+    )
 }
 
 function SpendChange({ pct }) {
@@ -285,6 +310,9 @@ export default function MCCOverviewPage() {
     const totalConv = accounts.reduce((s, a) => s + (a.conversions || 0), 0)
     const totalImpr = accounts.reduce((s, a) => s + (a.impressions || 0), 0)
     const activeCount = accounts.filter(a => (a.spend || 0) > 0).length
+    const hasAnyIS = accounts.some(a => a.search_impression_share_pct != null)
+    const uniqueCurrencies = [...new Set(accounts.map(a => a.currency).filter(Boolean))]
+    const sharedCurrency = uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : null
 
     const toggleSelect = (clientId, e) => {
         e.stopPropagation()
@@ -379,7 +407,7 @@ export default function MCCOverviewPage() {
             {/* KPI strip */}
             {(() => {
                 const kpis = [
-                    { label: 'Wydatki', value: fmtMoney(totalSpend) },
+                    { label: 'Wydatki', value: sharedCurrency ? fmtMoneyC(totalSpend, sharedCurrency) : fmtMoney(totalSpend) },
                     totalClicks > 0 && { label: 'Kliknięcia', value: fmtNum(totalClicks) },
                     totalImpr > 0 && { label: 'Wyświetlenia', value: fmtNum(totalImpr) },
                     { label: 'Konwersje', value: fmtNum(totalConv, 1) },
@@ -456,7 +484,8 @@ export default function MCCOverviewPage() {
                                 {!compactMode && <SortHeader label="Wart. konw." field="conversion_value" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 <SortHeader label="CPA" field="cpa" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
                                 <SortHeader label="ROAS" field="roas_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="IS" field="search_impression_share_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {hasAnyIS && <SortHeader label="IS" field="search_impression_share_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                <SortHeader label="Health" field="health_score" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="center" />
                                 <th style={{ ...TH, minWidth: 120 }}>Pacing</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Płatności</th>
                                 <SortHeader label="Zmiany" field="total_changes" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
@@ -515,38 +544,66 @@ export default function MCCOverviewPage() {
                                                 )}
                                             </div>
                                         </td>
-                                        {/* Wydatki */}
+                                        {/* Wydatki + sparkline */}
                                         <td style={{ ...TD, textAlign: 'right' }}>
-                                            <div>{fmtMoney(acc.spend)}</div>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                                <span>{fmtMoneyC(acc.spend, acc.currency)}</span>
+                                                <SpendSparkline data={acc.spend_trend} />
+                                            </div>
                                             <SpendChange pct={acc.spend_change_pct} />
                                         </td>
                                         {/* Opcjonalne kolumny */}
                                         {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.clicks)}</td>}
                                         {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.impressions)}</td>}
                                         {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.ctr_pct != null ? `${acc.ctr_pct}%` : '—'}</td>}
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.avg_cpc != null ? fmtMoney(acc.avg_cpc) : '—'}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.avg_cpc != null ? fmtMoneyC(acc.avg_cpc, acc.currency) : '—'}</td>}
                                         {/* Konwersje */}
                                         <td style={{ ...TD, textAlign: 'right' }}>{fmtNum(acc.conversions, 1)}</td>
                                         {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_rate_pct != null ? `${acc.conversion_rate_pct}%` : '—'}</td>}
-                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value > 0 ? fmtMoney(acc.conversion_value) : '—'}</td>}
+                                        {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value > 0 ? fmtMoneyC(acc.conversion_value, acc.currency) : '—'}</td>}
                                         {/* CPA */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.cpa != null ? fmtMoney(acc.cpa) : '—'}</td>
+                                        <td style={{ ...TD, textAlign: 'right' }}>{acc.cpa != null ? fmtMoneyC(acc.cpa, acc.currency) : '—'}</td>
                                         {/* ROAS */}
                                         <td style={{ ...TD, textAlign: 'right' }}>
                                             {acc.roas_pct != null
                                                 ? <span style={{ color: acc.roas_pct >= 400 ? C.success : acc.roas_pct >= 200 ? C.accentBlue : C.warning }}>{acc.roas_pct.toFixed(0)}%</span>
                                                 : '—'}
                                         </td>
-                                        {/* Impression Share */}
-                                        <td style={{ ...TD, textAlign: 'right' }}>
-                                            {acc.search_impression_share_pct != null
-                                                ? <span style={{ color: acc.search_impression_share_pct >= 60 ? C.success : acc.search_impression_share_pct >= 30 ? C.warning : C.danger }}>
-                                                    {acc.search_impression_share_pct.toFixed(1)}%
-                                                </span>
-                                                : '—'}
+                                        {/* Impression Share — hidden when no account has IS data */}
+                                        {hasAnyIS && (
+                                            <td style={{ ...TD, textAlign: 'right' }}>
+                                                {acc.search_impression_share_pct != null
+                                                    ? <span style={{ color: acc.search_impression_share_pct >= 60 ? C.success : acc.search_impression_share_pct >= 30 ? C.warning : C.danger }}>
+                                                        {acc.search_impression_share_pct.toFixed(1)}%
+                                                    </span>
+                                                    : '—'}
+                                            </td>
+                                        )}
+                                        {/* Health Score */}
+                                        <td style={{ ...TD, textAlign: 'center' }}>
+                                            {acc.health_score != null ? (
+                                                <div title={`Health Score: ${acc.health_score}/100`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <svg width={24} height={24} viewBox="0 0 24 24">
+                                                        <circle cx={12} cy={12} r={10} fill="none" stroke={C.w08} strokeWidth={2.5} />
+                                                        <circle cx={12} cy={12} r={10} fill="none"
+                                                            stroke={acc.health_score >= 80 ? C.success : acc.health_score >= 50 ? C.warning : C.danger}
+                                                            strokeWidth={2.5}
+                                                            strokeDasharray={`${acc.health_score * 0.628} 62.8`}
+                                                            strokeLinecap="round"
+                                                            transform="rotate(-90 12 12)"
+                                                        />
+                                                        <text x={12} y={12} textAnchor="middle" dominantBaseline="central"
+                                                            fill={acc.health_score >= 80 ? C.success : acc.health_score >= 50 ? C.warning : C.danger}
+                                                            fontSize={7} fontWeight={600}>
+                                                            {acc.health_score}
+                                                        </text>
+                                                    </svg>
+                                                </div>
+                                            ) : <span style={{ color: C.w20, fontSize: 11 }}>—</span>}
                                         </td>
-                                        {/* Pacing — progress bars */}
-                                        <td style={{ ...TD, minWidth: 120 }}>
+                                        {/* Pacing — progress bars with tooltip */}
+                                        <td style={{ ...TD, minWidth: 120 }}
+                                            title={acc.pacing?.status !== 'no_data' ? `Budżet: ${fmtMoneyC(acc.pacing?.budget, acc.currency)} | Wydano: ${fmtMoneyC(acc.pacing?.spent, acc.currency)}` : undefined}>
                                             {acc.pacing?.status === 'no_data' ? (
                                                 <span style={{ fontSize: 10, color: C.w30 }}>Brak danych</span>
                                             ) : (

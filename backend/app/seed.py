@@ -96,6 +96,7 @@ def _seed_demo_data_impl(db):
             "excluded_geos": ["ZA", "IN"],
         },
         notes="Kluczowy klient. Fokus na branded search i kanapa/łóżka. Sezon wysoki: wrzesień-grudzień.",
+        currency="PLN",
     )
     db.add(client)
     db.flush()

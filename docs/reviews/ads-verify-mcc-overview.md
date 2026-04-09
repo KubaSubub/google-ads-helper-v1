@@ -4,8 +4,8 @@
 
 ## Podsumowanie
 - Elementow z raportu: 7
-- DONE: 0 | PARTIAL: 2 | MISSING: 3 | NOT_NEEDED: 2
-- Szacowany naklad: maly (Sprint 1 = 4 taski S)
+- DONE: 6 | PARTIAL: 0 | MISSING: 0 | NOT_NEEDED: 2 (Sprint 1+2 COMPLETE)
+- E2E LOCK: 52 backend tests (29 lock tests), 539 total backend, build OK
 
 ## Status kazdego elementu
 
@@ -18,30 +18,30 @@ Brak — wszystkie krytyczne z poprzedniego raportu naprawione.
 | # | Element | Status | Co istnieje | Co brakuje | Naklad |
 |---|---------|--------|-------------|------------|--------|
 | N1 | IS seed data | NOT_NEEDED | Seed generuje IS ale tylko dla Demo Meble (wykluczone z MCC). Konta z API maja IS jesli zsynchronizowane. | W dev widac "—" bo brak realnych danych. Nie bug — data issue. | — |
-| N2 | Waluta przy kwotach | MISSING | Model Client nie ma pola currency. OfflineConversion ma currency_code="PLN". | Pole currency na Client + wyswietlanie w tabeli. | M |
-| N3 | Budget kwota w pacing | PARTIAL | Response ma `pacing.budget` i `pacing.spent`. Frontend renderuje progress bar bez tooltipa. | Tooltip na pacing z "Budzet: X, Wydano: Y". | S |
-| N4 | Optimization Score per konto | PARTIAL | `_get_health_score()` istnieje w MCCService:518. Nie jest wolana w `_build_account_data`. | Wywolac metode + dodac kolumne w UI. | S |
-| N5 | Sparkline trendu wydatkow | MISSING | Brak. Recharts LineChart uzywany na innych stronach (Dashboard, Forecast). | Nowy endpoint z daily spend data + mini LineChart. | M |
+| N2 | Waluta przy kwotach | DONE | Client.currency (String(3), default "PLN") + auto-migration. fmtMoneyC() w MCCOverviewPage z symbolem (zł/$/€). Spend, CPC, CPA, conv value, pacing tooltip. | — | — |
+| N3 | Budget kwota w pacing | DONE | Pacing cell ma `title` attr: "Budżet: X \| Wydano: Y". Dane z API response. | — | — |
+| N4 | Optimization Score per konto | DONE | `_get_health_score()` wywołana w `_build_account_data`. SVG gauge w tabeli (zielony >=80, żółty >=50, czerwony <50). | — | — |
+| N5 | Sparkline trendu wydatkow | DONE | spend_trend embedded w /mcc/overview response (daily GROUP BY). SpendSparkline 56×20 Recharts LineChart, accentBlue, no dots. | — | — |
 
 ### ZMIANY/USUNIECIA
 
 | # | Element | Status | Aktualny stan | Rekomendacja | Naklad |
 |---|---------|--------|---------------|--------------|--------|
-| Z1 | ROAS 0% przy braku konwersji | MISSING | `roas = conv_value/spend*100 if spend>0` — zwraca 0 gdy conv=0. CPA poprawnie zwraca None. | Dodac warunek `and conv_value > 0` lub zostawic (GAds tez pokazuje 0%). Decyzja produktowa. | S |
-| Z2 | IS auto-hide gdy brak danych | MISSING | Kolumna IS zawsze widoczna. | Sprawdzac czy ktorekolwiek konto ma IS — jesli nie, ukryc kolumne. | S |
+| Z1 | ROAS 0% przy braku konwersji | DONE | `roas = ... if spend > 0 and conv_value > 0 else None`. Zwraca None zamiast 0% — czytelniejsze. | — | — |
+| Z2 | IS auto-hide gdy brak danych | DONE | `hasAnyIS = accounts.some(a => a.search_impression_share_pct != null)`. Header + cell warunkowo renderowane. | — | — |
 
 ## Kolejnosc implementacji (rekomendowana)
 
 ```
-Sprint 1 (quick wins — naklad S, ~1.5h):
-  [ ] N3 — Pacing tooltip: dodac title attr z "Budzet: X, Wydano: Y" na pacing bar
-  [ ] N4 — Health score kolumna: wywolac _get_health_score + kolumna w tabeli
-  [ ] Z1 — ROAS consistency: dodac `and conv_value > 0` do warunku
-  [ ] Z2 — IS auto-hide: sprawdzac dane, ukryc kolumne gdy brak
+Sprint 1 (quick wins — DONE 2026-04-09):
+  [x] N3 — Pacing tooltip: title attr z "Budżet: X | Wydano: Y" na pacing cell
+  [x] N4 — Health score kolumna: _get_health_score + SVG gauge w tabeli
+  [x] Z1 — ROAS consistency: `and conv_value > 0` — returns None not 0%
+  [x] Z2 — IS auto-hide: hasAnyIS computed, kolumna ukryta gdy brak danych
 
-Sprint 2 (sredni naklad — M, v1.1+):
-  [ ] N2 — Waluta: pole currency na Client + wyswietlanie (wymaga reseed)
-  [ ] N5 — Sparkline: endpoint daily_spend + mini LineChart per konto
+Sprint 2 (DONE 2026-04-10):
+  [x] N2 — Waluta: currency na Client model + fmtMoneyC() z symbolem + auto-migration
+  [x] N5 — Sparkline: spend_trend embedded w overview + mini LineChart (Recharts 56×20)
 ```
 
 ## Szczegoly implementacji

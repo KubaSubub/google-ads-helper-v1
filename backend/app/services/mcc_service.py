@@ -365,7 +365,7 @@ class MCCService:
         impressions = metrics["impressions"]
 
         cpa = round(spend / conversions, 2) if conversions > 0 else None
-        roas = round(conv_value / spend * 100, 1) if spend > 0 else None
+        roas = round(conv_value / spend * 100, 1) if spend > 0 and conv_value > 0 else None
         ctr = round(clicks / impressions * 100, 2) if impressions > 0 else None
         avg_cpc = round(spend / clicks, 2) if clicks > 0 else None
         conv_rate = round(conversions / clicks * 100, 2) if clicks > 0 else None
@@ -441,10 +441,17 @@ class MCCService:
         # 7. New access detection
         new_access = self.detect_new_access(cid, days=30)
 
+        # 8. Health score
+        health = self._get_health_score(cid)
+
+        # 9. Daily spend trend (for sparkline)
+        spend_trend = self._get_daily_spend_trend(cid, period_start, period_end)
+
         return {
             "client_id": cid,
             "client_name": client.name,
             "google_customer_id": client.google_customer_id,
+            "currency": client.currency or "PLN",
             # Full metrics
             "clicks": clicks,
             "impressions": impressions,
@@ -476,6 +483,10 @@ class MCCService:
             "alert_details": alert_details,
             # Sync
             "last_synced_at": last_sync,
+            # Health
+            "health_score": health.get("score") if health else None,
+            # Spend trend (for sparkline)
+            "spend_trend": spend_trend,
         }
 
     def _aggregate_metrics(self, client_id: int, start: date, end: date) -> dict:
@@ -590,3 +601,17 @@ class MCCService:
             }
         except Exception:
             return None
+
+    def _get_daily_spend_trend(self, client_id: int, start: date, end: date) -> list[dict]:
+        """Daily spend breakdown for sparkline chart."""
+        rows = (
+            self._campaign_metrics_query(client_id, start, end)
+            .with_entities(MetricDaily.date, func.sum(MetricDaily.cost_micros))
+            .group_by(MetricDaily.date)
+            .order_by(MetricDaily.date)
+            .all()
+        )
+        return [
+            {"date": str(r[0]), "spend": micros_to_currency(int(r[1] or 0))}
+            for r in rows
+        ]

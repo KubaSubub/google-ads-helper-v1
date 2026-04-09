@@ -21,6 +21,7 @@ class Client(Base):
     seasonality = Column(JSON, default=list)  # [{period, multiplier}, ...]
     business_rules = Column(JSON, default=dict)  # {min_roas, max_daily_budget, ...}
     notes = Column(Text)
+    currency = Column(String(3), default="PLN")
     created_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc))
     last_change_sync_at = Column(DateTime, nullable=True)  # Last successful change_event sync

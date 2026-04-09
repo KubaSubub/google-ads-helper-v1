@@ -160,6 +160,9 @@ def _ensure_sqlite_columns():
             "source": "TEXT DEFAULT 'LOCAL_ACTION'",
             "updated_at": "DATETIME",
         },
+        "clients": {
+            "currency": "TEXT DEFAULT 'PLN'",
+        },
     }
 
     with engine.begin() as conn:
