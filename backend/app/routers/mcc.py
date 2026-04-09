@@ -56,8 +56,18 @@ def mcc_negative_keyword_lists(db: Session = Depends(get_db)):
 
 @router.get("/shared-lists")
 def mcc_shared_lists(db: Session = Depends(get_db)):
-    """MCC-level shared negative keyword lists (from manager account)."""
+    """MCC-level exclusion lists: negative keywords + placement exclusions."""
     return MCCService(db).get_mcc_shared_lists()
+
+
+@router.get("/shared-lists/{list_id}/items")
+def mcc_shared_list_items(
+    list_id: int,
+    list_type: str = Query("keyword", description="keyword or placement"),
+    db: Session = Depends(get_db),
+):
+    """Drill-down: return items of a specific MCC shared list."""
+    return MCCService(db).get_shared_list_items(list_id, list_type)
 
 
 @router.get("/billing-status")

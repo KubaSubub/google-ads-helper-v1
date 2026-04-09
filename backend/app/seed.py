@@ -13,6 +13,7 @@ from app.models import (
     ActionLog, ChangeEvent, Alert, NegativeKeyword, ConversionAction,
 )
 from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
+from app.models.placement_exclusion_list import PlacementExclusionList, PlacementExclusionListItem
 from app.models.asset_group import AssetGroup
 from app.models.asset_group_daily import AssetGroupDaily
 from app.models.asset_group_asset import AssetGroupAsset
@@ -1197,6 +1198,64 @@ def _seed_demo_data_impl(db):
         db.add(NegativeKeywordListItem(list_id=nkl_general.id, text=text, match_type="PHRASE"))
     for text in brand_items:
         db.add(NegativeKeywordListItem(list_id=nkl_brand.id, text=text, match_type="EXACT"))
+
+    # ---- MCC-level exclusion lists (owned by manager account) ----
+    mcc_nkl_profanity = NegativeKeywordList(
+        client_id=client.id, name="Wulgaryzmy i spam",
+        description="Wykluczenia MCC — przekleństwa, treści dla dorosłych, spam",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    mcc_nkl_irrelevant = NegativeKeywordList(
+        client_id=client.id, name="Nieistotne intencje",
+        description="Wykluczenia MCC — frazy informacyjne bez intencji zakupowej",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    db.add(mcc_nkl_profanity)
+    db.add(mcc_nkl_irrelevant)
+    db.flush()
+
+    profanity_items = ["kurwa", "cholera", "porno", "xxx", "sex", "nude", "hack", "crack", "torrent", "pirat"]
+    irrelevant_items = ["jak zrobić", "co to jest", "definicja", "wikipedia", "referat", "praca magisterska",
+                        "darmowe", "free download", "za darmo", "piracki", "chomikuj", "zalukaj"]
+    for text in profanity_items:
+        db.add(NegativeKeywordListItem(list_id=mcc_nkl_profanity.id, text=text, match_type="BROAD"))
+    for text in irrelevant_items:
+        db.add(NegativeKeywordListItem(list_id=mcc_nkl_irrelevant.id, text=text, match_type="PHRASE"))
+
+    # MCC-level placement exclusion lists
+    mcc_pel_spam = PlacementExclusionList(
+        client_id=client.id, name="Spammerskie strony",
+        description="Wykluczenia MCC — strony z reklamami, click-bait, made-for-ads",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    mcc_pel_apps = PlacementExclusionList(
+        client_id=client.id, name="Niechciane aplikacje",
+        description="Wykluczenia MCC — gry i aplikacje o niskiej jakości ruchu",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    db.add(mcc_pel_spam)
+    db.add(mcc_pel_apps)
+    db.flush()
+
+    spam_sites = [
+        ("clickbait-news24.com", "WEBSITE"), ("made-for-ads-site.net", "WEBSITE"),
+        ("spammy-recipes.info", "WEBSITE"), ("fake-celebrity-news.com", "WEBSITE"),
+        ("download-free-stuff.xyz", "WEBSITE"), ("auto-redirect-ads.com", "WEBSITE"),
+        ("cheap-traffic-network.com", "WEBSITE"), ("popup-generator.net", "WEBSITE"),
+        ("low-quality-content.org", "WEBSITE"), ("adsense-farm-123.com", "WEBSITE"),
+        ("youtube.com/channel/UCspam_channel_fake1", "YOUTUBE_CHANNEL"),
+        ("youtube.com/channel/UCspam_channel_fake2", "YOUTUBE_CHANNEL"),
+    ]
+    app_exclusions = [
+        ("play.google.com/store/apps/details?id=com.bad.game1", "MOBILE_APP"),
+        ("play.google.com/store/apps/details?id=com.bad.game2", "MOBILE_APP"),
+        ("play.google.com/store/apps/details?id=com.clickfraud.app", "MOBILE_APP"),
+        ("play.google.com/store/apps/details?id=com.lowquality.tool", "MOBILE_APP"),
+    ]
+    for url, ptype in spam_sites:
+        db.add(PlacementExclusionListItem(list_id=mcc_pel_spam.id, url=url, placement_type=ptype))
+    for url, ptype in app_exclusions:
+        db.add(PlacementExclusionListItem(list_id=mcc_pel_apps.id, url=url, placement_type=ptype))
 
     # -----------------------------------------------------------------------
     # ConversionAction (GAP 2A-2D: Conversion Data Quality Audit)

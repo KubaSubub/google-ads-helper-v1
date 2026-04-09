@@ -20,6 +20,7 @@ PHASE_REGISTRY: dict[str, dict] = {
     "keywords":            {"pattern": "A", "label": "Słowa kluczowe",          "group": "structure",  "max_days": None,  "critical": True,  "depends_on": "ad_groups"},
     "negative_keywords":   {"pattern": "A", "label": "Wykluczenia",             "group": "structure",  "max_days": None,  "critical": False, "depends_on": "ad_groups"},
     "negative_keyword_lists": {"pattern": "A", "label": "Listy wykluczeń",    "group": "structure",  "max_days": None,  "critical": False},
+    "mcc_exclusion_lists":    {"pattern": "A", "label": "Wykluczenia MCC",     "group": "structure",  "max_days": None,  "critical": False},
     # ── Metrics ─────────────────────────────────────────────────────
     "keyword_daily":       {"pattern": "B", "label": "Metryki słów kluczowych", "group": "metrics",    "max_days": 1095,  "critical": False, "depends_on": "keywords"},
     "daily_metrics":       {"pattern": "B", "label": "Metryki kampanii",        "group": "metrics",    "max_days": 1095,  "critical": False},

@@ -200,6 +200,20 @@ def trigger_sync(
     if phases["negative_keyword_lists"]["status"] == "error":
         total_errors += 1
 
+    # MCC exclusion lists — sync from manager account if available
+    from app.models import MccLink
+    manager_row = db.query(MccLink.manager_customer_id).filter(
+        MccLink.client_customer_id == cid.replace("-", "")
+    ).first()
+    if manager_row and manager_row[0]:
+        _run_phase(
+            "mcc_exclusion_lists",
+            lambda: google_ads_service.sync_mcc_exclusion_lists(db, manager_row[0]),
+            phases,
+        )
+        if phases.get("mcc_exclusion_lists", {}).get("status") == "error":
+            total_errors += 1
+
     keyword_daily_synced = 0
     if phases.get("keywords", {}).get("status") == "ok":
         keyword_daily_synced = _run_phase(
@@ -644,6 +658,7 @@ def sync_single_phase(
         "keywords": lambda: google_ads_service.sync_keywords(db, cid),
         "negative_keywords": lambda: google_ads_service.sync_negative_keywords(db, cid),
         "negative_keyword_lists": lambda: google_ads_service.sync_negative_keyword_lists(db, cid),
+        "mcc_exclusion_lists": lambda: google_ads_service.sync_mcc_exclusion_lists(db, cid),
         "keyword_daily": lambda: google_ads_service.sync_keyword_daily(db, cid, date_from, date_to),
         "daily_metrics": lambda: google_ads_service.sync_daily_metrics(db, cid, date_from, date_to),
         "device_metrics": lambda: google_ads_service.sync_device_metrics(db, cid, date_from, date_to),

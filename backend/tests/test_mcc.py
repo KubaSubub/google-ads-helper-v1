@@ -4,7 +4,9 @@ from datetime import date, datetime, timedelta, timezone
 
 from app.models import (
     Alert, Campaign, ChangeEvent, Client, MccLink, MetricDaily,
-    NegativeKeywordList, NegativeKeywordListItem, Recommendation, SyncLog,
+    NegativeKeywordList, NegativeKeywordListItem,
+    PlacementExclusionList, PlacementExclusionListItem,
+    Recommendation, SyncLog,
 )
 from app.services.mcc_service import MCCService
 
@@ -288,16 +290,16 @@ def test_mcc_overview_new_access_in_response(db):
 def test_mcc_shared_lists_empty(db):
     svc = MCCService(db)
     result = svc.get_mcc_shared_lists()
-    assert isinstance(result, list)
+    assert isinstance(result, dict)
+    assert result["keyword_lists"] == []
+    assert result["placement_lists"] == []
 
 
 def test_mcc_shared_lists_from_manager(db):
-    """MCC shared lists should return lists from manager account via MccLink."""
-    # Create manager client
+    """MCC shared lists should return keyword lists from manager account."""
     manager = _client(db, "MCC Manager", "999-000-0001")
     child = _client(db, "Child Account", "999-000-0002")
 
-    # Create MCC link
     db.add(MccLink(
         manager_customer_id="9990000001",
         client_customer_id="9990000002",
@@ -306,8 +308,11 @@ def test_mcc_shared_lists_from_manager(db):
     ))
     db.commit()
 
-    # Add NKL to manager account (MCC-level)
-    mcc_nkl = NegativeKeywordList(client_id=manager.id, name="MCC Exclusions", source="GOOGLE_ADS_SYNC")
+    # MCC-level negative keyword list
+    mcc_nkl = NegativeKeywordList(
+        client_id=manager.id, name="MCC Exclusions",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
     db.add(mcc_nkl)
     db.commit()
 
@@ -318,11 +323,119 @@ def test_mcc_shared_lists_from_manager(db):
     svc = MCCService(db)
     result = svc.get_mcc_shared_lists()
 
-    assert len(result) >= 1
-    mcc_list = next(r for r in result if r["name"] == "MCC Exclusions")
-    assert mcc_list["client_name"] == "MCC Manager"
-    assert mcc_list["member_count"] == 2
-    assert mcc_list["level"] == "mcc"
+    assert len(result["keyword_lists"]) >= 1
+    mcc_list = next(r for r in result["keyword_lists"] if r["name"] == "MCC Exclusions")
+    assert mcc_list["item_count"] == 2
+    assert mcc_list["ownership_level"] == "mcc"
+
+
+def test_mcc_placement_exclusion_lists(db):
+    """MCC shared lists should include placement exclusion lists."""
+    manager = _client(db, "MCC Manager", "888-000-0001")
+    child = _client(db, "Child", "888-000-0002")
+
+    db.add(MccLink(
+        manager_customer_id="8880000001",
+        client_customer_id="8880000002",
+        local_client_id=child.id,
+    ))
+    db.commit()
+
+    pel = PlacementExclusionList(
+        client_id=manager.id, name="Spam Sites",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    db.add(pel)
+    db.commit()
+
+    db.add(PlacementExclusionListItem(list_id=pel.id, url="spammy-site.com", placement_type="WEBSITE"))
+    db.add(PlacementExclusionListItem(list_id=pel.id, url="youtube.com/channel/UCfake", placement_type="YOUTUBE_CHANNEL"))
+    db.add(PlacementExclusionListItem(list_id=pel.id, url="play.google.com/store/apps/details?id=com.bad", placement_type="MOBILE_APP"))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_mcc_shared_lists()
+
+    assert len(result["placement_lists"]) >= 1
+    pl = next(r for r in result["placement_lists"] if r["name"] == "Spam Sites")
+    assert pl["item_count"] == 3
+    assert pl["ownership_level"] == "mcc"
+
+
+def test_mcc_shared_list_items_drilldown_keywords(db):
+    """Drill-down into a keyword list should return all items."""
+    client = _client(db)
+    nkl = NegativeKeywordList(
+        client_id=client.id, name="Test KW List",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    db.add(nkl)
+    db.commit()
+
+    db.add(NegativeKeywordListItem(list_id=nkl.id, text="spam", match_type="BROAD"))
+    db.add(NegativeKeywordListItem(list_id=nkl.id, text="free", match_type="PHRASE"))
+    db.add(NegativeKeywordListItem(list_id=nkl.id, text="cheap", match_type="EXACT"))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_shared_list_items(nkl.id, "keyword")
+
+    assert result["name"] == "Test KW List"
+    assert result["type"] == "keyword"
+    assert result["item_count"] == 3
+    assert len(result["items"]) == 3
+    texts = {i["text"] for i in result["items"]}
+    assert texts == {"spam", "free", "cheap"}
+
+
+def test_mcc_shared_list_items_drilldown_placements(db):
+    """Drill-down into a placement list should return all items."""
+    client = _client(db)
+    pel = PlacementExclusionList(
+        client_id=client.id, name="Test Placements",
+        source="MCC_SYNC", ownership_level="mcc",
+    )
+    db.add(pel)
+    db.commit()
+
+    db.add(PlacementExclusionListItem(list_id=pel.id, url="bad-site.com", placement_type="WEBSITE"))
+    db.add(PlacementExclusionListItem(list_id=pel.id, url="youtube.com/channel/UCbad", placement_type="YOUTUBE_CHANNEL"))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_shared_list_items(pel.id, "placement")
+
+    assert result["name"] == "Test Placements"
+    assert result["type"] == "placement"
+    assert result["item_count"] == 2
+    urls = {i["url"] for i in result["items"]}
+    assert "bad-site.com" in urls
+
+
+def test_mcc_shared_list_items_not_found(db):
+    """Drill-down with invalid ID should return error."""
+    svc = MCCService(db)
+    result = svc.get_shared_list_items(99999, "keyword")
+    assert "error" in result
+
+
+def test_mcc_shared_lists_excludes_account_level(db):
+    """MCC shared lists should NOT include account-level lists."""
+    client = _client(db)
+    # Account-level list (default ownership_level='account')
+    account_nkl = NegativeKeywordList(
+        client_id=client.id, name="Account Level List",
+        source="GOOGLE_ADS_SYNC", ownership_level="account",
+    )
+    db.add(account_nkl)
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_mcc_shared_lists()
+
+    # Should not appear in MCC lists
+    kw_names = [r["name"] for r in result["keyword_lists"]]
+    assert "Account Level List" not in kw_names
 
 
 def test_billing_status_without_api(db):

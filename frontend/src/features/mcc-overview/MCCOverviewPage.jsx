@@ -2,15 +2,17 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     RefreshCw, TrendingUp, TrendingDown, ArrowRight,
-    Bell, ExternalLink,
+    Bell, ExternalLink, Search,
     ChevronDown, ChevronRight, Shield, List,
-    UserPlus, CreditCard, Columns, EyeOff,
+    UserPlus, CreditCard, Columns, EyeOff, Globe, Ban,
 } from 'lucide-react'
 import {
-    getMccOverview, getMccSharedLists,
+    getMccOverview, getMccSharedLists, getMccSharedListItems,
     dismissMccGoogleRecommendations, syncClient,
+    discoverClients,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
+import { useFilter } from '../../contexts/FilterContext'
 import PacingProgressBar from '../../components/modules/PacingProgressBar'
 import { C, B, T, R, S, CARD, STATUS_COLORS } from '../../constants/designTokens'
 
@@ -120,17 +122,19 @@ const PERIODS = [
     { label: '7d', value: 7 },
     { label: '14d', value: 14 },
     { label: '30d', value: 30 },
-    { label: 'MTD', value: 'mtd' },
+    { label: 'MTD', value: 'this_month' },
 ]
 
 export default function MCCOverviewPage() {
     const navigate = useNavigate()
-    const { setSelectedClientId, showToast } = useApp()
+    const { setSelectedClientId, showToast, refreshClients } = useApp()
+    const { filters, setFilter, dateParams } = useFilter()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [syncingIds, setSyncingIds] = useState(new Set())
-    const [sharedLists, setSharedLists] = useState(null)
+    const [sharedData, setSharedData] = useState(null)
     const [sharedOpen, setSharedOpen] = useState(false)
+    const [expandedList, setExpandedList] = useState(null) // { id, type, items, loading }
     const [sortBy, setSortBy] = useState('spend')
     const [sortDir, setSortDir] = useState('desc')
     const [compactMode, setCompactMode] = useState(true)
@@ -138,32 +142,19 @@ export default function MCCOverviewPage() {
     const [hoveredAlert, setHoveredAlert] = useState(null)
     const [hoveredBilling, setHoveredBilling] = useState(null)
     const [dismissingAll, setDismissingAll] = useState(null)
-    const [period, setPeriod] = useState(30)
     const [selectedIds, setSelectedIds] = useState(new Set())
 
     const load = useCallback(async () => {
         try {
             setLoading(true)
-            const today = new Date()
-            const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-            const params = {}
-            if (period === 'mtd') {
-                params.date_from = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-                params.date_to = fmt(today)
-            } else {
-                const start = new Date(today)
-                start.setDate(start.getDate() - period + 1)
-                params.date_from = fmt(start)
-                params.date_to = fmt(today)
-            }
-            const result = await getMccOverview(params)
+            const result = await getMccOverview(dateParams)
             setData(result)
         } catch {
             showToast?.('Błąd ładowania MCC overview', 'error')
         } finally {
             setLoading(false)
         }
-    }, [showToast, period])
+    }, [showToast, dateParams])
 
     useEffect(() => { load() }, [load])
 
@@ -181,12 +172,26 @@ export default function MCCOverviewPage() {
         })
     }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Lazy load shared lists
+    // Lazy load MCC exclusion lists
     useEffect(() => {
-        if (sharedOpen && !sharedLists) {
-            getMccSharedLists().then(setSharedLists).catch(() => {})
+        if (sharedOpen && !sharedData) {
+            getMccSharedLists().then(setSharedData).catch(() => setSharedData({ keyword_lists: [], placement_lists: [] }))
         }
-    }, [sharedOpen, sharedLists])
+    }, [sharedOpen, sharedData])
+
+    const toggleListExpand = async (listId, listType) => {
+        if (expandedList?.id === listId && expandedList?.type === listType) {
+            setExpandedList(null)
+            return
+        }
+        setExpandedList({ id: listId, type: listType, items: null, loading: true })
+        try {
+            const result = await getMccSharedListItems(listId, listType)
+            setExpandedList({ id: listId, type: listType, items: result.items || [], loading: false })
+        } catch {
+            setExpandedList({ id: listId, type: listType, items: [], loading: false })
+        }
+    }
 
     const handleSort = (field) => {
         if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -208,8 +213,14 @@ export default function MCCOverviewPage() {
         e.stopPropagation()
         setSyncingIds(prev => new Set(prev).add(clientId))
         try {
-            await syncClient(clientId, 30)
-            showToast?.('Synchronizacja uruchomiona', 'success')
+            const result = await syncClient(clientId, 30)
+            if (result?.success) {
+                showToast?.('Synchronizacja zakończona', 'success')
+                refreshClients()
+                load()
+            } else {
+                showToast?.(result?.message || 'Synchronizacja nie powiodła się', 'error')
+            }
         } catch {
             showToast?.('Błąd synchronizacji', 'error')
         } finally {
@@ -225,6 +236,22 @@ export default function MCCOverviewPage() {
         )
         if (!stale.length) { showToast?.('Wszystkie konta aktualne', 'info'); return }
         for (const acc of stale.slice(0, 3)) handleSync(acc.client_id, { stopPropagation: () => {} })
+    }
+
+    const handleDiscover = async () => {
+        try {
+            const result = await discoverClients()
+            const added = result?.added || 0
+            if (added > 0) {
+                showToast?.(`Odkryto ${added} ${added === 1 ? 'nowe konto' : 'nowych kont'}`, 'success')
+                refreshClients()
+                load()
+            } else {
+                showToast?.('Brak nowych kont w MCC', 'info')
+            }
+        } catch {
+            showToast?.('Błąd wykrywania kont', 'error')
+        }
     }
 
     const handleDismissRecs = async (clientId, e) => {
@@ -312,12 +339,12 @@ export default function MCCOverviewPage() {
                         {PERIODS.map(p => (
                             <button
                                 key={p.label}
-                                onClick={() => setPeriod(p.value)}
+                                onClick={() => setFilter('period', p.value)}
                                 style={{
                                     padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 500,
-                                    border: `1px solid ${period === p.value ? C.accentBlue : C.w08}`,
-                                    background: period === p.value ? C.accentBlueBg : C.w04,
-                                    color: period === p.value ? 'white' : C.textPlaceholder,
+                                    border: `1px solid ${filters.period === p.value ? C.accentBlue : C.w08}`,
+                                    background: filters.period === p.value ? C.accentBlueBg : C.w04,
+                                    color: filters.period === p.value ? 'white' : C.textPlaceholder,
                                     cursor: 'pointer', transition: 'all 0.15s',
                                 }}
                             >
@@ -338,6 +365,13 @@ export default function MCCOverviewPage() {
                         color: C.accentBlue, fontSize: 12, fontWeight: 500, cursor: 'pointer',
                     }}>
                         <RefreshCw size={13} /> Synchronizuj nieaktualne
+                    </button>
+                    <button onClick={handleDiscover} style={{
+                        display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
+                        borderRadius: R.md, background: C.w04, border: B.subtle,
+                        color: C.w50, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                    }}>
+                        <Search size={13} /> Odkryj konta
                     </button>
                 </div>
             </div>
@@ -606,7 +640,7 @@ export default function MCCOverviewPage() {
                 )}
             </div>
 
-            {/* MCC Shared Lists only (no per-account) */}
+            {/* MCC Exclusion Lists — keywords + placements */}
             <div className={CARD} style={{ marginTop: S['3xl'], overflow: 'hidden' }}>
                 <button onClick={() => setSharedOpen(p => !p)} style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 8,
@@ -615,47 +649,173 @@ export default function MCCOverviewPage() {
                 }}>
                     {sharedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     <Shield size={14} style={{ color: C.accentPurple }} />
-                    Listy wykluczeń MCC
-                    {sharedLists && <span style={{ fontSize: 11, color: C.w40, marginLeft: 4 }}>({sharedLists.length})</span>}
+                    Wykluczenia MCC
+                    {sharedData && (
+                        <span style={{ fontSize: 11, color: C.w40, marginLeft: 4 }}>
+                            ({(sharedData.keyword_lists?.length || 0) + (sharedData.placement_lists?.length || 0)} list)
+                        </span>
+                    )}
                 </button>
                 {sharedOpen && (
                     <div style={{ borderTop: B.card }}>
-                        {!sharedLists ? (
+                        {!sharedData ? (
                             <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>
                                 <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite', marginBottom: 4 }} />
                                 <div>Ładowanie...</div>
                             </div>
-                        ) : sharedLists.length === 0 ? (
-                            <div style={{ padding: 24, textAlign: 'center', color: C.w30, fontSize: 12 }}>
-                                Brak list wykluczeń na poziomie MCC. Listy zarządzane z poziomu konta managera pojawią się tutaj po synchronizacji.
-                            </div>
                         ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ borderBottom: B.card }}>
-                                        <th style={TH}>Nazwa listy</th>
-                                        <th style={{ ...TH, textAlign: 'right' }}>Słów</th>
-                                        <th style={TH}>Typ</th>
-                                        <th style={TH}>Źródło</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sharedLists.map(nkl => (
-                                        <tr key={nkl.id} style={{ borderBottom: `1px solid ${C.w05}` }}>
-                                            <td style={TD}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    <List size={12} style={{ color: C.accentPurple, flexShrink: 0 }} />
-                                                    {nkl.name}
-                                                </div>
-                                                {nkl.description && <div style={{ fontSize: 10, color: C.w30, marginTop: 1 }}>{nkl.description}</div>}
-                                            </td>
-                                            <td style={{ ...TD, textAlign: 'right' }}>{nkl.member_count}</td>
-                                            <td style={TD_DIM}>Wykluczające słowa</td>
-                                            <td style={TD_DIM}>{nkl.source === 'GOOGLE_ADS_SYNC' ? 'Google' : 'Lokalna'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <>
+                                {/* Negative Keyword Lists */}
+                                <div style={{ padding: '10px 16px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Ban size={13} style={{ color: C.accentPurple }} />
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: C.w60 }}>Wykluczające frazy MCC</span>
+                                    <span style={{ fontSize: 10, color: C.w30 }}>({sharedData.keyword_lists?.length || 0})</span>
+                                </div>
+                                {(!sharedData.keyword_lists || sharedData.keyword_lists.length === 0) ? (
+                                    <div style={{ padding: '8px 16px 16px', color: C.w30, fontSize: 11 }}>
+                                        Brak list wykluczających fraz na poziomie MCC. Pojawią się po synchronizacji konta managera.
+                                    </div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: B.card }}>
+                                                <th style={{ ...TH, width: 28 }}></th>
+                                                <th style={TH}>Nazwa listy</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Fraz</th>
+                                                <th style={TH}>Źródło</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sharedData.keyword_lists.map(nkl => {
+                                                const isExpanded = expandedList?.id === nkl.id && expandedList?.type === 'keyword'
+                                                return [
+                                                    <tr key={nkl.id} onClick={() => toggleListExpand(nkl.id, 'keyword')}
+                                                        style={{ borderBottom: `1px solid ${C.w05}`, cursor: 'pointer' }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = C.w03}
+                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                                        <td style={{ ...TD, textAlign: 'center', padding: '6px 4px' }}>
+                                                            {isExpanded ? <ChevronDown size={12} style={{ color: C.w40 }} /> : <ChevronRight size={12} style={{ color: C.w30 }} />}
+                                                        </td>
+                                                        <td style={TD}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <List size={12} style={{ color: C.accentPurple, flexShrink: 0 }} />
+                                                                {nkl.name}
+                                                            </div>
+                                                            {nkl.description && <div style={{ fontSize: 10, color: C.w30, marginTop: 1, marginLeft: 18 }}>{nkl.description}</div>}
+                                                        </td>
+                                                        <td style={{ ...TD, textAlign: 'right' }}>{nkl.item_count}</td>
+                                                        <td style={TD_DIM}>{nkl.source === 'MCC_SYNC' || nkl.source === 'GOOGLE_ADS_SYNC' ? 'Google MCC' : 'Lokalna'}</td>
+                                                    </tr>,
+                                                    isExpanded && (
+                                                        <tr key={`${nkl.id}-items`}>
+                                                            <td colSpan={4} style={{ padding: 0, background: 'rgba(79,142,247,0.03)' }}>
+                                                                {expandedList?.loading ? (
+                                                                    <div style={{ padding: 12, textAlign: 'center', color: C.w30, fontSize: 11 }}>Ładowanie fraz...</div>
+                                                                ) : (
+                                                                    <div style={{ padding: '8px 16px 8px 44px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                                        {expandedList?.items?.length === 0 && <span style={{ color: C.w30, fontSize: 11 }}>Pusta lista</span>}
+                                                                        {expandedList?.items?.map(item => (
+                                                                            <span key={item.id} style={{
+                                                                                display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+                                                                                fontSize: 11, background: 'rgba(123,92,224,0.12)', color: C.w70,
+                                                                                border: `1px solid rgba(123,92,224,0.2)`,
+                                                                            }}>
+                                                                                {item.text}
+                                                                                <span style={{ marginLeft: 4, fontSize: 9, color: C.w30 }}>{item.match_type}</span>
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ),
+                                                ]
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+
+                                {/* Placement Exclusion Lists */}
+                                <div style={{ padding: '14px 16px 4px', display: 'flex', alignItems: 'center', gap: 6, borderTop: B.card }}>
+                                    <Globe size={13} style={{ color: C.warning }} />
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: C.w60 }}>Wykluczone miejsca docelowe MCC</span>
+                                    <span style={{ fontSize: 10, color: C.w30 }}>({sharedData.placement_lists?.length || 0})</span>
+                                </div>
+                                {(!sharedData.placement_lists || sharedData.placement_lists.length === 0) ? (
+                                    <div style={{ padding: '8px 16px 16px', color: C.w30, fontSize: 11 }}>
+                                        Brak list wykluczonych miejsc docelowych. Pojawią się po synchronizacji konta managera.
+                                    </div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: B.card }}>
+                                                <th style={{ ...TH, width: 28 }}></th>
+                                                <th style={TH}>Nazwa listy</th>
+                                                <th style={{ ...TH, textAlign: 'right' }}>Miejsc</th>
+                                                <th style={TH}>Źródło</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sharedData.placement_lists.map(pel => {
+                                                const isExpanded = expandedList?.id === pel.id && expandedList?.type === 'placement'
+                                                return [
+                                                    <tr key={pel.id} onClick={() => toggleListExpand(pel.id, 'placement')}
+                                                        style={{ borderBottom: `1px solid ${C.w05}`, cursor: 'pointer' }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = C.w03}
+                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                                        <td style={{ ...TD, textAlign: 'center', padding: '6px 4px' }}>
+                                                            {isExpanded ? <ChevronDown size={12} style={{ color: C.w40 }} /> : <ChevronRight size={12} style={{ color: C.w30 }} />}
+                                                        </td>
+                                                        <td style={TD}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <Globe size={12} style={{ color: C.warning, flexShrink: 0 }} />
+                                                                {pel.name}
+                                                            </div>
+                                                            {pel.description && <div style={{ fontSize: 10, color: C.w30, marginTop: 1, marginLeft: 18 }}>{pel.description}</div>}
+                                                        </td>
+                                                        <td style={{ ...TD, textAlign: 'right' }}>{pel.item_count}</td>
+                                                        <td style={TD_DIM}>{pel.source === 'MCC_SYNC' || pel.source === 'GOOGLE_ADS_SYNC' ? 'Google MCC' : 'Lokalna'}</td>
+                                                    </tr>,
+                                                    isExpanded && (
+                                                        <tr key={`${pel.id}-items`}>
+                                                            <td colSpan={4} style={{ padding: 0, background: 'rgba(251,191,36,0.03)' }}>
+                                                                {expandedList?.loading ? (
+                                                                    <div style={{ padding: 12, textAlign: 'center', color: C.w30, fontSize: 11 }}>Ładowanie miejsc...</div>
+                                                                ) : (
+                                                                    <div style={{ padding: '8px 16px 8px 44px' }}>
+                                                                        {expandedList?.items?.length === 0 && <span style={{ color: C.w30, fontSize: 11 }}>Pusta lista</span>}
+                                                                        {expandedList?.items?.map(item => (
+                                                                            <div key={item.id} style={{
+                                                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                                                padding: '2px 0', fontSize: 11, color: C.w60,
+                                                                            }}>
+                                                                                <span style={{
+                                                                                    fontSize: 9, padding: '1px 5px', borderRadius: 3,
+                                                                                    background: item.placement_type === 'WEBSITE' ? 'rgba(251,191,36,0.15)' :
+                                                                                        item.placement_type === 'YOUTUBE_CHANNEL' ? 'rgba(248,113,113,0.15)' :
+                                                                                        'rgba(79,142,247,0.15)',
+                                                                                    color: item.placement_type === 'WEBSITE' ? C.warning :
+                                                                                        item.placement_type === 'YOUTUBE_CHANNEL' ? C.danger : C.accentBlue,
+                                                                                }}>
+                                                                                    {item.placement_type === 'WEBSITE' ? 'WWW' :
+                                                                                     item.placement_type === 'YOUTUBE_CHANNEL' ? 'YT' :
+                                                                                     item.placement_type === 'YOUTUBE_VIDEO' ? 'YT' :
+                                                                                     item.placement_type === 'MOBILE_APP' ? 'APP' : item.placement_type}
+                                                                                </span>
+                                                                                <span>{item.url}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ),
+                                                ]
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </>
                         )}
                     </div>
                 )}

@@ -19,6 +19,7 @@ from app.models import (
     ChangeEvent, ActionLog, KeywordDaily, NegativeKeyword, ConversionAction,
     AssetGroup, AssetGroupDaily, AssetGroupAsset, CampaignAsset,
     NegativeKeywordList, NegativeKeywordListItem,
+    PlacementExclusionList, PlacementExclusionListItem,
 )
 from app.services.cache import get_cached, set_cached
 from app.services.campaign_roles import apply_role_classification
@@ -2748,6 +2749,301 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             logger.error(f"Error syncing negative keyword lists: {self._format_google_ads_error(e)}")
             db.rollback()
             raise
+
+    def sync_mcc_exclusion_lists(self, db: Session, manager_customer_id: str) -> dict:
+        """Sync MCC-level exclusion lists (negative keywords + placements) from manager account.
+
+        These are lists owned by the MCC manager, applied across client accounts.
+        Stored with ownership_level='mcc' and source='MCC_SYNC'.
+        """
+        if not self.is_connected:
+            return {"keyword_lists": 0, "placement_lists": 0}
+
+        normalized = self.normalize_customer_id(manager_customer_id)
+        client_record = self._find_client_record(db, normalized)
+        if not client_record:
+            return {"keyword_lists": 0, "placement_lists": 0}
+
+        ga_service = self.client.get_service("GoogleAdsService")
+
+        kw_count = self._sync_mcc_negative_keyword_lists(db, ga_service, normalized, client_record)
+        pl_count = self._sync_mcc_placement_exclusion_lists(db, ga_service, normalized, client_record)
+
+        db.commit()
+        logger.info(
+            f"MCC sync for {normalized}: {kw_count} keyword lists, {pl_count} placement lists"
+        )
+        return {"keyword_lists": kw_count, "placement_lists": pl_count}
+
+    def _sync_mcc_negative_keyword_lists(
+        self, db: Session, ga_service, customer_id: str, client_record
+    ) -> int:
+        """Sync NEGATIVE_KEYWORDS SharedSets from manager account as MCC-level lists."""
+        query = """
+            SELECT
+                shared_set.id, shared_set.resource_name, shared_set.name,
+                shared_set.type, shared_set.status, shared_set.member_count
+            FROM shared_set
+            WHERE shared_set.type = NEGATIVE_KEYWORDS
+              AND shared_set.status != 'REMOVED'
+        """
+        criterion_query = """
+            SELECT
+                shared_criterion.shared_set, shared_criterion.criterion_id,
+                shared_criterion.type, shared_criterion.keyword.text,
+                shared_criterion.keyword.match_type
+            FROM shared_criterion
+            WHERE shared_criterion.type = KEYWORD
+        """
+
+        try:
+            rows = ga_service.search(customer_id=customer_id, query=query)
+            seen_ids: set[int] = set()
+            set_map: dict[str, int] = {}
+            count = 0
+
+            for row in rows:
+                ss = row.shared_set
+                seen_ids.add(ss.id)
+
+                existing = (
+                    db.query(NegativeKeywordList)
+                    .filter(
+                        NegativeKeywordList.client_id == client_record.id,
+                        NegativeKeywordList.google_shared_set_id == ss.id,
+                    )
+                    .first()
+                )
+
+                if existing:
+                    existing.name = ss.name
+                    existing.status = ss.status.name
+                    existing.member_count = ss.member_count
+                    existing.google_resource_name = ss.resource_name
+                    existing.source = "MCC_SYNC"
+                    existing.ownership_level = "mcc"
+                    set_map[ss.resource_name] = existing.id
+                else:
+                    nkl = NegativeKeywordList(
+                        client_id=client_record.id,
+                        google_shared_set_id=ss.id,
+                        google_resource_name=ss.resource_name,
+                        name=ss.name,
+                        source="MCC_SYNC",
+                        ownership_level="mcc",
+                        member_count=ss.member_count,
+                        status=ss.status.name,
+                    )
+                    db.add(nkl)
+                    db.flush()
+                    set_map[ss.resource_name] = nkl.id
+                count += 1
+
+            # Mark stale MCC lists as REMOVED
+            if seen_ids:
+                stale = (
+                    db.query(NegativeKeywordList)
+                    .filter(
+                        NegativeKeywordList.client_id == client_record.id,
+                        NegativeKeywordList.ownership_level == "mcc",
+                        NegativeKeywordList.google_shared_set_id.isnot(None),
+                        ~NegativeKeywordList.google_shared_set_id.in_(seen_ids),
+                    )
+                    .all()
+                )
+                for s in stale:
+                    s.status = "REMOVED"
+
+            # Sync criteria (list members)
+            crit_rows = ga_service.search(customer_id=customer_id, query=criterion_query)
+            seen_items: dict[int, set[tuple[str, str]]] = {}
+
+            for row in crit_rows:
+                sc = row.shared_criterion
+                local_id = set_map.get(sc.shared_set)
+                if not local_id:
+                    continue
+
+                text = sc.keyword.text
+                match_type = getattr(sc.keyword.match_type, "name", str(sc.keyword.match_type))
+                seen_items.setdefault(local_id, set()).add((text, match_type))
+
+                existing_item = (
+                    db.query(NegativeKeywordListItem)
+                    .filter(
+                        NegativeKeywordListItem.list_id == local_id,
+                        NegativeKeywordListItem.text == text,
+                        NegativeKeywordListItem.match_type == match_type,
+                    )
+                    .first()
+                )
+                if existing_item:
+                    existing_item.google_criterion_id = sc.criterion_id
+                else:
+                    db.add(NegativeKeywordListItem(
+                        list_id=local_id,
+                        google_criterion_id=sc.criterion_id,
+                        text=text,
+                        match_type=match_type,
+                    ))
+
+            # Remove stale items
+            for local_id, pairs in seen_items.items():
+                for item in db.query(NegativeKeywordListItem).filter(
+                    NegativeKeywordListItem.list_id == local_id
+                ).all():
+                    if (item.text, item.match_type) not in pairs:
+                        db.delete(item)
+
+            for rn, local_id in set_map.items():
+                if local_id not in seen_items:
+                    db.query(NegativeKeywordListItem).filter(
+                        NegativeKeywordListItem.list_id == local_id
+                    ).delete()
+
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing MCC keyword lists: {self._format_google_ads_error(e)}")
+            return 0
+
+    def _sync_mcc_placement_exclusion_lists(
+        self, db: Session, ga_service, customer_id: str, client_record
+    ) -> int:
+        """Sync NEGATIVE_PLACEMENTS SharedSets from manager account."""
+        query = """
+            SELECT
+                shared_set.id, shared_set.resource_name, shared_set.name,
+                shared_set.type, shared_set.status, shared_set.member_count
+            FROM shared_set
+            WHERE shared_set.type = NEGATIVE_PLACEMENTS
+              AND shared_set.status != 'REMOVED'
+        """
+        criterion_query = """
+            SELECT
+                shared_criterion.shared_set, shared_criterion.criterion_id,
+                shared_criterion.type, shared_criterion.placement.url
+            FROM shared_criterion
+            WHERE shared_criterion.type = PLACEMENT
+        """
+
+        try:
+            rows = ga_service.search(customer_id=customer_id, query=query)
+            seen_ids: set[int] = set()
+            set_map: dict[str, int] = {}
+            count = 0
+
+            for row in rows:
+                ss = row.shared_set
+                seen_ids.add(ss.id)
+
+                existing = (
+                    db.query(PlacementExclusionList)
+                    .filter(
+                        PlacementExclusionList.client_id == client_record.id,
+                        PlacementExclusionList.google_shared_set_id == ss.id,
+                    )
+                    .first()
+                )
+
+                if existing:
+                    existing.name = ss.name
+                    existing.status = ss.status.name
+                    existing.member_count = ss.member_count
+                    existing.google_resource_name = ss.resource_name
+                    existing.source = "MCC_SYNC"
+                    existing.ownership_level = "mcc"
+                    set_map[ss.resource_name] = existing.id
+                else:
+                    pel = PlacementExclusionList(
+                        client_id=client_record.id,
+                        google_shared_set_id=ss.id,
+                        google_resource_name=ss.resource_name,
+                        name=ss.name,
+                        source="MCC_SYNC",
+                        ownership_level="mcc",
+                        member_count=ss.member_count,
+                        status=ss.status.name,
+                    )
+                    db.add(pel)
+                    db.flush()
+                    set_map[ss.resource_name] = pel.id
+                count += 1
+
+            # Mark stale
+            if seen_ids:
+                stale = (
+                    db.query(PlacementExclusionList)
+                    .filter(
+                        PlacementExclusionList.client_id == client_record.id,
+                        PlacementExclusionList.ownership_level == "mcc",
+                        PlacementExclusionList.google_shared_set_id.isnot(None),
+                        ~PlacementExclusionList.google_shared_set_id.in_(seen_ids),
+                    )
+                    .all()
+                )
+                for s in stale:
+                    s.status = "REMOVED"
+
+            # Sync placement criteria
+            crit_rows = ga_service.search(customer_id=customer_id, query=criterion_query)
+            seen_items: dict[int, set[str]] = {}
+
+            for row in crit_rows:
+                sc = row.shared_criterion
+                local_id = set_map.get(sc.shared_set)
+                if not local_id:
+                    continue
+
+                url = sc.placement.url
+                seen_items.setdefault(local_id, set()).add(url)
+
+                existing_item = (
+                    db.query(PlacementExclusionListItem)
+                    .filter(
+                        PlacementExclusionListItem.list_id == local_id,
+                        PlacementExclusionListItem.url == url,
+                    )
+                    .first()
+                )
+                if existing_item:
+                    existing_item.google_criterion_id = sc.criterion_id
+                else:
+                    # Determine placement type from URL pattern
+                    ptype = "WEBSITE"
+                    if "youtube.com/channel" in url or "youtube.com/c/" in url:
+                        ptype = "YOUTUBE_CHANNEL"
+                    elif "youtube.com/watch" in url or "youtube.com/video" in url:
+                        ptype = "YOUTUBE_VIDEO"
+                    elif "play.google.com" in url or "apps.apple.com" in url:
+                        ptype = "MOBILE_APP"
+
+                    db.add(PlacementExclusionListItem(
+                        list_id=local_id,
+                        google_criterion_id=sc.criterion_id,
+                        url=url,
+                        placement_type=ptype,
+                    ))
+
+            # Remove stale items
+            for local_id, urls in seen_items.items():
+                for item in db.query(PlacementExclusionListItem).filter(
+                    PlacementExclusionListItem.list_id == local_id
+                ).all():
+                    if item.url not in urls:
+                        db.delete(item)
+
+            for rn, local_id in set_map.items():
+                if local_id not in seen_items:
+                    db.query(PlacementExclusionListItem).filter(
+                        PlacementExclusionListItem.list_id == local_id
+                    ).delete()
+
+            return count
+
+        except Exception as e:
+            logger.error(f"Error syncing MCC placement lists: {self._format_google_ads_error(e)}")
+            return 0
 
     def sync_keyword_daily(
         self, db: Session, customer_id: str,

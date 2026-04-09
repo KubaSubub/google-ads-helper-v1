@@ -15,6 +15,8 @@ from app.models import (
     MetricDaily,
     NegativeKeywordList,
     NegativeKeywordListItem,
+    PlacementExclusionList,
+    PlacementExclusionListItem,
     Recommendation,
     SyncLog,
 )
@@ -115,86 +117,126 @@ class MCCService:
         self.db.commit()
         return {"dismissed": count}
 
-    def get_mcc_shared_lists(self) -> list[dict]:
-        """Return MCC-level shared negative keyword lists (queried from manager account).
+    def get_mcc_shared_lists(self) -> dict:
+        """Return MCC-level exclusion lists: negative keywords + placement exclusions.
 
-        MCC-level lists are stored with client_id=0 convention, or sourced from
-        the manager account via sync_mcc_shared_sets(). Falls back to showing
-        all GOOGLE_ADS_SYNC lists if no MCC-specific lists exist.
+        MCC-level lists are identified by ownership_level='mcc' (synced from manager account).
+        Falls back to source='GOOGLE_ADS_SYNC' if no ownership_level set yet.
         """
         from app.models import MccLink
 
-        # Find manager customer ID from config or MCC links
-        manager_ids = set()
-        mcc_links = self.db.query(MccLink.manager_customer_id).distinct().all()
-        for row in mcc_links:
-            if row[0]:
-                manager_ids.add(row[0])
+        manager_client_ids = self._get_manager_client_ids()
 
-        # MCC-level lists: look for lists where source indicates they came from
-        # manager account sync, or client_id matches a manager account
-        manager_client_ids = set()
-        if manager_ids:
-            # Normalize: MccLink stores without dashes, Client may have dashes
-            all_clients = self.db.query(Client).all()
-            for mc in all_clients:
-                normalized = mc.google_customer_id.replace("-", "") if mc.google_customer_id else ""
-                if normalized in manager_ids:
-                    manager_client_ids.add(mc.id)
-
-        # Query: MCC-level lists (from manager clients) + fallback to all synced lists
+        # --- Negative keyword lists (MCC-level) ---
+        kw_filter = NegativeKeywordList.ownership_level == "mcc"
         if manager_client_ids:
-            lists = (
-                self.db.query(NegativeKeywordList)
-                .filter(NegativeKeywordList.client_id.in_(manager_client_ids))
-                .order_by(NegativeKeywordList.name)
-                .all()
-            )
-        else:
-            # Fallback: show all Google-synced lists across all accounts
-            lists = (
-                self.db.query(NegativeKeywordList)
-                .filter(NegativeKeywordList.source == "GOOGLE_ADS_SYNC")
-                .order_by(NegativeKeywordList.name)
-                .all()
-            )
+            kw_filter = kw_filter | NegativeKeywordList.client_id.in_(manager_client_ids)
 
-        # Count items per list
-        item_counts = {}
-        if lists:
-            list_ids = [nkl.id for nkl in lists]
+        kw_lists = (
+            self.db.query(NegativeKeywordList)
+            .filter(kw_filter, NegativeKeywordList.status != "REMOVED")
+            .order_by(NegativeKeywordList.name)
+            .all()
+        )
+
+        kw_item_counts = self._count_nkl_items([nkl.id for nkl in kw_lists])
+
+        # --- Placement exclusion lists (MCC-level) ---
+        pl_filter = PlacementExclusionList.ownership_level == "mcc"
+        if manager_client_ids:
+            pl_filter = pl_filter | PlacementExclusionList.client_id.in_(manager_client_ids)
+
+        pl_lists = (
+            self.db.query(PlacementExclusionList)
+            .filter(pl_filter, PlacementExclusionList.status != "REMOVED")
+            .order_by(PlacementExclusionList.name)
+            .all()
+        )
+
+        pl_item_counts = {}
+        if pl_lists:
             rows = (
                 self.db.query(
-                    NegativeKeywordListItem.list_id,
-                    func.count(NegativeKeywordListItem.id),
+                    PlacementExclusionListItem.list_id,
+                    func.count(PlacementExclusionListItem.id),
                 )
-                .filter(NegativeKeywordListItem.list_id.in_(list_ids))
-                .group_by(NegativeKeywordListItem.list_id)
+                .filter(PlacementExclusionListItem.list_id.in_([p.id for p in pl_lists]))
+                .group_by(PlacementExclusionListItem.list_id)
                 .all()
             )
-            item_counts = {r[0]: r[1] for r in rows}
+            pl_item_counts = {r[0]: r[1] for r in rows}
 
-        # Client name lookup
-        client_ids = {nkl.client_id for nkl in lists}
-        clients = {
-            c.id: c.name
-            for c in self.db.query(Client).filter(Client.id.in_(client_ids)).all()
-        } if client_ids else {}
+        return {
+            "keyword_lists": [
+                {
+                    "id": nkl.id,
+                    "name": nkl.name,
+                    "description": nkl.description,
+                    "source": nkl.source,
+                    "status": nkl.status,
+                    "item_count": kw_item_counts.get(nkl.id, 0),
+                    "ownership_level": nkl.ownership_level or "mcc",
+                }
+                for nkl in kw_lists
+            ],
+            "placement_lists": [
+                {
+                    "id": pel.id,
+                    "name": pel.name,
+                    "description": pel.description,
+                    "source": pel.source,
+                    "status": pel.status,
+                    "item_count": pl_item_counts.get(pel.id, 0),
+                    "ownership_level": pel.ownership_level or "mcc",
+                }
+                for pel in pl_lists
+            ],
+        }
 
-        return [
-            {
+    def get_shared_list_items(self, list_id: int, list_type: str = "keyword") -> dict:
+        """Return items (drill-down) for a specific shared list."""
+        if list_type == "placement":
+            pel = self.db.query(PlacementExclusionList).filter(PlacementExclusionList.id == list_id).first()
+            if not pel:
+                return {"error": "List not found"}
+            items = (
+                self.db.query(PlacementExclusionListItem)
+                .filter(PlacementExclusionListItem.list_id == list_id)
+                .order_by(PlacementExclusionListItem.url)
+                .all()
+            )
+            return {
+                "id": pel.id,
+                "name": pel.name,
+                "description": pel.description,
+                "type": "placement",
+                "item_count": len(items),
+                "items": [
+                    {"id": i.id, "url": i.url, "placement_type": i.placement_type}
+                    for i in items
+                ],
+            }
+        else:
+            nkl = self.db.query(NegativeKeywordList).filter(NegativeKeywordList.id == list_id).first()
+            if not nkl:
+                return {"error": "List not found"}
+            items = (
+                self.db.query(NegativeKeywordListItem)
+                .filter(NegativeKeywordListItem.list_id == list_id)
+                .order_by(NegativeKeywordListItem.text)
+                .all()
+            )
+            return {
                 "id": nkl.id,
-                "client_id": nkl.client_id,
-                "client_name": clients.get(nkl.client_id, "MCC"),
                 "name": nkl.name,
                 "description": nkl.description,
-                "source": nkl.source,
-                "status": nkl.status,
-                "member_count": item_counts.get(nkl.id, 0),
-                "level": "mcc" if nkl.client_id in manager_client_ids else "account",
+                "type": "keyword",
+                "item_count": len(items),
+                "items": [
+                    {"id": i.id, "text": i.text, "match_type": i.match_type}
+                    for i in items
+                ],
             }
-            for nkl in lists
-        ]
 
     def get_negative_keyword_lists_overview(self) -> list[dict]:
         """Return all NKL across all clients, grouped by client."""
@@ -211,19 +253,7 @@ class MCCService:
             for c in self.db.query(Client).filter(Client.id.in_(client_ids)).all()
         } if client_ids else {}
 
-        item_counts = {}
-        if lists:
-            list_ids = [nkl.id for nkl in lists]
-            rows = (
-                self.db.query(
-                    NegativeKeywordListItem.list_id,
-                    func.count(NegativeKeywordListItem.id),
-                )
-                .filter(NegativeKeywordListItem.list_id.in_(list_ids))
-                .group_by(NegativeKeywordListItem.list_id)
-                .all()
-            )
-            item_counts = {r[0]: r[1] for r in rows}
+        item_counts = self._count_nkl_items([nkl.id for nkl in lists])
 
         return [
             {
@@ -235,9 +265,41 @@ class MCCService:
                 "source": nkl.source,
                 "status": nkl.status,
                 "member_count": item_counts.get(nkl.id, 0),
+                "ownership_level": nkl.ownership_level or "account",
             }
             for nkl in lists
         ]
+
+    def _get_manager_client_ids(self) -> set[int]:
+        """Find local Client IDs that are manager (MCC) accounts."""
+        from app.models import MccLink
+        manager_ids = set()
+        for row in self.db.query(MccLink.manager_customer_id).distinct().all():
+            if row[0]:
+                manager_ids.add(row[0])
+        if not manager_ids:
+            return set()
+        result = set()
+        for c in self.db.query(Client).all():
+            normalized = c.google_customer_id.replace("-", "") if c.google_customer_id else ""
+            if normalized in manager_ids:
+                result.add(c.id)
+        return result
+
+    def _count_nkl_items(self, list_ids: list[int]) -> dict[int, int]:
+        """Count NegativeKeywordListItem per list."""
+        if not list_ids:
+            return {}
+        rows = (
+            self.db.query(
+                NegativeKeywordListItem.list_id,
+                func.count(NegativeKeywordListItem.id),
+            )
+            .filter(NegativeKeywordListItem.list_id.in_(list_ids))
+            .group_by(NegativeKeywordListItem.list_id)
+            .all()
+        )
+        return {r[0]: r[1] for r in rows}
 
     def get_billing_status(self, customer_id: str) -> dict:
         """Try to fetch billing/payment status from Google Ads API.

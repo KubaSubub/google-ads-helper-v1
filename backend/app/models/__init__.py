@@ -12,6 +12,7 @@ from .search_term import SearchTerm
 from .ad import Ad
 from .negative_keyword import NegativeKeyword
 from .negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
+from .placement_exclusion_list import PlacementExclusionList, PlacementExclusionListItem
 from .metric_daily import MetricDaily
 from .metric_segmented import MetricSegmented
 from .recommendation import Recommendation
@@ -88,5 +89,7 @@ __all__ = [
     "AutomatedRuleLog",
     "DsaTarget",
     "DsaHeadline",
+    "PlacementExclusionList",
+    "PlacementExclusionListItem",
 ]
 

@@ -350,6 +350,8 @@ export const getMccNegativeKeywordLists = () =>
     api.get('/mcc/negative-keyword-lists')
 export const getMccSharedLists = () =>
     api.get('/mcc/shared-lists')
+export const getMccSharedListItems = (listId, listType = 'keyword') =>
+    api.get(`/mcc/shared-lists/${listId}/items`, { params: { list_type: listType } })
 export const getMccBillingStatus = (customerId) =>
     api.get('/mcc/billing-status', { params: { customer_id: customerId } })
 

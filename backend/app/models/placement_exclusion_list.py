@@ -1,4 +1,4 @@
-"""Models for negative keyword lists and their items."""
+"""Models for MCC-level placement exclusion lists and their items."""
 
 from datetime import datetime, timezone
 
@@ -8,8 +8,8 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
-class NegativeKeywordList(Base):
-    __tablename__ = "negative_keyword_lists"
+class PlacementExclusionList(Base):
+    __tablename__ = "placement_exclusion_lists"
 
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -29,19 +29,19 @@ class NegativeKeywordList(Base):
     )
 
     client = relationship("Client")
-    items = relationship("NegativeKeywordListItem", back_populates="keyword_list", cascade="all, delete-orphan")
+    items = relationship("PlacementExclusionListItem", back_populates="exclusion_list", cascade="all, delete-orphan")
 
 
-class NegativeKeywordListItem(Base):
-    __tablename__ = "negative_keyword_list_items"
+class PlacementExclusionListItem(Base):
+    __tablename__ = "placement_exclusion_list_items"
 
     id = Column(Integer, primary_key=True, index=True)
-    list_id = Column(Integer, ForeignKey("negative_keyword_lists.id", ondelete="CASCADE"), nullable=False, index=True)
+    list_id = Column(Integer, ForeignKey("placement_exclusion_lists.id", ondelete="CASCADE"), nullable=False, index=True)
     google_criterion_id = Column(BigInteger, nullable=True)
-    text = Column(String(500), nullable=False)
-    match_type = Column(String(20), default="PHRASE")
+    url = Column(String(2048), nullable=False)
+    placement_type = Column(String(30), default="WEBSITE")  # WEBSITE | YOUTUBE_CHANNEL | YOUTUBE_VIDEO | MOBILE_APP
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
-    keyword_list = relationship("NegativeKeywordList", back_populates="items")
+    exclusion_list = relationship("PlacementExclusionList", back_populates="items")
 
-    __table_args__ = (UniqueConstraint("list_id", "text", "match_type", name="uq_list_text_match"),)
+    __table_args__ = (UniqueConstraint("list_id", "url", name="uq_placement_list_url"),)
