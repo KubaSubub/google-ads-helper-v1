@@ -16,6 +16,7 @@ class ClientBase(BaseModel):
     seasonality: list[dict] = []
     business_rules: dict = {}
     notes: Optional[str] = None
+    currency: Optional[str] = "PLN"
 
 
 class ClientCreate(ClientBase):
@@ -32,6 +33,7 @@ class ClientUpdate(BaseModel):
     seasonality: Optional[list[dict]] = None
     business_rules: Optional[dict] = None
     notes: Optional[str] = None
+    currency: Optional[str] = None
 
 
 class ClientResponse(ClientBase):

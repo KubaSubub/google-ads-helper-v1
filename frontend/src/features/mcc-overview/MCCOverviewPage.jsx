@@ -13,9 +13,9 @@ import {
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
-import { LineChart, Line } from 'recharts'
+import { LineChart, Line, Tooltip } from 'recharts'
 import PacingProgressBar from '../../components/modules/PacingProgressBar'
-import { C, B, T, R, S, CARD, STATUS_COLORS } from '../../constants/designTokens'
+import { C, B, T, R, S, CARD } from '../../constants/designTokens'
 
 const TH = T.th
 const TD = T.td
@@ -49,6 +49,11 @@ function SpendSparkline({ data }) {
     return (
         <div style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 6 }}>
             <LineChart width={56} height={20} data={data}>
+                <Tooltip
+                    contentStyle={{ background: C.surfaceElevated, border: B.hover, borderRadius: 6, fontSize: 10, padding: '4px 8px' }}
+                    formatter={v => [fmtMoney(v), 'Wydatki']}
+                    labelFormatter={d => d}
+                />
                 <Line type="monotone" dataKey="spend" stroke={C.accentBlue} dot={false} strokeWidth={1.5} isAnimationActive={false} />
             </LineChart>
         </div>
