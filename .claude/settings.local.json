@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/post-edit-test.sh",
-            "timeout": 30,
+            "timeout": 60,
             "statusMessage": "Auto-test powiazanego pliku..."
           }
         ]
