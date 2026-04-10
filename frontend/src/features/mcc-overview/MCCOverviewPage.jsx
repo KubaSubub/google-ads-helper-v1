@@ -4,11 +4,11 @@ import {
     RefreshCw, TrendingUp, TrendingDown, ArrowRight,
     Bell, ExternalLink, Search,
     ChevronDown, ChevronRight, Shield, List,
-    UserPlus, CreditCard, Columns, EyeOff, Globe, Ban,
+    UserPlus, CreditCard, Columns, Globe, Ban,
 } from 'lucide-react'
 import {
     getMccOverview, getMccSharedLists, getMccSharedListItems,
-    dismissMccGoogleRecommendations, syncClient,
+    syncClient,
     discoverClients,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
@@ -171,7 +171,6 @@ export default function MCCOverviewPage() {
     const [billingStatuses, setBillingStatuses] = useState({})
     const [hoveredAlert, setHoveredAlert] = useState(null)
     const [hoveredBilling, setHoveredBilling] = useState(null)
-    const [dismissingAll, setDismissingAll] = useState(null)
     const [selectedIds, setSelectedIds] = useState(new Set())
 
     const load = useCallback(async () => {
@@ -323,20 +322,6 @@ export default function MCCOverviewPage() {
         }
     }
 
-    const handleDismissRecs = async (clientId, e) => {
-        e.stopPropagation()
-        setDismissingAll(clientId)
-        try {
-            const result = await dismissMccGoogleRecommendations({ client_id: clientId, dismiss_all: true })
-            showToast?.(`Ukryto ${result.dismissed} rekomendacji w aplikacji`, 'success')
-            load()
-        } catch {
-            showToast?.('Błąd ukrywania rekomendacji', 'error')
-        } finally {
-            setDismissingAll(null)
-        }
-    }
-
     const rawAccounts = data?.accounts || []
 
     const accounts = useMemo(() => {
@@ -391,20 +376,6 @@ export default function MCCOverviewPage() {
             failed === 0 ? 'success' : (ok > 0 ? 'info' : 'error'),
         )
         refreshClients()
-        load()
-    }
-
-    const handleBulkDismissRecs = async () => {
-        const ids = [...selectedIds]
-        try {
-            await Promise.all(ids.map(id =>
-                dismissMccGoogleRecommendations({ client_id: id, dismiss_all: true })
-            ))
-            showToast?.(`Rekomendacje odrzucone dla ${ids.length} kont`, 'success')
-        } catch {
-            showToast?.('Błąd odrzucania rekomendacji', 'error')
-        }
-        setSelectedIds(new Set())
         load()
     }
 
@@ -505,13 +476,6 @@ export default function MCCOverviewPage() {
                         }}>
                             <RefreshCw size={11} /> Synchronizuj
                         </button>
-                        <button onClick={handleBulkDismissRecs} style={{
-                            display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
-                            borderRadius: R.md, background: C.w04, border: B.subtle,
-                            color: C.w50, fontSize: 11, cursor: 'pointer',
-                        }}>
-                            <EyeOff size={11} /> Odrzuć rekomendacje
-                        </button>
                     </div>
                 )}
                 {loading ? (
@@ -552,7 +516,6 @@ export default function MCCOverviewPage() {
                                 <th style={{ ...TH, minWidth: 120 }}>Pacing</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Płatności</th>
                                 <SortHeader label="Zmiany" field="total_changes" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <th style={{ ...TH, minWidth: 100 }}>Rekomendacje Google</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Sync</th>
                                 <th style={{ ...TH, width: 50 }}></th>
                             </tr>
@@ -710,31 +673,6 @@ export default function MCCOverviewPage() {
                                                     {Object.entries(acc.change_breakdown).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ')}
                                                 </div>
                                             )}
-                                        </td>
-                                        {/* Rekomendacje Google */}
-                                        <td style={{ ...TD, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                                            {acc.google_recs_pending > 0 ? (
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                                    <span
-                                                        style={{ color: C.accentBlue, fontWeight: 500, cursor: 'pointer' }}
-                                                        onClick={(e) => handleDeepLink(acc, '/recommendations', e)}
-                                                    >
-                                                        {acc.google_recs_pending} rek.
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => handleDismissRecs(acc.client_id, e)}
-                                                        disabled={dismissingAll === acc.client_id}
-                                                        title="Ukryj w aplikacji (nie wpływa na Google Ads)"
-                                                        style={{
-                                                            background: C.w04, border: B.subtle, borderRadius: R.sm,
-                                                            cursor: 'pointer', padding: '2px 6px',
-                                                            color: C.w40, fontSize: 9, opacity: dismissingAll === acc.client_id ? 0.3 : 1,
-                                                        }}
-                                                    >
-                                                        <EyeOff size={10} />
-                                                    </button>
-                                                </div>
-                                            ) : <span style={{ color: C.w20, fontSize: 11 }}>Brak</span>}
                                         </td>
                                         {/* Sync */}
                                         <td style={{ ...TD, textAlign: 'center' }}>

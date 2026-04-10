@@ -712,30 +712,22 @@ test('MCC Overview — billing-status per account triggers one fetch per unique 
     expect(unique.size).toBe(3);
 });
 
-test('MCC Overview — dismiss recs button calls dismiss endpoint when bulk selected', async ({ page }) => {
-    let dismissCalled = false;
-    await page.route(/\/api\/v1\/mcc\/dismiss-google-recommendations/, async route => {
-        dismissCalled = true;
-        await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({ dismissed: 5 }),
-        });
-    });
-
+test('MCC Overview — Rekomendacje Google UI removed (no column, no bulk button)', async ({ page }) => {
+    // Guard: the "Rekomendacje Google" column and its bulk dismiss button were
+    // removed from MCC Overview (broken feature, relocated elsewhere).
+    // This test ensures no future refactor re-introduces them here.
     await page.goto('/mcc-overview');
     await expect(page.locator('text=Sushi Naka Naka')).toBeVisible({ timeout: 10_000 });
 
-    // Select first account
+    // No column header
+    await expect(page.locator('th:has-text("Rekomendacje Google")')).toHaveCount(0);
+
+    // Select a row — bulk bar appears
     await page.locator('tbody tr').first().locator('input[type="checkbox"]').click();
     await expect(page.locator('text=Zaznaczono: 1')).toBeVisible();
 
-    // Bulk dismiss button may have icon-only trigger — fall back to title/aria if needed
-    const dismissBtn = page.locator('button:has-text("Ukryj rekomendacje"), button[title*="rekomendacje" i]').first();
-    if (await dismissBtn.count() > 0) {
-        await dismissBtn.click();
-        await expect.poll(() => dismissCalled, { timeout: 5_000 }).toBe(true);
-    }
+    // No "Odrzuć rekomendacje" button in bulk bar
+    await expect(page.locator('button:has-text("Odrzuć rekomendacje")')).toHaveCount(0);
 });
 
 test('MCC Overview — no unhandled JS errors on full render + interactions', async ({ page }) => {
