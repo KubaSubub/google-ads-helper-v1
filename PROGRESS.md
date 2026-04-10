@@ -2,7 +2,7 @@
 # Updated: 2026-04-10 (docs-sync)
 
 ## Status
-- Backend: 596 tests passing
+- Backend: 607 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
@@ -59,7 +59,30 @@
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
 
-## Settings — Client Info Hub + AI Context (DONE, 2026-04-10)
+## Settings — Marketing Mastermind Brief (2026-04-10)
+- Spec: `docs/specs/settings-mastermind-brief.md`, CEO entry in `docs/ceo-log.md`
+- Pivot: Settings transformed from operational hub (which duplicated Dashboard/Daily Audit/Campaigns/Monitoring) into marketing mastermind brief — single place where a specialist documents WHO the client is, WHAT the strategy is, what worked / didn't work, and what the AI agent needs as prompt context
+- Backend: new `strategy_context` JSON column on `clients` with auto-migration via `_ensure_sqlite_columns` (no manual migration)
+  - New Pydantic schemas: `StrategyContext`, `LessonEntry`, `DecisionLogEntry` with length validators (narrative ≤10k, brand_voice ≤5k, lesson description 10-2000 chars, lessons_learned ≤200, decisions_log ≤500)
+  - `PATCH /clients/{id}` now deep-merges `strategy_context` (partial updates preserve other fields — critical for future AI writing `decisions_log`)
+  - `PATCH` with `{"strategy_context": null}` is a no-op (does not wipe column)
+  - 11 new backend tests in `test_client_strategy.py` (total: 596 → 607)
+- Frontend: new `ConversionGoalsSection.jsx` replaces operational 4-card `ClientHealthSection` view
+  - Full-width table of `ConversionAction` rows with checkbox toggling `business_rules.priority_conversions`
+  - New column "Cel Google Ads" shows `primary_for_goal` from API — surfaces the semantic gap between local priority and Google Ads primary
+  - Helper text clarifies: local priority does NOT mutate Google Ads settings
+- Frontend: 5 new brief sections in `Settings.jsx` under "Brief kliencki" header
+  1. Strategia marketingowa — narrative textarea (Obsidian-ready)
+  2. Plan działań / Roadmap — narrative textarea
+  3. Log decyzji — read-only, "AI coming soon" banner; structure ready for AI agent
+  4. Wnioski i lessons learned — structured wins/losses/tests journal with append + delete
+  5. Brand voice & zakazy — 2-column tone/restrictions
+- Settings.jsx grouped with "Brief kliencki" / "Execution" headers to distinguish strategic vs operational sections
+- Tests: `frontend/e2e/settings-mastermind-brief.spec.js` 10 E2E (DOM-based, remove lesson flow, primary_for_goal column visibility)
+- Dead code: `ClientHealthSection.jsx` unreferenced after pivot (sandbox denied delete; not imported)
+- Commit: 9f8d7f1
+
+## Settings — Client Info Hub + AI Context (2026-04-10, superseded by Mastermind Brief)
 - Spec: `docs/specs/settings-client-info-hub.md`
 - Backend: `GET /clients/{id}/health` endpoint + `client_health_service.py` + `ClientHealthResponse` schema
 - Aggregates: account metadata (DB + optional Google Ads API enrichment), sync freshness badge (green<6h/yellow<12h/red≥12h), conversion tracking from `ConversionAction` table (no live API call), linked accounts shell (GA4, GMC, YT, Search Console)
@@ -71,7 +94,7 @@
 - Frontend: new `ClientHealthSection.jsx` (v2-card pattern), `brand_terms` tag input in Reguły biznesowe matching competitors pill pattern
 - Tests: `backend/tests/test_client_health.py` (AC1/AC2/AC3/AC4/AC7/AC8) + `frontend/e2e/settings-client-info-hub.spec.js` (4 E2E)
 - Review: code 8/10, security 8/10, domain 8/10
-- Commit: c11db08
+- Commits: c11db08 (main feature), e384cd1 (follow-up fix — `ClientHealthSection` now uses unwrapped axios response data)
 
 ## MCC Overview — Remove Broken Rekomendacje Google UI (2026-04-10)
 - Non-functional "Rekomendacje Google" column + dismiss flow removed from `MCCOverviewPage.jsx`

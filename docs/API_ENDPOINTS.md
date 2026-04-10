@@ -17,6 +17,8 @@ Base API URL: `/api/v1`
 - `GET /clients/{id}` -> client detail
 - `POST /clients/` -> create client
 - `PATCH /clients/{id}` -> update client (`allow_demo_write=true` required for DEMO)
+  - `strategy_context` field is **deep-merged** (partial updates preserve other fields; `null` payload is a no-op, does NOT wipe column)
+  - Accepts: `narrative`, `roadmap`, `brand_voice`, `restrictions`, `lessons_learned[]` (LessonEntry), `decisions_log[]` (DecisionLogEntry)
 - `DELETE /clients/{id}` -> delete client (`allow_demo_write=true` required for DEMO)
 - `POST /clients/{id}/hard-reset` -> delete only this client's local runtime data, keep client profile (`allow_demo_write=true` required for DEMO)
 - `POST /clients/{id}/seed-demo-showcase?days=30` -> wygeneruj lokalne dane pokazowe DEMO (keywords_daily, ads, helper actions, dodatkowe search_terms i kontrolowane wzorce waste) (`allow_demo_write=true` required, endpoint tylko dla DEMO)
