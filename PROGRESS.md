@@ -1,12 +1,12 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-10
+# Updated: 2026-04-10 (docs-sync)
 
 ## Status
 - Backend: 606 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 166 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 167 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
 - Frontend pages: 26 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
@@ -58,6 +58,14 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## Settings — Client Info Hub + AI Context (IN PROGRESS, 2026-04-10)
+- Spec: `docs/specs/settings-client-info-hub.md`
+- Backend (WIP, uncommitted): `GET /clients/{id}/health` endpoint + `client_health_service.py` + `ClientHealthResponse` schema
+- Aggregates: account metadata, sync freshness, conversion tracking (from ConversionAction table — no API call), linked accounts (Google Ads API with graceful fallback)
+- Always returns HTTP 200 — partial failures surfaced via `errors[]`
+- Tests: `backend/tests/test_client_health.py` — AC1/AC2/AC3/AC4/AC7/AC8 coverage
+- Frontend: `ClientHealthSection` to be rendered at top of Settings.jsx (not yet implemented in committed code; api.js updated in working tree)
 
 ## MCC Overview Regression Shield (2026-04-10)
 - Added comprehensive test coverage protecting the MCC Overview view from accidental damage by changes elsewhere

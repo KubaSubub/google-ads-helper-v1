@@ -4,14 +4,15 @@ import { AlertTriangle, BarChart3, Building2, Calendar, CheckCircle, Clock, Load
 
 import api, { getClient, updateClient, getMccAccounts, getSyncLogs, getScheduledSync, updateScheduledSync, syncClient } from '../api'
 import EmptyState from '../components/EmptyState'
+import ClientHealthSection from '../components/settings/ClientHealthSection'
 import { useApp } from '../contexts/AppContext'
 import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
 const SAFETY_FIELDS = [
     { key: 'MAX_BID_CHANGE_PCT', label: 'Max zmiana stawki (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana stawki CPC w procentach', min: 1, max: 100 },
     { key: 'MAX_BUDGET_CHANGE_PCT', label: 'Max zmiana budżetu (%)', unit: '%', multiply: 100, tooltip: 'Maksymalna jednorazowa zmiana budżetu kampanii', min: 1, max: 100 },
-    { key: 'MIN_BID_USD', label: 'Min stawka (USD)', unit: '$', multiply: 1, tooltip: 'Minimalna dopuszczalna stawka CPC', min: 0.01, max: 100 },
-    { key: 'MAX_BID_USD', label: 'Max stawka (USD)', unit: '$', multiply: 1, tooltip: 'Maksymalna dopuszczalna stawka CPC', min: 0.01, max: 1000 },
+    { key: 'MIN_BID_USD', label: 'Min stawka', unit: '', multiply: 1, tooltip: 'Minimalna dopuszczalna stawka CPC', min: 0.01, max: 100 },
+    { key: 'MAX_BID_USD', label: 'Max stawka', unit: '', multiply: 1, tooltip: 'Maksymalna dopuszczalna stawka CPC', min: 0.01, max: 1000 },
     { key: 'MAX_KEYWORD_PAUSE_PCT', label: 'Max pause keywords/dzień (%)', unit: '%', multiply: 100, tooltip: 'Max procent słów kluczowych wstrzymanych w jednym dniu na kampanię', min: 1, max: 50 },
     { key: 'MAX_NEGATIVES_PER_DAY', label: 'Max negatywów/dzień', unit: '', multiply: 1, tooltip: 'Limit dodawanych negatywnych fraz dziennie', min: 1, max: 500 },
 ]
@@ -63,6 +64,7 @@ export default function Settings() {
     const [resetConfirmation, setResetConfirmation] = useState('')
     const [error, setError] = useState(null)
     const [newCompetitor, setNewCompetitor] = useState('')
+    const [newBrandTerm, setNewBrandTerm] = useState('')
     const [lastSync, setLastSync] = useState(null)
     const [syncSchedule, setSyncSchedule] = useState(null)
     const [syncScheduleSaving, setSyncScheduleSaving] = useState(false)
@@ -275,6 +277,33 @@ export default function Settings() {
         }))
     }
 
+    function addBrandTerm() {
+        const value = newBrandTerm.trim()
+        if (!value) return
+        setFormData((prev) => ({
+            ...prev,
+            business_rules: {
+                ...prev.business_rules,
+                brand_terms: [...(prev.business_rules?.brand_terms || []), value],
+            },
+        }))
+        setNewBrandTerm('')
+    }
+
+    function handleBrandTermKeyDown(e) {
+        if (e.key === 'Enter') { e.preventDefault(); addBrandTerm() }
+    }
+
+    function removeBrandTerm(index) {
+        setFormData((prev) => ({
+            ...prev,
+            business_rules: {
+                ...prev.business_rules,
+                brand_terms: (prev.business_rules?.brand_terms || []).filter((_, i) => i !== index),
+            },
+        }))
+    }
+
     async function handleScheduleToggle(enabled = true) {
         setSyncScheduleSaving(true)
         try {
@@ -442,6 +471,8 @@ export default function Settings() {
                 </button>
             </div>
 
+            <ClientHealthSection clientId={selectedClientId} />
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 {/* Informacje ogólne */}
                 <section>
@@ -560,9 +591,63 @@ export default function Settings() {
                                 {validationErrors.min_roas && <p style={errorStyle}>{validationErrors.min_roas}</p>}
                             </div>
                             <div>
-                                <label style={labelStyle}>Max budżet dzienny (USD)</label>
+                                <label style={labelStyle}>Max budżet dzienny ({formData.currency || 'PLN'})</label>
                                 <input style={{ ...inputStyle, ...(validationErrors.max_daily_budget ? inputErrorBorder : {}) }} type="number" step="1" min="0" max="100000" value={formData.business_rules?.max_daily_budget ?? ''} onChange={e => handleBusinessRule('max_daily_budget', e.target.value)} placeholder="np. 500" />
                                 {validationErrors.max_daily_budget && <p style={errorStyle}>{validationErrors.max_daily_budget}</p>}
+                            </div>
+                            {/* AI Context — structured fields for recommendations, reports, AI agent */}
+                            <div>
+                                <label style={labelStyle} title="Docelowy koszt pozyskania klienta — używany przez rekomendacje i raporty">Target CPA ({formData.currency || 'PLN'})</label>
+                                <input style={inputStyle} type="number" step="1" min="0" value={formData.business_rules?.target_cpa ?? ''} onChange={e => handleBusinessRule('target_cpa', e.target.value)} placeholder="np. 80" />
+                            </div>
+                            <div>
+                                <label style={labelStyle} title="Docelowy ROAS — używany przez rekomendacje i raporty">Target ROAS (x)</label>
+                                <input style={inputStyle} type="number" step="0.1" min="0" value={formData.business_rules?.target_roas ?? ''} onChange={e => handleBusinessRule('target_roas', e.target.value)} placeholder="np. 4.0" />
+                            </div>
+                            <div>
+                                <label style={labelStyle} title="Średnia wartość życiowa klienta — pozwala kalibrować maks. CPA">LTV klienta ({formData.currency || 'PLN'})</label>
+                                <input style={inputStyle} type="number" step="1" min="0" value={formData.business_rules?.ltv_per_customer ?? ''} onChange={e => handleBusinessRule('ltv_per_customer', e.target.value)} placeholder="np. 1200" />
+                            </div>
+                            <div>
+                                <label style={labelStyle} title="Marża zysku w % — używana do oceny rentowności kampanii">Marża zysku (%)</label>
+                                <input style={inputStyle} type="number" step="1" min="0" max="100" value={formData.business_rules?.profit_margin_pct ?? ''} onChange={e => handleBusinessRule('profit_margin_pct', e.target.value)} placeholder="np. 35" />
+                            </div>
+                        </div>
+
+                        {/* Brand terms — tag input */}
+                        <div style={{ marginTop: 16 }}>
+                            <label style={labelStyle} title="Frazy brandowe — używane do segmentacji i wykluczeń. AI używa tej listy przy analizie kampanii.">Brand terms</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                                {(formData.business_rules?.brand_terms || []).map((term, i) => (
+                                    <span key={i} style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                                        padding: '3px 10px', borderRadius: 999,
+                                        background: C.w05, border: `1px solid ${C.w10}`,
+                                        fontSize: 12, color: C.textSecondary,
+                                    }}>
+                                        {term}
+                                        <button onClick={() => removeBrandTerm(i)} style={{ background: 'none', border: 'none', color: C.w40, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+                                            <X size={11} />
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input
+                                    style={{ ...inputStyle, width: 220 }}
+                                    value={newBrandTerm}
+                                    onChange={e => setNewBrandTerm(e.target.value)}
+                                    onKeyDown={handleBrandTermKeyDown}
+                                    placeholder="np. NazwaMarki"
+                                />
+                                <button onClick={addBrandTerm} style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '7px 12px', borderRadius: 8, fontSize: 12,
+                                    background: C.w06, border: `1px solid ${C.w10}`,
+                                    color: C.textSecondary, cursor: 'pointer',
+                                }}>
+                                    <Plus size={12} /> Dodaj
+                                </button>
                             </div>
                         </div>
                     </div>

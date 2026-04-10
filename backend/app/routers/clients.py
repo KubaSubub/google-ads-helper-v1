@@ -30,6 +30,8 @@ from app.models import (
     SyncLog,
 )
 from app.schemas import ClientCreate, ClientResponse, ClientUpdate, PaginatedResponse
+from app.schemas.client import ClientHealthResponse
+from app.services.client_health_service import get_client_health
 from app.services.credentials_service import CredentialsService
 from app.services.google_ads import google_ads_service
 
@@ -1333,6 +1335,22 @@ def restore_runtime_from_legacy(
         **reset_counts,
         **restore_counts,
     }
+
+
+@router.get("/{client_id}/health", response_model=ClientHealthResponse)
+def get_client_health_endpoint(
+    client_id: int,
+    db: Session = Depends(get_db),
+):
+    """Aggregate client health: account metadata, sync freshness, conversion tracking, linked accounts.
+
+    Always returns HTTP 200. Partial failures are reported in the `errors` list.
+    Sources: Client model (DB) + SyncLog (DB) + ConversionAction (DB) + Google Ads API (optional).
+    """
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return get_client_health(db, client)
 
 
 @router.delete("/{client_id}")

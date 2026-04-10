@@ -39,6 +39,7 @@ export const logout = () => api.post('/auth/logout');
 // Clients
 export const getClients = () => api.get('/clients/');
 export const getClient = (id) => api.get(`/clients/${id}`);
+export const getClientHealth = (id) => api.get(`/clients/${id}/health`);
 export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
 export const syncClient = (id, days = 90, { timeout } = {}) =>
     api.post('/sync/trigger', null, {

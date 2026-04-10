@@ -23,6 +23,11 @@ Base API URL: `/api/v1`
 - `POST /clients/{id}/clone-runtime?source_client_id=Y` -> skopiuj lokalne dane runtime z klienta Y do klienta id (bez wywolan write do Google Ads API, `allow_demo_write=true` required for DEMO)
 - `POST /clients/{id}/restore-runtime-from-legacy` -> odtworz lokalne dane runtime klienta z legacy bazy `backend/data/google_ads_app.db` (domyslnie po `google_customer_id`, opcjonalnie `source_client_id`, `allow_demo_write=true` required for DEMO)
 - `POST /clients/discover?customer_ids=` -> auto-discover from MCC (optional `customer_ids` comma-separated override)
+- `GET /clients/{id}/health` -> aggregated client health hub (always HTTP 200, partial failures reported via `errors[]`):
+  - `account_metadata` — name, currency, customer_id, timezone, auto_tagging (DB + optional Google Ads API enrichment)
+  - `sync_health` — last_synced_at, last_status, freshness (`green` < 6h / `yellow` < 24h / `red` >= 24h or never)
+  - `conversion_tracking` — active ConversionAction list from DB (name, category, status, include_in_conversions_metric, attribution_model)
+  - `linked_accounts` — linked GA4/GMC/etc via Google Ads API `product_link` / `customer_client` (graceful fallback to `[]` with `google_ads_api_unavailable` error)
 
 ## Sync
 - `POST /sync/trigger?client_id=X&days=30` -> full sync (`allow_demo_write=true` required for DEMO)
