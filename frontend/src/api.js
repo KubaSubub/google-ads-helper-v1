@@ -40,7 +40,11 @@ export const logout = () => api.post('/auth/logout');
 export const getClients = () => api.get('/clients/');
 export const getClient = (id) => api.get(`/clients/${id}`);
 export const updateClient = (id, data) => api.patch(`/clients/${id}`, data);
-export const syncClient = (id, days = 90) => api.post('/sync/trigger', null, { params: { client_id: id, days } });
+export const syncClient = (id, days = 90, { timeout } = {}) =>
+    api.post('/sync/trigger', null, {
+        params: { client_id: id, days },
+        ...(timeout ? { timeout } : {}),
+    });
 export const getDataCoverage = (clientId) => api.get('/sync/data-coverage', { params: { client_id: clientId } });
 export const discoverClients = (customerIds) =>
     api.post('/clients/discover', null, {
