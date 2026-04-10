@@ -167,6 +167,10 @@ export const getCorrelationMatrix = (data) =>
 export const getSyncStatus = () => api.get('/sync/status');
 export const getSyncPresets = () => api.get('/sync/presets');
 export const getSyncCoverage = (clientId) => api.get('/sync/coverage', { params: { client_id: clientId } });
+export const getSyncLogs = (clientId, limit = 1) => api.get('/sync/logs', { params: { client_id: clientId, limit } });
+export const getScheduledSync = (clientId) => api.get('/sync/schedule', { params: { client_id: clientId } });
+export const updateScheduledSync = (clientId, enabled, intervalHours) =>
+    api.post('/sync/schedule', { client_id: clientId, enabled, interval_hours: intervalHours });
 
 // Semantic
 export const getSemanticClusters = (params) =>

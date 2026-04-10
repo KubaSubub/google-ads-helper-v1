@@ -228,6 +228,7 @@ Base API URL: `/api/v1`
 - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google Ads API recommendations (body: `{client_id, recommendation_ids?, dismiss_all?}`)
 - `GET /mcc/negative-keyword-lists` — all negative keyword lists across all clients with item counts
 - `GET /mcc/shared-lists` — MCC-level shared negative keyword lists (from manager account via MccLink hierarchy)
+- `GET /mcc/shared-lists/{list_id}/items` — items in a specific MCC shared negative keyword list
 - `GET /mcc/billing-status?customer_id=X` — check billing/payment status via Google Ads billing_setup API (returns status or error if access insufficient)
 
 ## Scheduled Sync (F1)

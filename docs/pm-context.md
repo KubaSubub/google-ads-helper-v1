@@ -22,8 +22,10 @@
 - Klienci agencji: nietech, czytają raporty, chcą prostych liczb i wniosków
 - Kuba jako manager: efektywność > estetyka, szybkość > kompletność
 
-## [UZUPEŁNIJ] Aktualne priorytety produktowe
-<!-- Wpisz co teraz jest najważniejsze z perspektywy twojej agencji -->
+##  Aktualne priorytety produktowe
+- Aktualnie chce aby obecna forma aplikacji była gotowa i nie miała już więcej błędów. Co jakiś czas wywala nam sie działanie, niektórych z opcji. Zawsze w trakcie możemy zmienić ustalenia, ale to wymaga decyzji prezesa.
 
-## [UZUPEŁNIJ] Top 3 bóle które GAH musi rozwiązać
-<!-- Konkretne rzeczy które teraz robisz ręcznie a nie powinieneś -->
+##  Top 3 bóle które GAH musi rozwiązać
+1. Codzienne sprawdzanie wielu wskaźników aby odpowiednio okreslić stan konta i kampanii.
+2. "przeklikiwanie się przez wiele zakładek" i wykonywanie powtarzalnej pracy, którą można zautomatyzować.
+3. Posiadać wielu współpracowników w postaci automatyzacji, agentów oraz skryptów, ktorzy mają w przyszłości wykonywać >80 procent mojej pracy.

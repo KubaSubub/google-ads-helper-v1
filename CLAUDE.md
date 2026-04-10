@@ -15,6 +15,7 @@ If there is any mismatch, follow `AGENTS.md`.
 - Do not pause to ask questions mid-implementation — just do the work.
 - If ambiguity exists, pick the most likely interpretation and proceed. Mention assumptions briefly after delivery.
 - EXCEPTION — always ask before deleting files, removing functions, or dropping significant blocks of code. Adding and editing freely, deleting only with approval.
+- EXCEPTION — /ceo has its own multi-phase pipeline (ASSESS → DECIDE → /pm → /cto → /build). "Execute immediately" means execute the PIPELINE immediately, NOT skip pipeline phases to code faster. CEO must produce artifacts (ceo-log.md entry + PM spec) before any implementation begins. This is non-negotiable.
 
 ## 1b) Project Structure Map
 

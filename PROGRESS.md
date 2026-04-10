@@ -1,13 +1,13 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-09
+# Updated: 2026-04-10
 
 ## Status
-- Backend: 505 tests passing
+- Backend: 539 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
-- DB: 43 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline)
+- DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 165 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 6 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
-- Models: 43 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline)
+- API endpoints: 166 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
 - Frontend pages: 26 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
@@ -52,12 +52,24 @@
 | **SREDNIA** | **4.5/10** |
 
 ### Werdykt:
-> "Silnik Porsche w karoserii Malucha. Solidny backend z 159 endpointami i enterprise-grade safety — ale zapakowany w desktop-only format dystrybucji z 2010 roku."
+> "Silnik Porsche w karoserii Malucha. Solidny backend z 187 endpointami i enterprise-grade safety — ale zapakowany w desktop-only format dystrybucji z 2010 roku."
 
 ### 30-dniowy plan zagrozenia (co musielibysmy zrobic zeby konkurencja sie bala):
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## MCC Overview Sprint 2 — Currency + Sparkline (2026-04-10)
+- Currency-aware money formatting: per-account `currency` field drives symbol placement ($1,234 vs 1 234 zł vs 1 234 €)
+- Spend sparkline per account row (56×20 LineChart from `spend_trend` daily data)
+- Applies to: spend, avg CPC, conversion value, CPA, budget pacing tooltip
+- Commit: df5b460
+
+## MCC Exclusion Lists + Drill-Down (2026-04-09)
+- Added `GET /mcc/shared-lists/{list_id}/items` — drill-down endpoint returning items of a specific MCC shared exclusion list
+- MCC shared lists now include both negative keyword lists and placement exclusion lists
+- E2E lock: 20 backend tests covering MCC endpoints
+- Commit: 95c79e9
 
 ## Google Ads API Version Fix (2026-04-03)
 - Discovered silent SDK upgrade: `google-ads>=25.1.0` (loose pin) installed SDK 29.1.0 (API v23), while documentation said API v18
@@ -69,12 +81,13 @@
 
 ## MCC Overview — Cross-Account Landing Page (2026-04-02)
 - New landing page `MccOverviewPage.jsx` (`features/mcc-overview/`) at `/mcc-overview` — default entry point (/ redirects to /mcc-overview)
-- Backend: `mcc.py` router with 6 endpoints:
+- Backend: `mcc.py` router with 7 endpoints:
   - `GET /mcc/overview` — aggregated KPIs, health scores, pacing, change activity for all clients
   - `GET /mcc/new-access` — detect new user emails in change history
   - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google recommendations
   - `GET /mcc/negative-keyword-lists` — negative keyword lists across all clients
   - `GET /mcc/shared-lists` — MCC-level shared negative keyword lists
+  - `GET /mcc/shared-lists/{list_id}/items` — items in a specific MCC shared list
   - `GET /mcc/billing-status` — billing/payment status per customer
 - Per-account metrics: spend 30d (with delta %), conversions, CPA, ROAS, budget pacing (75%/120% thresholds), health score (6-pillar tooltip), change activity (total + external), Google recs pending, unresolved alerts, last sync
 - Full account metrics (clicks, impressions, CTR, CPC, CVR, conv value), new access badges, dismiss Google recs button, MCC shared lists, billing status endpoint

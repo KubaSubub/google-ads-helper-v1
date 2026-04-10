@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Build Pipeline — Google Ads Helper</title>
+<title>Build Pipeline v2 — Google Ads Helper</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
   body {
     background: #0D0F14;
     color: #e0e0e0;
@@ -14,324 +13,118 @@
     line-height: 1.5;
     padding: 40px 20px;
   }
-
   .container { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 700; text-align: center; margin-bottom: 4px; color: #fff; }
+  .subtitle { text-align: center; color: rgba(255,255,255,0.4); font-size: 14px; margin-bottom: 8px; }
+  .version-tag { text-align: center; margin-bottom: 32px; }
+  .version-tag span { padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; background: rgba(74,222,128,0.12); color: #4ADE80; border: 1px solid rgba(74,222,128,0.25); }
 
-  h1 {
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 28px;
-    font-weight: 700;
-    text-align: center;
-    margin-bottom: 8px;
-    color: #fff;
-  }
-
-  .subtitle {
-    text-align: center;
-    color: rgba(255,255,255,0.4);
-    font-size: 14px;
-    margin-bottom: 40px;
-  }
-
-  /* Tab switcher */
-  .tabs {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin-bottom: 40px;
-  }
-
+  /* Tabs */
+  .tabs { display: flex; justify-content: center; gap: 8px; margin-bottom: 36px; flex-wrap: wrap; }
   .tab-btn {
-    padding: 10px 28px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.03);
-    color: rgba(255,255,255,0.5);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
+    padding: 10px 24px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.5); font-size: 13px;
+    font-weight: 500; cursor: pointer; transition: all 0.2s;
   }
-
   .tab-btn:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.7); }
   .tab-btn.active { border-color: #4F8EF7; background: rgba(79,142,247,0.12); color: #4F8EF7; }
-  .tab-btn.active-red { border-color: #F87171; background: rgba(248,113,113,0.12); color: #F87171; }
-
   .tab-content { display: none; }
   .tab-content.active { display: block; }
 
-  /* Pipeline phases */
+  /* Pipeline */
   .pipeline { display: flex; flex-direction: column; gap: 0; align-items: center; }
-
-  .connector {
-    width: 2px;
-    height: 32px;
-    background: rgba(255,255,255,0.1);
-    position: relative;
-  }
+  .connector { width: 2px; height: 28px; background: rgba(255,255,255,0.08); position: relative; }
   .connector::after {
-    content: '';
-    position: absolute;
-    bottom: -4px;
-    left: -4px;
-    width: 10px;
-    height: 10px;
-    border-right: 2px solid rgba(255,255,255,0.15);
-    border-bottom: 2px solid rgba(255,255,255,0.15);
-    transform: rotate(45deg);
+    content: ''; position: absolute; bottom: -4px; left: -4px;
+    width: 10px; height: 10px; border-right: 2px solid rgba(255,255,255,0.12);
+    border-bottom: 2px solid rgba(255,255,255,0.12); transform: rotate(45deg);
   }
+  .connector-gate { background: rgba(248,113,113,0.4); }
+  .connector-gate::after { border-color: rgba(248,113,113,0.5); }
 
   .phase {
-    width: 100%;
-    max-width: 900px;
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,0.07);
-    background: rgba(255,255,255,0.02);
-    overflow: hidden;
-    transition: all 0.2s;
+    width: 100%; max-width: 900px; border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02);
+    overflow: hidden; transition: all 0.2s;
   }
   .phase:hover { border-color: rgba(255,255,255,0.12); }
-
   .phase-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 24px;
-    cursor: pointer;
-    user-select: none;
+    display: flex; align-items: center; gap: 12px; padding: 16px 24px;
+    cursor: pointer; user-select: none;
   }
   .phase-header:hover { background: rgba(255,255,255,0.02); }
-
   .phase-number {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    flex-shrink: 0;
+    width: 32px; height: 32px; border-radius: 10px; display: flex;
+    align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;
   }
+  .phase-title { font-size: 16px; font-weight: 600; color: #fff; flex: 1; }
+  .phase-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .chevron { width: 20px; height: 20px; color: rgba(255,255,255,0.3); transition: transform 0.2s; flex-shrink: 0; }
+  .phase.open .chevron { transform: rotate(90deg); }
+  .phase-body { display: none; padding: 0 24px 20px 24px; }
+  .phase.open .phase-body { display: block; }
+  .phase-desc { color: rgba(255,255,255,0.5); font-size: 13px; margin-bottom: 16px; padding-left: 44px; }
 
-  .phase-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #fff;
-    flex: 1;
-  }
-
-  .phase-meta {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .badge {
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
+  /* Badges */
+  .badge { padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
   .badge-fork { background: rgba(79,142,247,0.15); color: #4F8EF7; border: 1px solid rgba(79,142,247,0.25); }
   .badge-main { background: rgba(251,191,36,0.15); color: #FBBF24; border: 1px solid rgba(251,191,36,0.25); }
   .badge-parallel { background: rgba(123,92,224,0.15); color: #A78BFA; border: 1px solid rgba(123,92,224,0.25); }
   .badge-hook { background: rgba(74,222,128,0.15); color: #4ADE80; border: 1px solid rgba(74,222,128,0.25); }
   .badge-gate { background: rgba(248,113,113,0.15); color: #F87171; border: 1px solid rgba(248,113,113,0.25); }
+  .badge-new { background: rgba(255,215,0,0.12); color: #FFD700; border: 1px solid rgba(255,215,0,0.25); }
+  .badge-spec { background: rgba(168,85,247,0.15); color: #C084FC; border: 1px solid rgba(168,85,247,0.25); }
   .badge-skip { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.1); }
-  .badge-old-problem { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.2); }
 
-  .chevron {
-    width: 20px;
-    height: 20px;
-    color: rgba(255,255,255,0.3);
-    transition: transform 0.2s;
-    flex-shrink: 0;
-  }
-  .phase.open .chevron { transform: rotate(90deg); }
-
-  .phase-body {
-    display: none;
-    padding: 0 24px 20px 24px;
-  }
-  .phase.open .phase-body { display: block; }
-
-  .phase-desc {
-    color: rgba(255,255,255,0.5);
-    font-size: 13px;
-    margin-bottom: 16px;
-    padding-left: 44px;
-  }
-
-  /* Agents grid */
-  .agents-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 12px;
-    padding-left: 44px;
-  }
-
-  .agent-card {
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.07);
-    background: rgba(255,255,255,0.02);
-    padding: 16px;
-  }
-
-  .agent-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: #fff;
-    margin-bottom: 4px;
-  }
-
-  .agent-type {
-    font-size: 11px;
-    color: rgba(255,255,255,0.35);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 10px;
-  }
-
-  .agent-checks {
-    list-style: none;
-    font-size: 12px;
-    color: rgba(255,255,255,0.5);
-  }
+  /* Agent cards */
+  .agents-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; padding-left: 44px; }
+  .agent-card { border-radius: 12px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02); padding: 16px; }
+  .agent-name { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .agent-type { font-size: 11px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .agent-checks { list-style: none; font-size: 12px; color: rgba(255,255,255,0.5); }
   .agent-checks li { padding: 2px 0; }
   .agent-checks li::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
-
   .agent-checks.blue li::before { background: #4F8EF7; }
   .agent-checks.purple li::before { background: #7B5CE0; }
   .agent-checks.green li::before { background: #4ADE80; }
   .agent-checks.red li::before { background: #F87171; }
   .agent-checks.yellow li::before { background: #FBBF24; }
-
-  /* Steps list */
-  .steps {
-    list-style: none;
-    padding-left: 44px;
-  }
-  .steps li {
-    padding: 6px 0;
-    font-size: 13px;
-    color: rgba(255,255,255,0.6);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .step-icon {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    flex-shrink: 0;
-  }
+  .agent-checks.gold li::before { background: #FFD700; }
 
   /* Gate box */
-  .gate-box {
-    margin-left: 44px;
-    margin-top: 12px;
-    padding: 12px 16px;
-    border-radius: 10px;
-    border: 1px solid rgba(248,113,113,0.2);
-    background: rgba(248,113,113,0.05);
-    font-size: 13px;
-    color: rgba(255,255,255,0.6);
-  }
+  .gate-box { margin-left: 44px; margin-top: 12px; padding: 12px 16px; border-radius: 10px; font-size: 13px; color: rgba(255,255,255,0.6); }
   .gate-box strong { color: #F87171; }
+  .gate-red { border: 1px solid rgba(248,113,113,0.25); background: rgba(248,113,113,0.06); }
+  .gate-blue { border: 1px solid rgba(79,142,247,0.25); background: rgba(79,142,247,0.06); }
+  .gate-green { border: 1px solid rgba(74,222,128,0.25); background: rgba(74,222,128,0.06); }
+  .gate-gold { border: 1px solid rgba(255,215,0,0.25); background: rgba(255,215,0,0.06); }
 
-  /* Flow arrow in steps */
-  .flow-arrow {
-    color: rgba(255,255,255,0.2);
-    font-size: 14px;
-    padding: 0 4px;
-  }
+  /* Steps */
+  .steps { list-style: none; padding-left: 44px; }
+  .steps li { padding: 6px 0; font-size: 13px; color: rgba(255,255,255,0.6); display: flex; align-items: center; gap: 10px; }
+  .step-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
 
-  /* OLD pipeline styles */
-  .old-flow {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    padding-left: 44px;
+  /* Org chart */
+  .org { padding: 24px; margin-bottom: 32px; }
+  .org-row { display: flex; justify-content: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .org-box {
+    padding: 12px 20px; border-radius: 12px; text-align: center; min-width: 140px;
+    border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02);
   }
+  .org-box .ob-title { font-size: 13px; font-weight: 600; color: #fff; }
+  .org-box .ob-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+  .org-connector { width: 2px; height: 16px; background: rgba(255,255,255,0.08); margin: 0 auto; }
 
-  .old-step {
-    width: 100%;
-    max-width: 500px;
-    padding: 14px 20px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.07);
-    background: rgba(255,255,255,0.02);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    position: relative;
-  }
-
-  .old-step-name { font-size: 14px; color: #fff; font-weight: 500; flex: 1; }
-  .old-step-detail { font-size: 11px; color: rgba(255,255,255,0.35); }
-
-  .old-connector {
-    width: 2px;
-    height: 24px;
-    background: rgba(255,255,255,0.08);
-  }
-
-  .old-problem {
-    width: 100%;
-    max-width: 500px;
-    padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px dashed rgba(248,113,113,0.3);
-    background: rgba(248,113,113,0.04);
-    font-size: 12px;
-    color: rgba(248,113,113,0.7);
-    margin: 4px 0;
-    text-align: center;
-  }
-
-  /* Comparison table */
-  .compare-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 16px;
-  }
-  .compare-table th {
-    text-align: left;
-    padding: 10px 16px;
-    font-size: 11px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.35);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-  }
-  .compare-table td {
-    padding: 10px 16px;
-    font-size: 13px;
-    color: rgba(255,255,255,0.6);
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-  }
+  /* Compare table */
+  .compare-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  .compare-table th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .compare-table td { padding: 10px 16px; font-size: 13px; color: rgba(255,255,255,0.6); border-bottom: 1px solid rgba(255,255,255,0.04); }
   .compare-table td:first-child { color: rgba(255,255,255,0.8); font-weight: 500; }
   .val-old { color: #F87171 !important; }
   .val-new { color: #4ADE80 !important; }
 
   /* File tree */
-  .file-tree {
-    padding-left: 44px;
-    font-family: 'Cascadia Code', 'Fira Code', monospace;
-    font-size: 12px;
-    color: rgba(255,255,255,0.45);
-    line-height: 1.8;
-  }
+  .file-tree { padding-left: 44px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; color: rgba(255,255,255,0.45); line-height: 1.8; }
   .file-tree .dir { color: #4F8EF7; }
   .file-tree .file { color: rgba(255,255,255,0.6); }
   .file-tree .comment { color: rgba(255,255,255,0.25); font-style: italic; }
@@ -339,165 +132,95 @@
   .file-tree .exists-tag { color: rgba(255,255,255,0.25); font-size: 10px; }
 
   /* Legend */
-  .legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    justify-content: center;
-    margin-bottom: 32px;
-    padding: 16px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.05);
-    background: rgba(255,255,255,0.015);
-  }
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: rgba(255,255,255,0.45);
-  }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-bottom: 28px; padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.015); }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255,255,255,0.45); }
 
-  /* Responsive */
-  @media (max-width: 700px) {
-    .agents-grid { grid-template-columns: 1fr; }
-    .tabs { flex-wrap: wrap; }
-    .phase-meta { flex-wrap: wrap; }
-  }
+  .section-title { font-size: 20px; font-weight: 700; color: #fff; margin: 48px 0 24px 0; text-align: center; }
+  .section-subtitle { text-align: center; color: rgba(255,255,255,0.35); font-size: 13px; margin: -16px 0 32px 0; }
 
-  /* Section divider */
-  .section-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #fff;
-    margin: 48px 0 24px 0;
-    text-align: center;
-  }
-  .section-subtitle {
-    text-align: center;
-    color: rgba(255,255,255,0.35);
-    font-size: 13px;
-    margin: -16px 0 32px 0;
-  }
+  code { color: #fff; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+
+  @media (max-width: 700px) { .agents-grid { grid-template-columns: 1fr; } .tabs { gap: 4px; } }
 </style>
 </head>
 <body>
-
 <div class="container">
-  <h1>Build Pipeline</h1>
-  <p class="subtitle">Google Ads Helper v1 &mdash; architektura budowy feature'ow</p>
+  <h1>Build Pipeline v2</h1>
+  <p class="subtitle">Google Ads Helper &mdash; 5 dzialow, spec-driven, z gate'ami</p>
+  <div class="version-tag"><span>FINAL &mdash; 2026-04-09</span></div>
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab-btn active-red" data-tab="old" onclick="switchTab('old')">Stary Pipeline</button>
-    <button class="tab-btn active" data-tab="new" onclick="switchTab('new')">Nowy Pipeline</button>
-    <button class="tab-btn" data-tab="compare" onclick="switchTab('compare')">Porownanie</button>
+    <button class="tab-btn" data-tab="org" onclick="switchTab('org')">Org Chart</button>
+    <button class="tab-btn active" data-tab="new" onclick="switchTab('new')">Pipeline</button>
+    <button class="tab-btn" data-tab="compare" onclick="switchTab('compare')">vs Stary</button>
     <button class="tab-btn" data-tab="files" onclick="switchTab('files')">Pliki</button>
   </div>
 
   <!-- ============================================================ -->
-  <!-- OLD PIPELINE -->
+  <!-- ORG CHART -->
   <!-- ============================================================ -->
-  <div id="tab-old" class="tab-content">
-    <div class="legend">
-      <div class="legend-item"><span class="badge badge-main" style="font-size:10px">MAIN CTX</span> = caly kontekst sesji</div>
-      <div class="legend-item"><span class="badge badge-old-problem" style="font-size:10px">PROBLEM</span> = znany issue</div>
-    </div>
-
-    <div class="pipeline">
-      <div class="old-flow">
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">U</div>
-          <div class="old-step-name">User pisze co chce</div>
-          <span class="badge badge-main">main ctx</span>
+  <div id="tab-org" class="tab-content">
+    <div class="org">
+      <div class="org-row">
+        <div class="org-box" style="border-color:rgba(255,215,0,0.2);">
+          <div class="ob-title" style="color:#FFD700;">Kuba (Prezes + End User)</div>
+          <div class="ob-sub">Kierunek, akceptacja, eskalacje</div>
+          <div class="ob-sub">pm-context.md = glos Kuby</div>
         </div>
-        <div class="old-connector"></div>
-
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">1</div>
-          <div class="old-step-name">/cto &mdash; router</div>
-          <div class="old-step-detail">deleguje do /feature, /bugfix...</div>
-          <span class="badge badge-main">main ctx</span>
+      </div>
+      <div class="org-connector"></div>
+      <div class="org-row">
+        <div class="org-box" style="border-color:rgba(255,215,0,0.2);">
+          <div class="ob-title" style="color:#FFD700;">CEO Agent</div>
+          <div class="ob-sub">Czyta, analizuje, decyduje, deleguje</div>
+          <div class="ob-sub">ceo-log.md = log decyzji</div>
         </div>
-        <div class="old-connector"></div>
-
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">2</div>
-          <div class="old-step-name">/feature lub /bugfix</div>
-          <div class="old-step-detail">implementacja kodu</div>
-          <span class="badge badge-main">main ctx</span>
+      </div>
+      <div class="org-connector"></div>
+      <div class="org-row">
+        <div class="org-box" style="border-color:rgba(79,142,247,0.2);">
+          <div class="ob-title" style="color:#4F8EF7;">Intelligence</div>
+          <div class="ob-sub">3 scouty rynkowe</div>
+          <div class="ob-sub">market-research.md</div>
+          <div style="margin-top:4px;"><span class="badge badge-new" style="font-size:9px;">NOWY</span></div>
         </div>
-        <div class="old-problem">Brak auto-testow po edycji &mdash; bledy wykrywane pozno</div>
-        <div class="old-problem">Brak planu &mdash; od razu pisze kod bez skanowania codebase</div>
-        <div class="old-connector"></div>
-
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">3</div>
-          <div class="old-step-name">/review</div>
-          <div class="old-step-detail">1 monolityczny review w main context</div>
-          <span class="badge badge-main">main ctx</span>
+        <div class="org-box" style="border-color:rgba(168,85,247,0.2);">
+          <div class="ob-title" style="color:#C084FC;">Product / PM</div>
+          <div class="ob-sub">Spec = kontrakt</div>
+          <div class="ob-sub">docs/specs/*.md</div>
+          <div style="margin-top:4px;"><span class="badge badge-new" style="font-size:9px;">NOWY</span></div>
         </div>
-        <div class="old-problem">1 agent robi wszystko &mdash; code + security + domain = plytki review</div>
-        <div class="old-problem">Zjada ~30% kontekstu sesji</div>
-        <div class="old-connector"></div>
-
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">4</div>
-          <div class="old-step-name">/ads-user {tab}</div>
-          <div class="old-step-detail">"prosba: teraz odpal /ads-expert"</div>
-          <span class="badge badge-main">main ctx</span>
+        <div class="org-box" style="border-color:rgba(74,222,128,0.2);">
+          <div class="ob-title" style="color:#4ADE80;">Engineering</div>
+          <div class="ob-sub">/cto + /build</div>
+          <div class="ob-sub">FAZA 1-2</div>
         </div>
-        <div class="old-problem">Chain oparty na "prosbie" &mdash; Claude moze zignorowac po compaction</div>
-        <div class="old-connector"></div>
-
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">5</div>
-          <div class="old-step-name">/ads-expert {tab}</div>
-          <div class="old-step-detail">ocena specjalisty</div>
-          <span class="badge badge-main">main ctx</span>
+        <div class="org-box" style="border-color:rgba(248,113,113,0.2);">
+          <div class="ob-title" style="color:#F87171;">Quality</div>
+          <div class="ob-sub">3 review agenty</div>
+          <div class="ob-sub">FAZA 3-4</div>
         </div>
-        <div class="old-connector"></div>
-
-        <div class="old-step">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">6</div>
-          <div class="old-step-name">/done</div>
-          <div class="old-step-detail">/commit + /docs-sync + /pm-check + push</div>
-          <span class="badge badge-main">main ctx</span>
+        <div class="org-box" style="border-color:rgba(251,191,36,0.2);">
+          <div class="ob-title" style="color:#FBBF24;">Domain</div>
+          <div class="ob-sub">ads-user + ads-expert</div>
+          <div class="ob-sub">FAZA 5</div>
         </div>
-        <div class="old-problem">Wszystko sekwencyjne &mdash; 0 rownoleglej pracy</div>
-        <div class="old-problem">Po 4-5 krokach = compaction &mdash; utrata kontekstu</div>
       </div>
     </div>
 
-    <div class="section-title" style="margin-top:48px;color:#F87171;">6 glownych problemow</div>
-    <div style="max-width:600px;margin:0 auto;">
-      <ol style="list-style:none;counter-reset:prob;">
-        <li style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;color:rgba(255,255,255,0.6);display:flex;gap:12px;align-items:flex-start;">
-          <span style="color:#F87171;font-weight:700;font-size:16px;min-width:24px;">1.</span>
-          <div><strong style="color:#fff;">Chain'y = prosby</strong><br>"/ads-expert" to prosba do Claude, nie mechanizm. Moze zignorowac, zapomniec po compaction.</div>
-        </li>
-        <li style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;color:rgba(255,255,255,0.6);display:flex;gap:12px;align-items:flex-start;">
-          <span style="color:#F87171;font-weight:700;font-size:16px;min-width:24px;">2.</span>
-          <div><strong style="color:#fff;">Stary format commands/</strong><br>Brak frontmatter, brak izolacji, brak auto-invocation, brak tool restrictions.</div>
-        </li>
-        <li style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;color:rgba(255,255,255,0.6);display:flex;gap:12px;align-items:flex-start;">
-          <span style="color:#F87171;font-weight:700;font-size:16px;min-width:24px;">3.</span>
-          <div><strong style="color:#fff;">Brak izolacji kontekstu</strong><br>Kazdy krok zjada main context. Po 3-4 komendach = compaction = utrata wczesniejszych krokow.</div>
-        </li>
-        <li style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;color:rgba(255,255,255,0.6);display:flex;gap:12px;align-items:flex-start;">
-          <span style="color:#F87171;font-weight:700;font-size:16px;min-width:24px;">4.</span>
-          <div><strong style="color:#fff;">Brak task trackingu</strong><br>Nie wiadomo ktory krok jest aktywny, co przeszlo, co nie.</div>
-        </li>
-        <li style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;color:rgba(255,255,255,0.6);display:flex;gap:12px;align-items:flex-start;">
-          <span style="color:#F87171;font-weight:700;font-size:16px;min-width:24px;">5.</span>
-          <div><strong style="color:#fff;">Zero paralelizmu</strong><br>Wszystko sekwencyjne. A mozna: 3 review agenty || , pytest + build || , 3 scouty ||</div>
-        </li>
-        <li style="padding:12px 0;font-size:14px;color:rgba(255,255,255,0.6);display:flex;gap:12px;align-items:flex-start;">
-          <span style="color:#F87171;font-weight:700;font-size:16px;min-width:24px;">6.</span>
-          <div><strong style="color:#fff;">Hooki sa ciche</strong><br>Post-edit-test czesto timeout (30s za krotki), user nie widzi co zadzialo.</div>
-        </li>
-      </ol>
-    </div>
+    <div class="section-title">Kto co robi</div>
+    <table class="compare-table">
+      <thead><tr><th>Dzial</th><th>Rola</th><th>Output</th></tr></thead>
+      <tbody>
+        <tr><td style="color:#FFD700">CEO</td><td>Czyta docs + brief, decyduje CO budowac</td><td>ceo-log.md + delegacja do PM</td></tr>
+        <tr><td style="color:#4F8EF7">Intelligence</td><td>Skanuje rynek: konkurencja, bole userow, API zmiany</td><td>market-research.md (CEO Brief JSON)</td></tr>
+        <tr><td style="color:#C084FC">PM</td><td>Pisze spec z User Story, AC, Edge Cases, Success Metric</td><td>docs/specs/{slug}.md</td></tr>
+        <tr><td style="color:#4ADE80">Engineering</td><td>Planuje (3 scouty) + implementuje wg spec</td><td>Kod + WIP commit</td></tr>
+        <tr><td style="color:#F87171">Quality</td><td>3 reviewery + testy — weryfikuja vs spec</td><td>Score >= 7/10</td></tr>
+        <tr><td style="color:#FBBF24">Domain</td><td>ads-user + ads-expert — weryfikuja vs Success Metric</td><td>Score >= 7/10</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- ============================================================ -->
@@ -505,109 +228,208 @@
   <!-- ============================================================ -->
   <div id="tab-new" class="tab-content active">
     <div class="legend">
-      <div class="legend-item"><span class="badge badge-main" style="font-size:10px">MAIN CTX</span> edytuje pliki</div>
-      <div class="legend-item"><span class="badge badge-fork" style="font-size:10px">FORK</span> izolowany kontekst</div>
-      <div class="legend-item"><span class="badge badge-parallel" style="font-size:10px">PARALLEL</span> rownolegle agenty</div>
-      <div class="legend-item"><span class="badge badge-hook" style="font-size:10px">HOOK</span> automatyczny trigger</div>
-      <div class="legend-item"><span class="badge badge-gate" style="font-size:10px">GATE 7/10</span> minimum do przejscia</div>
+      <div class="legend-item"><span class="badge badge-main">MAIN CTX</span> edytuje pliki</div>
+      <div class="legend-item"><span class="badge badge-fork">FORK</span> izolowany</div>
+      <div class="legend-item"><span class="badge badge-parallel">PARALLEL</span> rownolegle</div>
+      <div class="legend-item"><span class="badge badge-gate">GATE</span> hard stop</div>
+      <div class="legend-item"><span class="badge badge-spec">SPEC</span> weryfikuje vs spec</div>
+      <div class="legend-item"><span class="badge badge-new">NOWY</span> nowy dzial</div>
     </div>
 
     <div class="pipeline">
 
-      <!-- CEO: ANALIZA -->
+      <!-- CEO: INTELLIGENCE CHECK -->
       <div class="phase open" onclick="this.classList.toggle('open')">
         <div class="phase-header">
-          <div class="phase-number" style="background:rgba(255,215,0,0.2);color:#FFD700;font-size:11px;">CEO</div>
-          <div class="phase-title">ANALIZA &mdash; /ceo (mozg projektu)</div>
+          <div class="phase-number" style="background:rgba(255,215,0,0.15);color:#FFD700;font-size:10px;">CEO</div>
+          <div class="phase-title">INTELLIGENCE CHECK + ASSESS + DECIDE</div>
           <div class="phase-meta">
             <span class="badge badge-fork">fork</span>
-            <span class="badge" style="background:rgba(255,215,0,0.12);color:#FFD700;border:1px solid rgba(255,215,0,0.25);">autopilot</span>
+            <span class="badge badge-parallel">4x parallel</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
           <p class="phase-desc">
-            CEO nie pisze kodu. CEO <strong>czyta, analizuje, decyduje</strong>. Skanuje dokumenty i raporty,
-            ocenia stan projektu, wybiera najwazniejsze zadanie i deleguje do /build.
-            Moze dzialac w trybie autopilot &mdash; sam szuka co robic dalej.
+            CEO nie koduje. Czyta, weryfikuje, decyduje. Najpierw sprawdza intelligence brief,
+            potem 4 agenty skanuja stan projektu, na koncu DECIDE — wybiera CO budowac.
           </p>
           <div class="agents-grid">
             <div class="agent-card">
-              <div class="agent-name">Czyta dokumenty</div>
-              <div class="agent-type">input &bull; read-only</div>
-              <ul class="agent-checks yellow">
-                <li>PROGRESS.md &mdash; co jest gotowe, co nie</li>
-                <li>docs/reviews/ &mdash; raporty ads-expert, ads-user</li>
-                <li>DECISIONS.md &mdash; podjete decyzje</li>
-                <li>DEVELOPMENT_ROADMAP &mdash; plan rozwoju</li>
-                <li>docs/FEATURE_SET.md &mdash; zakres feature'ow</li>
+              <div class="agent-name">Intelligence Check</div>
+              <div class="agent-type">Faza 0 &bull; przed assess</div>
+              <ul class="agent-checks gold">
+                <li>Sprawdza docs/market-research.md</li>
+                <li>Swiezy (&lt;7 dni) → wczytaj brief</li>
+                <li>Stary/brak → odpal /intelligence</li>
+                <li>/intelligence = 3 scouty (fork)</li>
               </ul>
             </div>
             <div class="agent-card">
-              <div class="agent-name">Weryfikuje + analizuje</div>
-              <div class="agent-type">docs vs kod &bull; logika decyzyjna</div>
+              <div class="agent-name">ASSESS (4 agenty ||)</div>
+              <div class="agent-type">Backend + Frontend + DB + Researcher</div>
               <ul class="agent-checks blue">
-                <li><strong style="color:#F87171;">Sprawdza czy docs mowia prawde</strong></li>
-                <li>Feature DONE w docs → czy jest w kodzie?</li>
-                <li>API_ENDPOINTS.md → czy routery istnieja?</li>
-                <li>git log vs PROGRESS.md → czy sie zgadza?</li>
-                <li style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">Co ma najwyzszy priorytet?</li>
-                <li>Ktore fazy maja niezaliczone gate'y?</li>
+                <li>Skanuje codebase (endpointy, komponenty)</li>
+                <li>Researcher weryfikuje docs vs kod</li>
                 <li>Rozbieznosc? → /docs-sync NAJPIERW</li>
+                <li>Synteza: raport STAN PRODUKTU</li>
               </ul>
             </div>
             <div class="agent-card">
-              <div class="agent-name">Deleguje + zapisuje</div>
-              <div class="agent-type">output &bull; decyzja &bull; persistencja</div>
+              <div class="agent-name">DECIDE + ceo-log</div>
+              <div class="agent-type">output &bull; artefakt</div>
               <ul class="agent-checks green">
-                <li>/build {konkretne zadanie}</li>
-                <li>/sprint {tab} (jesli raport ads-verify)</li>
-                <li>/ads-user {tab} (jesli brak review)</li>
-                <li>Moze tez: "nic pilnego, czekamy"</li>
-                <li style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;"><strong style="color:#FFD700;">Zapisuje decyzje</strong> &rarr; docs/ceo-log.md</li>
-                <li>Data, wave, task, powod, status</li>
-                <li>Odczyt w przyszlych sesjach</li>
+                <li>Priorytet: bugs > ads-verify > wave</li>
+                <li>Zapisuje docs/ceo-log.md (WYMAGANE)</li>
+                <li>Intelligence used: TAK/NIE + flag</li>
+                <li>Delegacja: /pm build {task}</li>
               </ul>
             </div>
+          </div>
+          <div class="gate-box gate-red" style="margin-top:16px;">
+            <strong>GATE (nienaruszalny):</strong> CEO NIE moze przejsc do implementacji bez:<br>
+            1. Wpisu w ceo-log.md (task, powod, intelligence_used)<br>
+            2. Spec od PM (docs/specs/{slug}.md)<br>
+            Wyjatki: hotfix/refactor/sprint → "SKIP PM: {powod}" w ceo-log.md
+          </div>
+        </div>
+      </div>
+
+      <div class="connector connector-gate"></div>
+
+      <!-- INTELLIGENCE -->
+      <div class="phase" onclick="this.classList.toggle('open')">
+        <div class="phase-header">
+          <div class="phase-number" style="background:rgba(79,142,247,0.15);color:#4F8EF7;font-size:10px;">INT</div>
+          <div class="phase-title">INTELLIGENCE &mdash; /intelligence</div>
+          <div class="phase-meta">
+            <span class="badge badge-fork">fork</span>
+            <span class="badge badge-parallel">3x parallel</span>
+            <span class="badge badge-new">nowy</span>
+          </div>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+        <div class="phase-body">
+          <p class="phase-desc">
+            Wywiad rynkowy. 3 scouty przeszukuja internet rownolegle (WebSearch),
+            orchestrator kompresuje do CEO Brief JSON (~1500 tokenow).
+            Trigger: on-demand lub CEO auto.
+          </p>
+          <div class="agents-grid">
+            <div class="agent-card">
+              <div class="agent-name">Competitor Scout</div>
+              <div class="agent-type">Haiku (search) &rarr; Sonnet (synteza)</div>
+              <ul class="agent-checks blue">
+                <li>Optmyzr, Adalysis changelog</li>
+                <li>Google Ads AI Max updates</li>
+                <li>ProductHunt "ppc" nowi gracze</li>
+                <li>Max 5 insightow</li>
+              </ul>
+            </div>
+            <div class="agent-card">
+              <div class="agent-name">User Pain Scout</div>
+              <div class="agent-type">Haiku (search) &rarr; Sonnet (synteza)</div>
+              <ul class="agent-checks red">
+                <li>r/PPC (ostatnie 7 dni)</li>
+                <li>G2 negatywne reviews</li>
+                <li>Twitter #GoogleAds</li>
+                <li>Filtr: powtarzajace sie 2x+</li>
+              </ul>
+            </div>
+            <div class="agent-card">
+              <div class="agent-name">Platform Scout</div>
+              <div class="agent-type">Sonnet (precyzja krytyczna)</div>
+              <ul class="agent-checks yellow">
+                <li>Google Ads API changelog</li>
+                <li>Deprecation notices</li>
+                <li>AI Max / PMax zmiany</li>
+                <li>CRITICAL = action_required</li>
+              </ul>
+            </div>
+          </div>
+          <div class="gate-box gate-blue">
+            <strong style="color:#4F8EF7;">Output:</strong> docs/market-research.md &mdash; JSON brief z top_actions, competitor_insights, user_pains, platform_alerts, confidence
           </div>
         </div>
       </div>
 
       <div class="connector"></div>
 
-      <!-- FAZA 0: ROUTING -->
+      <!-- PM -->
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
-          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">0</div>
-          <div class="phase-title">ROUTING &mdash; /cto</div>
+          <div class="phase-number" style="background:rgba(168,85,247,0.15);color:#C084FC;font-size:10px;">PM</div>
+          <div class="phase-title">PRODUCT &mdash; /pm build {task}</div>
           <div class="phase-meta">
-            <span class="badge badge-main">main ctx</span>
+            <span class="badge badge-fork">fork</span>
+            <span class="badge badge-gate">gate 7/10</span>
+            <span class="badge badge-new">nowy</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
           <p class="phase-desc">
-            User pisze co chce. /cto analizuje request i deleguje do odpowiedniego workflow.
-            Model: <strong>Sonnet</strong> (szybki routing, nie potrzeba Opus).
+            PM zamienia decyzje CEO w specyfikacje. Spec = kontrakt dla calego pipeline'u.
+            Kazda kolejna faza sprawdza sie wzgledem spec.
+            PM decyduje samodzielnie o scope V1 (Out of Scope).
           </p>
           <div class="agents-grid">
             <div class="agent-card">
-              <div class="agent-name">/feature</div>
-              <div class="agent-type">nowa funkcjonalnosc</div>
+              <div class="agent-name">Czyta kontekst (4 agenty ||)</div>
+              <div class="agent-type">PM Context + Market + State + Tech</div>
+              <ul class="agent-checks purple">
+                <li>pm-context.md &mdash; glos Kuby</li>
+                <li>market-research.md &mdash; rynek</li>
+                <li>PROGRESS.md + FEATURE_SET.md</li>
+                <li>Grep codebase &mdash; co istnieje</li>
+              </ul>
             </div>
             <div class="agent-card">
-              <div class="agent-name">/bugfix</div>
-              <div class="agent-type">naprawa bledu</div>
+              <div class="agent-name">Pisze spec</div>
+              <div class="agent-type">docs/specs/{slug}.md</div>
+              <ul class="agent-checks purple">
+                <li>User Story (perspektywa Kuby)</li>
+                <li>Acceptance Criteria >= 3</li>
+                <li>Edge Cases >= 2</li>
+                <li>Out of Scope (PM decyduje)</li>
+                <li>Success Metric (1 zdanie)</li>
+              </ul>
             </div>
             <div class="agent-card">
-              <div class="agent-name">/endpoint</div>
-              <div class="agent-type">nowy API endpoint</div>
-            </div>
-            <div class="agent-card">
-              <div class="agent-name">/refactor</div>
-              <div class="agent-type">refaktoryzacja</div>
+              <div class="agent-name">Skip paths</div>
+              <div class="agent-type">nie kazdy task wymaga spec</div>
+              <ul class="agent-checks yellow">
+                <li>Bugfix → uproszczona spec (AC + edge)</li>
+                <li>Refactor → skip calkowicie</li>
+                <li>Hotfix → skip calkowicie</li>
+                <li>Gotowa spec od Kuby → weryfikuj</li>
+              </ul>
             </div>
           </div>
+          <div class="gate-box gate-red">
+            <strong>Gate:</strong> Auto-ewaluacja spec &mdash; User Story + AC>=3 + Edge>=2 + Out of Scope + Success Metric + pm-context wziety pod uwage. Score < 7/10 → przepisz (max 2x, potem eskalacja do Kuby).
+          </div>
+        </div>
+      </div>
+
+      <div class="connector"></div>
+
+      <!-- CTO ROUTING -->
+      <div class="phase" onclick="this.classList.toggle('open')">
+        <div class="phase-header">
+          <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">0</div>
+          <div class="phase-title">ROUTING &mdash; /cto --spec {path}</div>
+          <div class="phase-meta">
+            <span class="badge badge-main">main ctx</span>
+            <span class="badge badge-spec">spec</span>
+          </div>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+        <div class="phase-body">
+          <p class="phase-desc">
+            Router — przyjmuje task + spec path od CEO/PM, czyta spec zeby lepiej zroutowac,
+            deleguje do /build z --spec.
+          </p>
         </div>
       </div>
 
@@ -617,48 +439,45 @@
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
           <div class="phase-number" style="background:rgba(79,142,247,0.15);color:#4F8EF7;">1</div>
-          <div class="phase-title">PLAN &mdash; 3 scouty skanuja codebase</div>
+          <div class="phase-title">PLAN &mdash; 3 scouty + spec</div>
           <div class="phase-meta">
             <span class="badge badge-fork">fork</span>
             <span class="badge badge-parallel">3x parallel</span>
+            <span class="badge badge-spec">spec</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
           <p class="phase-desc">
-            Zanim napiszesz linie kodu &mdash; zrozum kontekst. 3 agenty <strong>Explore</strong> rownolegle
-            skanuja codebase. Wynik: plan implementacji z lista taskow.
-            Spelnia regule CLAUDE.md "Pattern Matching Rule".
+            3 Explore agenty skanuja codebase + czytaja spec. Plan implementacji tworzy sie
+            wzgledem Acceptance Criteria — kazdy task powiazany z konkretnym AC.
           </p>
           <div class="agents-grid">
             <div class="agent-card">
               <div class="agent-name">Backend Scout</div>
-              <div class="agent-type">Explore agent &bull; read-only</div>
+              <div class="agent-type">Explore &bull; read-only &bull; + spec</div>
               <ul class="agent-checks blue">
-                <li>routers/ &mdash; istniejace endpointy</li>
-                <li>services/ &mdash; logika biznesowa</li>
-                <li>models/ &mdash; schema DB</li>
-                <li>Podobne patterny do nasledowania</li>
+                <li>routers/, services/, models/</li>
+                <li>Podobne patterny</li>
+                <li>Spec: Zaleznosci &mdash; jakie endpointy</li>
               </ul>
             </div>
             <div class="agent-card">
               <div class="agent-name">Frontend Scout</div>
-              <div class="agent-type">Explore agent &bull; read-only</div>
+              <div class="agent-type">Explore &bull; read-only &bull; + spec</div>
               <ul class="agent-checks purple">
-                <li>pages/ &mdash; istniejace widoki</li>
-                <li>components/ &mdash; shared UI</li>
-                <li>api.js &mdash; wywolania API</li>
-                <li>Style i state management</li>
+                <li>pages/, components/, api.js</li>
+                <li>Design system, state</li>
+                <li>Spec: Zaleznosci &mdash; jakie komponenty</li>
               </ul>
             </div>
             <div class="agent-card">
               <div class="agent-name">Test Scout</div>
-              <div class="agent-type">Explore agent &bull; read-only</div>
+              <div class="agent-type">Explore &bull; read-only &bull; + spec</div>
               <ul class="agent-checks green">
-                <li>tests/ &mdash; pokrycie backend</li>
-                <li>e2e/ &mdash; testy Playwright</li>
-                <li>Fixtures i mock data</li>
-                <li>Jakie testy dopisac</li>
+                <li>tests/, e2e/</li>
+                <li>Pokrycie, fixtures</li>
+                <li>Spec: AC + Edge Cases → jakie testy</li>
               </ul>
             </div>
           </div>
@@ -671,50 +490,24 @@
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
           <div class="phase-number" style="background:rgba(74,222,128,0.15);color:#4ADE80;">2</div>
-          <div class="phase-title">BUILD &mdash; implementacja task-by-task</div>
+          <div class="phase-title">BUILD &mdash; task-by-task wg AC</div>
           <div class="phase-meta">
             <span class="badge badge-main">main ctx</span>
-            <span class="badge badge-hook">auto-test hook</span>
+            <span class="badge badge-hook">auto-test</span>
+            <span class="badge badge-spec">spec</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
           <p class="phase-desc">
-            Kazdy krok to osobny Task. Po kazdej edycji pliku hook <strong>post-edit-test.sh</strong>
-            automatycznie odpala pytest lub vite build. Nie idziesz dalej jesli test FAIL.
+            Implementacja wzgledem Acceptance Criteria ze spec. Kazdy task powiazany z AC.
+            Hook auto-testuje po kazdej edycji. WIP commit na koncu.
           </p>
-          <ul class="steps">
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">1</div>
-              Backend model/schema (jesli nowe)
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">2</div>
-              Backend service (logika biznesowa)
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">3</div>
-              Backend router/endpoint
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">4</div>
-              Backend tests
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(123,92,224,0.15);color:#A78BFA;">5</div>
-              Frontend component
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(123,92,224,0.15);color:#A78BFA;">6</div>
-              Frontend integration (import, routing)
-            </li>
-          </ul>
-          <div class="gate-box" style="border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.05);">
-            <strong style="color:#4ADE80;">Hook:</strong> PostToolUse &rarr; po kazdym Edit/Write &rarr; auto-test &rarr; FAIL = napraw przed kolejnym taskiem
+          <div class="gate-box gate-green">
+            <strong style="color:#4ADE80;">Hook:</strong> PostToolUse (60s) &rarr; pytest matching test / vite build po kazdym Edit/Write
           </div>
-          <div class="gate-box" style="border-color:rgba(79,142,247,0.2);background:rgba(79,142,247,0.05);margin-top:8px;">
-            <strong style="color:#4F8EF7;">Git checkpoint:</strong> Po zakonczeniu BUILD &rarr; <code style="color:#fff;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;">git commit -m "wip: phase-2 {task}"</code><br>
-            Checkpoint do rollbacku jesli VERIFY/TEST fail. Squashowany w FAZIE 6 (SHIP) przez <code style="color:#fff;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;">git reset --soft</code> &rarr; czysty commit.
+          <div class="gate-box gate-blue" style="margin-top:8px;">
+            <strong style="color:#4F8EF7;">Git checkpoint:</strong> <code>git commit -m "wip: phase-2 {task}"</code> &mdash; squashowany w FAZIE 6
           </div>
         </div>
       </div>
@@ -725,57 +518,48 @@
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
           <div class="phase-number" style="background:rgba(123,92,224,0.15);color:#A78BFA;">3</div>
-          <div class="phase-title">VERIFY &mdash; 3 review agenty rownolegle</div>
+          <div class="phase-title">VERIFY &mdash; 3 reviewery vs spec</div>
           <div class="phase-meta">
             <span class="badge badge-fork">fork</span>
             <span class="badge badge-parallel">3x parallel</span>
             <span class="badge badge-gate">gate 7/10</span>
+            <span class="badge badge-spec">spec</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
           <p class="phase-desc">
-            3 niezalezne agenty w izolowanych kontekstach. Kazdy ma read-only tools (Read, Grep, Glob).
-            Wyniki sa mergowane w jeden raport. Srednia musi byc >= 7/10.
+            3 niezalezne agenty weryfikuja implementacje vs spec. Code Quality sprawdza AC,
+            Security sprawdza Edge Cases, Domain sprawdza AC + Success Metric.
           </p>
           <div class="agents-grid">
             <div class="agent-card">
               <div class="agent-name">Code Quality</div>
-              <div class="agent-type">code-quality-reviewer &bull; Sonnet</div>
+              <div class="agent-type">code-quality-reviewer &bull; + spec AC</div>
               <ul class="agent-checks blue">
-                <li>Pattern matching z codebase</li>
-                <li>DRY / SOLID</li>
-                <li>Naming conventions</li>
-                <li>Error handling</li>
-                <li>Dead code</li>
+                <li>DRY / SOLID / Patterns</li>
+                <li>Czy AC sa spelnione w kodzie?</li>
               </ul>
             </div>
             <div class="agent-card">
               <div class="agent-name">Security</div>
-              <div class="agent-type">security-reviewer &bull; Sonnet</div>
+              <div class="agent-type">security-reviewer &bull; + spec Edge Cases</div>
               <ul class="agent-checks red">
-                <li>SQL Injection (ORM vs raw)</li>
-                <li>XSS / CSRF</li>
-                <li>Auth bypass</li>
-                <li>Secrets in code</li>
                 <li>OWASP Top 10</li>
+                <li>Czy Edge Cases sa obslugiwane?</li>
               </ul>
             </div>
             <div class="agent-card">
-              <div class="agent-name">Domain Expert</div>
-              <div class="agent-type">google-ads-domain &bull; Sonnet</div>
+              <div class="agent-name">Domain</div>
+              <div class="agent-type">domain-expert &bull; + spec AC + Success Metric</div>
               <ul class="agent-checks yellow">
-                <li>Micros handling (cost/bid)</li>
-                <li>Conversions = float</li>
-                <li>Circuit breaker on writes</li>
-                <li>Keyring storage</li>
-                <li>Playbook alignment</li>
+                <li>Micros, conversions, playbook</li>
+                <li>Czy AC + Success Metric spelnione?</li>
               </ul>
             </div>
           </div>
-          <div class="gate-box">
-            <strong>Gate:</strong> Srednia 3 ocen >= 7/10 &rarr; PASS.
-            Jesli FAIL &rarr; wroc do FAZA 2, napraw findings. Max <strong>3 iteracje</strong>, potem eskalacja do usera.
+          <div class="gate-box gate-red">
+            <strong>Gate:</strong> Srednia >= 7/10. FAIL → wroc do FAZA 2 (max 3x, potem eskalacja).
           </div>
         </div>
       </div>
@@ -786,7 +570,7 @@
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
           <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;">4</div>
-          <div class="phase-title">TEST &mdash; pelny test suite</div>
+          <div class="phase-title">TEST &mdash; pelny suite</div>
           <div class="phase-meta">
             <span class="badge badge-parallel">2x parallel</span>
             <span class="badge badge-gate">gate pass/fail</span>
@@ -794,85 +578,111 @@
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
-          <p class="phase-desc">
-            Backend i frontend testowane rownolegle. Oba musza przejsc.
-          </p>
-          <div class="agents-grid">
-            <div class="agent-card">
-              <div class="agent-name">Backend</div>
-              <div class="agent-type">pytest &bull; 503+ testow</div>
-              <ul class="agent-checks green">
-                <li>cd backend && pytest</li>
-                <li>Pelny suite z fixtures</li>
-                <li>Coverage report</li>
-              </ul>
-            </div>
-            <div class="agent-card">
-              <div class="agent-name">Frontend</div>
-              <div class="agent-type">vite build + opcjonalnie Playwright</div>
-              <ul class="agent-checks purple">
-                <li>npm run build</li>
-                <li>Compile/type errors</li>
-                <li>Playwright screenshots (opcja)</li>
-              </ul>
-            </div>
-          </div>
-          <div class="gate-box">
-            <strong>Gate:</strong> Oba PASS &rarr; dalej. Ktorykolwiek FAIL &rarr; wroc do FAZA 2. Max <strong>3 iteracje</strong>.
+          <p class="phase-desc">pytest (503+) + npm build rownolegle. Oba musza PASS.</p>
+          <div class="gate-box gate-red">
+            <strong>Gate:</strong> 100% green. FAIL → wroc do FAZA 2 (max 3x, potem eskalacja).
           </div>
         </div>
       </div>
 
       <div class="connector"></div>
 
-      <!-- FAZA 5: DOMAIN CHECK -->
+      <!-- FAZA 5: DOMAIN — full ads pipeline -->
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
           <div class="phase-number" style="background:rgba(248,113,113,0.15);color:#F87171;">5</div>
-          <div class="phase-title">DOMAIN CHECK &mdash; specjalisci Google Ads</div>
+          <div class="phase-title">DOMAIN &mdash; Ads Review Pipeline</div>
           <div class="phase-meta">
             <span class="badge badge-fork">fork</span>
             <span class="badge badge-gate">gate 7/10</span>
-            <span class="badge badge-skip">skip jesli backend-only</span>
+            <span class="badge badge-spec">spec</span>
+            <span class="badge badge-skip">skip: backend-only / refactor</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
           <p class="phase-desc">
-            Tylko dla zmian w UI/frontend. Dwa etapy: symulacja PPC specjalisty, potem ocena eksperta.
-            Jesli ocena < 7/10 &rarr; generuj plan naprawczy i wroc do BUILD.
+            Pelny lancuch weryfikacji Google Ads domain. Aktywny TYLKO dla zmian w frontend/UI.
+            Weryfikuje vs Success Metric ze spec. Raporty w docs/reviews/.
           </p>
-          <div class="agents-grid">
-            <div class="agent-card">
-              <div class="agent-name">/ads-user</div>
-              <div class="agent-type">Persona: Marek (PPC, 6 lat) &bull; fork</div>
-              <ul class="agent-checks blue">
-                <li>Screenshot z Playwright</li>
-                <li>UX review z perspektywy usera</li>
-                <li>Brakujace funkcje</li>
-                <li>Raport &rarr; docs/reviews/</li>
-              </ul>
+
+          <!-- ads pipeline flow -->
+          <div style="padding-left:44px;margin-bottom:16px;">
+            <div style="display:flex;flex-direction:column;gap:0;align-items:flex-start;">
+
+              <!-- ads-user -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid rgba(79,142,247,0.15);background:rgba(79,142,247,0.04);width:100%;max-width:700px;">
+                <div class="phase-number" style="background:rgba(79,142,247,0.15);color:#4F8EF7;font-size:9px;width:28px;height:28px;">1</div>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:600;color:#fff;">/ads-user {tab}</div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.4);">Persona: Marek (PPC, 6 lat) &bull; fork &bull; screenshot + kod + seed data</div>
+                </div>
+                <span class="badge badge-fork">fork</span>
+              </div>
+              <div style="width:2px;height:16px;background:rgba(255,255,255,0.08);margin-left:24px;"></div>
+
+              <!-- ads-expert -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid rgba(251,191,36,0.15);background:rgba(251,191,36,0.04);width:100%;max-width:700px;">
+                <div class="phase-number" style="background:rgba(251,191,36,0.15);color:#FBBF24;font-size:9px;width:28px;height:28px;">2</div>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:600;color:#fff;">/ads-expert {tab} <span style="font-size:11px;color:rgba(255,255,255,0.35);font-weight:400;">(auto-chain od ads-user)</span></div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.4);">Senior GA Partner &bull; 4 kryteria &bull; score X/10 &bull; docs/reviews/ads-expert-{tab}.md</div>
+                </div>
+                <span class="badge badge-gate">gate 7/10</span>
+              </div>
+              <div style="width:2px;height:16px;background:rgba(255,255,255,0.08);margin-left:24px;"></div>
+
+              <!-- branch: pass or fail -->
+              <div style="display:flex;gap:12px;width:100%;max-width:700px;">
+                <!-- PASS -->
+                <div style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid rgba(74,222,128,0.2);background:rgba(74,222,128,0.04);text-align:center;">
+                  <div style="font-size:12px;font-weight:600;color:#4ADE80;">>= 7/10 &rarr; PASS</div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:4px;">Przejdz do FAZA 6 (SHIP)</div>
+                </div>
+                <!-- FAIL -->
+                <div style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid rgba(248,113,113,0.2);background:rgba(248,113,113,0.04);text-align:center;">
+                  <div style="font-size:12px;font-weight:600;color:#F87171;">< 7/10 &rarr; FAIL</div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:4px;">Kontynuuj petla naprawcza &darr;</div>
+                </div>
+              </div>
+              <div style="width:2px;height:16px;background:rgba(248,113,113,0.15);margin-left:calc(50% + 60px);"></div>
+
+              <!-- ads-verify -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1px dashed rgba(248,113,113,0.25);background:rgba(248,113,113,0.03);width:100%;max-width:700px;">
+                <div class="phase-number" style="background:rgba(248,113,113,0.15);color:#F87171;font-size:9px;width:28px;height:28px;">3</div>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:600;color:#fff;">/ads-verify {tab} <span style="font-size:11px;color:rgba(255,255,255,0.35);font-weight:400;">(jesli FAIL)</span></div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.4);">Generuje plan naprawczy &bull; docs/reviews/ads-verify-{tab}.md &bull; lista taskow MISSING</div>
+                </div>
+              </div>
+              <div style="width:2px;height:16px;background:rgba(255,255,255,0.08);margin-left:24px;"></div>
+
+              <!-- sprint -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1px dashed rgba(123,92,224,0.25);background:rgba(123,92,224,0.03);width:100%;max-width:700px;">
+                <div class="phase-number" style="background:rgba(123,92,224,0.15);color:#A78BFA;font-size:9px;width:28px;height:28px;">4</div>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:600;color:#fff;">/sprint {tab} <span style="font-size:11px;color:rgba(255,255,255,0.35);font-weight:400;">(auto-implement taskow z planu)</span></div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.4);">Implementuje taski MISSING z ads-verify &bull; wraca do FAZA 2 (BUILD)</div>
+                </div>
+              </div>
+              <div style="width:2px;height:16px;background:rgba(255,255,255,0.08);margin-left:24px;"></div>
+
+              <!-- ads-check -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1px dashed rgba(74,222,128,0.25);background:rgba(74,222,128,0.03);width:100%;max-width:700px;">
+                <div class="phase-number" style="background:rgba(74,222,128,0.15);color:#4ADE80;font-size:9px;width:28px;height:28px;">5</div>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:600;color:#fff;">/ads-check {tab} <span style="font-size:11px;color:rgba(255,255,255,0.35);font-weight:400;">(QA weryfikacja)</span></div>
+                  <div style="font-size:11px;color:rgba(255,255,255,0.4);">Sprawdza czy taski z ads-verify sa DONE &bull; GOTOWE → /ads-user re-test &bull; BRAKUJE → wroc do /sprint</div>
+                </div>
+              </div>
+
             </div>
-            <div class="agent-card">
-              <div class="agent-name">/ads-expert</div>
-              <div class="agent-type">Persona: Senior GA Partner &bull; fork</div>
-              <ul class="agent-checks yellow">
-                <li>Ocena raportu ads-user</li>
-                <li>Playbook alignment</li>
-                <li>4 kryteria, kazde X/10</li>
-                <li>Raport &rarr; docs/reviews/</li>
-              </ul>
-            </div>
-            <div class="agent-card">
-              <div class="agent-name">Jesli FAIL:</div>
-              <div class="agent-type">petla naprawcza</div>
-              <ul class="agent-checks red">
-                <li>/ads-verify &rarr; plan naprawczy</li>
-                <li>/sprint &rarr; auto-implement</li>
-                <li>/ads-check &rarr; QA weryfikacja</li>
-                <li>Wroc do /ads-user re-test</li>
-              </ul>
-            </div>
+          </div>
+
+          <div class="gate-box gate-red">
+            <strong>Pelny lancuch:</strong> /ads-user &rarr; /ads-expert &rarr; jesli < 7/10: /ads-verify &rarr; /sprint &rarr; /ads-check &rarr; /ads-user re-test<br>
+            <strong>Skip:</strong> backend-only, refactor, hotfix, docs/tests only<br>
+            <strong>Max iteracje:</strong> 2 (potem eskalacja do Kuby)
           </div>
         </div>
       </div>
@@ -883,155 +693,49 @@
       <div class="phase" onclick="this.classList.toggle('open')">
         <div class="phase-header">
           <div class="phase-number" style="background:rgba(74,222,128,0.15);color:#4ADE80;">6</div>
-          <div class="phase-title">SHIP &mdash; /done pipeline</div>
+          <div class="phase-title">SHIP &mdash; squash + commit + archiwizacja spec</div>
           <div class="phase-meta">
             <span class="badge badge-main">main ctx</span>
             <span class="badge badge-fork">docs fork</span>
-            <span class="badge badge-gate">pm gate 7/10</span>
+            <span class="badge badge-gate">pm gate</span>
           </div>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="phase-body">
-          <p class="phase-desc">
-            Commit, dokumentacja (w izolacji), PM gate, push. Jesli PM < 7/10 &rarr; wroc do BUILD.
-          </p>
           <ul class="steps">
-            <li>
-              <div class="step-icon" style="background:rgba(79,142,247,0.15);color:#4F8EF7;">0</div>
-              Squash WIP commits &mdash; <code style="color:#fff;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:11px;">git reset --soft HEAD~N</code> &rarr; wszystkie zmiany staged
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">1</div>
-              /commit &mdash; inteligentny commit z conventional prefix (1 czysty commit zamiast WIP)
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(79,142,247,0.15);color:#4F8EF7;">2</div>
-              /docs-sync <span class="badge badge-fork" style="margin-left:8px;font-size:10px">fork</span> &mdash; aktualizacja PROGRESS.md, API_ENDPOINTS.md
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">3</div>
-              git commit docs &mdash; osobny commit na dokumentacje
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(248,113,113,0.15);color:#F87171;">4</div>
-              /pm-check <span class="badge badge-fork" style="margin-left:8px;font-size:10px">fork</span> &mdash; ocena PM >= 7/10 &rarr; tworzy marker
-            </li>
-            <li>
-              <div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">5</div>
-              git push &mdash; pre-push hook sprawdza marker PM
-            </li>
+            <li><div class="step-icon" style="background:rgba(79,142,247,0.15);color:#4F8EF7;">0</div> Squash WIP commits &mdash; <code>git reset --soft HEAD~N</code></li>
+            <li><div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">1</div> /commit &mdash; 1 czysty commit z conventional prefix</li>
+            <li><div class="step-icon" style="background:rgba(79,142,247,0.15);color:#4F8EF7;">2</div> /docs-sync <span class="badge badge-fork" style="font-size:9px;margin-left:6px;">fork</span></li>
+            <li><div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">3</div> git commit docs</li>
+            <li><div class="step-icon" style="background:rgba(248,113,113,0.15);color:#F87171;">4</div> /pm-check <span class="badge badge-fork" style="font-size:9px;margin-left:6px;">fork</span> &mdash; gate >= 7/10</li>
+            <li><div class="step-icon" style="background:rgba(74,222,128,0.15);color:#4ADE80;">5</div> git push</li>
+            <li><div class="step-icon" style="background:rgba(168,85,247,0.15);color:#C084FC;">6</div> Archiwizacja spec &rarr; docs/specs/archive/</li>
+            <li><div class="step-icon" style="background:rgba(255,215,0,0.15);color:#FFD700;">7</div> ceo-log.md: STARTED &rarr; DONE</li>
           </ul>
-          <div class="gate-box">
-            <strong>Gate:</strong> PM score >= 7/10 &rarr; push. Jesli < 7 &rarr; lista problemow, wroc do FAZA 2. Max <strong>2 iteracje</strong>.
-          </div>
         </div>
       </div>
 
-    </div>
+    </div><!-- /pipeline -->
   </div>
 
   <!-- ============================================================ -->
   <!-- COMPARISON -->
   <!-- ============================================================ -->
   <div id="tab-compare" class="tab-content">
+    <div class="section-title">Pipeline v1 vs v2</div>
     <table class="compare-table">
-      <thead>
-        <tr>
-          <th style="width:25%">Aspekt</th>
-          <th style="width:37%">Stary pipeline</th>
-          <th style="width:37%">Nowy pipeline</th>
-        </tr>
-      </thead>
+      <thead><tr><th style="width:22%">Aspekt</th><th style="width:38%">v1 (stary)</th><th style="width:40%">v2 (aktualny)</th></tr></thead>
       <tbody>
-        <tr>
-          <td>Kontekst</td>
-          <td class="val-old">Wszystko w main &rarr; compaction po 3-4 krokach</td>
-          <td class="val-new">Fork isolation &rarr; main context wolny</td>
-        </tr>
-        <tr>
-          <td>Paralelizm</td>
-          <td class="val-old">0 &mdash; wszystko sekwencyjne</td>
-          <td class="val-new">3+3+2 agentow rownolegle</td>
-        </tr>
-        <tr>
-          <td>Review</td>
-          <td class="val-old">1 monolityczny agent</td>
-          <td class="val-new">3 specjalisty niezaleznie (code + security + domain)</td>
-        </tr>
-        <tr>
-          <td>Chaining</td>
-          <td class="val-old">"Prosba" do Claude &mdash; moze zignorowac</td>
-          <td class="val-new">Hooks + orchestrator /build &mdash; mechaniczne</td>
-        </tr>
-        <tr>
-          <td>Testy</td>
-          <td class="val-old">Reczne, na koncu</td>
-          <td class="val-new">Auto po kazdej edycji (PostToolUse hook)</td>
-        </tr>
-        <tr>
-          <td>Tracking</td>
-          <td class="val-old">Brak &mdash; nie wiadomo gdzie jestes</td>
-          <td class="val-new">TaskCreate/TaskUpdate na kazdym kroku</td>
-        </tr>
-        <tr>
-          <td>Gate'y</td>
-          <td class="val-old">Brak &mdash; kazdy krok "na oko"</td>
-          <td class="val-new">7/10 minimum na VERIFY, TEST, DOMAIN, PM</td>
-        </tr>
-        <tr>
-          <td>Petle naprawcze</td>
-          <td class="val-old">Brak &mdash; fail = stop</td>
-          <td class="val-new">Max 2-3 iteracje z auto-fix, potem eskalacja</td>
-        </tr>
-        <tr>
-          <td>Plan przed kodem</td>
-          <td class="val-old">Brak &mdash; od razu pisze</td>
-          <td class="val-new">3 Explore scouty &rarr; plan &rarr; dopiero build</td>
-        </tr>
-        <tr>
-          <td>CEO / decydent</td>
-          <td class="val-old">Brak &mdash; user musi sam wybrac co robic</td>
-          <td class="val-new">/ceo czyta docs + raporty, sam wybiera priorytet i deleguje</td>
-        </tr>
-        <tr>
-          <td>Zuzycie kontekstu</td>
-          <td class="val-old">~100% main context</td>
-          <td class="val-new">~30-40% main (reszta w fork)</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="section-title" style="margin-top:48px">Skip Paths</div>
-    <div class="section-subtitle">Nowy pipeline moze pominac fazy gdy nie sa potrzebne</div>
-    <table class="compare-table">
-      <thead>
-        <tr>
-          <th>Warunek</th>
-          <th>Pominac</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td>Tylko backend (no frontend)</td><td>FAZA 5 (Domain Check)</td></tr>
-        <tr><td>Tylko docs/tests</td><td>FAZA 3 (pelne verify) &rarr; basic review</td></tr>
-        <tr><td>Hotfix ("szybki fix")</td><td>FAZA 1 (Plan) + minimalne verify</td></tr>
-        <tr><td>Refactor (no new features)</td><td>FAZA 5 (Domain Check)</td></tr>
-      </tbody>
-    </table>
-
-    <div class="section-title" style="margin-top:48px">Limity petli</div>
-    <table class="compare-table">
-      <thead>
-        <tr>
-          <th>Petla</th>
-          <th>Max iteracji</th>
-          <th>Co po limicie</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td>VERIFY loop</td><td>3</td><td>Pokaz findings userowi, zapytaj</td></tr>
-        <tr><td>TEST loop</td><td>3</td><td>Pokaz bledy, zapytaj usera</td></tr>
-        <tr><td>DOMAIN loop</td><td>2</td><td>Pokaz raport, zapytaj usera</td></tr>
-        <tr><td>PM loop</td><td>2</td><td>Pokaz problemy, zapytaj usera</td></tr>
+        <tr><td>Intelligence</td><td class="val-old">Brak — CEO nie zna rynku</td><td class="val-new">3 scouty → CEO Brief JSON</td></tr>
+        <tr><td>PM / Spec</td><td class="val-old">Brak — Engineering zgaduje co "done"</td><td class="val-new">PM pisze spec z AC, Edge Cases, Success Metric</td></tr>
+        <tr><td>CEO gate</td><td class="val-old">Miekki tekst "ZAWSZE dopisz"</td><td class="val-new">Twardy gate: brak artefaktu = STOP</td></tr>
+        <tr><td>CLAUDE.md konflikt</td><td class="val-old">"Execute immediately" nadpisywalo pipeline</td><td class="val-new">Explicit exception: pipeline phases != pytanie usera</td></tr>
+        <tr><td>Spec flow</td><td class="val-old">Brak — kazda faza dzialala niezaleznie</td><td class="val-new">Spec = kontrakt. Scouci, reviewery, domain weryfikuja vs spec</td></tr>
+        <tr><td>Kontekst</td><td class="val-old">Wszystko w main → compaction</td><td class="val-new">Fork isolation (Intelligence, PM, reviewery, docs)</td></tr>
+        <tr><td>Paralelizm</td><td class="val-old">Czesc rownolegle, czesc nie</td><td class="val-new">4+3+3+2 agentow rownolegle</td></tr>
+        <tr><td>Archiwizacja</td><td class="val-old">Brak — specs nie istnialy</td><td class="val-new">Po SHIP: spec → archive/, ceo-log → DONE</td></tr>
+        <tr><td>Git checkpoints</td><td class="val-old">Brak — 1 commit na koncu</td><td class="val-new">WIP commit po BUILD → squash w SHIP</td></tr>
+        <tr><td>Persistencja CEO</td><td class="val-old">Brak — kazda sesja od zera</td><td class="val-new">ceo-log.md z intelligence flag + status tracking</td></tr>
       </tbody>
     </table>
   </div>
@@ -1040,77 +744,67 @@
   <!-- FILES -->
   <!-- ============================================================ -->
   <div id="tab-files" class="tab-content">
-    <div class="section-title">Struktura plikow pipeline'u</div>
-    <div class="section-subtitle">Co istnieje, co trzeba stworzyc/zaktualizowac</div>
+    <div class="section-title">Struktura plikow</div>
 
     <div class="file-tree">
       <span class="dir">.claude/</span><br>
-      &nbsp;&nbsp;<span class="dir">skills/</span> <span class="comment">&mdash; nowy format (izolacja, frontmatter)</span><br>
+      <br>
+      &nbsp;&nbsp;<span class="dir">skills/</span> <span class="comment">&mdash; izolowane (fork context, frontmatter)</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">intelligence/</span> <span class="new-tag">NEW</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="comment">&mdash; 3 scouty rynkowe → CEO Brief JSON</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">pm/</span> <span class="new-tag">NEW</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="comment">&mdash; PM Agent → docs/specs/{slug}.md</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">build/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; master orchestrator (6 faz)</span><br>
-      <br>
-      &nbsp;&nbsp;<span class="dir">commands/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">ceo.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; CEO autopilot: czyta docs/raporty, decyduje co dalej, deleguje do /build</span><br>
-      <br>
-      <span class="dir">docs/</span><br>
-      &nbsp;&nbsp;<span class="file">ceo-log.md</span> <span class="new-tag">NEW</span> <span class="comment">&mdash; log decyzji CEO (data, wave, task, powod, status) — persistencja miedzy sesjami</span><br>
-      <br>
-      &nbsp;&nbsp;<span class="dir">skills/</span> <span class="comment">(kontynuacja)</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">UPDATED</span> <span class="comment">&mdash; spec support w FAZA 1/3/5/6</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">review/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; 3 parallel review agents, fork</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; 3 parallel review agents</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">docs-sync/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; sync PROGRESS + API_ENDPOINTS, fork</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; sync PROGRESS + API_ENDPOINTS</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">ads-user/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; persona Marek, fork</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">ads-expert/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; GA partner review, fork</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">criteria.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; kryteria oceny</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">pm-check/</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; PM gate score, fork</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SKILL.md</span> <span class="exists-tag">EXISTS</span><br>
       <br>
-      &nbsp;&nbsp;<span class="dir">agents/</span> <span class="comment">&mdash; custom review agenty (read-only)</span><br>
+      &nbsp;&nbsp;<span class="dir">commands/</span> <span class="comment">&mdash; main context (edytuja pliki)</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">ceo.md</span> <span class="exists-tag">UPDATED</span> <span class="comment">&mdash; intelligence check + PM delegacja + HARD GATE</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">cto.md</span> <span class="exists-tag">UPDATED</span> <span class="comment">&mdash; --spec path support</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">feature.md</span> <span class="exists-tag">EXISTS</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">bugfix.md</span> <span class="exists-tag">EXISTS</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">done.md</span> <span class="exists-tag">EXISTS</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">...</span> <span class="comment">&mdash; + 20 innych</span><br>
+      <br>
+      &nbsp;&nbsp;<span class="dir">agents/</span> <span class="comment">&mdash; custom review (read-only)</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">code-quality-reviewer.md</span> <span class="exists-tag">EXISTS</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">security-reviewer.md</span> <span class="exists-tag">EXISTS</span><br>
       &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">domain-expert.md</span> <span class="exists-tag">EXISTS</span><br>
       <br>
-      &nbsp;&nbsp;<span class="dir">commands/</span> <span class="comment">&mdash; stary format (main context, edycja plikow)</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">cto.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; router</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">feature.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; implementacja</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">bugfix.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; implementacja</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">endpoint.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; implementacja</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">done.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; ship orchestrator</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">commit.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; smart commit</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">sprint.md</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; ads implementation</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">...</span> <span class="comment">&mdash; + 18 innych komend</span><br>
-      <br>
       &nbsp;&nbsp;<span class="dir">hooks/</span> <span class="comment">&mdash; automatyczne triggery</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">session-start.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; status projektu</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">post-edit-test.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; auto-test po edycji</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">pre-push.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; PM gate check</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">task-completed.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; auto-commit taskow</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">pre-compact.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; zapis kontekstu</span><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">stop.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; podsumowanie sesji</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">post-edit-test.sh</span> <span class="exists-tag">EXISTS</span> <span class="comment">&mdash; 60s timeout</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">pre-push.sh</span> <span class="exists-tag">EXISTS</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">...</span><br>
+      <br>
+      <span class="dir">docs/</span><br>
+      &nbsp;&nbsp;<span class="file">pm-context.md</span> <span class="new-tag">NEW</span> <span class="comment">&mdash; glos Kuby (raz, recznie)</span><br>
+      &nbsp;&nbsp;<span class="file">ceo-log.md</span> <span class="new-tag">NEW</span> <span class="comment">&mdash; log decyzji CEO</span><br>
+      &nbsp;&nbsp;<span class="file">market-research.md</span> <span class="new-tag">NEW (auto)</span> <span class="comment">&mdash; CEO Brief JSON od Intelligence</span><br>
+      &nbsp;&nbsp;<span class="dir">specs/</span> <span class="new-tag">NEW</span> <span class="comment">&mdash; aktywne spec'y PM</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">archive/</span> <span class="new-tag">NEW</span> <span class="comment">&mdash; archiwum po SHIP</span><br>
+      <br>
+      <span class="file">CLAUDE.md</span> <span class="exists-tag">UPDATED</span> <span class="comment">&mdash; EXCEPTION: /ceo pipeline != "execute immediately"</span><br>
     </div>
   </div>
 
-</div>
+</div><!-- /container -->
 
 <script>
 function switchTab(tab) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => {
-    el.classList.remove('active', 'active-red');
-  });
-
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-  const btn = document.querySelector('[data-tab="' + tab + '"]');
-  if (tab === 'old') {
-    btn.classList.add('active-red');
-  } else {
-    btn.classList.add('active');
-  }
+  document.querySelector('[data-tab="' + tab + '"]').classList.add('active');
 }
 </script>
-
 </body>
 </html>

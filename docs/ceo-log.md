@@ -27,4 +27,5 @@
 - **Intelligence used:** TAK — competitor insight: Adalysis dodał per-asset breakdown; user pain: cross-account management wymaga szybkiego porównania trendów
 - **Nakład:** M (N2 wymaga currency na Client model + reseed; N5 wymaga nowy endpoint + Recharts)
 - **Delegacja:** SKIP PM (istniejący plan ads-verify) → /build mcc-overview-sprint2
-- **Status:** STARTED
+- **Status:** DONE
+- **Wynik:** N2 currency + N5 sparkline zaimplementowane, 7 nowych lock tests, 539 total backend, build OK. Review: security 7.5/10, domain 8/10. Mixed-currency KPI naprawiony po review.

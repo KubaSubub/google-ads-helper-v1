@@ -385,8 +385,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Negative keyword lists overview across all accounts (`/mcc/negative-keyword-lists`).
 - Bulk dismiss Google recommendations (`/mcc/dismiss-google-recommendations`).
 - MCC shared lists overview (`/mcc/shared-lists`), billing status check (`/mcc/billing-status`).
-- Backend: `mcc.py` router with 6 endpoints (overview, new-access, dismiss-google-recommendations, negative-keyword-lists, shared-lists, billing-status).
+- Backend: `mcc.py` router with 7 endpoints (overview, new-access, dismiss-google-recommendations, negative-keyword-lists, shared-lists, shared-lists/{list_id}/items, billing-status).
 - Reuses `BudgetPacingModule` and `KpiCard` shared components.
+- Sprint 2: currency-aware formatting (per-account currency symbol), spend sparkline per row (56×20 LineChart from `spend_trend`).
 
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
