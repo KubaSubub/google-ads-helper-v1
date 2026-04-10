@@ -234,6 +234,58 @@ def test_trigger_stream_requires_client_id(api_client):
     assert resp.status_code == 422  # missing client_id
 
 
+# ─── /sync/trigger response contract ───
+#
+# The MCC Overview frontend relies on `result.success` + `result.message`
+# (see syncClient in frontend/src/api.js and runSync in MCCOverviewPage.jsx).
+# These tests lock the response shape so a backend refactor cannot silently
+# break the frontend by renaming fields or returning a raw HTTPException.
+
+_TRIGGER_CONTRACT_KEYS = {"success", "status", "message"}
+
+
+def test_trigger_unknown_client_matches_contract(api_client):
+    resp = api_client.post("/api/v1/sync/trigger?client_id=999999")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert _TRIGGER_CONTRACT_KEYS.issubset(body.keys())
+    assert body["success"] is False
+    assert body["status"] == "failed"
+    assert isinstance(body["message"], str) and body["message"]
+
+
+def test_trigger_google_ads_not_ready_matches_contract(api_client, db, monkeypatch):
+    """When Google Ads is not configured, the endpoint still returns the
+    structured contract (not an HTTPException) so the frontend toast works."""
+    from app.services.google_ads import google_ads_service
+
+    monkeypatch.setattr(
+        google_ads_service,
+        "get_connection_diagnostics",
+        lambda: {
+            "authenticated": False,
+            "configured": False,
+            "ready": False,
+            "connected": False,
+            "reason": "Brak credentiali Google Ads",
+            "missing_credentials": ["client_id", "client_secret", "developer_token"],
+            "has_login_customer_id": False,
+        },
+    )
+    client = _seed(db)
+    resp = api_client.post(f"/api/v1/sync/trigger?client_id={client.id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert _TRIGGER_CONTRACT_KEYS.issubset(body.keys())
+    assert body["success"] is False
+    assert body["status"] == "failed"
+    assert "Google Ads" in body["message"] or body["message"]
+    # The "not ready" branch also exposes reason + missing_credentials for the UI
+    assert "reason" in body
+    assert "missing_credentials" in body
+    assert isinstance(body["missing_credentials"], list)
+
+
 # ─── /sync/phase requires valid phase name ───
 
 
