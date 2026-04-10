@@ -208,7 +208,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## Google Ads Coverage Expansion (Wave A-E)
 - 12 new models: AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion.
-- 14 new sync phases (36 total): product_groups, placement_metrics, bid_modifiers, bidding_strategies, shared_budgets, audiences, topic_metrics, google_recommendations, conversion_value_rules, pmax_channel_metrics, campaign_audiences, campaign_assets, asset_group_signals + existing asset_groups/asset_group_daily/asset_group_assets.
+- 14 new sync phases (37 total): product_groups, placement_metrics, bid_modifiers, bidding_strategies, shared_budgets, audiences, topic_metrics, google_recommendations, conversion_value_rules, pmax_channel_metrics, campaign_audiences, campaign_assets, asset_group_signals + existing asset_groups/asset_group_daily/asset_group_assets.
 - Wave A: Auction Insights, Bid Modifiers, Target CPA/ROAS write, Extension details, Demographics (parental + income).
 - Wave B: Shopping Product Group model + sync + analytics endpoint.
 - Wave C: Placement model + sync + exclusion write, Topic Targeting, Audience Management.
@@ -326,7 +326,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## Scheduled Sync (F1)
 - `ScheduledSync` model (`scheduled_sync.py`) — per-client sync schedule (enabled, interval_hours).
-- `Scheduler` service (`scheduler.py`) — APScheduler-based background sync runner.
+- `Scheduler` service (`scheduler.py`) — asyncio-based background sync runner (no external packages).
 - 3 endpoints in `scheduled_sync.py`: GET/POST/DELETE `/sync/schedule`.
 - Registered in `main.py` as protected router.
 
@@ -335,7 +335,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `GET /rules/` — list rules, `POST /rules/` — create, `GET/PUT/DELETE /rules/{rule_id}` — CRUD.
 - `POST /rules/{rule_id}/dry-run` — simulate execution, `POST /rules/{rule_id}/execute` — run rule.
 - Per-client rule definitions with conditions, actions, and scheduling.
-- Registered in `main.py` as protected router (17 routers total).
+- Registered in `main.py` as protected router (18 routers total).
 
 ## DSA Support (C1/C2/C3)
 - 4 new analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`.

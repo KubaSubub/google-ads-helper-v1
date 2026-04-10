@@ -29,7 +29,7 @@
 **Decision:** Sync triggered manually via "Refresh" button only
 **Why:** Simpler architecture, no background scheduler needed, user controls when data refreshes.
 **Future:** Add APScheduler for daily auto-sync in v1.1 if requested.
-**SUPERSEDED:** F1 Scheduled Sync implemented (2026-03-29) — APScheduler-based `ScheduledSync` model with per-client schedules (`GET/POST/DELETE /sync/schedule`). Manual sync still available alongside.
+**SUPERSEDED:** F1 Scheduled Sync implemented (2026-03-29) — asyncio-based `ScheduledSync` model with per-client schedules (`GET/POST/DELETE /sync/schedule`), no external scheduler dependency (built-in asyncio only). Manual sync still available alongside.
 
 ## ADR-006: Segment after sync (batch) over during sync (real-time)
 **Decision:** Search term segmentation runs as Phase 4 AFTER sync completes

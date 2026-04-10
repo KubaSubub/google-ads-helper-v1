@@ -94,6 +94,16 @@ test.describe('Sekcja 20 — Settings', () => {
 });
 
 // ─── Sekcja 21 — Drawer zarządzania klientami ────────────────────────
+//
+// IMPORTANT: The ClientSelector (gear button) and ClientDrawer are ONLY
+// rendered on non-MCC pages (SidebarContent.jsx: `{!isMccPage && ...}`).
+// The root route `/` now redirects to `/mcc-overview` (routes.jsx:43),
+// so tests must navigate to a page that has the drawer, e.g. /dashboard.
+//
+// Selector strategy for the drawer itself: scope assertions to
+// `[data-testid="client-drawer"]` OR to a locator rooted at the drawer
+// header so that the "Zarządzanie klientami" text match never collides
+// with the gear button's `title` attribute.
 
 test.describe('Sekcja 21 — Client Drawer', () => {
     test.beforeEach(async ({ page }) => {
@@ -105,111 +115,83 @@ test.describe('Sekcja 21 — Client Drawer', () => {
         });
     });
 
-    test('Sekcja 21.1 — Ikona gear otwiera drawer zarządzania klientami', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    // Drawer header is an <h2> — use role-based locator to avoid matching
+    // the gear button's `title="Zarządzanie klientami"` tooltip attribute.
+    const drawerHeader = (page) =>
+        page.getByRole('heading', { name: 'Zarządzanie klientami', level: 2 });
 
-        // Gear button przy selektorze klienta
+    async function openDrawer(page) {
+        await page.goto('/dashboard');
+        // Wait for sidebar-rendered ClientSelector (only present on non-MCC pages)
         const gearBtn = page.locator('button[title="Zarządzanie klientami"]');
-        await expect(gearBtn).toBeVisible();
+        await expect(gearBtn).toBeVisible({ timeout: 10_000 });
         await gearBtn.click();
+        await expect(drawerHeader(page)).toBeVisible({ timeout: 5_000 });
+    }
 
-        // Drawer header
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
+    test('Sekcja 21.1 — Ikona gear otwiera drawer zarządzania klientami', async ({ page }) => {
+        await openDrawer(page);
     });
 
     test('Sekcja 21.2 — Drawer wyświetla listę klientów', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
-
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
-
-        // Demo client should be visible
-        const drawerContent = page.locator('text=/Sushi Naka Naka/');
-        await expect(drawerContent.first()).toBeVisible();
+        await openDrawer(page);
+        // Demo client should be visible in the drawer
+        await expect(page.locator('text=/Sushi Naka Naka/').first()).toBeVisible();
     });
 
     test('Sekcja 21.3 — Drawer zawiera przyciski Pobierz i Dodaj', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
-
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
-
-        // Action buttons
+        await openDrawer(page);
         await expect(page.locator('button:has-text("Pobierz klientów")')).toBeVisible();
         await expect(page.locator('button:has-text("Dodaj ręcznie")')).toBeVisible();
     });
 
     test('Sekcja 21.4 — Dodaj ręcznie otwiera pole input', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
-
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
-
+        await openDrawer(page);
         await page.locator('button:has-text("Dodaj ręcznie")').click();
-
-        // Input field for customer ID
-        const input = page.locator('input[placeholder*="123-456-7890"]');
-        await expect(input).toBeVisible();
+        await expect(page.locator('input[placeholder*="123-456-7890"]')).toBeVisible();
     });
 
     test('Sekcja 21.5 — Drawer wyświetla dane synchronizacji', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+        await openDrawer(page);
+        await page.waitForTimeout(500); // wait for lazy coverage fetch
 
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
-        await page.waitForTimeout(500);
+        // The drawer animates in via `animation: slideInRight`. Scope to the
+        // animated container and assert on its text content.
+        const drawer = page.locator('[style*="slideInRight"]');
+        const drawerText = await drawer.textContent();
 
-        const drawerText = await page.locator('[style*="slideInRight"]').textContent();
-
-        // Should show last sync date
         expect(drawerText).toContain('Ostatni sync');
-        // Should show data range
         expect(drawerText).toContain('Dane:');
     });
 
     test('Sekcja 21.6 — Drawer ma przycisk Sync przy kliencie', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
-
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
-
-        // Sync button
-        const syncBtn = page.locator('button:has-text("Sync")');
-        await expect(syncBtn.first()).toBeVisible();
+        await openDrawer(page);
+        await expect(page.locator('button:has-text("Sync")').first()).toBeVisible();
     });
 
     test('Sekcja 21.7 — Zamknięcie drawera przyciskiem X', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+        await openDrawer(page);
 
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
-
-        // Close button (X inside drawer header)
-        const closeBtn = page.locator('text=/Zarządzanie klientami/').locator('..').locator('button');
+        // The close button is the first <button> in the drawer header container.
+        // Use role-based navigation: header h2 → parent div → first button.
+        const closeBtn = drawerHeader(page).locator('..').locator('button').first();
         await closeBtn.click();
 
-        // Drawer should disappear
-        await expect(page.locator('text=/Zarządzanie klientami/')).not.toBeVisible({ timeout: 3_000 });
+        await expect(drawerHeader(page)).not.toBeVisible({ timeout: 3_000 });
     });
 
-    test('Sekcja 21.8 — Route /clients redirectuje na /', async ({ page }) => {
+    test('Sekcja 21.8 — Route /clients redirectuje na /mcc-overview', async ({ page }) => {
         await page.goto('/clients');
-        await page.waitForURL('**/');
+        await page.waitForURL('**/mcc-overview', { timeout: 5_000 });
+        expect(page.url()).toContain('/mcc-overview');
         expect(page.url()).not.toContain('/clients');
     });
 
     test('Sekcja 21.9 — Nawigacja nie zawiera zakładki Klienci', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+        // Navigate to dashboard (sidebar renders client-management UI on non-MCC pages)
+        await page.goto('/dashboard');
+        await expect(page.locator('button[title="Zarządzanie klientami"]')).toBeVisible({ timeout: 10_000 });
 
-        // Navigation should NOT have "Klienci" link
         const sidebar = page.locator('nav');
         const sidebarText = await sidebar.textContent();
         expect(sidebarText).not.toContain('Klienci');
@@ -218,11 +200,8 @@ test.describe('Sekcja 21 — Client Drawer', () => {
     test('Sekcja 21 — Brak JS errors', async ({ page }) => {
         const errors = [];
         page.on('pageerror', (err) => errors.push(err.message));
-        await page.goto('/');
-        await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
 
-        await page.locator('button[title="Zarządzanie klientami"]').click();
-        await expect(page.locator('text=/Zarządzanie klientami/')).toBeVisible({ timeout: 5_000 });
+        await openDrawer(page);
         await page.waitForTimeout(1000);
 
         expect(errors).toEqual([]);

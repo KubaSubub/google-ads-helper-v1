@@ -2,7 +2,7 @@
 # Updated: 2026-04-10
 
 ## Status
-- Backend: 539 tests passing
+- Backend: 582 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
@@ -58,6 +58,17 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## MCC "Synchronizuj nieaktualne" Fix + Sync Contract Lock (2026-04-10)
+- Fixed "500 + 3x timeout 30000ms" error on MCC Overview "Synchronizuj nieaktualne" button
+- Root causes:
+  1. Frontend `handleSyncAll` fired up to 3 parallel fire-and-forget POST `/sync/trigger` calls; full sync takes 20-45s per client so Axios 30s timeout fired deterministically for 2/3 requests
+  2. SQLite `PRAGMA busy_timeout=0` (default) caused "database is locked" HTTP 500 under concurrent writers
+- Fix: sequential sync in `MCCOverviewPage.jsx` handleSyncAll + `busy_timeout` PRAGMA set on SQLite connection
+- New contract tests in `test_sync_router.py` guarding `/sync/trigger` response shape (success/status/message) that the MCC frontend relies on:
+  - `test_trigger_unknown_client_matches_contract`
+  - `test_trigger_google_ads_not_ready_matches_contract`
+- Commits: f46f07a (fix), 79f5f8d (contract tests)
 
 ## MCC Overview Sprint 2 — Currency + Sparkline (2026-04-10)
 - Currency-aware money formatting: per-account `currency` field drives symbol placement ($1,234 vs 1 234 zł vs 1 234 €)
