@@ -450,3 +450,124 @@ test('MCC Overview — Google Ads external link present', async ({ page }) => {
     const href = await link.getAttribute('href');
     expect(href).toContain('ocid=');
 });
+
+// ─── 17. Synchronizuj nieaktualne — behavioural tests ─────────────
+//
+// These are the tests that SHOULD have existed before. The previous
+// "action buttons present" test only checked toBeVisible() — the button
+// was dead UI that fired 3 parallel POST /sync/trigger calls that always
+// timed out (axios 30s vs 24-phase sync taking 27-41s under contention).
+// Root cause + fix: handleSyncAll now runs sequentially with a 180s
+// per-call timeout.
+
+test('MCC Overview — Synchronizuj nieaktualne fires sequential sync calls', async ({ page }) => {
+    // Intercept /sync/trigger with a 300ms server-side delay. Record timing
+    // so we can assert that calls are NOT simultaneous.
+    const syncEvents = []; // [{ clientId, phase: 'start'|'end', t }]
+    await page.route(/\/api\/v1\/sync\/trigger/, async route => {
+        const url = new URL(route.request().url());
+        const clientId = parseInt(url.searchParams.get('client_id'), 10);
+        syncEvents.push({ clientId, phase: 'start', t: Date.now() });
+        await new Promise(r => setTimeout(r, 300));
+        syncEvents.push({ clientId, phase: 'end', t: Date.now() });
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true, status: 'success', message: 'ok' }),
+        });
+    });
+
+    await page.goto('/mcc-overview');
+    await expect(page.locator('h1:has-text("Wszystkie konta")')).toBeVisible({ timeout: 10_000 });
+
+    await page.locator('button:has-text("Synchronizuj nieaktualne")').click();
+
+    // Wait until all 3 calls finish (3 × 300ms sequential = ~900ms, plus React/network overhead)
+    await expect.poll(
+        () => syncEvents.filter(e => e.phase === 'end').length,
+        { timeout: 8_000 },
+    ).toBe(3);
+
+    // Exactly 3 distinct clients, no dupes
+    const started = syncEvents.filter(e => e.phase === 'start').map(e => e.clientId);
+    expect(started).toHaveLength(3);
+    expect(new Set(started).size).toBe(3);
+
+    // Sequential invariant: for every call, the PREVIOUS call must have ended
+    // before this call started. Parallel (the old bug) would interleave starts.
+    for (let i = 1; i < started.length; i++) {
+        const prevEnd = syncEvents.find(
+            e => e.clientId === started[i - 1] && e.phase === 'end',
+        );
+        const currStart = syncEvents.find(
+            e => e.clientId === started[i] && e.phase === 'start',
+        );
+        expect(currStart.t).toBeGreaterThanOrEqual(prevEnd.t);
+    }
+});
+
+test('MCC Overview — Synchronizuj nieaktualne button disabled while syncing', async ({ page }) => {
+    // Delay the sync response so we have time to observe the disabled state
+    let resolveFirst;
+    const firstCallHeld = new Promise(r => { resolveFirst = r; });
+    let callCount = 0;
+    await page.route(/\/api\/v1\/sync\/trigger/, async route => {
+        callCount++;
+        if (callCount === 1) await firstCallHeld;
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true, status: 'success', message: 'ok' }),
+        });
+    });
+
+    await page.goto('/mcc-overview');
+    await expect(page.locator('h1:has-text("Wszystkie konta")')).toBeVisible({ timeout: 10_000 });
+
+    const btn = page.locator('button:has-text("Synchronizuj nieaktualne")');
+    await btn.click();
+
+    // While the first call is pending, the button must be disabled
+    await expect(btn).toBeDisabled({ timeout: 3_000 });
+
+    // Second click should not register (button disabled). Click anyway and
+    // assert that callCount stays at 1 while the first is still pending.
+    await btn.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(200);
+    expect(callCount).toBe(1);
+
+    // Release the hold — all 3 syncs can now complete sequentially
+    resolveFirst();
+    await expect.poll(() => callCount, { timeout: 5_000 }).toBe(3);
+
+    // Button is re-enabled after all syncs finish
+    await expect(btn).toBeEnabled({ timeout: 5_000 });
+});
+
+test('MCC Overview — Synchronizuj nieaktualne shows aggregate toast on partial failure', async ({ page }) => {
+    let n = 0;
+    await page.route(/\/api\/v1\/sync\/trigger/, async route => {
+        n++;
+        // 2nd call fails, others succeed
+        const ok = n !== 2;
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                success: ok,
+                status: ok ? 'success' : 'failed',
+                message: ok ? 'ok' : 'Google Ads API unreachable',
+            }),
+        });
+    });
+
+    await page.goto('/mcc-overview');
+    await expect(page.locator('h1:has-text("Wszystkie konta")')).toBeVisible({ timeout: 10_000 });
+
+    await page.locator('button:has-text("Synchronizuj nieaktualne")').click();
+
+    // Aggregate toast: "Zsynchronizowano 2/3 (1 z błędami)"
+    await expect(page.locator('text=/Zsynchronizowano 2\\/3.*1.*błędami/i')).toBeVisible({
+        timeout: 10_000,
+    });
+});
