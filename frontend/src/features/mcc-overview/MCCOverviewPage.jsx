@@ -239,33 +239,72 @@ export default function MCCOverviewPage() {
         navigate(path)
     }
 
-    const handleSync = async (clientId, e) => {
-        e.stopPropagation()
+    // /sync/trigger is a 24-phase full sync. Real measurements show 20-45s per
+    // client under contention. Default axios timeout (30s) is not enough —
+    // use 3 minutes per client to cover worst case.
+    const SYNC_CALL_TIMEOUT_MS = 180_000
+
+    // Shared sync routine. Returns { ok, message } — never throws.
+    // `silent=true` suppresses toast (used by bulk flow which shows an aggregate toast).
+    const runSync = async (clientId, { silent = false } = {}) => {
         setSyncingIds(prev => new Set(prev).add(clientId))
         try {
-            const result = await syncClient(clientId, 30)
+            const result = await syncClient(clientId, 30, { timeout: SYNC_CALL_TIMEOUT_MS })
             if (result?.success) {
-                showToast?.('Synchronizacja zakończona', 'success')
-                refreshClients()
-                load()
-            } else {
-                showToast?.(result?.message || 'Synchronizacja nie powiodła się', 'error')
+                if (!silent) showToast?.('Synchronizacja zakończona', 'success')
+                return { ok: true }
             }
-        } catch {
-            showToast?.('Błąd synchronizacji', 'error')
+            const msg = result?.message || 'Synchronizacja nie powiodła się'
+            if (!silent) showToast?.(msg, 'error')
+            return { ok: false, message: msg }
+        } catch (err) {
+            const isTimeout = /timeout/i.test(err?.message || '')
+            const msg = isTimeout ? 'Synchronizacja przekroczyła limit czasu' : 'Błąd synchronizacji'
+            if (!silent) showToast?.(msg, 'error')
+            return { ok: false, message: msg }
         } finally {
             setSyncingIds(prev => { const n = new Set(prev); n.delete(clientId); return n })
         }
     }
 
+    const handleSync = async (clientId, e) => {
+        e.stopPropagation()
+        const result = await runSync(clientId)
+        if (result.ok) {
+            refreshClients()
+            load()
+        }
+    }
+
     const handleSyncAll = async () => {
         if (!data?.accounts?.length) return
+        if (syncingIds.size > 0) return // prevent re-entry while a sync is running
         const staleThreshold = 6 * 60 * 60 * 1000
         const stale = data.accounts.filter(acc =>
             !acc.last_synced_at || Date.now() - new Date(acc.last_synced_at).getTime() > staleThreshold
         )
         if (!stale.length) { showToast?.('Wszystkie konta aktualne', 'info'); return }
-        for (const acc of stale.slice(0, 3)) handleSync(acc.client_id, { stopPropagation: () => {} })
+
+        // Run syncs sequentially. Parallel syncs hit Google Ads API rate limits
+        // and SQLite write contention, pushing latency above the axios timeout
+        // and causing deterministic failures.
+        const targets = stale.slice(0, 3)
+        let ok = 0
+        let failed = 0
+        showToast?.(`Synchronizuję 0/${targets.length}...`, 'info', 120_000)
+        for (let i = 0; i < targets.length; i++) {
+            const acc = targets[i]
+            showToast?.(`Synchronizuję ${i + 1}/${targets.length}: ${acc.client_name}`, 'info', 120_000)
+            const res = await runSync(acc.client_id, { silent: true })
+            if (res.ok) ok++; else failed++
+        }
+        if (failed === 0) {
+            showToast?.(`Zsynchronizowano ${ok}/${targets.length} kont`, 'success')
+        } else {
+            showToast?.(`Zsynchronizowano ${ok}/${targets.length} (${failed} z błędami)`, ok > 0 ? 'info' : 'error')
+        }
+        refreshClients()
+        load()
     }
 
     const handleDiscover = async () => {
@@ -334,8 +373,25 @@ export default function MCCOverviewPage() {
         else setSelectedIds(new Set(accounts.map(a => a.client_id)))
     }
 
-    const handleBulkSync = () => {
-        for (const id of selectedIds) handleSync(id, { stopPropagation: () => {} })
+    const handleBulkSync = async () => {
+        if (!selectedIds.size) return
+        if (syncingIds.size > 0) return
+        const ids = [...selectedIds]
+        let ok = 0
+        let failed = 0
+        for (let i = 0; i < ids.length; i++) {
+            showToast?.(`Synchronizuję ${i + 1}/${ids.length}`, 'info', 120_000)
+            const res = await runSync(ids[i], { silent: true })
+            if (res.ok) ok++; else failed++
+        }
+        showToast?.(
+            failed === 0
+                ? `Zsynchronizowano ${ok}/${ids.length} kont`
+                : `Zsynchronizowano ${ok}/${ids.length} (${failed} z błędami)`,
+            failed === 0 ? 'success' : (ok > 0 ? 'info' : 'error'),
+        )
+        refreshClients()
+        load()
     }
 
     const handleBulkDismissRecs = async () => {
@@ -392,12 +448,14 @@ export default function MCCOverviewPage() {
                     }}>
                         <Columns size={13} />
                     </button>
-                    <button onClick={handleSyncAll} style={{
+                    <button onClick={handleSyncAll} disabled={syncingIds.size > 0} style={{
                         display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
                         borderRadius: R.md, background: C.infoBg, border: B.info,
-                        color: C.accentBlue, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                        color: C.accentBlue, fontSize: 12, fontWeight: 500,
+                        cursor: syncingIds.size > 0 ? 'wait' : 'pointer',
+                        opacity: syncingIds.size > 0 ? 0.6 : 1,
                     }}>
-                        <RefreshCw size={13} /> Synchronizuj nieaktualne
+                        <RefreshCw size={13} className={syncingIds.size > 0 ? 'animate-spin' : ''} /> Synchronizuj nieaktualne
                     </button>
                     <button onClick={handleDiscover} style={{
                         display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
