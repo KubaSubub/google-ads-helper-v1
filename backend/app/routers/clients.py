@@ -1121,8 +1121,22 @@ def update_client(
         operation="Edycja klienta",
     )
 
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(client, field, value)
+    update_dict = data.model_dump(exclude_unset=True)
+    for field, value in update_dict.items():
+        if field == "strategy_context":
+            # PATCH with {"strategy_context": null} is a no-op (do not wipe column).
+            # User must send an explicit object to modify strategy_context.
+            if data.strategy_context is None:
+                continue
+            # Deep merge: preserve existing strategy_context fields that were NOT
+            # explicitly set in this update. Lets the future AI agent append one
+            # decisions_log entry without wiping strategy_narrative etc.
+            existing = client.strategy_context if isinstance(client.strategy_context, dict) else {}
+            update_fields = data.strategy_context.model_dump(exclude_unset=True, mode="json")
+            merged = {**existing, **update_fields}
+            setattr(client, field, merged)
+        else:
+            setattr(client, field, value)
 
     db.commit()
     db.refresh(client)

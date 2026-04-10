@@ -1,9 +1,113 @@
 """Client schemas."""
 
-from datetime import datetime
-from pydantic import BaseModel, field_validator
-from typing import Optional
+from datetime import date, datetime
+from typing import Literal, Optional
 
+from pydantic import BaseModel, field_validator
+
+
+# ── Strategy Context (Marketing Mastermind Brief) ──────────────────────────────
+
+class LessonEntry(BaseModel):
+    """Single entry in lessons_learned list — win/loss/test retrospective."""
+    type: Literal["win", "loss", "test"]
+    title: str
+    description: str
+    date: date
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("lesson title must be non-empty")
+        if len(v) > 200:
+            raise ValueError("lesson title must be at most 200 characters")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("lesson description must be non-empty")
+        if len(v.strip()) < 10:
+            raise ValueError("lesson description must be at least 10 characters")
+        if len(v) > 2000:
+            raise ValueError("lesson description must be at most 2000 characters")
+        return v
+
+
+class DecisionLogEntry(BaseModel):
+    """Single entry in decisions_log — AI-written after analysis/change validation."""
+    timestamp: datetime
+    title: str
+    decision: str
+    rationale: str
+    validation_result: Optional[str] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        if len(v) > 200:
+            raise ValueError("decision log title must be at most 200 characters")
+        return v
+
+    @field_validator("decision")
+    @classmethod
+    def validate_decision(cls, v: str) -> str:
+        if len(v) > 500:
+            raise ValueError("decision text must be at most 500 characters")
+        return v
+
+    @field_validator("rationale")
+    @classmethod
+    def validate_rationale(cls, v: str) -> str:
+        if len(v) > 2000:
+            raise ValueError("rationale must be at most 2000 characters")
+        return v
+
+
+class StrategyContext(BaseModel):
+    """Structured marketing brief for the client — consumed by AI agent + Obsidian sync.
+
+    All fields optional. Persisted as JSON in Client.strategy_context column.
+    """
+    strategy_narrative: Optional[str] = None
+    roadmap: Optional[str] = None
+    decisions_log: list[DecisionLogEntry] = []
+    lessons_learned: list[LessonEntry] = []
+    brand_voice: Optional[str] = None
+    restrictions: Optional[str] = None
+
+    @field_validator("strategy_narrative", "roadmap")
+    @classmethod
+    def validate_long_text(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 10000:
+            raise ValueError("narrative text must be at most 10000 characters")
+        return v
+
+    @field_validator("brand_voice", "restrictions")
+    @classmethod
+    def validate_medium_text(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 5000:
+            raise ValueError("brand_voice / restrictions must be at most 5000 characters")
+        return v
+
+    @field_validator("lessons_learned")
+    @classmethod
+    def validate_lessons_count(cls, v: list[LessonEntry]) -> list[LessonEntry]:
+        if len(v) > 200:
+            raise ValueError("lessons_learned may not exceed 200 entries")
+        return v
+
+    @field_validator("decisions_log")
+    @classmethod
+    def validate_decisions_count(cls, v: list[DecisionLogEntry]) -> list[DecisionLogEntry]:
+        if len(v) > 500:
+            raise ValueError("decisions_log may not exceed 500 entries")
+        return v
+
+
+# ── Client ─────────────────────────────────────────────────────────────────────
 
 class ClientBase(BaseModel):
     name: str
@@ -17,6 +121,7 @@ class ClientBase(BaseModel):
     business_rules: dict = {}
     notes: Optional[str] = None
     currency: Optional[str] = "PLN"
+    strategy_context: Optional[StrategyContext] = None
 
 
 class ClientCreate(ClientBase):
@@ -34,6 +139,7 @@ class ClientUpdate(BaseModel):
     business_rules: Optional[dict] = None
     notes: Optional[str] = None
     currency: Optional[str] = None
+    strategy_context: Optional[StrategyContext] = None
 
     @field_validator("business_rules")
     @classmethod
@@ -98,6 +204,12 @@ class ConversionActionSummary(BaseModel):
     category: Optional[str] = None
     status: str
     include_in_conversions: bool = False
+    # primary_for_goal is the Google Ads API attribute that determines whether
+    # a ConversionAction contributes to the "Conversions" column (vs "All conversions").
+    # This is DIFFERENT from business_rules.priority_conversions which is a local
+    # alias used by recommendations engine + AI context. UI must expose both so
+    # specialists know when they diverge.
+    primary_for_goal: bool = False
 
 
 class ConversionTracking(BaseModel):

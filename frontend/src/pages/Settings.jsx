@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
-import { AlertTriangle, BarChart3, Building2, Calendar, CheckCircle, Clock, Loader2, Plus, RefreshCw, RotateCcw, Save, ShieldAlert, Target, X, XCircle } from 'lucide-react'
+import { AlertTriangle, BarChart3, Building2, Calendar, CheckCircle, Clock, Compass, FileText, Lightbulb, Loader2, MessageSquare, Plus, RefreshCw, RotateCcw, Save, ShieldAlert, Sparkles, Target, Trash2, X, XCircle } from 'lucide-react'
 
 import api, { getClient, updateClient, getMccAccounts, getSyncLogs, getScheduledSync, updateScheduledSync, syncClient } from '../api'
 import EmptyState from '../components/EmptyState'
-import ClientHealthSection from '../components/settings/ClientHealthSection'
+import ConversionGoalsSection from '../components/settings/ConversionGoalsSection'
 import { useApp } from '../contexts/AppContext'
 import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
 
@@ -53,6 +53,23 @@ function formatDuration(startStr, endStr) {
     return `${m}m ${rs}s`
 }
 
+function SectionGroupHeader({ label }) {
+    return (
+        <div
+            data-testid={`section-group-${label.toLowerCase().replace(/\s+/g, '-')}`}
+            style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)',
+                textTransform: 'uppercase', letterSpacing: '0.12em',
+                margin: '24px 0 8px',
+            }}
+        >
+            <span>{label}</span>
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
+        </div>
+    )
+}
+
 export default function Settings() {
     const { selectedClientId, showToast, refreshClients } = useApp()
     const [formData, setFormData] = useState(null)
@@ -68,6 +85,8 @@ export default function Settings() {
     const [lastSync, setLastSync] = useState(null)
     const [syncSchedule, setSyncSchedule] = useState(null)
     const [syncScheduleSaving, setSyncScheduleSaving] = useState(false)
+    // New lesson form state (win/loss/test journal)
+    const [newLesson, setNewLesson] = useState({ type: 'win', title: '', description: '', date: '' })
 
     useEffect(() => {
         if (selectedClientId) {
@@ -304,6 +323,78 @@ export default function Settings() {
         }))
     }
 
+    // ─── Strategy context (Marketing Mastermind Brief) ──────────────────────
+
+    function handleStrategyField(field, value) {
+        // field ∈ {strategy_narrative, roadmap, brand_voice, restrictions}
+        setFormData((prev) => ({
+            ...prev,
+            strategy_context: {
+                ...(prev.strategy_context || {}),
+                [field]: value === '' ? null : value,
+            },
+        }))
+    }
+
+    function handleTogglePriorityConversion(name) {
+        setFormData((prev) => {
+            const current = prev.business_rules?.priority_conversions || []
+            const next = current.includes(name)
+                ? current.filter(n => n !== name)
+                : [...current, name]
+            return {
+                ...prev,
+                business_rules: { ...prev.business_rules, priority_conversions: next },
+            }
+        })
+    }
+
+    function addLesson() {
+        const title = newLesson.title.trim()
+        const description = newLesson.description.trim()
+        if (!title || !description) {
+            showToast?.('Tytuł i opis są wymagane', 'error')
+            return
+        }
+        if (title.length > 200) {
+            showToast?.('Tytuł max 200 znaków', 'error')
+            return
+        }
+        if (description.length < 10) {
+            showToast?.('Opis min 10 znaków', 'error')
+            return
+        }
+        if (description.length > 2000) {
+            showToast?.('Opis max 2000 znaków', 'error')
+            return
+        }
+        const entry = {
+            type: newLesson.type,
+            title,
+            description,
+            date: newLesson.date || new Date().toISOString().slice(0, 10),
+        }
+        setFormData((prev) => ({
+            ...prev,
+            strategy_context: {
+                ...(prev.strategy_context || {}),
+                lessons_learned: [...((prev.strategy_context || {}).lessons_learned || []), entry],
+            },
+        }))
+        setNewLesson({ type: 'win', title: '', description: '', date: '' })
+    }
+
+    function removeLesson(index) {
+        if (!window.confirm('Usunąć ten wpis?')) return
+        setFormData((prev) => ({
+            ...prev,
+            strategy_context: {
+                ...(prev.strategy_context || {}),
+                lessons_learned: ((prev.strategy_context || {}).lessons_learned || []).filter((_, i) => i !== index),
+            },
+        }))
+    }
+
     async function handleScheduleToggle(enabled = true) {
         setSyncScheduleSaving(true)
         try {
@@ -471,7 +562,14 @@ export default function Settings() {
                 </button>
             </div>
 
-            <ClientHealthSection clientId={selectedClientId} />
+            {/* ═══ BRIEF KLIENCKI (Marketing Mastermind) ═══════════════════════ */}
+            <SectionGroupHeader label="Brief kliencki" />
+
+            <ConversionGoalsSection
+                clientId={selectedClientId}
+                priorityConversions={formData.business_rules?.priority_conversions || []}
+                onTogglePriority={handleTogglePriorityConversion}
+            />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 {/* Informacje ogólne */}
@@ -576,6 +674,293 @@ export default function Settings() {
                         </div>
                     </div>
                 </section>
+
+                {/* ─── Strategia marketingowa (narrative) ─── */}
+                <section>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <Sparkles size={16} style={{ color: C.accentPurple }} />
+                        Strategia marketingowa
+                    </h3>
+                    <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+                        Narrative dla teamu i AI — markdown dozwolony, w przyszłości sync z Obsidian.
+                    </p>
+                    <div className="v2-card" style={{ padding: '18px 20px' }}>
+                        <textarea
+                            data-testid="strategy-narrative-input"
+                            value={formData.strategy_context?.strategy_narrative || ''}
+                            onChange={e => handleStrategyField('strategy_narrative', e.target.value)}
+                            rows={8}
+                            placeholder="Jaka jest nasza strategia dla tego klienta? Positioning, target personas, GTM approach, długoterminowe cele..."
+                            style={{
+                                ...inputStyle,
+                                minHeight: 180,
+                                fontFamily: FONT.body,
+                                resize: 'vertical',
+                                lineHeight: 1.6,
+                            }}
+                        />
+                    </div>
+                </section>
+
+                {/* ─── Plan działań / Roadmap ─── */}
+                <section>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <Compass size={16} style={{ color: C.accentBlue }} />
+                        Plan działań / Roadmap
+                    </h3>
+                    <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+                        Co planujemy w najbliższych tygodniach i kwartale.
+                    </p>
+                    <div className="v2-card" style={{ padding: '18px 20px' }}>
+                        <textarea
+                            data-testid="strategy-roadmap-input"
+                            value={formData.strategy_context?.roadmap || ''}
+                            onChange={e => handleStrategyField('roadmap', e.target.value)}
+                            rows={8}
+                            placeholder="Co planujemy w najbliższych tygodniach/kwartale? Nadchodzące testy, seasonal campaigns, priorytety..."
+                            style={{
+                                ...inputStyle,
+                                minHeight: 180,
+                                fontFamily: FONT.body,
+                                resize: 'vertical',
+                                lineHeight: 1.6,
+                            }}
+                        />
+                    </div>
+                </section>
+
+                {/* ─── Log decyzji (AI-written, MVP read-only) ─── */}
+                <section>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <FileText size={16} style={{ color: C.textMuted }} />
+                        Log decyzji
+                    </h3>
+                    <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+                        Automatyczny log decyzji i walidacji AI agenta.
+                    </p>
+                    <div className="v2-card" style={{ padding: '18px 20px' }}>
+                        {(formData.strategy_context?.decisions_log || []).length === 0 ? (
+                            <div data-testid="decisions-log-empty" style={{
+                                display: 'flex', alignItems: 'flex-start', gap: 10,
+                                padding: '12px 14px', borderRadius: R.md,
+                                background: C.infoBg, border: `1px solid ${C.infoBorder}`,
+                            }}>
+                                <Sparkles size={14} color={C.accentBlue} style={{ marginTop: 2, flexShrink: 0 }} />
+                                <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.5 }}>
+                                    Log decyzji jest zapisywany automatycznie przez AI agent po każdej
+                                    analizie i zmianie. <strong style={{ color: C.accentBlue }}>AI zostanie dołączony w v2</strong> — obecnie sekcja jest pusta.
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {(formData.strategy_context?.decisions_log || [])
+                                    .slice()
+                                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                                    .map((entry, idx) => (
+                                        <div key={idx} data-testid="decisions-log-entry" style={{
+                                            padding: '12px 14px', borderRadius: R.md,
+                                            background: C.w03, border: `1px solid ${C.w07}`,
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                <strong style={{ fontSize: 13, color: C.textPrimary }}>{entry.title}</strong>
+                                                <span style={{ fontSize: 10, color: C.textMuted }}>
+                                                    {formatDate(entry.timestamp)}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 4 }}>{entry.decision}</div>
+                                            <div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>{entry.rationale}</div>
+                                            {entry.validation_result && (
+                                                <span style={{
+                                                    display: 'inline-block', marginTop: 6,
+                                                    padding: '2px 8px', borderRadius: R.full,
+                                                    background: C.successBg, color: C.success,
+                                                    fontSize: 10, fontWeight: 600,
+                                                }}>
+                                                    {entry.validation_result}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                    </div>
+                </section>
+
+                {/* ─── Wnioski i lessons learned ─── */}
+                <section>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <Lightbulb size={16} style={{ color: C.warning }} />
+                        Wnioski i lessons learned
+                    </h3>
+                    <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+                        Co zadziałało, co nie, co testowaliśmy. Wpisy append-only — korekty przez nowe wpisy.
+                    </p>
+                    <div className="v2-card" style={{ padding: '18px 20px' }}>
+                        {/* Form: add new lesson */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 140px auto', gap: 8, marginBottom: 14, alignItems: 'start' }}>
+                            <select
+                                data-testid="lesson-type-select"
+                                value={newLesson.type}
+                                onChange={e => setNewLesson(l => ({ ...l, type: e.target.value }))}
+                                style={{ ...inputStyle, padding: '8px 10px' }}
+                            >
+                                <option value="win">✓ Win</option>
+                                <option value="loss">✗ Loss</option>
+                                <option value="test">⚗ Test</option>
+                            </select>
+                            <input
+                                data-testid="lesson-title-input"
+                                type="text"
+                                value={newLesson.title}
+                                onChange={e => setNewLesson(l => ({ ...l, title: e.target.value }))}
+                                placeholder="Tytuł wniosku (max 200 znaków)"
+                                style={inputStyle}
+                                maxLength={200}
+                            />
+                            <input
+                                type="date"
+                                value={newLesson.date}
+                                onChange={e => setNewLesson(l => ({ ...l, date: e.target.value }))}
+                                style={inputStyle}
+                            />
+                            <button
+                                data-testid="lesson-add-button"
+                                onClick={addLesson}
+                                disabled={!newLesson.title.trim() || !newLesson.description.trim()}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '8px 14px', borderRadius: 8, fontSize: 12,
+                                    background: C.infoBg, border: `1px solid ${C.infoBorder}`,
+                                    color: C.accentBlue,
+                                    cursor: (newLesson.title.trim() && newLesson.description.trim()) ? 'pointer' : 'not-allowed',
+                                    opacity: (newLesson.title.trim() && newLesson.description.trim()) ? 1 : 0.5,
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                <Plus size={12} /> Dodaj
+                            </button>
+                        </div>
+                        <textarea
+                            data-testid="lesson-description-input"
+                            value={newLesson.description}
+                            onChange={e => setNewLesson(l => ({ ...l, description: e.target.value }))}
+                            placeholder="Opis — co konkretnie się wydarzyło, dlaczego i co z tego wynika dla przyszłych kampanii (max 2000 znaków)"
+                            rows={3}
+                            style={{ ...inputStyle, marginBottom: 14, minHeight: 70, resize: 'vertical', fontFamily: FONT.body }}
+                            maxLength={2000}
+                        />
+
+                        {/* Existing lessons grouped by type */}
+                        {(() => {
+                            const lessons = formData.strategy_context?.lessons_learned || []
+                            if (lessons.length === 0) {
+                                return <div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>Brak wpisów — dodaj pierwszy powyżej.</div>
+                            }
+                            const groups = { win: [], loss: [], test: [] }
+                            lessons.forEach((l, originalIdx) => {
+                                (groups[l.type] || groups.test).push({ ...l, originalIdx })
+                            })
+                            Object.keys(groups).forEach(k => {
+                                groups[k].sort((a, b) => new Date(b.date) - new Date(a.date))
+                            })
+                            const ICON = {
+                                win: { icon: '✓', color: C.success, bg: C.successBg, label: 'Wins' },
+                                loss: { icon: '✗', color: C.danger, bg: C.dangerBg, label: 'Losses' },
+                                test: { icon: '⚗', color: C.warning, bg: C.warningBg, label: 'Tests' },
+                            }
+                            return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                    {['win', 'loss', 'test'].map(type => {
+                                        const items = groups[type]
+                                        if (items.length === 0) return null
+                                        const cfg = ICON[type]
+                                        return (
+                                            <div key={type}>
+                                                <div style={{
+                                                    fontSize: 10, fontWeight: 600, color: cfg.color,
+                                                    textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6,
+                                                }}>
+                                                    {cfg.icon} {cfg.label} ({items.length})
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                    {items.map(item => (
+                                                        <div
+                                                            key={`${type}-${item.originalIdx}`}
+                                                            data-testid="lesson-entry"
+                                                            style={{
+                                                                padding: '10px 12px', borderRadius: R.md,
+                                                                background: C.w03, border: `1px solid ${C.w07}`,
+                                                                display: 'flex', alignItems: 'flex-start', gap: 10,
+                                                            }}
+                                                        >
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                                                                    <strong style={{ fontSize: 12, color: C.textPrimary }}>{item.title}</strong>
+                                                                    <span style={{ fontSize: 10, color: C.textMuted, whiteSpace: 'nowrap' }}>{item.date}</span>
+                                                                </div>
+                                                                <div style={{ fontSize: 11, color: C.textSecondary, lineHeight: 1.5 }}>{item.description}</div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => removeLesson(item.originalIdx)}
+                                                                aria-label="Usuń wpis"
+                                                                style={{
+                                                                    background: 'none', border: 'none', color: C.textMuted,
+                                                                    cursor: 'pointer', padding: 4, flexShrink: 0,
+                                                                }}
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )
+                        })()}
+                    </div>
+                </section>
+
+                {/* ─── Brand voice & zakazy ─── */}
+                <section>
+                    <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                        <MessageSquare size={16} style={{ color: C.accentPurple }} />
+                        Brand voice & zakazy
+                    </h3>
+                    <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+                        Jak pisać reklamy dla tego klienta i czego unikać.
+                    </p>
+                    <div className="v2-card" style={{ padding: '18px 20px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                            <div>
+                                <label style={labelStyle}>Tone of voice</label>
+                                <textarea
+                                    data-testid="brand-voice-input"
+                                    value={formData.strategy_context?.brand_voice || ''}
+                                    onChange={e => handleStrategyField('brand_voice', e.target.value)}
+                                    rows={4}
+                                    placeholder="Jak piszemy reklamy dla tego klienta? Język, styl, energia..."
+                                    style={{ ...inputStyle, minHeight: 100, resize: 'vertical', fontFamily: FONT.body }}
+                                />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Ograniczenia / Zakazy</label>
+                                <textarea
+                                    data-testid="restrictions-input"
+                                    value={formData.strategy_context?.restrictions || ''}
+                                    onChange={e => handleStrategyField('restrictions', e.target.value)}
+                                    rows={4}
+                                    placeholder="Czego unikamy? Forbidden claims, competitors nieakceptowani, zakazane słowa..."
+                                    style={{ ...inputStyle, minHeight: 100, resize: 'vertical', fontFamily: FONT.body }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ═══ EXECUTION (operational config) ═══════════════════════════ */}
+                <SectionGroupHeader label="Execution" />
 
                 {/* Reguły biznesowe */}
                 <section>

@@ -166,6 +166,7 @@ def _ensure_sqlite_columns():
         },
         "clients": {
             "currency": "TEXT DEFAULT 'PLN'",
+            "strategy_context": "TEXT",
         },
     }
 

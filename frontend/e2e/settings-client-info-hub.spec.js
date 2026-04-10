@@ -99,62 +99,12 @@ test('Settings Hub — GET /clients/{id}/health called on load, returns correct 
 // even when the component was silently failing to render (r.data vs r bug).
 // This version asserts the section + cards are actually IN THE DOM and visible.
 
-test('Settings Hub — ClientHealthSection renders with all 4 cards + freshness badge', async ({ page }) => {
-    await goToSettings(page);
-
-    // The section container (data-testid survives even if card titles change)
-    const section = page.locator('[data-testid="client-health-section"]');
-    await expect(section).toBeVisible({ timeout: 10_000 });
-
-    // All 4 card titles visible — mocked data drives these
-    await expect(section.locator('text=Konto').first()).toBeVisible();
-    await expect(section.locator('text=Synchronizacja').first()).toBeVisible();
-    await expect(section.locator('text=Konwersje').first()).toBeVisible();
-    await expect(section.locator('text=Połączenia').first()).toBeVisible();
-
-    // Sync freshness badge "Aktualny" (green) matches MOCK_HEALTH.sync_health.freshness = "green"
-    await expect(section.locator('text=Aktualny')).toBeVisible();
-
-    // Conversion tracking count from mock (3 active)
-    await expect(section.locator('text=/^3$/')).toBeVisible();
-
-    // Account metadata from mock — customer_id
-    await expect(section.locator('text=123-456-7890')).toBeVisible();
-});
-
-test('Settings Hub — freshness badge shows "Nieaktualny" for red sync', async ({ page }) => {
-    // LIFO order: catch-all first, specific routes last.
-    await mockEmptyApi(page);
-    await mockAuthAndClient(page);
-    await page.route(/\/api\/v1\/clients\/3(\?|$)/, route =>
-        route.fulfill({
-            status: 200, contentType: 'application/json',
-            body: JSON.stringify({ ...MOCK_CLIENT_DETAIL, currency: 'PLN' }),
-        }),
-    );
-    // Health mock with red freshness — registered LAST = highest priority (LIFO)
-    await page.route(/\/api\/v1\/clients\/3\/health/, route =>
-        route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-                ...MOCK_HEALTH,
-                sync_health: {
-                    freshness: 'red', last_synced_at: null, last_status: null,
-                    last_duration_seconds: null, hours_since_sync: null,
-                },
-            }),
-        }),
-    );
-    await page.addInitScript(() => { localStorage.setItem('selectedClientId', '3'); });
-    await page.goto('/settings');
-    await expect(page.locator('text=/Ustawienia klienta/i').first()).toBeVisible({ timeout: 10_000 });
-
-    const section = page.locator('[data-testid="client-health-section"]');
-    await expect(section).toBeVisible({ timeout: 10_000 });
-    await expect(section.locator('text=Nieaktualny')).toBeVisible();
-    await expect(section.locator('text=/Brak danych/i')).toBeVisible();
-});
+// NOTE: Previous tests for ClientHealthSection (4 cards: Konto, Synchronizacja,
+// Konwersje, Połączenia) and the "Nieaktualny" freshness badge have been removed
+// as obsolete after the Settings Mastermind Brief pivot (2026-04-10). The 4 cards
+// duplicated data from Dashboard/Daily Audit/other Settings sections and were
+// replaced by ConversionGoalsSection (goal-setting UI) + 5 new strategic brief
+// sections. See frontend/e2e/settings-mastermind-brief.spec.js for the new tests.
 
 // ─── AC5/AC6 — no hardcoded USD ───────────────────────────────────────────────
 

@@ -104,6 +104,7 @@ def _build_conversion_tracking(db: Session, client_id: int) -> ConversionTrackin
             category=a.category,
             status=a.status,
             include_in_conversions=bool(a.include_in_conversions_metric),
+            primary_for_goal=bool(a.primary_for_goal),
         )
         for a in active
     ]

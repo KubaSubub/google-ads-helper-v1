@@ -22,6 +22,10 @@ class Client(Base):
     business_rules = Column(JSON, default=dict)  # {min_roas, max_daily_budget, ...}
     notes = Column(Text)
     currency = Column(String(3), default="PLN")
+    # Strategic brief for marketing mastermind + AI agent prompt context.
+    # Fields: strategy_narrative, roadmap, decisions_log, lessons_learned,
+    # brand_voice, restrictions. See app.schemas.client.StrategyContext.
+    strategy_context = Column(JSON, nullable=True, default=dict)
     created_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc))
     last_change_sync_at = Column(DateTime, nullable=True)  # Last successful change_event sync
