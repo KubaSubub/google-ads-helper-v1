@@ -2,7 +2,7 @@
 # Updated: 2026-04-10 (docs-sync)
 
 ## Status
-- Backend: 606 tests passing
+- Backend: 596 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
@@ -59,13 +59,26 @@
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
 
-## Settings — Client Info Hub + AI Context (IN PROGRESS, 2026-04-10)
+## Settings — Client Info Hub + AI Context (DONE, 2026-04-10)
 - Spec: `docs/specs/settings-client-info-hub.md`
-- Backend (WIP, uncommitted): `GET /clients/{id}/health` endpoint + `client_health_service.py` + `ClientHealthResponse` schema
-- Aggregates: account metadata, sync freshness, conversion tracking (from ConversionAction table — no API call), linked accounts (Google Ads API with graceful fallback)
-- Always returns HTTP 200 — partial failures surfaced via `errors[]`
-- Tests: `backend/tests/test_client_health.py` — AC1/AC2/AC3/AC4/AC7/AC8 coverage
-- Frontend: `ClientHealthSection` to be rendered at top of Settings.jsx (not yet implemented in committed code; api.js updated in working tree)
+- Backend: `GET /clients/{id}/health` endpoint + `client_health_service.py` + `ClientHealthResponse` schema
+- Aggregates: account metadata (DB + optional Google Ads API enrichment), sync freshness badge (green<6h/yellow<12h/red≥12h), conversion tracking from `ConversionAction` table (no live API call), linked accounts shell (GA4, GMC, YT, Search Console)
+- Graceful degradation — always HTTP 200, partial failures surfaced via `errors[]`
+- AI context: `business_rules` JSON extended with 6 fields — `target_cpa`, `target_roas`, `ltv_per_customer`, `profit_margin_pct`, `priority_conversions`, `brand_terms` (all validated, `brand_terms` max 50 items × 200 chars)
+- Currency fix in `Settings.jsx`: hardcoded USD → `client.currency`
+- Security: GAQL injection guard (regex validation of `customer_id` before interpolation)
+- Domain: MANAGER/CLIENT terminology (MCC deprecated 2022), DATA_DRIVEN enum (API v23)
+- Frontend: new `ClientHealthSection.jsx` (v2-card pattern), `brand_terms` tag input in Reguły biznesowe matching competitors pill pattern
+- Tests: `backend/tests/test_client_health.py` (AC1/AC2/AC3/AC4/AC7/AC8) + `frontend/e2e/settings-client-info-hub.spec.js` (4 E2E)
+- Review: code 8/10, security 8/10, domain 8/10
+- Commit: c11db08
+
+## MCC Overview — Remove Broken Rekomendacje Google UI (2026-04-10)
+- Non-functional "Rekomendacje Google" column + dismiss flow removed from `MCCOverviewPage.jsx`
+- Removed: `dismissMccGoogleRecommendations` import, `EyeOff` icon, `dismissingAll` state, `handleDismissRecs`/`handleBulkDismissRecs`, column header, table cell, bulk bar button
+- Preserved for future reuse: backend endpoint `POST /mcc/dismiss-google-recommendations`, `MCCService.dismiss_google_recommendations()`, contract tests, `api.js` export, `google_recs_pending` response field
+- E2E regression guard: `mcc-overview.spec.js` now asserts column header + bulk button stay removed (prevents accidental re-introduction)
+- Commit: 2cc34d3
 
 ## MCC Overview Regression Shield (2026-04-10)
 - Added comprehensive test coverage protecting the MCC Overview view from accidental damage by changes elsewhere

@@ -49,4 +49,5 @@
   3. Currency fix: usunięcie hardcoded USD w Settings.jsx, użycie client.currency wszędzie
   4. Composite endpoint /clients/{id}/health agregujący wszystko z (1) — jeden call zamiast 4
 - **AI-ready framing:** Pola z punktu (2) są strukturalne — LLM może je czytać bezpośrednio bez parsowania notatek. To fundament pod przyszły AI agent (plan v2/v3 z project_agent_sdk_vision.md).
-- **Status:** STARTED
+- **Status:** DONE
+- **Wynik:** GET /clients/{id}/health + client_health_service.py + ClientHealthSection.jsx + 6 AI context fields (target_cpa, target_roas, ltv, margin, brand_terms, priority_conversions) + currency fix. 596 backend tests, 4 E2E, build OK. Review 8/10. GAQL injection guard, freshness 12h threshold, MANAGER/CLIENT terminology (API v23).

@@ -104,12 +104,22 @@ export default function ClientHealthSection({ clientId }) {
 
     useEffect(() => {
         if (!clientId) return
+        let cancelled = false
         setLoading(true)
         setError(null)
+        // Note: api.js interceptor unwraps `response.data` — so getClientHealth
+        // resolves directly to the payload object, not an axios response wrapper.
         getClientHealth(clientId)
-            .then(r => setHealth(r.data))
-            .catch(() => setError('Nie udało się załadować danych konta'))
-            .finally(() => setLoading(false))
+            .then(data => {
+                if (!cancelled) setHealth(data)
+            })
+            .catch(() => {
+                if (!cancelled) setError('Nie udało się załadować danych konta')
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false)
+            })
+        return () => { cancelled = true }
     }, [clientId])
 
     if (loading) {
