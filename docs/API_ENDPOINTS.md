@@ -32,7 +32,7 @@ Base API URL: `/api/v1`
 - `GET /sync/debug/keywords?client_id=X&search=term&search=term2&include_removed=true&limit=50` -> helper debug comparing keyword_view API rows with local positive/negative SQLite rows
 - `GET /sync/debug/keyword-source-of-truth?client_id=X&criterion_id=Y` -> authoritative debug for one criterion across Google Ads `keyword_view`, `ad_group_criterion`, local SQLite, and request context
 - `POST /sync/phase/{phase_name}?client_id=X&days=30` -> run single sync phase (`allow_demo_write=true` required for DEMO)
-  - Available phases (36 total): `campaigns`, `impression_share`, `ad_groups`, `ads`, `product_groups`, `keywords`, `negative_keywords`, `negative_keyword_lists`, `keyword_daily`, `daily_metrics`, `search_terms`, `pmax_terms`, `device_metrics`, `geo_metrics`, `auction_insights`, `change_events`, `conversion_actions`, `age_metrics`, `gender_metrics`, `parental_metrics`, `income_metrics`, `placement_metrics`, `bid_modifiers`, `bidding_strategies`, `shared_budgets`, `audiences`, `topic_metrics`, `google_recommendations`, `conversion_value_rules`, `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
+  - Available phases (37 total): `campaigns`, `impression_share`, `ad_groups`, `ads`, `product_groups`, `keywords`, `negative_keywords`, `negative_keyword_lists`, `mcc_exclusion_lists`, `keyword_daily`, `daily_metrics`, `search_terms`, `pmax_terms`, `device_metrics`, `geo_metrics`, `auction_insights`, `change_events`, `conversion_actions`, `age_metrics`, `gender_metrics`, `parental_metrics`, `income_metrics`, `placement_metrics`, `bid_modifiers`, `bidding_strategies`, `shared_budgets`, `audiences`, `topic_metrics`, `google_recommendations`, `conversion_value_rules`, `pmax_channel_metrics`, `asset_groups`, `asset_group_daily`, `asset_group_assets`, `asset_group_signals`, `campaign_audiences`, `campaign_assets`
 - `GET /sync/data-coverage?client_id=X` -> date range of synced data and last sync info for a client
 - `GET /sync/presets` -> sync presets and phase registry for the configuration modal (phases, groups, max_days, patterns)
 - `GET /sync/coverage?client_id=X` -> per-resource sync coverage for a client
@@ -223,12 +223,12 @@ Base API URL: `/api/v1`
 - `GET /analytics/dsa-search-overlap?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — DSA search term overlap with manual keywords
 
 ## MCC (Cross-Account Overview)
-- `GET /mcc/overview` — aggregated data for all client accounts: full metrics (clicks, impressions, CTR, avg CPC, spend, conversions, CVR, conversion value, CPA, ROAS), pacing, health score with 6-pillar breakdown, change activity (total + external), new access emails, Google recs pending, unresolved alerts, last sync
+- `GET /mcc/overview?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — aggregated data for all client accounts: full metrics (clicks, impressions, CTR, avg CPC, spend, conversions, CVR, conversion value, CPA, ROAS), pacing, health score with 6-pillar breakdown, change activity (total + external), new access emails, Google recs pending, unresolved alerts, last sync. Defaults: `date_from=1st of current month`, `date_to=today`.
 - `GET /mcc/new-access?client_id=X&days=30` — detect new user emails in change history (last N days vs 31-90 days ago, excluding specialist_emails)
 - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google Ads API recommendations (body: `{client_id, recommendation_ids?, dismiss_all?}`)
 - `GET /mcc/negative-keyword-lists` — all negative keyword lists across all clients with item counts
-- `GET /mcc/shared-lists` — MCC-level shared negative keyword lists (from manager account via MccLink hierarchy)
-- `GET /mcc/shared-lists/{list_id}/items` — items in a specific MCC shared negative keyword list
+- `GET /mcc/shared-lists` — MCC-level exclusion lists from manager account via MccLink hierarchy: both negative keyword lists and placement exclusion lists
+- `GET /mcc/shared-lists/{list_id}/items?list_type=keyword|placement` — drill-down: items of a specific MCC shared exclusion list (defaults to `keyword`)
 - `GET /mcc/billing-status?customer_id=X` — check billing/payment status via Google Ads billing_setup API (returns status or error if access insufficient)
 
 ## Scheduled Sync (F1)

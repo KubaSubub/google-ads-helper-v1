@@ -5,7 +5,7 @@
 - Backend: 539 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
-- Sync: 36 total phases (22 prior + 14 new from Wave A-E) + scheduled sync service (asyncio-based, no external packages)
+- Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
 - API endpoints: 166 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 10 clients, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
 - Frontend pages: 26 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview) — all with enriched UX
@@ -13,7 +13,7 @@
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
 - Ads review pipeline: /ads-user → /ads-expert → /ads-verify → /ads-check — see open items below
-- Roadmap: 22/26 DONE (85%)
+- Roadmap: 25/26 DONE (96%) — only G3 Landing Page Audit is PARTIAL (endpoint exists; PageSpeed Insights, mobile-friendliness, message match not integrated)
 
 ## Raport Konkurenta — Full App (2026-03-30)
 > Ocena: **4.5/10** | Autor: persona "Marek K., CTO konkurencji" | Pelny raport: `docs/reviews/competitor-all.md`
