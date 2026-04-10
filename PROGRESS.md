@@ -63,7 +63,7 @@
 - Currency-aware money formatting: per-account `currency` field drives symbol placement ($1,234 vs 1 234 zł vs 1 234 €)
 - Spend sparkline per account row (56×20 LineChart from `spend_trend` daily data)
 - Applies to: spend, avg CPC, conversion value, CPA, budget pacing tooltip
-- Commit: df5b460
+- Commits: ace8ffc (feat), c8b7eeb (review fixes)
 
 ## MCC Exclusion Lists + Drill-Down (2026-04-09)
 - Added `GET /mcc/shared-lists/{list_id}/items` — drill-down endpoint returning items of a specific MCC shared exclusion list
