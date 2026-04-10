@@ -2,7 +2,7 @@
 # Updated: 2026-04-10
 
 ## Status
-- Backend: 582 tests passing
+- Backend: 606 tests passing
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
@@ -58,6 +58,26 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## MCC Overview Regression Shield (2026-04-10)
+- Added comprehensive test coverage protecting the MCC Overview view from accidental damage by changes elsewhere
+- Backend contract lock: `tests/test_mcc_router_contract.py` — 24 tests locking response shape for all 7 MCC endpoints
+  - `REQUIRED_ACCOUNT_KEYS` set guards every field `MCCOverviewPage.jsx` reads from `accounts[]` (missing/renamed field breaks tests)
+  - Type invariants: `conversions` must be float, `spend_trend` must be `list[{date, spend}]`, `alert_details` have fixed keys
+  - Behavioural invariants: demo client excluded, date params honored, empty accounts returns `[]` not `null`, `last_synced_at` reflects sync_logs
+  - Drill-down tests for keyword + placement shared lists
+  - Dismiss recs test: only GOOGLE_ADS_API source affected, PLAYBOOK_RULES untouched
+- Frontend regression shield: `e2e/mcc-overview.spec.js` +8 tests
+  - Sort works on every core metric column (Wydatki, Konwersje, CPA, ROAS)
+  - Pacing bar renders for overspend status (not just on_track)
+  - Period buttons (7d/14d/30d/MTD) update API dateParams
+  - Single-account render doesn't break KPI strip
+  - Overview 500 error doesn't crash page — error toast shown, no JS errors
+  - Billing-status fetched once per unique `customer_id` (no redundant calls)
+  - Bulk dismiss recs flow triggers dismiss endpoint
+  - Smoke test: full render + multi-interaction flow with 0 JS errors
+- Fixed pre-existing `settings-clients.spec.js` gaps (5 failing tests) — root cause: root route "/" now redirects to "/mcc-overview" and ClientSelector/ClientDrawer are not rendered on MCC pages; tests now navigate to `/dashboard` where drawer exists
+- Commit: 869cea3
 
 ## MCC "Synchronizuj nieaktualne" Fix + Sync Contract Lock (2026-04-10)
 - Fixed "500 + 3x timeout 30000ms" error on MCC Overview "Synchronizuj nieaktualne" button
