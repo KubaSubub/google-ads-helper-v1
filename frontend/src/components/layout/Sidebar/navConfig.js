@@ -32,7 +32,7 @@ export const NAV_GROUPS = [
         items: [
             { to: '/mcc-overview', label: 'Wszystkie konta', icon: LayoutGrid, alwaysVisible: true },
             { to: '/dashboard', label: 'Pulpit', icon: LayoutDashboard },
-            { to: '/daily-audit', label: 'Poranny przegląd', icon: ClipboardCheck },
+            { to: '/daily-audit', label: 'Poranny przegląd', icon: ClipboardCheck, hidden: true },
         ],
     },
     {

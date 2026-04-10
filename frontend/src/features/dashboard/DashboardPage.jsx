@@ -1,20 +1,21 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
     ChevronRight, ChevronUp, ChevronDown,
+    XCircle, Pause, TrendingUp, Shield, Loader2,
+    CheckCircle2, Clock, AlertTriangle, Eye,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
     getDashboardKPIs, getCampaigns, getCampaignsSummary,
-    getHealthScore, getCampaignTrends, getRecommendations,
+    getHealthScore, getRecommendations,
     getBudgetPacing, getDeviceBreakdown, getGeoBreakdown,
-    getWastedSpend, getImpressionShare, getActionHistory,
-    getQualityScoreAudit, getPmaxChannels,
+    getWastedSpend, getImpressionShare,
+    getQualityScoreAudit,
 } from '../../api'
+import api from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
-import { BudgetPacingModule } from '../../components/modules'
-import InsightsFeed from '../../components/InsightsFeed'
 import TrendExplorer from '../../components/TrendExplorer'
 import WoWChart from '../../components/WoWChart'
 import EmptyState from '../../components/EmptyState'
@@ -25,70 +26,605 @@ import TopActions from './components/TopActions'
 import CampaignMiniRanking from './components/CampaignMiniRanking'
 import DayOfWeekWidget from './components/DayOfWeekWidget'
 
-// ─── Campaign type labels ────────────────────────────────────────────────────
-const TYPE_LABELS = {
-    SEARCH: 'Search',
-    PERFORMANCE_MAX: 'PMax',
-    DISPLAY: 'Display',
-    SHOPPING: 'Shopping',
-    VIDEO: 'Video',
-    SMART: 'Smart',
+import { C, T, B, TOOLTIP_STYLE, TRANSITION, FONT } from '../../constants/designTokens'
+
+// ─── Quick Scripts API ───────────────────────────────────────────────────────
+const getBulkRecommendations = (clientId, category, dryRun = true, itemIds = null) =>
+    api.post('/recommendations/bulk-apply', {
+        client_id: clientId,
+        category,
+        dry_run: dryRun,
+        ...(itemIds && itemIds.length ? { item_ids: itemIds } : {}),
+    })
+
+// ─── Quick Scripts helpers ───────────────────────────────────────────────────
+function pluralize(n, one, few, many) {
+    if (n === 1) return one
+    const mod10 = n % 10, mod100 = n % 100
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
+    return many
 }
 
-import { C, T, B, TOOLTIP_STYLE, CAMPAIGN_STATUS, TRANSITION, CHANNEL_COLORS } from '../../constants/designTokens'
+const CATEGORY_LABELS = {
+    clean_waste:     'Wyczyść śmieci',
+    pause_burning:   'Pauzuj spalające',
+    boost_winners:   'Boost winnerów',
+    emergency_brake: 'Hamulec awaryjny',
+}
+const CATEGORY_COLORS = {
+    clean_waste:     C.danger,
+    pause_burning:   C.warning,
+    boost_winners:   C.success,
+    emergency_brake: C.danger,
+}
 
-// ─── Status helpers ──────────────────────────────────────────────────────────
-const STATUS_CONFIG = CAMPAIGN_STATUS
+const CARD = { background: C.w03, border: B.card, borderRadius: 12 }
 
-// ─── Sparkline ───────────────────────────────────────────────────────────────
-function Sparkline({ data, direction }) {
-    if (!data || data.length < 2) {
-        return <span style={{ color: C.w15, fontSize: 11 }}>—</span>
-    }
-    // Cost trend: up = bad (spending more), down = good (saving)
-    const color = direction === 'up' ? C.danger : direction === 'down' ? C.success : C.accentBlue
-    // Backend returns flat array [12.5, 14.2, ...] — Recharts needs [{v: 12.5}, ...]
-    const chartData = Array.isArray(data) && typeof data[0] === 'number'
-        ? data.map(v => ({ v }))
-        : data
+// ─── Script result modal ─────────────────────────────────────────────────────
+// ─── Preview item card — shows reason, metrics, and selection checkbox ─────
+function PreviewItemCard({ item, selected, onToggle }) {
+    const priorityColor = item.priority === 'HIGH' ? C.danger
+        : item.priority === 'MEDIUM' ? C.warning : C.accentBlue
+    const priorityLabel = item.priority === 'HIGH' ? 'Pilne'
+        : item.priority === 'MEDIUM' ? 'Średnie' : 'Info'
+
+    const metrics = item.metrics || {}
+    const metricRows = []
+    if (metrics.clicks != null) metricRows.push(['Kliknięcia', metrics.clicks])
+    if (metrics.impressions != null) metricRows.push(['Wyświetlenia', metrics.impressions])
+    if (metrics.cost_usd != null) metricRows.push(['Koszt', `${Number(metrics.cost_usd).toFixed(2)} zł`])
+    if (metrics.conversions != null) metricRows.push(['Konwersje', Number(metrics.conversions).toFixed(1)])
+    if (metrics.ctr != null) metricRows.push(['CTR', `${Number(metrics.ctr).toFixed(2)}%`])
+    if (metrics.cpa != null) metricRows.push(['CPA', `${Number(metrics.cpa).toFixed(2)} zł`])
+    if (metrics.roas != null) metricRows.push(['ROAS', `${Number(metrics.roas).toFixed(2)}×`])
+    if (metrics.quality_score != null) metricRows.push(['QS', `${metrics.quality_score}/10`])
+
     return (
-        <LineChart width={72} height={24} data={chartData}>
-            <Tooltip
-                contentStyle={TOOLTIP_STYLE}
-                formatter={v => [`${typeof v === 'number' ? v.toLocaleString('pl-PL', { maximumFractionDigits: 1 }) : v}`, null]}
-                labelFormatter={() => ''}
-            />
-            <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} dot={false} />
-        </LineChart>
+        <div
+            onClick={onToggle}
+            style={{
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: `1px solid ${selected ? 'rgba(79,142,247,0.4)' : C.w08}`,
+                background: selected ? 'rgba(79,142,247,0.06)' : 'rgba(255,255,255,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.12s',
+            }}
+        >
+            {/* Row 1: checkbox + entity name + priority pill */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                <div style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                    border: `1.5px solid ${selected ? C.accentBlue : C.w25}`,
+                    background: selected ? C.accentBlue : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    {selected && <CheckCircle2 size={11} style={{ color: '#FFFFFF' }} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.entity_name || item.summary || `#${item.id}`}
+                    </div>
+                    {item.campaign_name && (
+                        <div style={{ fontSize: 10, color: C.w40, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            w kampanii: {item.campaign_name}
+                        </div>
+                    )}
+                </div>
+                <span style={{
+                    fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+                    background: `${priorityColor}18`, color: priorityColor,
+                    border: `1px solid ${priorityColor}35`,
+                    flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                    {priorityLabel}
+                </span>
+            </div>
+
+            {/* Row 2: reason — the "why" */}
+            {item.reason && (
+                <div style={{
+                    padding: '8px 10px',
+                    borderRadius: 7,
+                    background: 'rgba(255,255,255,0.03)',
+                    borderLeft: `2px solid ${C.accentBlue}`,
+                    marginBottom: metricRows.length > 0 ? 8 : 0,
+                    marginLeft: 26,
+                }}>
+                    <div style={{ fontSize: 9, fontWeight: 600, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                        Dlaczego
+                    </div>
+                    <div style={{ fontSize: 11, color: C.w70, lineHeight: 1.45 }}>
+                        {item.reason}
+                    </div>
+                </div>
+            )}
+
+            {/* Row 3: metrics chips */}
+            {metricRows.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginLeft: 26 }}>
+                    {metricRows.map(([label, value]) => (
+                        <span key={label} style={{
+                            fontSize: 10, padding: '3px 8px', borderRadius: 5,
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                            color: C.w60,
+                            fontFamily: 'monospace',
+                        }}>
+                            <span style={{ color: C.w30 }}>{label}:</span>{' '}
+                            <span style={{ color: C.textPrimary }}>{value}</span>
+                        </span>
+                    ))}
+                    {item.estimated_savings_usd > 0 && (
+                        <span style={{
+                            fontSize: 10, padding: '3px 8px', borderRadius: 5,
+                            background: 'rgba(74,222,128,0.10)',
+                            border: '1px solid rgba(74,222,128,0.25)',
+                            color: C.success,
+                            fontFamily: 'monospace',
+                            fontWeight: 600,
+                        }}>
+                            ↑ oszczędność ~{item.estimated_savings_usd.toFixed(0)} zł
+                        </span>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
+/**
+ * ScriptRunModal — three-phase modal for quick script execution.
+ *
+ * Phases:
+ *   1. 'preview'   — show what WOULD happen (dry_run result), offer Execute / Cancel
+ *   2. 'executing' — loading spinner while real execution runs
+ *   3. 'result'    — show what ACTUALLY happened + link to Action History
+ */
+function ScriptRunModal({ state, onExecute, onClose, onViewHistory }) {
+    const { phase = null, category = null, preview = null, result = null, error = null } = state || {}
+    const color = CATEGORY_COLORS[category] || C.accentBlue
+    const label = CATEGORY_LABELS[category] || category
+    const data = result || preview
+    const items = data?.items || []
+    const matching = data?.total_matching || 0
+
+    // Per-item selection (preview only) — default ALL selected
+    const [selectedIds, setSelectedIds] = useState(() => new Set(items.map(i => i.id)))
+    useEffect(() => {
+        // Re-seed selection whenever a new preview arrives
+        if (phase === 'preview') {
+            setSelectedIds(new Set(items.map(i => i.id)))
+        }
+    }, [phase, preview])
+
+    if (!state) return null
+
+    const toggleSelected = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+    const toggleAll = () => {
+        if (selectedIds.size === items.length) setSelectedIds(new Set())
+        else setSelectedIds(new Set(items.map(i => i.id)))
+    }
+
+    const selectedItems = items.filter(i => selectedIds.has(i.id))
+    const estimatedSavings = (phase === 'preview' ? selectedItems : items)
+        .reduce((s, i) => s + (i.estimated_savings_usd || 0), 0)
+
+    // Executing phase: spinner only
+    if (phase === 'executing') {
+        return (
+            <Backdrop onClick={() => { /* block close during execution */ }}>
+                <Panel onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '30px 10px' }}>
+                        <Loader2 size={28} style={{ color }} className="animate-spin" />
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, fontFamily: FONT?.display || 'Syne' }}>
+                            {label} — w trakcie…
+                        </div>
+                        <div style={{ fontSize: 11, color: C.w40, textAlign: 'center', maxWidth: 280 }}>
+                            Wysyłamy zmiany do Google Ads. Nie zamykaj tego okna.
+                        </div>
+                    </div>
+                </Panel>
+            </Backdrop>
+        )
+    }
+
+    const isPreview = phase === 'preview'
+    const isResult = phase === 'result'
+    const hasErrors = isResult && result?.errors?.length > 0
+    const appliedCount = result?.applied || 0
+    const failedCount = result?.failed || 0
+
+    return (
+        <Backdrop onClick={onClose}>
+            <Panel wide={isPreview} onClick={e => e.stopPropagation()}>
+                {/* Phase banner */}
+                {isPreview && (
+                    <div style={{
+                        padding: '8px 14px', borderRadius: 8, marginBottom: 14,
+                        background: 'rgba(79,142,247,0.10)', border: '1px solid rgba(79,142,247,0.25)',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                        <Eye size={13} style={{ color: C.accentBlue, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: C.accentBlue, fontWeight: 600 }}>
+                            PODGLĄD — nic jeszcze nie zostało wykonane
+                        </span>
+                    </div>
+                )}
+                {isResult && appliedCount > 0 && !hasErrors && (
+                    <div style={{
+                        padding: '8px 14px', borderRadius: 8, marginBottom: 14,
+                        background: 'rgba(74,222,128,0.10)', border: '1px solid rgba(74,222,128,0.25)',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                        <CheckCircle2 size={13} style={{ color: C.success, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: C.success, fontWeight: 600 }}>
+                            ZMIANY ZOSTAŁY ZAPISANE W GOOGLE ADS
+                        </span>
+                    </div>
+                )}
+                {isResult && (hasErrors || failedCount > 0) && (
+                    <div style={{
+                        padding: '8px 14px', borderRadius: 8, marginBottom: 14,
+                        background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.25)',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                        <AlertTriangle size={13} style={{ color: C.warning, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: C.warning, fontWeight: 600 }}>
+                            {appliedCount > 0 ? 'CZĘŚCIOWO WYKONANO — sprawdź błędy' : 'NIE UDAŁO SIĘ WYKONAĆ'}
+                        </span>
+                    </div>
+                )}
+
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {isResult
+                            ? (appliedCount > 0 && !hasErrors ? <CheckCircle2 size={18} style={{ color }} /> : <AlertTriangle size={18} style={{ color: C.warning }} />)
+                            : <Eye size={18} style={{ color }} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.textPrimary, fontFamily: FONT?.display || 'Syne' }}>{label}</div>
+                        <div style={{ fontSize: 11, color: C.w40, marginTop: 1 }}>
+                            {isPreview
+                                ? `${matching} ${pluralize(matching, 'rekomendacja do wykonania', 'rekomendacje do wykonania', 'rekomendacji do wykonania')}`
+                                : `${appliedCount} ${pluralize(appliedCount, 'wykonana', 'wykonane', 'wykonanych')}${failedCount > 0 ? ` • ${failedCount} ${pluralize(failedCount, 'błąd', 'błędy', 'błędów')}` : ''}`}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Stats for result phase */}
+                {isResult && (
+                    <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                        <div style={{ flex: 1, padding: '10px 14px', borderRadius: 8, background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: C.success, fontFamily: 'Syne' }}>{appliedCount}</div>
+                            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wykonane</div>
+                        </div>
+                        {failedCount > 0 && (
+                            <div style={{ flex: 1, padding: '10px 14px', borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+                                <div style={{ fontSize: 22, fontWeight: 700, color: C.danger, fontFamily: 'Syne' }}>{failedCount}</div>
+                                <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Błędów</div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Estimated savings (preview phase) */}
+                {isPreview && estimatedSavings > 0 && (
+                    <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.15)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <TrendingUp size={14} style={{ color: C.success }} />
+                        <span style={{ fontSize: 12, color: C.success, fontWeight: 600 }}>
+                            Szacowana oszczędność: ~{estimatedSavings.toFixed(0)} zł
+                        </span>
+                    </div>
+                )}
+
+                {/* Preview items — expanded cards with reason and selection */}
+                {isPreview && items.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                Pozycje do wykonania ({selectedIds.size}/{items.length})
+                            </div>
+                            <button
+                                onClick={toggleAll}
+                                style={{ fontSize: 11, color: C.accentBlue, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                            >
+                                {selectedIds.size === items.length ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto', paddingRight: 4 }}>
+                            {items.map((item) => (
+                                <PreviewItemCard
+                                    key={item.id}
+                                    item={item}
+                                    selected={selectedIds.has(item.id)}
+                                    onToggle={() => toggleSelected(item.id)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Result items — compact list with status */}
+                {isResult && items.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                            Szczegóły zmian
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
+                            {items.map((item, i) => {
+                                const isSuccess = item.status === 'success'
+                                const isFailed = item.status === 'failed'
+                                const bg = isSuccess ? 'rgba(74,222,128,0.04)' : isFailed ? 'rgba(248,113,113,0.04)' : 'rgba(255,255,255,0.02)'
+                                const border = isSuccess ? 'rgba(74,222,128,0.12)' : isFailed ? 'rgba(248,113,113,0.12)' : 'rgba(255,255,255,0.06)'
+                                return (
+                                    <div key={item.id || i} style={{ padding: '8px 12px', borderRadius: 7, background: bg, border: `1px solid ${border}`, fontSize: 12, color: C.w70, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        {isSuccess ? <CheckCircle2 size={12} style={{ color: C.success, flexShrink: 0 }} /> : <XCircle size={12} style={{ color: C.danger, flexShrink: 0 }} />}
+                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {item.entity_name || item.summary || `${item.action_type} #${item.id}`}
+                                            {item.campaign_name && <span style={{ color: C.w30 }}> · {item.campaign_name}</span>}
+                                        </span>
+                                        {item.estimated_savings_usd > 0 && (
+                                            <span style={{ fontSize: 10, color: C.w40, fontFamily: 'monospace', flexShrink: 0 }}>
+                                                ~{item.estimated_savings_usd.toFixed(0)} zł
+                                            </span>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Errors */}
+                {hasErrors && (
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, color: C.danger, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                            Błędy
+                        </div>
+                        {result.errors.slice(0, 5).map((err, i) => (
+                            <div key={i} style={{ padding: '6px 10px', borderRadius: 7, marginBottom: 3, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', fontSize: 11, color: C.danger }}>{err}</div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Error during execution */}
+                {error && (
+                    <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.25)', marginBottom: 14, fontSize: 12, color: C.danger }}>
+                        {error}
+                    </div>
+                )}
+
+                {/* Empty preview — all clear */}
+                {isPreview && items.length === 0 && (
+                    <div style={{
+                        padding: '28px 20px',
+                        textAlign: 'center',
+                        borderRadius: 10,
+                        background: 'rgba(74,222,128,0.06)',
+                        border: '1px solid rgba(74,222,128,0.15)',
+                        marginBottom: 14,
+                    }}>
+                        <CheckCircle2 size={32} style={{ color: C.success, marginBottom: 10 }} />
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 6, fontFamily: FONT?.display || 'Syne' }}>
+                            Wszystko w porządku
+                        </div>
+                        <div style={{ fontSize: 12, color: C.w50, lineHeight: 1.5, maxWidth: 360, margin: '0 auto' }}>
+                            Brak rekomendacji tej kategorii do wykonania.
+                            Nic nie wymaga teraz akcji — zajrzyj tu ponownie jutro
+                            albo sprawdź pełną listę w zakładce Rekomendacje.
+                        </div>
+                    </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                    {isPreview && items.length > 0 && (
+                        <>
+                            <button
+                                onClick={onClose}
+                                style={{
+                                    flex: 1, padding: '12px 0', borderRadius: 8,
+                                    border: B.medium, background: C.w04,
+                                    color: C.w60, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                                }}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                onClick={() => onExecute(Array.from(selectedIds))}
+                                disabled={selectedIds.size === 0}
+                                style={{
+                                    flex: 1.5, padding: '12px 0', borderRadius: 8,
+                                    border: `1px solid ${selectedIds.size === 0 ? C.w08 : color}`,
+                                    background: selectedIds.size === 0 ? C.w04 : `${color}22`,
+                                    color: selectedIds.size === 0 ? C.w30 : color,
+                                    fontSize: 13, fontWeight: 600,
+                                    cursor: selectedIds.size === 0 ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {category === 'clean_waste' && (selectedIds.size > 0
+                                    ? `Wyklucz ${selectedIds.size} ${pluralize(selectedIds.size, 'frazę', 'frazy', 'fraz')}`
+                                    : 'Wyklucz zaznaczone')}
+                                {category === 'pause_burning' && (selectedIds.size > 0
+                                    ? `Wstrzymaj ${selectedIds.size} ${pluralize(selectedIds.size, 'słowo', 'słowa', 'słów')}`
+                                    : 'Wstrzymaj zaznaczone')}
+                                {category === 'boost_winners' && (selectedIds.size > 0
+                                    ? `Zwiększ budżet (${selectedIds.size})`
+                                    : 'Zwiększ budżet')}
+                                {category === 'emergency_brake' && (selectedIds.size > 0
+                                    ? `Zastosuj (${selectedIds.size})`
+                                    : 'Zastosuj zaznaczone')}
+                                {!['clean_waste', 'pause_burning', 'boost_winners', 'emergency_brake'].includes(category) &&
+                                    'Wykonaj na koncie'}
+                            </button>
+                        </>
+                    )}
+                    {isPreview && items.length === 0 && (
+                        <button
+                            onClick={onClose}
+                            style={{
+                                flex: 1, padding: '12px 0', borderRadius: 8,
+                                border: B.medium, background: C.w04,
+                                color: C.w60, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                        >
+                            Zamknij
+                        </button>
+                    )}
+                    {isResult && (
+                        <>
+                            <button
+                                onClick={onViewHistory}
+                                style={{
+                                    flex: 1, padding: '12px 0', borderRadius: 8,
+                                    border: `1px solid ${C.accentBlue}40`, background: 'rgba(79,142,247,0.10)',
+                                    color: C.accentBlue, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                                }}
+                            >
+                                Zobacz w historii
+                            </button>
+                            <button
+                                onClick={onClose}
+                                style={{
+                                    flex: 1, padding: '12px 0', borderRadius: 8,
+                                    border: B.medium, background: C.w04,
+                                    color: C.w60, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                                }}
+                            >
+                                Zamknij
+                            </button>
+                        </>
+                    )}
+                </div>
+            </Panel>
+        </Backdrop>
+    )
+}
+
+// ─── Modal shell helpers ─────────────────────────────────────────────────────
+function Backdrop({ children, onClick }) {
+    return (
+        <div
+            onClick={onClick}
+            style={{
+                position: 'fixed', inset: 0, zIndex: 100,
+                background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 20,
+            }}
+        >
+            {children}
+        </div>
+    )
+}
+
+function Panel({ children, onClick, wide = false }) {
+    return (
+        <div
+            onClick={onClick}
+            style={{
+                background: 'rgba(20,22,28,1)', border: B.medium, borderRadius: 14,
+                padding: '22px 26px', minWidth: 420,
+                maxWidth: wide ? 680 : 560, width: '100%',
+                maxHeight: '85vh', overflowY: 'auto',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            }}
+        >
+            {children}
+        </div>
+    )
+}
+
+// ─── Quick script button ─────────────────────────────────────────────────────
+function QuickScript({ icon: Icon, label, description, color, onClick, loading: scriptLoading, count }) {
+    const hasItems = count > 0
+    return (
+        <button
+            onClick={onClick}
+            disabled={scriptLoading}
+            style={{
+                ...CARD,
+                padding: '14px 16px',
+                textAlign: 'left',
+                cursor: scriptLoading ? 'wait' : 'pointer',
+                opacity: scriptLoading ? 0.5 : 1,
+                transition: TRANSITION.fast,
+                flex: '1 1 200px',
+                minWidth: 180,
+                borderColor: hasItems ? `${color}30` : C.w07,
+            }}
+            className="hover:bg-white/[0.04]"
+        >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {scriptLoading ? <Loader2 size={13} style={{ color }} className="animate-spin" /> : <Icon size={13} style={{ color }} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textPrimary }}>{label}</div>
+                    <span style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: hasItems ? color : C.success,
+                    }}>
+                        {hasItems
+                            ? `${count} do wykonania`
+                            : '✓ brak do wykonania'}
+                    </span>
+                </div>
+            </div>
+            <div style={{ fontSize: 11, color: C.w40, lineHeight: 1.4 }}>{description}</div>
+        </button>
     )
 }
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
-    const { selectedClientId } = useApp()
-    const { filters, allParams, campaignParams, days } = useFilter()
+    const { selectedClientId, showToast } = useApp()
+    const { filters, dateParams, days } = useFilter()
     const navigate = useNavigate()
     const location = useLocation()
     const fromMCC = location.state?.fromMCC
 
-    const [kpis, setKpis]                   = useState(null)
-    const [campaigns, setCampaigns]         = useState([])
-    const [healthScore, setHealthScore]     = useState(null)
-    const [campaignTrends, setCampaignTrends] = useState(null)
-    const [recommendations, setRecs]        = useState([])
-    const [budgetPacing, setBudgetPacing]   = useState(null)
-    const [deviceData, setDeviceData]       = useState(null)
-    const [geoData, setGeoData]             = useState(null)
-    const [wastedSpend, setWastedSpend]     = useState(null)
+    // Dashboard always restricts to ENABLED campaigns; status/name filters are ignored here
+    const campaignParams = useMemo(() => {
+        const p = { campaign_status: 'ENABLED' }
+        if (filters.campaignType !== 'ALL') p.campaign_type = filters.campaignType
+        return p
+    }, [filters.campaignType])
+    const allParams = useMemo(() => ({ ...dateParams, ...campaignParams }), [dateParams, campaignParams])
+
+    const [kpis, setKpis]                       = useState(null)
+    const [campaigns, setCampaigns]             = useState([])
+    const [healthScore, setHealthScore]         = useState(null)
+    const [recommendations, setRecs]            = useState([])
+    const [budgetPacing, setBudgetPacing]       = useState(null)
+    const [deviceData, setDeviceData]           = useState(null)
+    const [geoData, setGeoData]                 = useState(null)
+    const [wastedSpend, setWastedSpend]         = useState(null)
     const [campaignMetrics, setCampaignMetrics] = useState(null)
     const [impressionShare, setImpressionShare] = useState(null)
-    const [recentActions, setRecentActions] = useState([])
-    const [qsAudit, setQsAudit]           = useState(null)
-    const [pmaxChannels, setPmaxChannels] = useState(null)
+    const [qsAudit, setQsAudit]                = useState(null)
+
+    // Quick Scripts state
+    const [scriptCounts, setScriptCounts]       = useState({})
+    const [scriptLoading, setScriptLoading]     = useState({})
+    const [scriptsExpanded, setScriptsExpanded] = useState(null)
+    // modalState shape: { phase: 'preview'|'executing'|'result', category, preview?, result?, error? }
+    const [modalState, setModalState]           = useState(null)
+
+    // Budget Pacing expanded state
+    const [pacingExpanded, setPacingExpanded] = useState(false)
 
     const [expandedDevice, setExpandedDevice] = useState(null)
-    const [sortBy, setSortBy] = useState('cost_usd')
-    const [sortDir, setSortDir] = useState('desc')
     const [geoSortBy, setGeoSortBy] = useState('cost_usd')
     const [geoSortDir, setGeoSortDir] = useState('desc')
 
@@ -96,89 +632,115 @@ export default function DashboardPage() {
     const [healthLoading, setHealthLoading] = useState(false)
     const [error, setError]                 = useState(null)
 
-    const loadData = useCallback(async () => {
+    useEffect(() => {
         if (!selectedClientId) return
+        let cancelled = false
+
         setLoading(true)
         setHealthLoading(true)
         setError(null)
 
-        try {
-            const [kpiData, campData] = await Promise.all([
-                getDashboardKPIs(selectedClientId, allParams),
-                getCampaigns(selectedClientId),
-            ])
-            setKpis(kpiData)
-            setCampaigns(campData?.items || [])
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setLoading(false)
-        }
-
-        // Secondary data — non-blocking
-        const _catch = (p) => p.catch(err => { console.error('[Dashboard secondary]', err); return null })
-        return Promise.all([
-            _catch(getHealthScore(selectedClientId, allParams)),
-            _catch(getCampaignTrends(selectedClientId, undefined, allParams)),
-            getRecommendations(selectedClientId, { status: 'pending' }).catch(err => { console.error('[Dashboard recs]', err); return { recommendations: [] } }),
-            _catch(getBudgetPacing(selectedClientId, campaignParams)),
-            _catch(getDeviceBreakdown(selectedClientId, allParams)),
-            _catch(getGeoBreakdown(selectedClientId, allParams)),
-            _catch(getWastedSpend(selectedClientId, allParams)),
-            _catch(getCampaignsSummary(selectedClientId, allParams)),
-            _catch(getImpressionShare(selectedClientId, allParams)),
-            _catch(getActionHistory(selectedClientId, { limit: 5 })),
-            _catch(getQualityScoreAudit(selectedClientId)),
-            _catch(getPmaxChannels(selectedClientId, allParams)),
+        // Primary (blocking) — needed for page skeleton
+        Promise.all([
+            getDashboardKPIs(selectedClientId, allParams),
+            getCampaigns(selectedClientId, campaignParams),
         ])
-    }, [selectedClientId, allParams, campaignParams])
-
-    useEffect(() => {
-        let cancelled = false
-        const promise = loadData()
-        if (promise) {
-            promise.then(results => {
-                if (cancelled || !results) return
-                const [hs, ct, recs, bp, dev, geo, ws, cm, is_, actionsData, qsData, pmaxCh] = results
-                setHealthScore(hs)
-                setCampaignTrends(ct)
-                setRecs(recs?.recommendations || recs?.items || [])
-                setBudgetPacing(bp)
-                setDeviceData(dev)
-                setGeoData(geo)
-                setWastedSpend(ws)
-                setCampaignMetrics(cm?.campaigns || null)
-                setImpressionShare(is_)
-                setRecentActions(actionsData?.actions || [])
-                setQsAudit(qsData)
-                setPmaxChannels(pmaxCh)
-                setHealthLoading(false)
+            .then(([kpiData, campData]) => {
+                if (cancelled) return
+                setKpis(kpiData)
+                setCampaigns(campData?.items || [])
             })
+            .catch(err => !cancelled && setError(err.message))
+            .finally(() => !cancelled && setLoading(false))
+
+        // Secondary — each endpoint updates its own state independently so a slow
+        // endpoint (e.g. recommendations generation) does not block faster widgets.
+        const safe = (promise, onResolve) => {
+            promise
+                .then(data => !cancelled && onResolve(data))
+                .catch(err => { console.error('[Dashboard secondary]', err); !cancelled && onResolve(null) })
         }
+
+        safe(
+            getHealthScore(selectedClientId, allParams),
+            (hs) => { setHealthScore(hs); setHealthLoading(false) },
+        )
+        safe(
+            getRecommendations(selectedClientId, { status: 'pending', ...dateParams }),
+            (recs) => setRecs(recs?.recommendations || recs?.items || []),
+        )
+        safe(getBudgetPacing(selectedClientId, campaignParams), setBudgetPacing)
+        safe(getDeviceBreakdown(selectedClientId, allParams), setDeviceData)
+        safe(getGeoBreakdown(selectedClientId, allParams), setGeoData)
+        safe(getWastedSpend(selectedClientId, allParams), setWastedSpend)
+        safe(
+            getCampaignsSummary(selectedClientId, allParams),
+            (cm) => setCampaignMetrics(cm?.campaigns || null),
+        )
+        safe(getImpressionShare(selectedClientId, allParams), setImpressionShare)
+        safe(getQualityScoreAudit(selectedClientId, dateParams), setQsAudit)
+
         return () => { cancelled = true }
-    }, [loadData])
+    }, [selectedClientId, allParams, campaignParams, dateParams])
 
-    // In-memory filtering + sorting for campaign table
-    const filteredCampaigns = useMemo(() => {
-        let result = campaigns.filter(c => {
-            if (filters.campaignType !== 'ALL' && c.campaign_type !== filters.campaignType) return false
-            if (filters.status !== 'ALL' && c.status !== filters.status) return false
-            if (filters.campaignName && !c.name?.toLowerCase().includes(filters.campaignName.toLowerCase())) return false
-            if (filters.campaignLabel !== 'ALL' && !(c.labels || []).includes(filters.campaignLabel)) return false
-            return true
-        })
-        if (sortBy && campaignMetrics) {
-            result = [...result].sort((a, b) => {
-                const mA = campaignMetrics[String(a.id)]
-                const mB = campaignMetrics[String(b.id)]
-                const getCpaVal = (m) => m && m.conversions > 0 ? m.cost_usd / m.conversions : 0
-                const vA = sortBy === 'budget_usd' ? (a.budget_usd ?? 0) : sortBy === 'cpa' ? getCpaVal(mA) : (mA?.[sortBy] ?? 0)
-                const vB = sortBy === 'budget_usd' ? (b.budget_usd ?? 0) : sortBy === 'cpa' ? getCpaVal(mB) : (mB?.[sortBy] ?? 0)
-                return sortDir === 'desc' ? vB - vA : vA - vB
+    // Quick Scripts — reload whenever underlying recommendations change (tied to filter cycle)
+    const loadScriptCounts = useCallback(async () => {
+        if (!selectedClientId) return
+        const categories = ['clean_waste', 'pause_burning', 'boost_winners', 'emergency_brake']
+        const counts = {}
+        for (const cat of categories) {
+            try {
+                const res = await getBulkRecommendations(selectedClientId, cat, true)
+                counts[cat] = res.total_matching || 0
+            } catch { counts[cat] = 0 }
+        }
+        setScriptCounts(counts)
+        const total = Object.values(counts).reduce((a, b) => a + b, 0)
+        if (total > 0) setScriptsExpanded(prev => prev === null ? true : prev)
+    }, [selectedClientId])
+
+    // Re-run when filter-driven data reload finishes (recommendations are filter-scoped)
+    useEffect(() => { loadScriptCounts() }, [loadScriptCounts, recommendations])
+
+    // Step 1: open preview — fetch dry_run result and show confirmation modal
+    const openScriptPreview = async (category) => {
+        setScriptLoading(prev => ({ ...prev, [category]: true }))
+        try {
+            const preview = await getBulkRecommendations(selectedClientId, category, true)
+            setModalState({ phase: 'preview', category, preview })
+        } catch (err) {
+            showToast?.(`Nie udało się pobrać podglądu: ${err.message}`, 'error')
+        } finally {
+            setScriptLoading(prev => ({ ...prev, [category]: false }))
+        }
+    }
+
+    // Step 2: execute — after user confirms in preview modal
+    // `itemIds` narrows execution to just the rows the user left checked.
+    const executeScript = async (itemIds = null) => {
+        if (!modalState || modalState.phase !== 'preview') return
+        const { category } = modalState
+        setModalState({ phase: 'executing', category, preview: modalState.preview })
+        try {
+            const result = await getBulkRecommendations(selectedClientId, category, false, itemIds)
+            setModalState({ phase: 'result', category, result })
+            loadScriptCounts()
+        } catch (err) {
+            setModalState({
+                phase: 'result',
+                category,
+                result: { applied: 0, failed: 0, errors: [err.message], items: [] },
+                error: err.message,
             })
         }
-        return result
-    }, [campaigns, filters.campaignType, filters.status, filters.campaignName, filters.campaignLabel, campaignMetrics, sortBy, sortDir])
+    }
+
+    // Dashboard shows only enabled campaigns; sidebar pill filters by type
+    const filteredCampaigns = useMemo(() => campaigns.filter(c => {
+        if (c.status !== 'ENABLED') return false
+        if (filters.campaignType !== 'ALL' && c.campaign_type !== filters.campaignType) return false
+        return true
+    }), [campaigns, filters.campaignType])
     const filteredCampaignIds = useMemo(
         () => filteredCampaigns.map(c => c.id),
         [filteredCampaigns]
@@ -222,9 +784,6 @@ export default function DashboardPage() {
                         }
                     </p>
                 </div>
-                <span onClick={() => navigate('/daily-audit')} style={{ fontSize: 11, color: C.accentBlue, cursor: 'pointer' }}>
-                    Poranny przegląd →
-                </span>
             </div>
 
             {error && (
@@ -251,19 +810,44 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* ── QS Health Widget ───────────────────────────────────────── */}
-            <QsHealthWidget qsAudit={qsAudit} />
+            {/* ── QS Health + Top Actions (compact side-by-side) ────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <QsHealthWidget qsAudit={qsAudit} compact />
+                <TopActions recommendations={recommendations} compact />
+            </div>
 
-            {/* ── Top 3 Actions for Today ─────────────────────────────── */}
-            <TopActions recommendations={recommendations} />
-
-            {/* ── Insights Feed ─────────────────────────────────────────── */}
+            {/* ── Quick Scripts ─────────────────────────────────────────── */}
             <div style={{ marginBottom: 16 }}>
-                <InsightsFeed
-                    kpis={kpis}
-                    campaigns={campaigns}
-                    recommendations={recommendations}
-                />
+                <div
+                    onClick={() => setScriptsExpanded(prev => !prev)}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none', marginBottom: scriptsExpanded ? 10 : 0 }}
+                >
+                    <span style={{ fontSize: 11, fontWeight: 600, color: C.w50, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        Szybkie skrypty
+                    </span>
+                    {Object.values(scriptCounts).reduce((a, b) => a + b, 0) > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.accentBlue, background: 'rgba(79,142,247,0.12)', padding: '1px 8px', borderRadius: 999 }}>
+                            {Object.values(scriptCounts).reduce((a, b) => a + b, 0)} do wykonania
+                        </span>
+                    )}
+                    <ChevronDown size={12} style={{ color: C.w25, transform: scriptsExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                </div>
+                {scriptsExpanded && (
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <QuickScript icon={XCircle} label="Wyczyść śmieci" description="Dodaj negatywy dla nieistotnych fraz"
+                            color={C.danger} count={scriptCounts.clean_waste || 0}
+                            loading={scriptLoading.clean_waste} onClick={() => openScriptPreview('clean_waste')} />
+                        <QuickScript icon={Pause} label="Pauzuj spalające" description="Wstrzymaj słowa bez konwersji z wys. kosztem"
+                            color={C.warning} count={scriptCounts.pause_burning || 0}
+                            loading={scriptLoading.pause_burning} onClick={() => openScriptPreview('pause_burning')} />
+                        <QuickScript icon={TrendingUp} label="Boost winnerów" description="Zwiększ budżet kampanii z dobrym CPA i niskim IS"
+                            color={C.success} count={scriptCounts.boost_winners || 0}
+                            loading={scriptLoading.boost_winners} onClick={() => openScriptPreview('boost_winners')} />
+                        <QuickScript icon={Shield} label="Hamulec awaryjny" description="Obniż stawki i pauzuj przy ekstremalnym CPA"
+                            color={C.danger} count={scriptCounts.emergency_brake || 0}
+                            loading={scriptLoading.emergency_brake} onClick={() => openScriptPreview('emergency_brake')} />
+                    </div>
+                )}
             </div>
 
             {/* ── Trend Explorer ────────────────────────────────────────── */}
@@ -278,156 +862,123 @@ export default function DashboardPage() {
             <DayOfWeekWidget />
 
             {/* ── Campaign Mini-Ranking ───────────────────────────────── */}
-            <CampaignMiniRanking campaigns={campaigns} campaignMetrics={campaignMetrics} />
+            <CampaignMiniRanking campaigns={filteredCampaigns} campaignMetrics={campaignMetrics} />
 
-            {/* ── Campaign Table ────────────────────────────────────────── */}
-            <div className="v2-card" style={{ overflow: 'hidden', marginBottom: 16 }}>
-                <div style={{ padding: '16px 20px', borderBottom: B.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ ...T.sectionTitle }}>
-                        Kampanie
-                    </span>
-                    <div className="flex items-center gap-3">
-                        <span style={{ fontSize: 11, color: C.textDim }}>
-                            {filteredCampaigns.length} z {campaigns.length}
-                        </span>
-                        <span onClick={() => navigate('/campaigns')} style={{ fontSize: 11, color: C.accentBlue, cursor: 'pointer' }}>
-                            Wszystkie →
-                        </span>
-                    </div>
-                </div>
+            {/* ── Budget Pacing (compact + expandable) ──────────────────── */}
+            {budgetPacing?.campaigns?.length > 0 && (() => {
+                const camps = budgetPacing.campaigns
+                const onTrack   = camps.filter(c => c.status === 'on_track').length
+                const overspend = camps.filter(c => c.status === 'overspend').length
+                const underspend = camps.filter(c => c.status === 'underspend').length
+                const totalActual   = camps.reduce((s, c) => s + (c.actual_spend_usd ?? 0), 0)
+                const totalExpected = camps.reduce((s, c) => s + (c.expected_spend_usd ?? 0), 0)
+                const totalPct = totalExpected > 0 ? (totalActual / totalExpected * 100) : 0
+                const barColor = totalPct > 115 ? C.danger : totalPct < 80 ? C.warning : C.success
+                const barPct = Math.min(totalPct, 150)
 
-                {loading ? (
-                    <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 12, color: C.textDim }}>
-                        Ładowanie kampanii…
-                    </div>
-                ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: B.subtle }}>
-                                    {[
-                                        { label: 'Nazwa', key: null },
-                                        { label: 'Status', key: null },
-                                        { label: 'Typ', key: null },
-                                        { label: 'Budżet/dzień', key: 'budget_usd', right: true },
-                                        { label: 'Koszt', key: 'cost_usd', right: true },
-                                        { label: 'Konwersje', key: 'conversions', right: true },
-                                        { label: 'ROAS', key: 'roas', right: true },
-                                        { label: 'CPA', key: 'cpa', right: true },
-                                        { label: 'IS', key: 'impression_share', right: true },
-                                        { label: `Trend (${days}d)`, key: null },
-                                        { label: 'Strategia', key: null },
-                                    ].map(h => {
-                                        const isSorted = h.key && sortBy === h.key
-                                        return (
-                                            <th
-                                                key={h.label}
-                                                onClick={h.key ? () => {
-                                                    if (sortBy === h.key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
-                                                    else { setSortBy(h.key); setSortDir('desc') }
-                                                } : undefined}
-                                                style={{
-                                                    padding: '10px 16px',
-                                                    textAlign: h.right ? 'right' : 'left',
-                                                    fontSize: 10, fontWeight: 500,
-                                                    color: isSorted ? C.accentBlue : C.textMuted,
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.08em',
-                                                    whiteSpace: 'nowrap',
-                                                    cursor: h.key ? 'pointer' : 'default',
-                                                    userSelect: 'none',
-                                                }}
-                                            >
-                                                {h.label}
-                                                {isSorted && (sortDir === 'desc'
-                                                    ? <ChevronDown size={10} style={{ marginLeft: 2, verticalAlign: 'middle' }} />
-                                                    : <ChevronUp size={10} style={{ marginLeft: 2, verticalAlign: 'middle' }} />
-                                                )}
-                                            </th>
-                                        )
-                                    })}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredCampaigns.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={11} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 12, color: C.textDim }}>
-                                            Brak kampanii dla wybranych filtrów
-                                        </td>
-                                    </tr>
-                                ) : filteredCampaigns.map(c => {
-                                    const statusCfg = STATUS_CONFIG[c.status] || { dot: '#666', label: c.status }
-                                    const trendData = campaignTrends?.campaigns?.[String(c.id)]
-                                    const metrics = campaignMetrics?.[String(c.id)]
+                const statusLabel = (s) => s === 'on_track' ? 'Na torze' : s === 'overspend' ? 'Przekroczenie' : s === 'underspend' ? 'Niedostateczne' : '—'
+                const statusColor = (s) => s === 'on_track' ? C.success : s === 'overspend' ? C.danger : s === 'underspend' ? C.warning : C.w30
+
+                const sortedCamps = [...camps].sort((a, b) => {
+                    // Sort: overspend first, then underspend, then on_track — most urgent at top
+                    const order = { overspend: 0, underspend: 1, on_track: 2, no_data: 3 }
+                    return (order[a.status] ?? 9) - (order[b.status] ?? 9)
+                })
+
+                return (
+                    <div className="v2-card" style={{ marginBottom: 16, overflow: 'hidden' }}>
+                        {/* Header row — clickable to expand */}
+                        <div
+                            onClick={() => setPacingExpanded(e => !e)}
+                            style={{ padding: '14px 20px', cursor: 'pointer', userSelect: 'none' }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
+                                    Pacing budżetu ({budgetPacing.days_elapsed}/{budgetPacing.days_in_month} dni)
+                                </span>
+                                <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', fontSize: 11 }}>
+                                    <span style={{ color: C.success }}>● {onTrack} na torze</span>
+                                    {overspend > 0 && <span style={{ color: C.danger }}>● {overspend} przekroczenie</span>}
+                                    {underspend > 0 && <span style={{ color: C.warning }}>● {underspend} niedostateczne</span>}
+                                </div>
+                                <ChevronDown size={14} style={{ color: C.w40, transform: pacingExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ flex: 1, height: 8, borderRadius: 4, background: C.w06, overflow: 'hidden', position: 'relative' }}>
+                                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(barPct / 150 * 100).toFixed(0)}%`, background: barColor, transition: 'width 0.3s' }} />
+                                    <div style={{ position: 'absolute', left: `${(100 / 150 * 100).toFixed(0)}%`, top: -2, bottom: -2, width: 1, background: 'rgba(255,255,255,0.25)' }} />
+                                </div>
+                                <span style={{ fontSize: 12, fontFamily: 'monospace', color: barColor, fontWeight: 600, minWidth: 50, textAlign: 'right' }}>
+                                    {totalPct.toFixed(0)}%
+                                </span>
+                                <span style={{ fontSize: 11, color: C.w40, fontFamily: 'monospace' }}>
+                                    {totalActual.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} / {totalExpected.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Expandable campaigns list */}
+                        {pacingExpanded && (
+                            <div style={{ borderTop: B.subtle, padding: '8px 0 12px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px 90px', gap: 12, padding: '6px 20px', fontSize: 9, fontWeight: 500, color: C.w30, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                    <span>Kampania</span>
+                                    <span style={{ textAlign: 'right' }}>Budżet/mies.</span>
+                                    <span style={{ textAlign: 'right' }}>Wydano</span>
+                                    <span style={{ textAlign: 'right' }}>Pacing</span>
+                                    <span style={{ textAlign: 'right' }}>Status</span>
+                                </div>
+                                {sortedCamps.map(c => {
+                                    const campPct = Math.min(c.pacing_pct ?? 0, 150)
+                                    const campColor = statusColor(c.status)
                                     return (
-                                        <tr
-                                            key={c.id}
-                                            style={{ borderBottom: `1px solid ${C.w04}`, transition: 'background 0.12s', cursor: 'pointer' }}
+                                        <div
+                                            key={c.campaign_id}
+                                            onClick={() => navigate(`/campaigns?campaign_id=${c.campaign_id}`)}
+                                            style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 90px 90px 110px 90px',
+                                                gap: 12,
+                                                padding: '8px 20px',
+                                                alignItems: 'center',
+                                                cursor: 'pointer',
+                                                fontSize: 12,
+                                                borderTop: `1px solid ${C.w04}`,
+                                                transition: 'background 0.12s',
+                                            }}
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                            onClick={() => navigate(`/campaigns?campaign_id=${c.id}`)}
                                         >
-                                            <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 500, color: C.textPrimary, maxWidth: 260 }}>
-                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {c.name}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
-                                                <span className="flex items-center gap-1.5" style={{ fontSize: 12 }}>
-                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusCfg.dot, flexShrink: 0 }} />
-                                                    <span style={{ color: statusCfg.dot }}>{statusCfg.label}</span>
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '11px 16px', fontSize: 12, color: C.w50, whiteSpace: 'nowrap' }}>
-                                                {TYPE_LABELS[c.campaign_type] ?? c.campaign_type}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontFamily: 'DM Mono, monospace', color: C.w70, whiteSpace: 'nowrap' }}>
-                                                {c.budget_usd != null ? `${c.budget_usd.toFixed(0)} zł` : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: C.w60, whiteSpace: 'nowrap' }}>
-                                                {metrics ? `${metrics.cost_usd.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł` : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', color: C.w60, whiteSpace: 'nowrap' }}>
-                                                {metrics ? metrics.conversions.toFixed(1) : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics ? ((metrics.roas >= 3) ? C.success : (metrics.roas >= 1) ? C.warning : C.danger) : C.textDim }}>
-                                                {metrics ? `${metrics.roas.toFixed(2)}×` : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: C.w60 }}>
-                                                {metrics && metrics.conversions > 0 ? `${(metrics.cost_usd / metrics.conversions).toFixed(0)} zł` : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: metrics?.impression_share != null ? (metrics.impression_share > 0.5 ? C.success : metrics.impression_share > 0.3 ? C.warning : C.danger) : C.textDim }}>
-                                                {metrics?.impression_share != null ? `${(metrics.impression_share * 100).toFixed(0)}%` : '—'}
-                                            </td>
-                                            <td style={{ padding: '11px 16px' }}>
-                                                <div className="flex items-center gap-2">
-                                                    <Sparkline data={trendData?.cost_trend} direction={trendData?.direction} />
+                                            <span style={{ color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {c.campaign_name}
+                                            </span>
+                                            <span style={{ textAlign: 'right', fontFamily: 'monospace', color: C.w60 }}>
+                                                {(c.monthly_budget_usd ?? 0).toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł
+                                            </span>
+                                            <span style={{ textAlign: 'right', fontFamily: 'monospace', color: C.w60 }}>
+                                                {(c.actual_spend_usd ?? 0).toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł
+                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                                                <div style={{ flex: 1, maxWidth: 60, height: 4, borderRadius: 2, background: C.w06, overflow: 'hidden', position: 'relative' }}>
+                                                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(campPct / 150 * 100).toFixed(0)}%`, background: campColor }} />
                                                 </div>
-                                            </td>
-                                            <td style={{ padding: '11px 16px', fontSize: 11, color: C.w40, whiteSpace: 'nowrap', maxWidth: 180 }}>
-                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.bidding_strategy ?? ''}>
-                                                    {c.bidding_strategy ?? '—'}
+                                                <span style={{ fontFamily: 'monospace', color: campColor, fontWeight: 600, minWidth: 36, textAlign: 'right' }}>
+                                                    {(c.pacing_pct ?? 0).toFixed(0)}%
                                                 </span>
-                                            </td>
-                                        </tr>
+                                            </div>
+                                            <span style={{ textAlign: 'right', fontSize: 10, color: campColor, fontWeight: 500 }}>
+                                                {statusLabel(c.status)}
+                                            </span>
+                                        </div>
                                     )
                                 })}
-                            </tbody>
-                        </table>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
+                )
+            })()}
 
-            {/* ── Budget Pacing ─────────────────────────────────────────── */}
-            <BudgetPacingModule
-                campaigns={budgetPacing?.campaigns}
-                month={budgetPacing?.month}
-                linkTo="/campaigns"
-                onNavigate={navigate}
-            />
-
-            {/* ── PMax Channel Split ────────────────────────────────────── */}
-            {pmaxChannels?.channels?.length > 0 && (
+            {/* ── PMax Channel Split removed — use /pmax ────────────────── */}
+            {false && (
                 <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                         <span style={{ ...T.sectionTitle }}>
@@ -714,41 +1265,14 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* ── Recent actions widget ─────────────────────────────────── */}
-            {recentActions.length > 0 && (
-                <div className="v2-card" style={{ padding: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: 0 }}>Ostatnie akcje</h3>
-                        <button
-                            onClick={() => navigate('/action-history')}
-                            style={{ fontSize: 11, color: C.accentBlue, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
-                        >
-                            Wszystkie <ChevronRight size={12} />
-                        </button>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {recentActions.slice(0, 5).map((a, i) => (
-                            <div key={a.id || i} style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '6px 10px', borderRadius: 8,
-                                background: 'rgba(255,255,255,0.02)',
-                                border: `1px solid ${C.w04}`,
-                                fontSize: 12,
-                            }}>
-                                <span style={{
-                                    fontSize: 10, fontWeight: 600,
-                                    color: a.status === 'SUCCESS' ? C.success : a.status === 'REVERTED' ? C.textMuted : C.danger,
-                                }}>{a.status}</span>
-                                <span style={{ color: C.w70, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {a.entity_name || a.action_type}
-                                </span>
-                                <span style={{ color: C.w25, fontSize: 11, flexShrink: 0 }}>
-                                    {a.executed_at ? new Date(a.executed_at).toLocaleDateString('pl-PL') : ''}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {/* Quick script preview / execute / result modal */}
+            {modalState && (
+                <ScriptRunModal
+                    state={modalState}
+                    onExecute={executeScript}
+                    onClose={() => setModalState(null)}
+                    onViewHistory={() => { setModalState(null); navigate('/action-history') }}
+                />
             )}
 
         </div>

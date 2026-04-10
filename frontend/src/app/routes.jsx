@@ -32,7 +32,7 @@ const Rules = lazy(() => import('../features/rules'))
 const Dsa = lazy(() => import('../features/dsa'))
 
 export const GLOBAL_FILTER_ROUTES = [
-    '/dashboard', '/campaigns', '/keywords', '/search-terms', '/audit-center',
+    '/campaigns', '/keywords', '/search-terms', '/audit-center',
     '/recommendations', '/shopping', '/pmax', '/display', '/video', '/competitive',
     '/cross-campaign', '/benchmarks', '/dsa',
 ]

@@ -8,14 +8,51 @@ const PRIORITY_CONFIG = {
     LOW:    { color: '#4F8EF7', bg: 'rgba(79,142,247,0.1)',  label: 'Info' },
 }
 
-export default function TopActions({ recommendations }) {
+export default function TopActions({ recommendations, compact = false }) {
     const navigate = useNavigate()
 
+    const pending = (recommendations || []).filter(r => r.status === 'pending')
     // Filter to pending + sort by score desc, take top 3
-    const top = (recommendations || [])
-        .filter(r => r.status === 'pending')
+    const top = pending
         .sort((a, b) => (b.score || 0) - (a.score || 0))
         .slice(0, 3)
+
+    if (compact) {
+        const highCount = pending.filter(r => r.priority === 'HIGH').length
+        const totalSavings = pending.reduce((s, r) => s + (r.impact_micros ? r.impact_micros / 1_000_000 : 0), 0)
+        const headerColor = highCount > 0 ? '#F87171' : pending.length > 0 ? '#FBBF24' : '#4ADE80'
+
+        return (
+            <div
+                className="v2-card"
+                onClick={() => navigate('/recommendations')}
+                style={{ padding: '14px 18px', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
+            >
+                <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
+                    <Zap size={14} style={{ color: '#FBBF24' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F0F0', fontFamily: 'Syne' }}>
+                        Top akcje na dzis
+                    </span>
+                    <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)', marginLeft: 'auto' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 32, fontWeight: 700, color: headerColor, fontFamily: 'Syne', lineHeight: 1 }}>
+                        {pending.length}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                        {highCount > 0 && `• ${highCount} pilne`}
+                    </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 'auto' }}>
+                    {totalSavings > 0
+                        ? `Potencjalna oszczędność ~${totalSavings.toFixed(0)} zł`
+                        : pending.length === 0
+                            ? 'Brak oczekujących akcji'
+                            : 'Rekomendacje do przejrzenia'}
+                </div>
+            </div>
+        )
+    }
 
     if (top.length === 0) return null
 

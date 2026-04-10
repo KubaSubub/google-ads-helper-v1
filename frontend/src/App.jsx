@@ -6,6 +6,8 @@ import Toast from './components/Toast';
 import Sidebar from './components/Sidebar';
 import GlobalFilterBar from './components/GlobalFilterBar';
 import GlobalDatePicker from './components/GlobalDatePicker';
+import HeaderClientSelector from './components/HeaderClientSelector';
+import HeaderCampaignTypeSelector from './components/HeaderCampaignTypeSelector';
 import ShortcutsHint from './components/ShortcutsHint';
 import Login from './pages/Login';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -24,6 +26,7 @@ function AppContent() {
     const { toast, hideToast, authStatus, authChecking, checkAuth } = useApp();
     const location = useLocation();
     const showGlobalFilter = GLOBAL_FILTER_ROUTES.includes(location.pathname);
+    const isMccPage = location.pathname === '/mcc-overview';
     useKeyboardShortcuts();
 
     if (authChecking) {
@@ -52,12 +55,17 @@ function AppContent() {
                         padding: '0 32px',
                         borderBottom: '1px solid rgba(255,255,255,0.07)',
                         background: '#0D0F14',
+                        gap: 10,
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <ShortcutsHint />
-                        <GlobalDatePicker />
-                    </div>
+                    {!isMccPage && (
+                        <>
+                            <HeaderClientSelector />
+                            <HeaderCampaignTypeSelector />
+                        </>
+                    )}
+                    <ShortcutsHint />
+                    <GlobalDatePicker />
                 </header>
                 <main className="flex-1 overflow-y-auto p-6 lg:p-8 pt-16 lg:pt-8">
                     {showGlobalFilter && <GlobalFilterBar />}

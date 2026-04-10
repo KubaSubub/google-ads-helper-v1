@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
     ComposedChart, Line, XAxis, YAxis, Tooltip, Legend,
-    ResponsiveContainer, CartesianGrid,
+    ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { Plus, X, TrendingUp } from 'lucide-react'
-import { getCorrelationMatrix, getTrends } from '../api'
+import { getCorrelationMatrix, getTrends, getActionHistory } from '../api'
 import { useFilter } from '../contexts/FilterContext'
 import { useApp } from '../contexts/AppContext'
 import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
@@ -66,25 +66,58 @@ function needsDualAxis(metrics) {
     return (hasPct && (hasMoney || hasCount)) || (hasMoney && hasCount)
 }
 
-const CustomTooltip = ({ active, payload, label }) => {
-    if (!active || !payload?.length) return null
-    return (
-        <div style={{
-            background: C.surfaceElevated,
-            border: B.hover,
-            borderRadius: 8,
-            padding: '10px 14px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-            fontSize: 12,
-        }}>
-            <div style={{ color: C.w50, marginBottom: 6 }}>{label}</div>
-            {payload.map((p, i) => (
-                <div key={i} style={{ color: p.color, marginBottom: 2 }}>
-                    {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL') ?? p.value}</strong>
-                </div>
-            ))}
-        </div>
-    )
+// ─── Action event helpers ─────────────────────────────────────────────────────
+const OPERATION_LABELS = {
+    UPDATE_BID: 'Zmiana stawki',
+    PAUSE_KEYWORD: 'Wstrzymanie słowa kluczowego',
+    ENABLE_KEYWORD: 'Włączenie słowa kluczowego',
+    ADD_KEYWORD: 'Dodanie słowa kluczowego',
+    ADD_NEGATIVE: 'Dodanie wykluczenia',
+    PAUSE_AD: 'Wstrzymanie reklamy',
+    INCREASE_BUDGET: 'Zwiększenie budżetu',
+    DECREASE_BUDGET: 'Zmniejszenie budżetu',
+    PAUSE_CAMPAIGN: 'Wstrzymanie kampanii',
+    ENABLE_CAMPAIGN: 'Włączenie kampanii',
+    UPDATE_STATUS: 'Zmiana statusu',
+    UPDATE_BUDGET: 'Zmiana budżetu',
+    CREATE: 'Utworzenie',
+    REMOVE: 'Usunięcie',
+}
+
+function getOperationLabel(op) {
+    if (!op) return 'Zmiana'
+    return OPERATION_LABELS[op] || op.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
+}
+
+function formatTimestamp(dateStr) {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const pad = n => String(n).padStart(2, '0')
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatBeforeAfter(entry) {
+    const parts = []
+    try {
+        const oldVal = entry.old_value_json ? (typeof entry.old_value_json === 'string' ? JSON.parse(entry.old_value_json) : entry.old_value_json) : null
+        const newVal = entry.new_value_json ? (typeof entry.new_value_json === 'string' ? JSON.parse(entry.new_value_json) : entry.new_value_json) : null
+        if (!oldVal && !newVal) return null
+        if (oldVal?.bid_micros !== undefined || newVal?.bid_micros !== undefined) {
+            const o = oldVal?.bid_micros != null ? (oldVal.bid_micros / 1_000_000).toFixed(2) : '—'
+            const n = newVal?.bid_micros != null ? (newVal.bid_micros / 1_000_000).toFixed(2) : '—'
+            parts.push(`Stawka: ${o} → ${n} zł`)
+        }
+        if (oldVal?.budget_micros !== undefined || newVal?.budget_micros !== undefined) {
+            const o = oldVal?.budget_micros != null ? (oldVal.budget_micros / 1_000_000).toFixed(0) : '—'
+            const n = newVal?.budget_micros != null ? (newVal.budget_micros / 1_000_000).toFixed(0) : '—'
+            parts.push(`Budżet: ${o} → ${n} zł`)
+        }
+        if (oldVal?.status !== undefined || newVal?.status !== undefined) {
+            const pl = { ENABLED: 'Aktywny', PAUSED: 'Wstrzymany', REMOVED: 'Usunięty' }
+            parts.push(`Status: ${pl[oldVal?.status] || oldVal?.status || '—'} → ${pl[newVal?.status] || newVal?.status || '—'}`)
+        }
+    } catch { return null }
+    return parts.length > 0 ? parts : null
 }
 
 export default function TrendExplorer({ campaignIds = [] }) {
@@ -97,6 +130,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
     const [isMock, setIsMock] = useState(false)
     const [correlationData, setCorrelationData] = useState(null) // { best: {pairLabel,label,r}, pairs: [{a,b,r,label}...] }
     const [showCorrelationPopup, setShowCorrelationPopup] = useState(false)
+    const [actionEvents, setActionEvents] = useState([])
 
     const fetchData = useCallback(async () => {
         if (!selectedClientId) return
@@ -121,6 +155,106 @@ export default function TrendExplorer({ campaignIds = [] }) {
     }, [selectedClientId, activeMetrics, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status])
 
     useEffect(() => { fetchData() }, [fetchData])
+
+    // Fetch action history for annotations
+    useEffect(() => {
+        if (!selectedClientId) { setActionEvents([]); return }
+        let cancelled = false
+        getActionHistory(selectedClientId, {
+            limit: 50,
+            executed_from: filters.dateFrom,
+            executed_to: filters.dateTo,
+        })
+            .then(res => {
+                if (cancelled) return
+                setActionEvents(res?.actions || [])
+            })
+            .catch(() => !cancelled && setActionEvents([]))
+        return () => { cancelled = true }
+    }, [selectedClientId, filters.dateFrom, filters.dateTo])
+
+    // Group actions by date for annotations
+    const eventsByDate = useMemo(() => {
+        const map = {}
+        ;(actionEvents || []).forEach(e => {
+            const d = (e.executed_at || e.timestamp || '').slice(0, 10)
+            if (d) {
+                if (!map[d]) map[d] = []
+                map[d].push(e)
+            }
+        })
+        return map
+    }, [actionEvents])
+    const eventDates = Object.keys(eventsByDate)
+
+    // Rich tooltip — shows metric values + action details for the day
+    const CustomTooltip = ({ active, payload, label }) => {
+        if (!active || !payload?.length) return null
+        const events = eventsByDate[label] || []
+        return (
+            <div style={{
+                background: C.surfaceElevated,
+                border: B.hover,
+                borderRadius: 8,
+                padding: '10px 14px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                fontSize: 12,
+                maxWidth: 340,
+                pointerEvents: 'auto',
+            }}>
+                <div style={{ color: C.w50, marginBottom: 6 }}>{label}</div>
+                {payload.map((p, i) => (
+                    <div key={i} style={{ color: p.color, marginBottom: 2 }}>
+                        {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL', { maximumFractionDigits: 2 }) ?? p.value}</strong>
+                    </div>
+                ))}
+                {events.length > 0 && (
+                    <div style={{ borderTop: B.subtle, marginTop: 8, paddingTop: 8 }}>
+                        <div style={{ fontSize: 10, color: C.accentBlue, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            ● {events.length} {events.length === 1 ? 'zmiana' : 'zmian'} w tym dniu
+                        </div>
+                        {events.slice(0, 4).map((e, i) => {
+                            const op = e.operation || e.action_type
+                            const beforeAfter = formatBeforeAfter(e)
+                            const ts = e.executed_at || e.timestamp
+                            return (
+                                <div key={i} style={{
+                                    padding: '5px 0',
+                                    borderBottom: i < Math.min(events.length, 4) - 1 ? `1px solid ${C.w06}` : 'none',
+                                }}>
+                                    <div className="flex items-center gap-2" style={{ marginBottom: 2 }}>
+                                        <span style={{ fontSize: 11, color: C.textPrimary, fontWeight: 500 }}>
+                                            {getOperationLabel(op)}
+                                        </span>
+                                        {ts && (
+                                            <span style={{ fontSize: 9, color: C.w30, marginLeft: 'auto' }}>
+                                                {formatTimestamp(ts)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {e.entity_name && (
+                                        <div style={{ fontSize: 10, color: C.w40, marginBottom: 2 }}>
+                                            {e.entity_name}
+                                        </div>
+                                    )}
+                                    {beforeAfter && beforeAfter.map((line, j) => (
+                                        <div key={j} style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'monospace' }}>
+                                            {line}
+                                        </div>
+                                    ))}
+                                </div>
+                            )
+                        })}
+                        {events.length > 4 && (
+                            <div style={{ fontSize: 10, color: C.w30, fontStyle: 'italic', paddingTop: 4 }}>
+                                +{events.length - 4} więcej…
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        )
+    }
 
     // Close popups on outside click
     useEffect(() => {
@@ -460,6 +594,18 @@ export default function TrendExplorer({ campaignIds = [] }) {
                             />
                         )}
                         <Tooltip content={<CustomTooltip />} />
+                        {/* Action markers — dashed vertical line with dot label */}
+                        {eventDates.map(d => (
+                            <ReferenceLine
+                                key={d}
+                                x={d}
+                                yAxisId="left"
+                                stroke="#4F8EF7"
+                                strokeDasharray="4 3"
+                                strokeWidth={1.5}
+                                label={{ value: '●', position: 'top', fill: '#4F8EF7', fontSize: 11 }}
+                            />
+                        ))}
                         {activeMetrics.map((key, idx) => {
                             const opt = METRIC_OPTIONS.find(m => m.key === key)
                             const yAxis = dual && idx > 0 && pctMetrics.includes(key) ? 'right' : 'left'
@@ -479,6 +625,20 @@ export default function TrendExplorer({ campaignIds = [] }) {
                         })}
                     </ComposedChart>
                 </ResponsiveContainer>
+            )}
+
+            {/* Legend for action markers */}
+            {eventDates.length > 0 && !loading && data.length > 0 && (
+                <div className="flex items-center gap-3 mt-2" style={{ fontSize: 10, color: C.w30 }}>
+                    <span className="flex items-center gap-1">
+                        <span style={{ width: 14, height: 0, borderTop: '1.5px dashed #4F8EF7', display: 'inline-block' }} />
+                        <span style={{ color: '#4F8EF7' }}>●</span>
+                        <span>Zmiana na koncie</span>
+                    </span>
+                    <span style={{ color: C.w25 }}>
+                        {actionEvents.length} {actionEvents.length === 1 ? 'akcja' : 'akcji'} w okresie
+                    </span>
+                </div>
             )}
         </div>
     )

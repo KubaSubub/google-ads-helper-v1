@@ -447,6 +447,7 @@ class BulkApplyRequest(BaseModel):
     client_id: int
     category: str  # "clean_waste", "pause_burning", "boost_winners", "emergency_brake", "add_negatives"
     dry_run: bool = True  # Default to preview mode
+    item_ids: list[int] | None = None  # Optional filter — only apply these recommendation ids
 
 
 _CATEGORY_FILTERS: dict[str, dict] = {
@@ -558,6 +559,11 @@ def bulk_apply_recommendations(
     if priority_filter:
         query = query.filter(RecommendationModel.priority == priority_filter)
 
+    # When NOT a dry run, optionally narrow to user-selected item ids (from preview UI).
+    # Dry run always returns the full matching set so the UI can build the selection list.
+    if not body.dry_run and body.item_ids:
+        query = query.filter(RecommendationModel.id.in_(body.item_ids))
+
     all_recs: list[RecommendationModel] = query.all()
 
     # Separate executable from non-executable
@@ -575,6 +581,22 @@ def bulk_apply_recommendations(
     # Build items list — only executable recommendations
     items: List[dict] = []
     for rec in executable_recs:
+        _, metadata, _ctx, _expl = _normalize_evidence(rec)
+        action_payload = _normalize_action_payload(rec)
+        # Metric snapshot for the "why" panel
+        metrics_snapshot = {
+            "clicks": metadata.get("clicks"),
+            "impressions": metadata.get("impressions"),
+            "cost_usd": metadata.get("cost"),
+            "conversions": metadata.get("conversions"),
+            "ctr": metadata.get("ctr"),
+            "cpa": metadata.get("cpa"),
+            "roas": metadata.get("roas"),
+            "quality_score": metadata.get("quality_score"),
+        }
+        # strip Nones for clean payload
+        metrics_snapshot = {k: v for k, v in metrics_snapshot.items() if v is not None}
+
         items.append({
             "id": rec.id,
             "action_type": rec.rule_id,
@@ -582,6 +604,14 @@ def bulk_apply_recommendations(
             "summary": _build_item_summary(rec),
             "estimated_savings_usd": _estimated_savings_usd(rec),
             "status": "pending",
+            # Rich context for UI "why?" panel
+            "entity_name": rec.entity_name,
+            "campaign_name": metadata.get("campaign_name"),
+            "reason": rec.reason,
+            "suggested_action": rec.suggested_action,
+            "metrics": metrics_snapshot,
+            "match_type": action_payload.get("params", {}).get("match_type") if isinstance(action_payload.get("params"), dict) else None,
+            "negative_level": action_payload.get("params", {}).get("negative_level") if isinstance(action_payload.get("params"), dict) else None,
         })
 
     applied = 0

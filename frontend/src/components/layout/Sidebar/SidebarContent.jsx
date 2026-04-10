@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { LogOut, Settings, Zap } from 'lucide-react'
 import { useApp } from '../../../contexts/AppContext'
@@ -6,15 +5,11 @@ import { useFilter } from '../../../contexts/FilterContext'
 import { logout } from '../../../api'
 import { NAV_GROUPS } from './navConfig'
 import NavItem from './NavItem'
-import CampaignTypePills from './CampaignTypePills'
-import ClientSelector from './ClientSelector'
-import ClientDrawer from './ClientDrawer'
 
 export default function SidebarContent({ onNavigate }) {
-    const { alertCount, selectedClientId } = useApp()
+    const { alertCount } = useApp()
     const { filters } = useFilter()
     const location = useLocation()
-    const [drawerOpen, setDrawerOpen] = useState(false)
     const activeCampType = filters.campaignType || 'ALL'
     const isMccPage = location.pathname === '/mcc-overview'
 
@@ -55,19 +50,12 @@ export default function SidebarContent({ onNavigate }) {
             </div>
             <div style={{ height: 1, background: 'rgba(255,255,255,0.07)' }} />
 
-            {!isMccPage && (
-                <>
-                    <ClientSelector onOpenDrawer={() => setDrawerOpen(true)} />
-                    <ClientDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-                    <CampaignTypePills />
-                </>
-            )}
-
-            <nav className="flex-1 overflow-y-auto" style={{ padding: '4px 8px' }}>
+            <nav className="flex-1 overflow-y-auto" style={{ padding: '8px 8px' }}>
                 {NAV_GROUPS.map((group) => {
-                    let visibleItems = activeCampType === 'ALL' || group.always
+                    let visibleItems = (activeCampType === 'ALL' || group.always
                         ? group.items
                         : group.items.filter(item => !item.types || item.types.includes(activeCampType))
+                    ).filter(item => !item.hidden)
                     // On MCC page: show only alwaysVisible items across all groups
                     if (isMccPage) {
                         visibleItems = visibleItems.filter(item => item.alwaysVisible)

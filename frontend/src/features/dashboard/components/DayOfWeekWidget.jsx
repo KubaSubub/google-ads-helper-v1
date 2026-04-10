@@ -14,23 +14,38 @@ const METRICS = [
     { key: 'cpc', label: 'CPC', suffix: ' zl', invert: true },
 ]
 
+// 5-level gradient: deep red -> orange -> amber -> lime -> green
 function heatColor(value, min, max, invert) {
     if (max === min) return 'rgba(255,255,255,0.06)'
     const ratio = (value - min) / (max - min)
     const t = invert ? 1 - ratio : ratio
-    // green for good, red for bad
-    if (t > 0.66) return 'rgba(74,222,128,0.15)'
-    if (t > 0.33) return 'rgba(251,191,36,0.1)'
-    return 'rgba(248,113,113,0.1)'
+    if (t >= 0.80) return 'rgba(74,222,128,0.22)'   // deep green
+    if (t >= 0.60) return 'rgba(163,230,53,0.18)'   // lime
+    if (t >= 0.40) return 'rgba(251,191,36,0.15)'   // amber
+    if (t >= 0.20) return 'rgba(251,146,60,0.13)'   // orange
+    return 'rgba(248,113,113,0.15)'                 // deep red
 }
 
 function textColor(value, min, max, invert) {
     if (max === min) return 'rgba(255,255,255,0.5)'
     const ratio = (value - min) / (max - min)
     const t = invert ? 1 - ratio : ratio
-    if (t > 0.66) return '#4ADE80'
-    if (t > 0.33) return '#FBBF24'
+    if (t >= 0.80) return '#4ADE80'
+    if (t >= 0.60) return '#A3E635'
+    if (t >= 0.40) return '#FBBF24'
+    if (t >= 0.20) return '#FB923C'
     return '#F87171'
+}
+
+function borderColor(value, min, max, invert) {
+    if (max === min) return 'rgba(255,255,255,0.04)'
+    const ratio = (value - min) / (max - min)
+    const t = invert ? 1 - ratio : ratio
+    if (t >= 0.80) return 'rgba(74,222,128,0.35)'
+    if (t >= 0.60) return 'rgba(163,230,53,0.30)'
+    if (t >= 0.40) return 'rgba(251,191,36,0.25)'
+    if (t >= 0.20) return 'rgba(251,146,60,0.22)'
+    return 'rgba(248,113,113,0.30)'
 }
 
 export default function DayOfWeekWidget() {
@@ -101,11 +116,8 @@ export default function DayOfWeekWidget() {
                             style={{
                                 padding: '12px 8px', borderRadius: 10, textAlign: 'center',
                                 background: heatColor(val, min, max, metricDef.invert),
-                                border: highlight
-                                    ? '1px solid rgba(74,222,128,0.3)'
-                                    : (isWorst || isWorstInv)
-                                        ? '1px solid rgba(248,113,113,0.2)'
-                                        : '1px solid rgba(255,255,255,0.04)',
+                                border: `1px solid ${borderColor(val, min, max, metricDef.invert)}`,
+                                boxShadow: highlight ? '0 0 0 1px rgba(74,222,128,0.4)' : 'none',
                             }}
                         >
                             <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.4)', marginBottom: 6, textTransform: 'uppercase' }}>
