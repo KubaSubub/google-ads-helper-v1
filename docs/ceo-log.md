@@ -107,4 +107,5 @@
   - P1 frontend: race condition w refreshCounts (AbortController/cancelled flag)
   - P2 testy: unit testy per skrypt (min 5 per script, 30+ lacznie) + test_scripts_helpers.py
 - **Out of scope (swiadomie odlozone):** B1 per-item ad_group scoping, B1 min_conversions=3 policy change, A2 short-word tuning, D1 stop words PL expansion, C2 keeper CPA tiebreaker, ScriptsPage.jsx 985→refactor, dead code cleanup w DashboardPage legacy Quick Scripts state
-- **Status:** STARTED
+- **Status:** DONE
+- **Wynik:** 648/648 backend pytest passed (+41 nowych testów dla scripts: helpers + 6 skryptów, shared scripts_fixtures factory). Vite build OK. 3 parallel review (FAZA 3): code-quality 7/10, security 8/10, domain 7.5/10. Iteracja 2: naprawione wszystkie CRITICAL/HIGH findings — A6 EXACT force-match + AD_GROUP wiring, `circuit_breaker_limit` field w ScriptExecuteResult, _check_keyword_conflict reverse-subset, D1 restricted to CAMPAIGN-only, A1 lag guard refinement (window fully-inside vs partial), A2/A6 AD_GROUP fallback guard, _validate_batch local time (Warsaw), router params size cap 16KB (DoS), canonical script.id in save_config, _helpers allow 2-char brand tokens. Commit 1addab6 (squashed z WIP 3ba0bcd). Spec archived: docs/specs/scripts-p0-p1-fixes.md (pozostawiony aktywny dla referencji, nie przeniesiony do archive).
