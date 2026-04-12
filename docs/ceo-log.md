@@ -92,3 +92,19 @@
   - Cross-client strategy templating
 - **Status:** DONE
 - **Wynik:** 607 backend tests passed (+11 nowych dla strategy_context), 10/10 E2E settings-mastermind-brief (+ 4 istniejące settings-client-info-hub), vite build OK. Review iter 2: code 8/10, security 7/10, domain 8/10 po fixach CRITICAL findings (PATCH null-noop, primary_for_goal column w UI + schema, description min 10 chars backend+frontend, remove lesson E2E test, unused imports cleanup). Wizualna weryfikacja przeciwko realnemu backendowi: wszystkie 9 nowych elementów DOM renderuje się dla Sushi Naka Naka (18 real conversion actions). Obsolete `ClientHealthSection.jsx` pozostawiony jako dead code (sandbox denied delete, user can remove manually). Obsolete spec `settings-hub-p0-fixes.md` pozostawiony jako draft (zastąpiony przez settings-mastermind-brief.md).
+
+## [2026-04-12] Scripts System: P0 + P1 fixes po full review
+- **Powod:** CEO review (4 parallel agents: backend/frontend/domain/UX live test) wykryl 2 bugi P0 (D1 cross-campaign negative push + A2 AD_GROUP branching) i systemowa luke P1 (validate_action nie wired w scripts pipeline) + brakujace brand/keyword protection w A1/A6/C2. Bez tych napraw execute() ma funkcjonalne bledy i circuit breaker jest martwy dla calego scripts flow. User wymaga "110%" naprawy przed shipem.
+- **Intelligence used:** NIE (task specyficzny — naprawy wykryte we wlasnym review, nie wymagaja market research)
+- **Nakład:** L (6 plikow skryptow + base.py refactor + nowy _helpers.py + frontend ScriptsPage + 7 plikow testowych)
+- **SKIP PM:** spec juz istnieje (`docs/specs/scripts-p0-p1-fixes.md`) — zostala wygenerowana bezposrednio z raportu review z exact line numbers, AC, test plan i DoD. Gate score 8.5/10. Nie ma potrzeby drugiego przejscia przez /pm.
+- **Delegacja:** /build --spec docs/specs/scripts-p0-p1-fixes.md — pipeline 6 faz (plan/build/verify/test/domain/ship)
+- **Scope:**
+  - P0: D1 cross-campaign push (all campaign_ids, nie losowy 1), A2 AD_GROUP branching w execute()
+  - P1 globalnie: validate_action wired w ScriptBase helper + wywolania w 6 skryptach
+  - P1 protection: brand + keyword protection w A1/A6/C2 (refactor helperow z a2 → `_helpers.py`)
+  - P1 A1: conversion lag guard (7 dni warning w dry_run)
+  - P1 frontend: race condition w refreshCounts (AbortController/cancelled flag)
+  - P2 testy: unit testy per skrypt (min 5 per script, 30+ lacznie) + test_scripts_helpers.py
+- **Out of scope (swiadomie odlozone):** B1 per-item ad_group scoping, B1 min_conversions=3 policy change, A2 short-word tuning, D1 stop words PL expansion, C2 keeper CPA tiebreaker, ScriptsPage.jsx 985→refactor, dead code cleanup w DashboardPage legacy Quick Scripts state
+- **Status:** STARTED
