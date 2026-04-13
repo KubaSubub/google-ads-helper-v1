@@ -5,6 +5,7 @@ Each script is a self-contained class registered in `app.services.scripts`.
 """
 
 import json
+import time
 from datetime import date
 from typing import Any, Optional
 
@@ -22,6 +23,46 @@ router = APIRouter(prefix="/scripts", tags=["scripts"])
 # Hard cap on `params` payload size to keep malicious clients from pumping
 # megabyte-sized dicts into the scripts pipeline.
 _MAX_PARAMS_BYTES = 16_384
+
+# ── Bulk counts cache ──────────────────────────────────────────────────────
+# Running each script's dry_run on every ScriptsPage mount is expensive: 9
+# scripts × full SearchTerm+Keyword+NegativeKeyword fetch = 2-8s wall time.
+# We cache the per-script (total_matching, estimated_savings_pln) tuple for
+# each (client_id, date_from, date_to) window with a short TTL so the second
+# visit is instant and the badge does not block the UI.
+_COUNTS_CACHE: dict[tuple, tuple[float, dict]] = {}
+_COUNTS_CACHE_TTL_SEC = 60.0
+_COUNTS_CACHE_MAX_ENTRIES = 64
+
+
+def _counts_cache_get(key: tuple) -> Optional[dict]:
+    entry = _COUNTS_CACHE.get(key)
+    if not entry:
+        return None
+    ts, payload = entry
+    if time.monotonic() - ts > _COUNTS_CACHE_TTL_SEC:
+        _COUNTS_CACHE.pop(key, None)
+        return None
+    return payload
+
+
+def _counts_cache_set(key: tuple, payload: dict) -> None:
+    # Evict oldest when the cache balloons (simple FIFO — adequate for a
+    # handful of clients/date ranges in a desktop tool).
+    if len(_COUNTS_CACHE) >= _COUNTS_CACHE_MAX_ENTRIES:
+        try:
+            oldest = min(_COUNTS_CACHE.items(), key=lambda kv: kv[1][0])[0]
+            _COUNTS_CACHE.pop(oldest, None)
+        except ValueError:
+            _COUNTS_CACHE.clear()
+    _COUNTS_CACHE[key] = (time.monotonic(), payload)
+
+
+def _counts_cache_invalidate(client_id: int) -> None:
+    """Drop all cached counts for a client (called after execute())."""
+    for key in list(_COUNTS_CACHE.keys()):
+        if key[0] == client_id:
+            _COUNTS_CACHE.pop(key, None)
 
 
 def _validate_params_size(value: dict) -> dict:
@@ -154,6 +195,48 @@ def dry_run_script(
     return response
 
 
+@router.get("/counts")
+def scripts_counts(
+    client_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Return total_matching + savings for every registered script.
+
+    One round-trip replaces the N parallel dry-run calls the frontend used
+    to make on mount — which is the main reason the Scripts page loaded
+    slowly. Results are cached in-memory for 60 seconds per
+    (client_id, date_from, date_to), so coming back to the tab after
+    clicking into a script is instant.
+    """
+    cache_key = (client_id, date_from, date_to)
+    hit = _counts_cache_get(cache_key)
+    if hit is not None:
+        return {"cached": True, "counts": hit}
+
+    counts: dict[str, dict] = {}
+    for script in list_scripts():
+        merged = _merge_params(script.id, client_id, {}, db)
+        try:
+            result = script.dry_run(
+                db=db,
+                client_id=client_id,
+                date_from=date_from,
+                date_to=date_to,
+                params=merged,
+            )
+            counts[script.id] = {
+                "total": result.total_matching,
+                "savings": round(result.estimated_savings_pln or 0, 2),
+            }
+        except Exception as exc:
+            counts[script.id] = {"total": 0, "savings": 0.0, "error": str(exc)[:200]}
+
+    _counts_cache_set(cache_key, counts)
+    return {"cached": False, "counts": counts}
+
+
 @router.post("/{script_id}/execute")
 def execute_script(
     script_id: str,
@@ -175,6 +258,9 @@ def execute_script(
         item_ids=body.item_ids,
         **({"item_overrides": body.item_overrides} if body.item_overrides else {}),
     )
+    # Any mutation invalidates the cached counts for this client so the
+    # ScriptsPage badge refreshes on the next visit.
+    _counts_cache_invalidate(body.client_id)
     return {
         "script_id": result.script_id,
         "applied": result.applied,
@@ -309,6 +395,7 @@ def save_script_config(
     configs[script.id] = body.params
     client.script_configs = configs
     db.commit()
+    _counts_cache_invalidate(body.client_id)
     return {"status": "ok", "script_id": script.id, "saved_params": body.params}
 
 
@@ -327,4 +414,5 @@ def reset_script_config(
     configs.pop(script_id, None)
     client.script_configs = configs
     db.commit()
+    _counts_cache_invalidate(client_id)
     return {"status": "ok", "reset": script_id}

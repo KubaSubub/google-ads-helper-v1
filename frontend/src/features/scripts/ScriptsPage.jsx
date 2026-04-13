@@ -13,7 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
-import { getScriptsCatalog, dryRunScript, executeScript, saveScriptConfig, getScriptHistory } from '../../api'
+import { getScriptsCatalog, getScriptsCounts, dryRunScript, executeScript, saveScriptConfig, getScriptHistory } from '../../api'
 import { C, T, B } from '../../constants/designTokens'
 import EmptyState from '../../components/EmptyState'
 
@@ -1157,9 +1157,8 @@ export default function ScriptsPage() {
     const [expandedCats, setExpandedCats] = useState(new Set(['waste_elimination']))
     const [refreshToken, setRefreshToken] = useState(0)
     const refreshCounts = useCallback(() => setRefreshToken(t => t + 1), [])
-    // Track which script IDs already have an in-flight or resolved fetch, so
-    // the lazy-load effect does not re-fire itself when state changes reference.
-    const fetchedCountsRef = useRef(new Set())
+    // History is still lazy per category (reads ActionLog rows); counts use
+    // a single bulk endpoint so no ref guard is needed for them.
     const fetchedHistoryRef = useRef(new Set())
 
     // Load catalog once
@@ -1169,58 +1168,29 @@ export default function ScriptsPage() {
             .catch(err => console.error('[ScriptsPage] catalog error', err))
     }, [])
 
-    // Fetch counts lazily: only for scripts inside currently expanded
-    // categories. `fetchedCountsRef` tracks already-initiated ids so the
-    // effect does not keep the reactive state (`counts`) in its dep array —
-    // that would restart it after every partial write and cause O(N)
-    // extra runs for a batch of N resolved scripts.
+    // One bulk counts request per (client, date range) — replaces the old
+    // N parallel dry-runs that made Scripts page load in 3-8 seconds. Backend
+    // caches the result for 60s so returning to this tab is instant.
     useEffect(() => {
-        if (!selectedClientId || !catalog) return
-        const scripts = catalog.groups
-            .filter(g => expandedCats.has(g.category))
-            .flatMap(g => g.scripts)
-        const toFetch = scripts.filter(s => !fetchedCountsRef.current.has(s.id))
-        if (toFetch.length === 0) return
-        toFetch.forEach(s => fetchedCountsRef.current.add(s.id))
-
+        if (!selectedClientId) return
         let cancelled = false
         setLoading(true)
-        Promise.allSettled(
-            toFetch.map(s => dryRunScript(s.id, {
-                client_id: selectedClientId,
-                date_from: dateParams.date_from,
-                date_to: dateParams.date_to,
-                params: {},
-            }))
-        ).then(results => {
-            if (cancelled) return
-            setCounts(prev => {
-                const next = { ...prev }
-                toFetch.forEach((s, i) => {
-                    const r = results[i]
-                    if (r.status === 'fulfilled') {
-                        next[s.id] = {
-                            total: r.value.total_matching || 0,
-                            savings: r.value.estimated_savings_pln || 0,
-                        }
-                    } else {
-                        next[s.id] = { total: 0, savings: 0, error: true }
-                    }
-                })
-                return next
-            })
-            setLoading(false)
-        }).catch(() => {
-            if (cancelled) return
-            setLoading(false)
+        getScriptsCounts({
+            client_id: selectedClientId,
+            date_from: dateParams.date_from,
+            date_to: dateParams.date_to,
         })
+            .then(res => {
+                if (cancelled) return
+                setCounts(res?.counts || {})
+                setLoading(false)
+            })
+            .catch(() => {
+                if (cancelled) return
+                setCounts({})
+                setLoading(false)
+            })
         return () => { cancelled = true }
-    }, [selectedClientId, catalog, dateParams, refreshToken, expandedCats])
-
-    // Reset cached counts + fetch ref whenever the client/date/refreshToken changes.
-    useEffect(() => {
-        setCounts({})
-        fetchedCountsRef.current = new Set()
     }, [selectedClientId, dateParams.date_from, dateParams.date_to, refreshToken])
 
     // Fetch history lazily for scripts in expanded categories.

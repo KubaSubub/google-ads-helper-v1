@@ -170,6 +170,8 @@ export const getCorrelationMatrix = (data) =>
 
 // Scripts (Search Terms / Keyword optimization)
 export const getScriptsCatalog = () => api.get('/scripts/catalog');
+export const getScriptsCounts = ({ client_id, date_from, date_to }) =>
+    api.get('/scripts/counts', { params: { client_id, date_from, date_to } });
 export const dryRunScript = (scriptId, body) =>
     api.post(`/scripts/${scriptId}/dry-run`, body);
 export const executeScript = (scriptId, body) =>
