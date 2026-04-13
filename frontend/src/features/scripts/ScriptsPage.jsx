@@ -5,7 +5,7 @@
 //   2. per-item opt-out via checkboxes
 //   3. execute with item_ids filter
 //   4. result view with applied/failed breakdown
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
     Play, RefreshCw, ChevronDown, CheckCircle2, XCircle, AlertTriangle,
     Loader2, ShieldAlert, TrendingUp, Zap, Clock, Search, Target,
@@ -13,7 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
-import { getScriptsCatalog, dryRunScript, executeScript, saveScriptConfig } from '../../api'
+import { getScriptsCatalog, dryRunScript, executeScript, saveScriptConfig, getScriptHistory } from '../../api'
 import { C, T, B } from '../../constants/designTokens'
 import EmptyState from '../../components/EmptyState'
 
@@ -27,10 +27,84 @@ const CATEGORY_META = {
     brand:             { icon: ShieldAlert, color: C.accentBlue, bg: 'rgba(79,142,247,0.06)' },
 }
 
+// TagInput — chip-style editor for list params (brand words, competitors).
+// Accepts array-of-strings and emits the same shape; forgiving about
+// comma/Enter separators and strips empties.
+function TagInput({ value, onChange, placeholder }) {
+    const [draft, setDraft] = useState('')
+    const tags = Array.isArray(value)
+        ? value
+        : (value ? String(value).split(',').map(s => s.trim()).filter(Boolean) : [])
+
+    const commitDraft = () => {
+        const pieces = draft.split(',').map(s => s.trim()).filter(Boolean)
+        if (pieces.length === 0) return
+        const next = [...tags]
+        pieces.forEach(p => { if (!next.includes(p)) next.push(p) })
+        onChange(next)
+        setDraft('')
+    }
+
+    return (
+        <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
+            padding: '4px 6px', borderRadius: 6,
+            border: B.medium, background: C.w06, minHeight: 30,
+        }}>
+            {tags.map(tag => (
+                <span key={tag} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 8px', borderRadius: 999, fontSize: 10,
+                    background: 'rgba(79,142,247,0.15)', color: C.accentBlue,
+                    border: '1px solid rgba(79,142,247,0.3)',
+                }}>
+                    {tag}
+                    <button
+                        onClick={() => onChange(tags.filter(t => t !== tag))}
+                        style={{
+                            background: 'none', border: 'none', color: C.accentBlue,
+                            cursor: 'pointer', fontSize: 10, padding: 0, lineHeight: 1,
+                        }}
+                    >×</button>
+                </span>
+            ))}
+            <input
+                type="text"
+                value={draft}
+                placeholder={tags.length === 0 ? (placeholder || 'wpisz i Enter') : ''}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault()
+                        commitDraft()
+                    } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
+                        onChange(tags.slice(0, -1))
+                    }
+                }}
+                onBlur={commitDraft}
+                style={{
+                    flex: 1, minWidth: 80, background: 'transparent',
+                    border: 'none', outline: 'none', fontSize: 11,
+                    color: C.textPrimary, padding: '2px 4px',
+                }}
+            />
+        </div>
+    )
+}
+
+// Heatmap: colour-code savings badge so the user sees priority at a glance.
+function _savingsColor(savings, fallback) {
+    if (!(savings > 0)) return C.w40
+    if (savings >= 500) return C.success
+    if (savings >= 50) return C.warning
+    return fallback
+}
+
 // ── Single script tile ──────────────────────────────────────────────────────
-function ScriptTile({ script, count, savings, loading, onRun }) {
+function ScriptTile({ script, count, savings, loading, onRun, history }) {
     const meta = CATEGORY_META[script.category] || CATEGORY_META.waste_elimination
     const hasItems = count > 0
+    const badgeColor = _savingsColor(savings, meta.color)
     return (
         <div style={{
             padding: '14px 18px',
@@ -57,8 +131,8 @@ function ScriptTile({ script, count, savings, loading, onRun }) {
                     {hasItems ? (
                         <span style={{
                             fontSize: 10, fontWeight: 600,
-                            color: meta.color,
-                            background: meta.color + '18',
+                            color: badgeColor,
+                            background: badgeColor + '18',
                             padding: '1px 8px', borderRadius: 999,
                         }}>
                             {count} do wykonania · ~{Math.round(savings)} zł
@@ -66,6 +140,11 @@ function ScriptTile({ script, count, savings, loading, onRun }) {
                     ) : (
                         <span style={{ fontSize: 10, fontWeight: 500, color: C.success }}>
                             ✓ czysto
+                        </span>
+                    )}
+                    {history?.executed_at && (
+                        <span style={{ fontSize: 9, color: C.w30, fontWeight: 500 }}>
+                            Ostatnio: {history.relative} · {history.applied_total} zast.
                         </span>
                     )}
                 </div>
@@ -117,7 +196,8 @@ const PARAM_LABELS = {
         { value: false, label: 'Ukryj' },
     ]},
     soft_min_clicks: { label: 'Min. kliknięć (cross-camp)', type: 'number', step: 1 },
-    custom_brand_words: { label: 'Brand words', type: 'hidden' },
+    custom_brand_words: { label: 'Słowa brandu (ochrona)', type: 'tags', placeholder: 'np. naka, nakanaka' },
+    custom_competitor_words: { label: 'Nazwy konkurentów', type: 'tags', placeholder: 'np. allegro, empik' },
     min_conversions: { label: 'Min. konwersji', type: 'number', step: 1 },
     min_cvr_pct: { label: 'Min. CVR (%)', type: 'number', step: 1 },
     max_cpa_pln: { label: 'Max CPA (zł, 0=brak)', type: 'number', step: 5 },
@@ -161,6 +241,10 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
     const [saving, setSaving] = useState(false)
     const [itemOverrides, setItemOverrides] = useState({}) // {itemId: {ad_group_id: X}}
     const [ngramTab, setNgramTab] = useState(1) // 1-gram, 2-gram, 3-gram, 4-gram
+    const [campaignFilter, setCampaignFilter] = useState('')
+    const [sortKey, setSortKey] = useState('savings')
+    const [sortDir, setSortDir] = useState('desc')
+    const [groupByCampaign, setGroupByCampaign] = useState(false)
     const navigate = useNavigate()
 
     const runDryRun = useCallback(async (overrideParams) => {
@@ -263,7 +347,7 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
             }}
         >
             <div style={{
-                width: '100%', maxWidth: 760, maxHeight: '90vh',
+                width: '100%', maxWidth: 'min(1200px, 92vw)', maxHeight: '90vh',
                 background: '#111318', borderRadius: 14,
                 border: B.card, overflow: 'hidden',
                 display: 'flex', flexDirection: 'column',
@@ -316,8 +400,9 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                             const meta = PARAM_LABELS[key] || { label: key, type: 'number' }
                                             if (meta.type === 'hidden') return null
                                             const isMulti = meta.type === 'multiselect'
+                                            const isTags = meta.type === 'tags'
                                             return (
-                                                <div key={key} style={{ minWidth: isMulti ? 260 : 140 }}>
+                                                <div key={key} style={{ minWidth: isTags ? 320 : isMulti ? 260 : 140 }}>
                                                     <label style={{ fontSize: 10, color: C.w50, display: 'block', marginBottom: 3 }}>
                                                         {meta.label}
                                                     </label>
@@ -335,6 +420,12 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                                 <option key={o.value} value={o.value}>{o.label}</option>
                                                             ))}
                                                         </select>
+                                                    ) : meta.type === 'tags' ? (
+                                                        <TagInput
+                                                            value={value}
+                                                            placeholder={meta.placeholder}
+                                                            onChange={v => updateParam(key, v)}
+                                                        />
                                                     ) : isMulti ? (
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                                                             {(meta.options || []).map(o => {
@@ -413,9 +504,11 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                     const n = i.metrics?.ngram_size || 1
                                     counts[n] = (counts[n] || 0) + 1
                                 })
+                                const activeNgrams = [1, 2, 3, 4].filter(n => counts[n] > 0)
+                                if (activeNgrams.length === 0) return null
                                 return (
                                     <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-                                        {[1, 2, 3, 4].map(n => (
+                                        {activeNgrams.map(n => (
                                             <button
                                                 key={n}
                                                 onClick={() => setNgramTab(n)}
@@ -423,11 +516,11 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                     padding: '5px 14px', borderRadius: 999, fontSize: 11, fontWeight: 600,
                                                     border: ngramTab === n ? '1px solid rgba(123,92,224,0.5)' : '1px solid rgba(255,255,255,0.08)',
                                                     background: ngramTab === n ? 'rgba(123,92,224,0.15)' : 'transparent',
-                                                    color: ngramTab === n ? '#7B5CE0' : counts[n] ? C.w60 : C.w25,
-                                                    cursor: counts[n] ? 'pointer' : 'default',
+                                                    color: ngramTab === n ? '#7B5CE0' : C.w60,
+                                                    cursor: 'pointer',
                                                 }}
                                             >
-                                                {n}-gram {counts[n] ? `(${counts[n]})` : '(0)'}
+                                                {n}-gram ({counts[n]})
                                             </button>
                                         ))}
                                     </div>
@@ -465,20 +558,140 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                         </button>
                                     </div>
 
+                                    {/* Filter + sort controls */}
+                                    {preview.items.length > 1 && (() => {
+                                        const campaignOptions = Array.from(
+                                            new Set(preview.items.map(i => i.campaign_name).filter(Boolean))
+                                        ).sort()
+                                        return (
+                                            <div style={{
+                                                display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10,
+                                                alignItems: 'center',
+                                            }}>
+                                                <select
+                                                    value={campaignFilter}
+                                                    onChange={e => setCampaignFilter(e.target.value)}
+                                                    style={{
+                                                        background: C.w06, border: B.medium, borderRadius: 6,
+                                                        padding: '5px 8px', fontSize: 11, color: C.textPrimary,
+                                                        cursor: 'pointer', maxWidth: 260,
+                                                    }}
+                                                >
+                                                    <option value="">Wszystkie kampanie ({campaignOptions.length})</option>
+                                                    {campaignOptions.map(c => (
+                                                        <option key={c} value={c}>{c}</option>
+                                                    ))}
+                                                </select>
+                                                <select
+                                                    value={sortKey}
+                                                    onChange={e => setSortKey(e.target.value)}
+                                                    style={{
+                                                        background: C.w06, border: B.medium, borderRadius: 6,
+                                                        padding: '5px 8px', fontSize: 11, color: C.textPrimary, cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    <option value="savings">Sortuj: Oszczędność</option>
+                                                    <option value="cost">Sortuj: Koszt</option>
+                                                    <option value="clicks">Sortuj: Kliknięcia</option>
+                                                    <option value="ctr">Sortuj: CTR</option>
+                                                    <option value="conversions">Sortuj: Konwersje</option>
+                                                </select>
+                                                <button
+                                                    onClick={() => setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))}
+                                                    title="Zmień kierunek sortowania"
+                                                    style={{
+                                                        background: C.w06, border: B.medium, borderRadius: 6,
+                                                        padding: '5px 10px', fontSize: 11, color: C.w60, cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    {sortDir === 'desc' ? '↓' : '↑'}
+                                                </button>
+                                                {campaignOptions.length > 1 && (
+                                                    <label style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                        fontSize: 11, color: C.w60, cursor: 'pointer',
+                                                    }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={groupByCampaign}
+                                                            onChange={e => setGroupByCampaign(e.target.checked)}
+                                                        />
+                                                        Grupuj po kampanii
+                                                    </label>
+                                                )}
+                                                <button
+                                                    onClick={() => {
+                                                        const rows = preview.items.map(i => ({
+                                                            text: i.entity_name,
+                                                            campaign: i.campaign_name || '',
+                                                            clicks: i.metrics?.clicks ?? 0,
+                                                            impressions: i.metrics?.impressions ?? 0,
+                                                            ctr: i.metrics?.ctr ?? 0,
+                                                            conversions: i.metrics?.conversions ?? 0,
+                                                            cost_pln: i.metrics?.cost_pln ?? 0,
+                                                            savings_pln: i.estimated_savings_pln ?? 0,
+                                                            reason: (i.reason || '').replace(/"/g, '""'),
+                                                        }))
+                                                        const header = 'text,campaign,clicks,impressions,ctr,conversions,cost_pln,savings_pln,reason'
+                                                        const body = rows.map(r =>
+                                                            `"${r.text.replace(/"/g, '""')}","${r.campaign.replace(/"/g, '""')}",${r.clicks},${r.impressions},${r.ctr},${r.conversions},${r.cost_pln},${r.savings_pln},"${r.reason}"`
+                                                        ).join('\n')
+                                                        const csv = header + '\n' + body
+                                                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+                                                        const url = URL.createObjectURL(blob)
+                                                        const a = document.createElement('a')
+                                                        a.href = url
+                                                        a.download = `${script.id}_${clientId}_${new Date().toISOString().slice(0, 10)}.csv`
+                                                        document.body.appendChild(a)
+                                                        a.click()
+                                                        document.body.removeChild(a)
+                                                        URL.revokeObjectURL(url)
+                                                    }}
+                                                    style={{
+                                                        marginLeft: 'auto',
+                                                        background: 'rgba(79,142,247,0.08)',
+                                                        border: '1px solid rgba(79,142,247,0.25)', borderRadius: 6,
+                                                        padding: '5px 12px', fontSize: 11, color: C.accentBlue, cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    Eksportuj CSV
+                                                </button>
+                                            </div>
+                                        )
+                                    })()}
+
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                         {/* Split items into sections based on match_source */}
                                         {(() => {
                                             // Filter by n-gram tab if items have ngram_size
                                             const hasNgram = preview.items.some(i => i.metrics?.ngram_size)
-                                            const visibleItems = hasNgram
+                                            let visibleItems = hasNgram
                                                 ? preview.items.filter(i => (i.metrics?.ngram_size || 1) === ngramTab)
                                                 : preview.items
+
+                                            // Campaign filter
+                                            if (campaignFilter) {
+                                                visibleItems = visibleItems.filter(i => i.campaign_name === campaignFilter)
+                                            }
+
+                                            // Sort pipeline (stable because we spread before sort)
+                                            const sortFns = {
+                                                savings: (a, b) => (b.estimated_savings_pln || 0) - (a.estimated_savings_pln || 0),
+                                                cost: (a, b) => (b.metrics?.cost_pln || 0) - (a.metrics?.cost_pln || 0),
+                                                clicks: (a, b) => (b.metrics?.clicks || 0) - (a.metrics?.clicks || 0),
+                                                ctr: (a, b) => (b.metrics?.ctr || 0) - (a.metrics?.ctr || 0),
+                                                conversions: (a, b) => (b.metrics?.conversions || 0) - (a.metrics?.conversions || 0),
+                                            }
+                                            const sortFn = sortFns[sortKey] || sortFns.savings
+                                            visibleItems = [...visibleItems].sort(
+                                                sortDir === 'desc' ? sortFn : (a, b) => -sortFn(a, b)
+                                            )
 
                                             const hasSourceField = visibleItems.some(i => i.action_payload?.match_source)
 
                                             // Categorize: primary (executable) vs secondary (soft/alerts)
                                             const primarySources = new Set(['hard', 'search_action'])
-                                            const alertSources = new Set(['pmax_alert'])
+                                            const alertSources = new Set(['pmax_alert', 'audit', 'competitor_alert'])
                                             const softSources = new Set(['soft'])
 
                                             const primaryItems = hasSourceField
@@ -534,8 +747,49 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div style={{ fontSize: 11, color: C.w50, fontFamily: 'monospace', flexShrink: 0 }}>
-                                                            {item.metrics?.conversions > 0 ? `${item.metrics.conversions} konw` : item.metrics?.cost_pln > 0 ? `~${Math.round(item.estimated_savings_pln)} zł` : ''}
+                                                        <div style={{
+                                                            display: 'flex', gap: 10, fontSize: 10,
+                                                            color: C.w50, fontFamily: 'monospace', flexShrink: 0,
+                                                            alignItems: 'center',
+                                                        }}>
+                                                            {item.metrics?.clicks != null && (
+                                                                <span title="Kliknięcia" style={{ minWidth: 36, textAlign: 'right' }}>
+                                                                    {item.metrics.clicks} clk
+                                                                </span>
+                                                            )}
+                                                            {item.metrics?.impressions != null && (
+                                                                <span title="Wyświetlenia" style={{ minWidth: 46, textAlign: 'right', color: C.w40 }}>
+                                                                    {item.metrics.impressions} impr
+                                                                </span>
+                                                            )}
+                                                            {item.metrics?.ctr != null && (
+                                                                <span title="CTR" style={{ minWidth: 40, textAlign: 'right', color: C.w40 }}>
+                                                                    {Number(item.metrics.ctr).toFixed(1)}%
+                                                                </span>
+                                                            )}
+                                                            {item.metrics?.conversions != null && (
+                                                                <span title="Konwersje" style={{ minWidth: 42, textAlign: 'right', color: item.metrics.conversions > 0 ? C.success : C.w40 }}>
+                                                                    {item.metrics.conversions} konw
+                                                                </span>
+                                                            )}
+                                                            {item.metrics?.conversions > 0 && item.metrics?.cost_pln > 0 && (
+                                                                <span title="CPA (koszt/konwersję)" style={{ minWidth: 48, textAlign: 'right', color: C.w40 }}>
+                                                                    CPA {Math.round(item.metrics.cost_pln / item.metrics.conversions)}zł
+                                                                </span>
+                                                            )}
+                                                            {item.metrics?.cost_pln != null && (
+                                                                <span title="Koszt" style={{ minWidth: 48, textAlign: 'right', color: C.w60, fontWeight: 600 }}>
+                                                                    {Math.round(item.metrics.cost_pln)} zł
+                                                                </span>
+                                                            )}
+                                                            {item.estimated_savings_pln > 0 && (
+                                                                <span title="Szacowana oszczędność" style={{
+                                                                    minWidth: 56, textAlign: 'right', fontWeight: 700,
+                                                                    color: _savingsColor(item.estimated_savings_pln, C.accentBlue),
+                                                                }}>
+                                                                    ~{Math.round(item.estimated_savings_pln)} zł
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         {/* Ad group selector for B1 search_action items */}
                                                         {selectable && !item.action_payload?.ad_group_id && preview?.search_ad_groups?.length > 0 && item.action_payload?.match_source === 'search_action' && (
@@ -626,6 +880,33 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                 )
                                             }
 
+                                            // Per-campaign grouping: bucket primaryItems by campaign_name
+                                            // while preserving the sorted order inside each bucket.
+                                            const renderPrimary = () => {
+                                                if (!groupByCampaign) {
+                                                    return primaryItems.map(i => renderItem(i))
+                                                }
+                                                const buckets = new Map()
+                                                primaryItems.forEach(i => {
+                                                    const key = i.campaign_name || '(bez kampanii)'
+                                                    if (!buckets.has(key)) buckets.set(key, [])
+                                                    buckets.get(key).push(i)
+                                                })
+                                                return Array.from(buckets.entries()).map(([camp, items]) => (
+                                                    <details key={camp} open style={{ marginBottom: 6 }}>
+                                                        <summary style={{
+                                                            fontSize: 10, color: C.w60, textTransform: 'uppercase',
+                                                            letterSpacing: '0.08em', padding: '6px 0', cursor: 'pointer',
+                                                        }}>
+                                                            {camp} ({items.length})
+                                                        </summary>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 4 }}>
+                                                            {items.map(i => renderItem(i))}
+                                                        </div>
+                                                    </details>
+                                                ))
+                                            }
+
                                             return (
                                                 <>
                                                     {primaryItems.length > 0 && hasSourceField && (softItems.length > 0 || alertItems.length > 0) && (
@@ -633,7 +914,7 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                             Akcje ({primaryItems.length})
                                                         </div>
                                                     )}
-                                                    {primaryItems.map(i => renderItem(i))}
+                                                    {renderPrimary()}
 
                                                     {softItems.length > 0 && (
                                                         <>
@@ -761,16 +1042,17 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                             }}>Anuluj</button>
                             <button
                                 onClick={handleExecute}
-                                disabled={selectedIds.size === 0}
+                                disabled={selectedIds.size === 0 || paramsEdited}
+                                title={paramsEdited ? 'Odśwież podgląd zanim zastosujesz nowe parametry' : ''}
                                 style={{
                                     padding: '8px 18px', borderRadius: 7, fontSize: 12, fontWeight: 600,
-                                    background: selectedIds.size > 0 ? 'rgba(79,142,247,0.2)' : C.w05,
-                                    border: `1px solid ${selectedIds.size > 0 ? 'rgba(79,142,247,0.4)' : C.w08}`,
-                                    color: selectedIds.size > 0 ? C.accentBlue : C.w30,
-                                    cursor: selectedIds.size > 0 ? 'pointer' : 'not-allowed',
+                                    background: selectedIds.size > 0 && !paramsEdited ? 'rgba(79,142,247,0.2)' : C.w05,
+                                    border: `1px solid ${selectedIds.size > 0 && !paramsEdited ? 'rgba(79,142,247,0.4)' : C.w08}`,
+                                    color: selectedIds.size > 0 && !paramsEdited ? C.accentBlue : C.w30,
+                                    cursor: selectedIds.size > 0 && !paramsEdited ? 'pointer' : 'not-allowed',
                                 }}
                             >
-                                Wykonaj ({selectedIds.size})
+                                {paramsEdited ? 'Odśwież najpierw' : `Wykonaj (${selectedIds.size})`}
                             </button>
                         </>
                     )}
@@ -782,6 +1064,53 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                     )}
                     {phase === 'result' && (
                         <>
+                            <button
+                                onClick={() => {
+                                    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+                                    const lines = [
+                                        `# Raport wykonania skryptu — ${script.id}`,
+                                        '',
+                                        `**Skrypt:** [${script.id}] ${script.name}`,
+                                        `**Okres:** ${dateFrom} — ${dateTo}`,
+                                        `**Wykonano:** ${now}`,
+                                        '',
+                                        `## Podsumowanie`,
+                                        `- Zastosowanych akcji: **${result.applied}**`,
+                                        `- Nieudanych: **${result.failed}**`,
+                                    ]
+                                    if (result.circuit_breaker_limit != null) {
+                                        lines.push(`- Dzienny limit bezpieczeństwa: ${result.circuit_breaker_limit}`)
+                                    }
+                                    if (result.applied_items?.length) {
+                                        lines.push('', '## Szczegóły')
+                                        result.applied_items.forEach(it => {
+                                            const savings = it.estimated_savings_pln
+                                                ? ` · ~${Math.round(it.estimated_savings_pln)} zł`
+                                                : ''
+                                            lines.push(`- ${it.entity_name} · ${it.campaign_name || ''}${savings}`)
+                                        })
+                                    }
+                                    if (result.errors?.length) {
+                                        lines.push('', '## Błędy')
+                                        result.errors.forEach(e => lines.push(`- ${e}`))
+                                    }
+                                    const md = lines.join('\n')
+                                    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+                                    const url = URL.createObjectURL(blob)
+                                    const a = document.createElement('a')
+                                    a.href = url
+                                    a.download = `${script.id}_${clientId}_${new Date().toISOString().slice(0, 10)}.md`
+                                    document.body.appendChild(a)
+                                    a.click()
+                                    document.body.removeChild(a)
+                                    URL.revokeObjectURL(url)
+                                }}
+                                style={{
+                                    padding: '8px 18px', borderRadius: 7, fontSize: 12,
+                                    background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)',
+                                    color: C.success, cursor: 'pointer',
+                                }}
+                            >Pobierz raport (MD)</button>
                             <button onClick={() => navigate('/action-history')} style={{
                                 padding: '8px 18px', borderRadius: 7, fontSize: 12,
                                 background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.3)',
@@ -805,11 +1134,16 @@ export default function ScriptsPage() {
     const { filters, dateParams } = useFilter()
     const [catalog, setCatalog] = useState(null)
     const [counts, setCounts] = useState({}) // script_id -> { total, savings, loading }
+    const [history, setHistory] = useState({}) // script_id -> { relative, applied_total }
     const [runningScript, setRunningScript] = useState(null)
     const [loading, setLoading] = useState(false)
     const [expandedCats, setExpandedCats] = useState(new Set(['waste_elimination']))
     const [refreshToken, setRefreshToken] = useState(0)
     const refreshCounts = useCallback(() => setRefreshToken(t => t + 1), [])
+    // Track which script IDs already have an in-flight or resolved fetch, so
+    // the lazy-load effect does not re-fire itself when state changes reference.
+    const fetchedCountsRef = useRef(new Set())
+    const fetchedHistoryRef = useRef(new Set())
 
     // Load catalog once
     useEffect(() => {
@@ -818,17 +1152,24 @@ export default function ScriptsPage() {
             .catch(err => console.error('[ScriptsPage] catalog error', err))
     }, [])
 
-    // Fetch counts for all scripts (parallel dry-runs).
-    // A `cancelled` flag prevents stale results from overwriting counts when
-    // the user switches client or date range while a previous batch is in
-    // flight. Matches the pattern used in DashboardPage.
+    // Fetch counts lazily: only for scripts inside currently expanded
+    // categories. `fetchedCountsRef` tracks already-initiated ids so the
+    // effect does not keep the reactive state (`counts`) in its dep array —
+    // that would restart it after every partial write and cause O(N)
+    // extra runs for a batch of N resolved scripts.
     useEffect(() => {
         if (!selectedClientId || !catalog) return
+        const scripts = catalog.groups
+            .filter(g => expandedCats.has(g.category))
+            .flatMap(g => g.scripts)
+        const toFetch = scripts.filter(s => !fetchedCountsRef.current.has(s.id))
+        if (toFetch.length === 0) return
+        toFetch.forEach(s => fetchedCountsRef.current.add(s.id))
+
         let cancelled = false
         setLoading(true)
-        const allScripts = catalog.groups.flatMap(g => g.scripts)
         Promise.allSettled(
-            allScripts.map(s => dryRunScript(s.id, {
+            toFetch.map(s => dryRunScript(s.id, {
                 client_id: selectedClientId,
                 date_from: dateParams.date_from,
                 date_to: dateParams.date_to,
@@ -836,26 +1177,83 @@ export default function ScriptsPage() {
             }))
         ).then(results => {
             if (cancelled) return
-            const next = {}
-            allScripts.forEach((s, i) => {
-                const r = results[i]
-                if (r.status === 'fulfilled') {
-                    next[s.id] = {
-                        total: r.value.total_matching || 0,
-                        savings: r.value.estimated_savings_pln || 0,
+            setCounts(prev => {
+                const next = { ...prev }
+                toFetch.forEach((s, i) => {
+                    const r = results[i]
+                    if (r.status === 'fulfilled') {
+                        next[s.id] = {
+                            total: r.value.total_matching || 0,
+                            savings: r.value.estimated_savings_pln || 0,
+                        }
+                    } else {
+                        next[s.id] = { total: 0, savings: 0, error: true }
                     }
-                } else {
-                    next[s.id] = { total: 0, savings: 0, error: true }
-                }
+                })
+                return next
             })
-            setCounts(next)
             setLoading(false)
         }).catch(() => {
             if (cancelled) return
             setLoading(false)
         })
         return () => { cancelled = true }
-    }, [selectedClientId, catalog, dateParams, refreshToken])
+    }, [selectedClientId, catalog, dateParams, refreshToken, expandedCats])
+
+    // Reset cached counts + fetch ref whenever the client/date/refreshToken changes.
+    useEffect(() => {
+        setCounts({})
+        fetchedCountsRef.current = new Set()
+    }, [selectedClientId, dateParams.date_from, dateParams.date_to, refreshToken])
+
+    // Fetch history lazily for scripts in expanded categories.
+    useEffect(() => {
+        if (!selectedClientId || !catalog) return
+        const scripts = catalog.groups
+            .filter(g => expandedCats.has(g.category))
+            .flatMap(g => g.scripts)
+        const toFetch = scripts.filter(s => !fetchedHistoryRef.current.has(s.id))
+        if (toFetch.length === 0) return
+        toFetch.forEach(s => fetchedHistoryRef.current.add(s.id))
+
+        let cancelled = false
+        Promise.allSettled(
+            toFetch.map(s => getScriptHistory(s.id, { client_id: selectedClientId, limit: 10 }))
+        ).then(results => {
+            if (cancelled) return
+            setHistory(prev => {
+                const next = { ...prev }
+                toFetch.forEach((s, i) => {
+                    const r = results[i]
+                    if (r.status !== 'fulfilled' || !r.value?.last_executed_at) {
+                        next[s.id] = { executed_at: null }
+                        return
+                    }
+                    const lastDate = new Date(r.value.last_executed_at)
+                    const ageMs = Date.now() - lastDate.getTime()
+                    const ageDays = Math.round(ageMs / (1000 * 60 * 60 * 24))
+                    let relative
+                    if (ageDays <= 0) relative = 'dziś'
+                    else if (ageDays === 1) relative = 'wczoraj'
+                    else if (ageDays < 7) relative = `${ageDays} dni temu`
+                    else if (ageDays < 30) relative = `${Math.floor(ageDays / 7)} tyg temu`
+                    else relative = `${Math.floor(ageDays / 30)} mies temu`
+                    next[s.id] = {
+                        executed_at: r.value.last_executed_at,
+                        relative,
+                        applied_total: r.value.applied_total || 0,
+                    }
+                })
+                return next
+            })
+        })
+        return () => { cancelled = true }
+    }, [selectedClientId, catalog, expandedCats, refreshToken])
+
+    useEffect(() => {
+        setHistory({})
+        fetchedHistoryRef.current = new Set()
+    }, [selectedClientId, refreshToken])
 
     const toggleCat = (cat) => {
         setExpandedCats(prev => {
@@ -952,6 +1350,7 @@ export default function ScriptsPage() {
                                         count={counts[script.id]?.total || 0}
                                         savings={counts[script.id]?.savings || 0}
                                         loading={loading}
+                                        history={history[script.id]}
                                         onRun={() => setRunningScript(script)}
                                     />
                                 ))}
@@ -961,22 +1360,26 @@ export default function ScriptsPage() {
                 )
             })}
 
-            {/* Placeholder info for categories without scripts yet */}
-            <div style={{
-                marginTop: 24, padding: '14px 18px', borderRadius: 10,
-                border: '1px dashed rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.02)',
-                fontSize: 11, color: C.w40, lineHeight: 1.6,
-            }}>
-                <strong style={{ color: C.w60 }}>Sprint 1 — P0 scripts</strong>
-                <br />
-                Obecnie dostępny: A1 (Zero Conversion Waste). Kolejne w przygotowaniu:
-                A2 (Irrelevant Dictionary), B1 (High-Converting Promotion), D1 (N-gram Waste),
-                D3 (N-gram Audit Report). Zobacz{' '}
-                <a href="/docs/specs/search-terms-scripts-research.md" style={{ color: C.accentBlue }}>
-                    pełny katalog
-                </a>.
-            </div>
+            {/* Active scripts counter */}
+            {catalog && (
+                <div style={{
+                    marginTop: 24, padding: '12px 18px', borderRadius: 10,
+                    border: '1px dashed rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.02)',
+                    fontSize: 11, color: C.w40,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                }}>
+                    <span>
+                        <strong style={{ color: C.w60 }}>
+                            {catalog.groups.reduce((s, g) => s + g.scripts.length, 0)} skryptów aktywnych
+                        </strong>{' '}
+                        w katalogu · {catalog.groups.length} kategorii
+                    </span>
+                    <a href="/docs/specs/search-terms-scripts-research.md" style={{ color: C.accentBlue, fontSize: 11 }}>
+                        Pełny roadmap →
+                    </a>
+                </div>
+            )}
 
             {runningScript && (
                 <RunModal

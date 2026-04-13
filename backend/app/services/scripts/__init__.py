@@ -41,17 +41,23 @@ def list_scripts() -> list[ScriptBase]:
 # ── Auto-register all scripts ───────────────────────────────────────────────
 from app.services.scripts import a1_zero_conv_waste  # noqa: E402, F401
 from app.services.scripts import a2_irrelevant_dictionary  # noqa: E402, F401
+from app.services.scripts import a3_low_ctr_waste  # noqa: E402, F401
 from app.services.scripts import a6_non_latin_script  # noqa: E402, F401
 from app.services.scripts import b1_high_conv_promotion  # noqa: E402, F401
 from app.services.scripts import c2_duplicate_coverage  # noqa: E402, F401
 from app.services.scripts import d1_ngram_waste  # noqa: E402, F401
+from app.services.scripts import d3_ngram_audit  # noqa: E402, F401
+from app.services.scripts import f1_competitor_term  # noqa: E402, F401
 
 register(a1_zero_conv_waste.ZeroConvWasteScript())
 register(a2_irrelevant_dictionary.IrrelevantDictionaryScript())
+register(a3_low_ctr_waste.LowCtrWasteScript())
 register(a6_non_latin_script.NonLatinScriptScript())
 register(b1_high_conv_promotion.HighConvPromotionScript())
 register(c2_duplicate_coverage.DuplicateCoverageScript())
 register(d1_ngram_waste.NgramWasteScript())
+register(d3_ngram_audit.NgramAuditReportScript())
+register(f1_competitor_term.CompetitorTermScript())
 
 
 __all__ = [

@@ -168,6 +168,21 @@ export const detectAnomalies = (clientId) =>
 export const getCorrelationMatrix = (data) =>
     api.post('/analytics/correlation', data);
 
+// Scripts (Search Terms / Keyword optimization)
+export const getScriptsCatalog = () => api.get('/scripts/catalog');
+export const dryRunScript = (scriptId, body) =>
+    api.post(`/scripts/${scriptId}/dry-run`, body);
+export const executeScript = (scriptId, body) =>
+    api.post(`/scripts/${scriptId}/execute`, body);
+export const getScriptConfigs = (clientId) =>
+    api.get(`/scripts/config/${clientId}`);
+export const saveScriptConfig = (scriptId, body) =>
+    api.put(`/scripts/${scriptId}/config`, body);
+export const resetScriptConfig = (scriptId, clientId) =>
+    api.delete(`/scripts/${scriptId}/config/${clientId}`);
+export const getScriptHistory = (scriptId, { client_id, limit = 20 }) =>
+    api.get(`/scripts/${scriptId}/history`, { params: { client_id, limit } });
+
 // Sync
 export const getSyncStatus = () => api.get('/sync/status');
 export const getSyncPresets = () => api.get('/sync/presets');

@@ -31,6 +31,17 @@ ACTION_BID_INCREASE = "BID_UP"     # raise bid
 ACTION_BID_DECREASE = "BID_DOWN"   # lower bid
 ACTION_ALERT = "ALERT"             # view-only, no auto-action
 
+# ── match_source values (frontend contract) ────────────────────────────────
+# The frontend buckets preview items by `action_payload.match_source` to
+# decide how to render them (executable vs alert vs soft hint). All values
+# here are recognised by `ScriptsPage.jsx` — keep the lists in sync.
+MATCH_SOURCE_HARD = "hard"              # primary, selectable (A2 layers 1/2/5)
+MATCH_SOURCE_SOFT = "soft"              # cross-campaign hint, opt-in (A2 soft)
+MATCH_SOURCE_SEARCH_ACTION = "search_action"  # B1 promotion, selectable
+MATCH_SOURCE_PMAX_ALERT = "pmax_alert"  # B1 PMax hit, read-only alert
+MATCH_SOURCE_AUDIT = "audit"            # D3 n-gram audit row, read-only
+MATCH_SOURCE_COMPETITOR = "competitor_alert"  # F1 competitor mention, read-only
+
 
 @dataclass
 class ScriptItem:

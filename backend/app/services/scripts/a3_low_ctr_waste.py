@@ -1,9 +1,11 @@
-"""Script A1 — Zero Conversion Waste.
+"""Script A3 — Low CTR Waste.
 
-Identifies search terms that spent money but produced no conversions in the
-user-selected lookback window. Adds them as campaign (or ad-group) negatives.
+Flags search terms that got enough impressions to judge relevance but
+whose click-through rate is below a threshold. Low CTR on a query that
+Google served us means the ad wasn't compelling for that user intent —
+either the ad needs tuning, or the term should be excluded.
 
-This is the most common daily optimization task for a Google Ads specialist.
+Uses the same window-matching + brand + keyword protection as A1.
 """
 
 from datetime import date, timedelta
@@ -33,30 +35,26 @@ from app.services.scripts.base import (
 )
 
 
-class ZeroConvWasteScript(ScriptBase):
-    id = "A1"
-    name = "Zero konwersji przy wysokim koszcie"
+class LowCtrWasteScript(ScriptBase):
+    id = "A3"
+    name = "Niski CTR — wykluczenia kandydatów"
     category = CATEGORY_WASTE
     description = (
-        "Wyszukiwane hasła które wygenerowały kliknięcia i koszt ale 0 konwersji "
-        "w wybranym okresie — dodaj jako negatywy żeby zatrzymać marnotrawstwo."
+        "Search terms z wieloma wyświetleniami ale CTR poniżej progu — "
+        "sygnał że zapytanie nie pasuje do reklamy. Propozycja negatywów."
     )
     action_type = ACTION_NEGATIVE
     default_params = {
-        "min_clicks": 5,
-        "min_cost_pln": 20.0,
-        "min_impressions": 0,
-        "negative_level": "CAMPAIGN",   # CAMPAIGN or AD_GROUP
-        "match_type": "PHRASE",         # EXACT / PHRASE / BROAD
+        "min_impressions": 100,
+        "max_ctr_pct": 0.5,
+        "max_conversions": 0,
+        "negative_level": "CAMPAIGN",
+        "match_type": "PHRASE",
         "brand_protection": True,
         "custom_brand_words": [],
-        "conversion_lag_days": 7,       # drop windows whose end-date is within N days of today
+        "conversion_lag_days": 7,
     }
 
-    # Window-matching + aggregation now lives in _helpers.fetch_aggregated_terms
-    # so A3 and any future copies share the same sync-window selection logic.
-
-    # ──────────────────────────────────────────────────────────────────────
     def dry_run(
         self,
         db: Session,
@@ -66,10 +64,9 @@ class ZeroConvWasteScript(ScriptBase):
         params: Optional[dict] = None,
     ) -> ScriptResult:
         p = {**self.default_params, **(params or {})}
-        min_clicks = int(p.get("min_clicks", 5))
-        min_cost_pln = float(p.get("min_cost_pln", 20.0))
-        min_impressions = int(p.get("min_impressions", 0))
-        min_cost_micros = int(min_cost_pln * 1_000_000)
+        min_impressions = int(p.get("min_impressions", 100))
+        max_ctr_pct = float(p.get("max_ctr_pct", 0.5))
+        max_conv = float(p.get("max_conversions", 0))
         brand_protection = bool(p.get("brand_protection", True))
         lag_days = max(0, int(p.get("conversion_lag_days", 7)))
 
@@ -83,75 +80,59 @@ class ZeroConvWasteScript(ScriptBase):
             else []
         )
 
-        # Pre-fetch active keywords per campaign for keyword protection.
         kws_per_camp: dict[int, set[str]] = {}
-        kw_rows = (
+        for text, cid in (
             db.query(Keyword.text, AdGroup.campaign_id)
             .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
             .filter(Campaign.client_id == client_id, Keyword.status == "ENABLED")
             .all()
-        )
-        for text, cid in kw_rows:
+        ):
             if text and cid is not None:
                 kws_per_camp.setdefault(cid, set()).add(text.lower().strip())
 
-        agg = fetch_aggregated_terms(db, client_id, date_from, date_to)
-
-        # Already-excluded set — skip terms already covered by a negative.
-        # Key: (text_lower, campaign_id) — same shape as agg keys.
-        existing_neg = set()
-        neg_rows = (
+        existing_neg: set[tuple] = set()
+        for text, cid in (
             db.query(NegativeKeyword.text, NegativeKeyword.campaign_id)
             .filter(
                 NegativeKeyword.client_id == client_id,
                 NegativeKeyword.status != "REMOVED",
             )
             .all()
-        )
-        for text, camp_id in neg_rows:
-            if text and camp_id is not None:
-                existing_neg.add((text.lower().strip(), camp_id))
+        ):
+            if text and cid is not None:
+                existing_neg.add((text.lower().strip(), cid))
 
-        # Campaign name lookup
         camp_map = {
             c.id: c.name
             for c in db.query(Campaign).filter(Campaign.client_id == client_id).all()
         }
 
-        items: list[ScriptItem] = []
-        total_savings = 0.0
-        skipped_recent = 0
+        agg = fetch_aggregated_terms(db, client_id, date_from, date_to)
 
-        # Conversion lag cutoff — windows that lie ENTIRELY inside the last
-        # lag_days are too fresh to trust as zero-conversion. Windows that
-        # merely extend into that period (e.g. 30-day snapshot ending today)
-        # still carry enough pre-lag data to be decisive, so we surface them
-        # but attach a warning instead of silently dropping.
         today = date.today()
         reference_day = date_to if date_to and date_to < today else today
         lag_cutoff = reference_day - timedelta(days=lag_days) if lag_days > 0 else None
+
+        items: list[ScriptItem] = []
+        total_savings = 0.0
+        skipped_recent = 0
         warns_recent_window = 0
 
         for key, d in agg.items():
             text_lower, campaign_id = key
-            # Threshold filter
-            if d["conversions"] > 0:
+            impressions = d["impressions"]
+            clicks = d["clicks"]
+            if impressions < min_impressions:
                 continue
-            if d["clicks"] < min_clicks:
+            if d["conversions"] > max_conv:
                 continue
-            if d["cost_micros"] < min_cost_micros:
+            ctr = (clicks / impressions * 100) if impressions else 0.0
+            if ctr > max_ctr_pct:
                 continue
-            if d["impressions"] < min_impressions:
-                continue
-            # Skip if already excluded
             if key in existing_neg:
                 continue
 
-            # Conversion lag guard: only drop rows whose ENTIRE sync window
-            # falls inside the lag period. Rows with a longer window that
-            # merely touch the lag period are kept — the bulk of their data
-            # is old enough to trust.
             window_from = d.get("window_from")
             window_to = d.get("window_to")
             if lag_cutoff is not None and window_from is not None:
@@ -161,11 +142,9 @@ class ZeroConvWasteScript(ScriptBase):
                 if window_to is not None and window_to > lag_cutoff:
                     warns_recent_window += 1
 
-            # Brand protection
             if brand_protection and _is_brand_term(d["text"], brand_patterns):
                 continue
 
-            # Keyword protection — would a negative kill an active keyword?
             camp_keywords = kws_per_camp.get(campaign_id, set())
             kw_conflict = _check_keyword_conflict(text_lower, camp_keywords)
             if kw_conflict == "BLOCK":
@@ -175,48 +154,42 @@ class ZeroConvWasteScript(ScriptBase):
 
             cost_pln = d["cost_micros"] / 1_000_000
             total_savings += cost_pln
-            ctr = (d["clicks"] / d["impressions"] * 100) if d["impressions"] else 0.0
 
-            items.append(
-                ScriptItem(
-                    id=d["term_id"],
-                    entity_name=d["text"],
-                    campaign_id=d["campaign_id"],
-                    campaign_name=camp_map.get(d["campaign_id"], ""),
-                    reason=(
-                        f"{d['clicks']} kliknięć · 0 konwersji · koszt ~{cost_pln:.0f} zł{kw_note}"
-                    ),
-                    metrics={
-                        "clicks": d["clicks"],
-                        "impressions": d["impressions"],
-                        "cost_pln": round(cost_pln, 2),
-                        "conversions": round(d["conversions"], 1),
-                        "ctr": round(ctr, 2),
-                    },
-                    estimated_savings_pln=round(cost_pln, 2),
-                    action_payload={
-                        "text": d["text"],
-                        "campaign_id": d["campaign_id"],
-                        "ad_group_id": d["ad_group_id"],
-                        "negative_level": p["negative_level"],
-                        "match_type": effective_match,
-                    },
-                )
-            )
+            items.append(ScriptItem(
+                id=d["term_id"],
+                entity_name=d["text"],
+                campaign_id=campaign_id,
+                campaign_name=camp_map.get(campaign_id, ""),
+                reason=(
+                    f"{impressions} wyśw · {clicks} kl · CTR {ctr:.2f}% · koszt ~{cost_pln:.0f} zł{kw_note}"
+                ),
+                metrics={
+                    "clicks": clicks,
+                    "impressions": impressions,
+                    "cost_pln": round(cost_pln, 2),
+                    "conversions": round(d["conversions"], 1),
+                    "ctr": round(ctr, 2),
+                },
+                estimated_savings_pln=round(cost_pln, 2),
+                action_payload={
+                    "text": d["text"],
+                    "campaign_id": campaign_id,
+                    "ad_group_id": d["ad_group_id"],
+                    "negative_level": p["negative_level"],
+                    "match_type": effective_match,
+                },
+            ))
 
-        # Sort by savings descending — user sees biggest wins first
-        items.sort(key=lambda x: x.estimated_savings_pln, reverse=True)
+        items.sort(key=lambda x: -x.estimated_savings_pln)
 
         warnings: list[str] = []
         if skipped_recent:
             warnings.append(
-                f"Pominięto {skipped_recent} term(ów) z oknem w całości w ostatnich {lag_days} dniach — "
-                "conversion lag może zniekształcić 'zero konwersji'."
+                f"Pominięto {skipped_recent} term(ów) z oknem w całości w ostatnich {lag_days} dniach."
             )
         if warns_recent_window:
             warnings.append(
-                f"{warns_recent_window} flagowanych termów ma okno sięgające ostatnich {lag_days} dni — "
-                "część danych może jeszcze nie uwzględniać konwersji."
+                f"{warns_recent_window} flagowanych termów ma okno sięgające ostatnich {lag_days} dni."
             )
 
         return ScriptResult(
@@ -227,7 +200,6 @@ class ZeroConvWasteScript(ScriptBase):
             warnings=warnings,
         )
 
-    # ──────────────────────────────────────────────────────────────────────
     def execute(
         self,
         db: Session,
@@ -237,26 +209,16 @@ class ZeroConvWasteScript(ScriptBase):
         params: Optional[dict] = None,
         item_ids: Optional[list] = None,
     ) -> ScriptExecuteResult:
-        """Apply negatives: write to DB → push to Google Ads API → log in ActionHistory.
-
-        HARD REQUIREMENT: Google Ads API must be connected. No LOCAL_ONLY mode —
-        writing to local DB without pushing to Google creates ghost state where
-        the app thinks negatives exist but the account doesn't have them.
-        """
         from app.models.action_log import ActionLog
         from app.services.google_ads import google_ads_service
 
         if not google_ads_service.is_connected:
             return ScriptExecuteResult(
                 script_id=self.id,
-                applied=0,
-                failed=0,
-                errors=["Google Ads API nie jest połączone. Nie można wykonać skryptu — "
-                        "zmiany muszą trafić na konto Google Ads, nie tylko do lokalnej bazy."],
+                errors=["Google Ads API nie jest połączone. Nie można wykonać skryptu."],
             )
 
         preview = self.dry_run(db, client_id, date_from, date_to, params)
-
         items_to_apply = preview.items
         if item_ids is not None:
             selected = {str(i) for i in item_ids}
@@ -274,15 +236,15 @@ class ZeroConvWasteScript(ScriptBase):
             errors.append(limit_error)
         applied_items: list[dict] = []
 
-        # Phase 1: create NegativeKeyword rows in DB, group by (campaign_id, level)
-        groups: dict[tuple, list[tuple]] = {}  # (campaign_id, level, ag_id) -> [(item, neg)]
-
+        groups: dict[tuple, list[tuple]] = {}
         for item in items_to_apply:
             ap = item.action_payload
             neg_level = ap.get("negative_level", "CAMPAIGN")
             match_type = ap.get("match_type", "PHRASE")
             campaign_id = ap["campaign_id"]
             ad_group_id = ap.get("ad_group_id") if neg_level == "AD_GROUP" else None
+            if neg_level == "AD_GROUP" and not ad_group_id:
+                neg_level = "CAMPAIGN"
 
             dup_q = db.query(NegativeKeyword).filter(
                 NegativeKeyword.client_id == client_id,
@@ -309,20 +271,16 @@ class ZeroConvWasteScript(ScriptBase):
                 criterion_kind="NEGATIVE",
                 text=ap["text"],
                 match_type=match_type,
-                negative_scope="AD_GROUP" if neg_level == "AD_GROUP" else "CAMPAIGN",
+                negative_scope=neg_level,
                 status="ENABLED",
                 source="LOCAL_ACTION",
             )
             db.add(neg)
             db.flush()
+            groups.setdefault((campaign_id, neg_level, ad_group_id), []).append((item, neg))
 
-            group_key = (campaign_id, neg_level, ad_group_id)
-            groups.setdefault(group_key, []).append((item, neg))
-
-        # Phase 2: batch push to Google Ads API (always LIVE — checked above)
         for (campaign_id, level, ag_id), batch in groups.items():
             negs_in_batch = [neg for _, neg in batch]
-
             try:
                 if level == "AD_GROUP" and ag_id:
                     ad_group = db.get(AdGroup, ag_id)
@@ -343,7 +301,7 @@ class ZeroConvWasteScript(ScriptBase):
                     db.add(ActionLog(
                         client_id=client_id,
                         action_type="ADD_NEGATIVE",
-                        entity_type="campaign" if level == "CAMPAIGN" else "ad_group",
+                        entity_type="ad_group" if level == "AD_GROUP" else "campaign",
                         entity_id=str(ag_id or campaign_id),
                         status="SUCCESS",
                         execution_mode="LIVE",
@@ -356,7 +314,6 @@ class ZeroConvWasteScript(ScriptBase):
                         context_json={"source": "scripts", "script_id": self.id, "batch_size": len(batch)},
                     ))
                 db.commit()
-
             except Exception as exc:
                 db.rollback()
                 for itm, neg in batch:
@@ -365,7 +322,7 @@ class ZeroConvWasteScript(ScriptBase):
                     db.add(ActionLog(
                         client_id=client_id,
                         action_type="ADD_NEGATIVE",
-                        entity_type="campaign" if level == "CAMPAIGN" else "ad_group",
+                        entity_type="ad_group" if level == "AD_GROUP" else "campaign",
                         entity_id=str(ag_id or campaign_id),
                         status="FAILED",
                         execution_mode="LIVE",

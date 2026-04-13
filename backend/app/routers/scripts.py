@@ -185,6 +185,88 @@ def execute_script(
     }
 
 
+@router.get("/{script_id}/history")
+def get_script_history(
+    script_id: str,
+    client_id: int,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    """Return the most recent ActionLog rows produced by this script.
+
+    Matches on ``context_json->>'script_id'`` which every script populates in
+    its execute() path. Result is bucketed by day so the UI can show
+    "Ostatnio: 3 dni temu · 12 zastosowanych".
+    """
+    script = get_script(script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
+    if limit <= 0 or limit > 200:
+        limit = 20
+
+    from sqlalchemy import func
+    from app.models.action_log import ActionLog
+
+    # Push the script_id predicate into the DB via JSON_EXTRACT (SQLite 3.38+
+    # and PostgreSQL both support it through SQLAlchemy's func). Python-side
+    # filter then only handles rows the DB could not confidently decide.
+    script_json_path = func.json_extract(ActionLog.context_json, "$.script_id")
+    try:
+        rows = (
+            db.query(ActionLog)
+            .filter(
+                ActionLog.client_id == client_id,
+                ActionLog.context_json.isnot(None),
+                script_json_path == script.id,
+            )
+            .order_by(ActionLog.executed_at.desc())
+            .limit(max(limit, 50))
+            .all()
+        )
+    except Exception:
+        # Fallback for DBs without JSON_EXTRACT — load a small window and
+        # filter in-memory. Kept for portability but should rarely run.
+        rows = (
+            db.query(ActionLog)
+            .filter(
+                ActionLog.client_id == client_id,
+                ActionLog.context_json.isnot(None),
+            )
+            .order_by(ActionLog.executed_at.desc())
+            .limit(500)
+            .all()
+        )
+    matched = [
+        r for r in rows
+        if isinstance(r.context_json, dict) and r.context_json.get("script_id") == script.id
+    ][:limit]
+
+    # Bucket by day for a compact recent-activity summary.
+    by_day: dict[str, dict] = {}
+    for row in matched:
+        day = (row.executed_at or _current_day()).date().isoformat()
+        slot = by_day.setdefault(day, {"day": day, "applied": 0, "failed": 0})
+        if row.status == "SUCCESS":
+            slot["applied"] += 1
+        elif row.status == "FAILED":
+            slot["failed"] += 1
+
+    last = matched[0] if matched else None
+    return {
+        "script_id": script.id,
+        "total_runs": len(matched),
+        "applied_total": sum(s["applied"] for s in by_day.values()),
+        "failed_total": sum(s["failed"] for s in by_day.values()),
+        "last_executed_at": last.executed_at.isoformat() if last and last.executed_at else None,
+        "recent_days": sorted(by_day.values(), key=lambda s: s["day"], reverse=True),
+    }
+
+
+def _current_day():
+    from datetime import datetime
+    return datetime.now()
+
+
 # ── Per-client config management ───────────────────────────────────────────
 @router.get("/config/{client_id}")
 def get_client_configs(client_id: int, db: Session = Depends(get_db)):

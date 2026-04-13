@@ -1,13 +1,21 @@
-"""Shared helpers for optimization scripts — brand + keyword protection.
+"""Shared helpers for optimization scripts — brand + keyword protection +
+search-term aggregation with sync-window matching.
 
-Keeps brand/keyword protection logic in one place so every script can
-reuse it without duplicating code. A2 keeps re-exporting these symbols
-for backward compatibility with D1/B1 that imported them from there.
+Keeps protection and fetch logic in one place so every script can reuse it
+without duplicating code. A2 keeps re-exporting the protection symbols for
+backward compatibility with D1/B1 that imported them from there.
 """
 
 import re
+from datetime import date
+from typing import Optional
 
+from sqlalchemy.orm import Session
+
+from app.models.ad_group import AdGroup
+from app.models.campaign import Campaign
 from app.models.client import Client
+from app.models.search_term import SearchTerm
 
 
 # Generic industry words that should NOT be treated as brand tokens.
@@ -91,3 +99,83 @@ def _check_keyword_conflict(
         if kw_words.issubset(term_words):
             return "EXACT"
     return None
+
+
+def fetch_aggregated_terms(
+    db: Session,
+    client_id: int,
+    date_from: Optional[date],
+    date_to: Optional[date],
+) -> dict[tuple, dict]:
+    """Aggregate SearchTerm rows into a (text_lower, campaign_id) → stats map.
+
+    Handles the sync-window matching logic:
+    - If the user picked a date range, pick the candidate window whose
+      length is closest to the user's range (tiebreaker: most recent).
+    - Otherwise use the most recently updated window per key.
+
+    Shared by A1 and A3; kept in one place so a future change to window
+    logic (e.g. switching to lateral joins) updates both scripts at once.
+    """
+    q1 = (
+        db.query(SearchTerm)
+        .join(AdGroup, SearchTerm.ad_group_id == AdGroup.id)
+        .join(Campaign, AdGroup.campaign_id == Campaign.id)
+        .filter(Campaign.client_id == client_id)
+    )
+    q2 = (
+        db.query(SearchTerm)
+        .filter(SearchTerm.campaign_id.isnot(None), SearchTerm.ad_group_id.is_(None))
+        .join(Campaign, SearchTerm.campaign_id == Campaign.id)
+        .filter(Campaign.client_id == client_id)
+    )
+    if date_from:
+        q1 = q1.filter(SearchTerm.date_to >= date_from)
+        q2 = q2.filter(SearchTerm.date_to >= date_from)
+    if date_to:
+        q1 = q1.filter(SearchTerm.date_from <= date_to)
+        q2 = q2.filter(SearchTerm.date_from <= date_to)
+    rows = q1.all() + q2.all()
+
+    groups: dict[tuple, list] = {}
+    for row in rows:
+        campaign_id = row.campaign_id
+        ad_group_id = row.ad_group_id
+        if campaign_id is None and ad_group_id:
+            ag = db.get(AdGroup, ad_group_id)
+            if ag:
+                campaign_id = ag.campaign_id
+        if campaign_id is None:
+            continue
+        key = (row.text.lower().strip(), campaign_id)
+        groups.setdefault(key, []).append(row)
+
+    user_range_days = None
+    if date_from and date_to:
+        user_range_days = max(1, (date_to - date_from).days)
+
+    agg: dict[tuple, dict] = {}
+    for key, candidates in groups.items():
+        if user_range_days is not None:
+            chosen = min(
+                candidates,
+                key=lambda r: (
+                    abs((r.date_to - r.date_from).days - user_range_days),
+                    -r.date_to.toordinal(),
+                ),
+            )
+        else:
+            chosen = max(candidates, key=lambda r: r.date_to)
+        agg[key] = {
+            "term_id": chosen.id,
+            "text": chosen.text,
+            "campaign_id": key[1],
+            "ad_group_id": chosen.ad_group_id,
+            "clicks": chosen.clicks or 0,
+            "impressions": chosen.impressions or 0,
+            "cost_micros": chosen.cost_micros or 0,
+            "conversions": chosen.conversions or 0,
+            "window_from": chosen.date_from,
+            "window_to": chosen.date_to,
+        }
+    return agg
