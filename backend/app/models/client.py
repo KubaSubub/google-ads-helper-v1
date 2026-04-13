@@ -26,6 +26,7 @@ class Client(Base):
     # Fields: strategy_narrative, roadmap, decisions_log, lessons_learned,
     # brand_voice, restrictions. See app.schemas.client.StrategyContext.
     strategy_context = Column(JSON, nullable=True, default=dict)
+    script_configs = Column(JSON, nullable=True, default=dict)  # {script_id: {param: value}, ...}
     created_at = Column(DateTime, server_default=func.now(), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc))
     last_change_sync_at = Column(DateTime, nullable=True)  # Last successful change_event sync

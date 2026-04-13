@@ -585,7 +585,17 @@ export default function Recommendations() {
     if (!selectedClientId) return <EmptyState message="Wybierz klienta w sidebarze" />
     if (loading) return <LoadingSpinner />
 
+    // === TRYB READ-ONLY ===
+    // Strona zostaje jako archiwum — stare reguły rekomendacji operują na
+    // snapshot'ach i nie respektują filtra daty. Przyciski wykonania akcji
+    // są zablokowane; do faktycznych działań służy /scripts (date-aware).
+    const READONLY_MODE = true
+
     async function handleApply(rec) {
+        if (READONLY_MODE) {
+            showToast('Strona w trybie tylko-do-odczytu. Do działań użyj zakładki Skrypty.', 'info')
+            return
+        }
         if (!rec.executable) {
             showToast('Ta rekomendacja jest alertem i wymaga ręcznej weryfikacji.', 'info')
             return
@@ -621,6 +631,10 @@ export default function Recommendations() {
     }
 
     async function handleDismiss(rec) {
+        if (READONLY_MODE) {
+            showToast('Strona w trybie tylko-do-odczytu. Do działań użyj zakładki Skrypty.', 'info')
+            return
+        }
         try {
             await dismiss(rec.id)
             setSelectedIds(prev => {
@@ -654,6 +668,10 @@ export default function Recommendations() {
     }
 
     async function handleBulkApply() {
+        if (READONLY_MODE) {
+            showToast('Strona w trybie tylko-do-odczytu. Do działań użyj zakładki Skrypty.', 'info')
+            return
+        }
         const executableTargets = recommendations.filter(rec => rec.executable && selectedIds.has(rec.id))
         if (!executableTargets.length) return
         setBulkApplying(true)
@@ -694,10 +712,27 @@ export default function Recommendations() {
 
     return (
         <div style={{ maxWidth: 1140 }}>
+            {READONLY_MODE && (
+                <div style={{
+                    padding: '12px 16px', borderRadius: 10, marginBottom: 16,
+                    background: 'rgba(251,191,36,0.06)',
+                    border: '1px dashed rgba(251,191,36,0.35)',
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                }}>
+                    <ShieldAlert size={18} style={{ color: C.warning, flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ fontSize: 12, color: C.w60, lineHeight: 1.5 }}>
+                        <strong style={{ color: C.textPrimary }}>Archiwum — tryb tylko-do-odczytu.</strong>
+                        {' '}Stary silnik rekomendacji nie respektuje filtra daty i może zwracać mylące wyniki.
+                        Do wykonywania akcji użyj nowej zakładki{' '}
+                        <a href="/scripts" style={{ color: C.accentBlue, fontWeight: 600 }}>Skrypty</a>{' '}
+                        (date-aware, per-script preview, thresholdy konfigurowalne).
+                    </div>
+                </div>
+            )}
             <div className="flex items-center justify-between flex-wrap gap-4" style={{ marginBottom: 20 }}>
                 <div>
                     <h1 style={{ fontSize: 22, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne', lineHeight: 1.2 }}>
-                        Rekomendacje
+                        Rekomendacje <span style={{ fontSize: 11, color: C.warning, fontWeight: 500, marginLeft: 6 }}>archiwum</span>
                     </h1>
                     <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                         {(summary && summary.total) || (recommendations && recommendations.length) || 0} aktywnych rekomendacji

@@ -52,7 +52,8 @@ export const NAV_GROUPS = [
         label: 'DZIAŁANIA',
         items: [
             { to: '/tasks', label: 'Plan dnia', icon: ListChecks },
-            { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb },
+            { to: '/scripts', label: 'Skrypty', icon: Zap },
+            { to: '/recommendations', label: 'Rekomendacje', icon: Lightbulb, hidden: true },
             { to: '/rules', label: 'Reguły', icon: Settings2 },
             { to: '/action-history', label: 'Historia zmian', icon: History },
         ],

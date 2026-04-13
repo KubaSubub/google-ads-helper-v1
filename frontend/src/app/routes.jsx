@@ -30,10 +30,11 @@ const Benchmarks = lazy(() => import('../features/benchmarks'))
 const TaskQueue = lazy(() => import('../features/task-queue'))
 const Rules = lazy(() => import('../features/rules'))
 const Dsa = lazy(() => import('../features/dsa'))
+const Scripts = lazy(() => import('../features/scripts'))
 
 export const GLOBAL_FILTER_ROUTES = [
     '/campaigns', '/keywords', '/search-terms', '/audit-center',
-    '/recommendations', '/shopping', '/pmax', '/display', '/video', '/competitive',
+    '/recommendations', '/scripts', '/shopping', '/pmax', '/display', '/video', '/competitive',
     '/cross-campaign', '/benchmarks', '/dsa',
 ]
 
@@ -50,6 +51,7 @@ export function AppRoutes() {
             <Route path="/anomalies" element={<Navigate to="/alerts" replace />} />
             <Route path="/semantic" element={<Semantic />} />
             <Route path="/recommendations" element={<Recommendations />} />
+            <Route path="/scripts" element={<Scripts />} />
             <Route path="/quality-score" element={<QualityScore />} />
             <Route path="/forecast" element={<Forecast />} />
             <Route path="/clients" element={<Navigate to="/mcc-overview" replace />} />
