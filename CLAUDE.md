@@ -4,6 +4,29 @@ This file is optimized for Claude Code sessions.
 Canonical repo-wide instructions live in `AGENTS.md`.
 If there is any mismatch, follow `AGENTS.md`.
 
+## 0) Execution Policy — READ FIRST
+
+**EXECUTE IMMEDIATELY. DO NOT ASK PERMISSION.**
+
+- Start working on the task without asking "should I proceed?", "can I continue?", or "do you want me to...?"
+- If ambiguity exists — pick the most likely interpretation and proceed. Mention assumptions briefly AFTER delivery.
+- Never pause mid-implementation to check in. Do the full work, then report.
+- ONLY stop and ask before: deleting files, removing functions, force-pushing, DB reseed, credentials changes.
+
+**VERIFY IN BROWSER BEFORE CLAIMING DONE (frontend changes):**
+1. Run `npm run build` — zero errors required.
+2. Confirm no white screen / broken imports by checking the JSX export chain.
+3. Never report "done" on a frontend task based on tests alone — tests can pass while UI is broken.
+
+**STRAIGHT ASCII QUOTES ONLY in all code:**
+- Never use smart quotes: `'` `'` `"` `"` — they cause build errors.
+- Use: `'` `"` only.
+
+**POLISH UI — all user-facing strings must use correct Polish diacritics:**
+- ą ć ę ł ń ó ś ź ż — always, in every label, tooltip, and message.
+
+---
+
 ## 1) Working Language
 
 - User communication: Polish.
@@ -100,18 +123,19 @@ Always ask user before:
 - `.env` / credentials changes
 - dependency installation (`pip install`, `npm install` for new packages)
 
-## 6) Documentation Order
+## 6) Documentation Order — JIT (Just-In-Time)
 
-Read in this order when context is needed:
-1. `AGENTS.md`
-2. `PROGRESS.md`
-3. `DECISIONS.md`
-4. `docs/API_ENDPOINTS.md`
-5. `docs/COMPLETED_FEATURES.md`
-6. `docs/SOURCE_OF_TRUTH.md`
-7. `docs/FEATURE_SET.md`
-8. `google_ads_optimization_playbook.md`
-9. `SEARCH_CAMPAIGN_WORKFLOW.md`
+Czytaj plik TYLKO gdy jest faktycznie potrzebny do zadania. Nie czytaj wszystkiego na starcie.
+
+| Plik | Czytaj TYLKO gdy |
+|------|-----------------|
+| `AGENTS.md` | Nowa sesja z nieznanego obszaru lub konflikt z instrukcjami |
+| `PROGRESS.md` | `/ceo`, `/pm`, `/done`, pytanie o status projektu |
+| `DECISIONS.md` | Architektura, ADR, spór o design, nowe podejście techniczne |
+| `docs/API_ENDPOINTS.md` | Nowy endpoint, zmiana API, praca z routerami |
+| `docs/COMPLETED_FEATURES.md` | "Czy to już jest?" / `/pm-check` / weryfikacja zakresu |
+| `google_ads_optimization_playbook.md` | `/ads-expert`, `/ads-user` — wyłącznie |
+| `SEARCH_CAMPAIGN_WORKFLOW.md` | Praca z kampaniami Search, keyword strategy |
 
 ## 7) Skills & Commands
 
