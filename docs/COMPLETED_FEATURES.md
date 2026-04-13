@@ -398,6 +398,28 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Route: `/scripts`, sidebar: "Skrypty" (Zap icon) in DZIAŁANIA group.
 - 11 backend test files with shared fixtures (`scripts_fixtures.py`).
 
+## Settings — Marketing Mastermind Brief
+- Settings pivoted from operational hub (duplicating Dashboard/DailyAudit) into marketing mastermind brief — single place for strategy, roadmap, decisions, lessons learned, brand voice.
+- Backend: `strategy_context` JSON column on `Client` model with auto-migration via `_ensure_sqlite_columns`.
+- Pydantic schemas: `StrategyContext`, `LessonEntry`, `DecisionLogEntry` with length validators.
+- `PATCH /clients/{id}` deep-merges `strategy_context` (partial updates preserve other fields; `null` payload is a no-op).
+- Frontend: `ConversionGoalsSection.jsx` — conversion action table with local priority toggling + "Cel Google Ads" column showing `primary_for_goal`.
+- 5 brief sections: Strategia marketingowa, Plan działań/Roadmap, Log decyzji (read-only, AI coming soon), Wnioski i lessons learned (structured journal), Brand voice & zakazy.
+- Tests: 11 backend (`test_client_strategy.py`), 10 E2E (`settings-mastermind-brief.spec.js`).
+
+## Dashboard Consolidation + Header Filter Bar
+- Dashboard reworked as single landing surface for daily operations; `/daily-audit` hidden from sidebar nav.
+- Removed redundant widgets duplicating dedicated tabs: Insights Feed, Campaign Table, PMax Split, Recent Actions.
+- Extracted components: `BudgetPacingCard.jsx`, `AnomalyAlertsCard.jsx`, `ScriptRunModal.jsx` (~500 LOC reduction).
+- **Quick Scripts badge** links to `/scripts` page — shows total actionable items from scripts engine.
+- **Header filter bar** replaces sidebar-mounted controls:
+  - `HeaderClientSelector.jsx` — dropdown with client list, Google Customer ID, manage link.
+  - `HeaderCampaignTypeSelector.jsx` — segmented pills (ALL / Search / PMax / Shopping / …).
+  - Both hidden on `/mcc-overview` route.
+- **TrendExplorer action annotations**: fetches action history, groups by date, renders `ReferenceLine` markers with rich tooltips (operation, entity, before→after values).
+- **KPI tooltips**: full definitions for all 25 dashboard KPIs (benchmarks, formulas, practical advice) via viewport-aware floating info tooltip.
+- Dashboard data reactivity fixes: endpoints resolve independently (no `Promise.all` blocking), date filters propagated to recommendations + QS audit, ENABLED-only campaigns forced.
+
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
 - Display label: `PMax` (short, user-facing).

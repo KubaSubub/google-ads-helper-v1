@@ -2,7 +2,7 @@
 # Updated: 2026-04-13 (docs-sync)
 
 ## Status
-- Backend: 663 tests collected (pytest --collect-only)
+- Backend: 666 tests collected (pytest --collect-only)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
