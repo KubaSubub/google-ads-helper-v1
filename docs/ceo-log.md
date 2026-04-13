@@ -109,3 +109,27 @@
 - **Out of scope (swiadomie odlozone):** B1 per-item ad_group scoping, B1 min_conversions=3 policy change, A2 short-word tuning, D1 stop words PL expansion, C2 keeper CPA tiebreaker, ScriptsPage.jsx 985→refactor, dead code cleanup w DashboardPage legacy Quick Scripts state
 - **Status:** DONE
 - **Wynik:** 648/648 backend pytest passed (+41 nowych testów dla scripts: helpers + 6 skryptów, shared scripts_fixtures factory). Vite build OK. 3 parallel review (FAZA 3): code-quality 7/10, security 8/10, domain 7.5/10. Iteracja 2: naprawione wszystkie CRITICAL/HIGH findings — A6 EXACT force-match + AD_GROUP wiring, `circuit_breaker_limit` field w ScriptExecuteResult, _check_keyword_conflict reverse-subset, D1 restricted to CAMPAIGN-only, A1 lag guard refinement (window fully-inside vs partial), A2/A6 AD_GROUP fallback guard, _validate_batch local time (Warsaw), router params size cap 16KB (DoS), canonical script.id in save_config, _helpers allow 2-char brand tokens. Commit 1addab6 (squashed z WIP 3ba0bcd). Spec archived: docs/specs/scripts-p0-p1-fixes.md (pozostawiony aktywny dla referencji, nie przeniesiony do archive).
+
+## [2026-04-13] Scripts System: Sprint 1-4 UX + A3/D3/F1 + history
+- **Powod:** Po P0+P1 fixes ads-user/ads-expert wykrył UX blocker (custom_brand_words hidden w UI, fałszywy placeholder "Sprint 1 — A1 only") + plan na 16 usprawnień w docs/reviews/ads-verify-scripts.md (Sprint 1-4). User wymagał "wszystko razem" — pełen lot bez cząstkowych shipów.
+- **Intelligence used:** NIE (plan pochodził z własnego /ads-expert review, nie potrzebował market research)
+- **Nakład:** L (~16 taskow frontend+backend+testy, dwie iteracje review)
+- **SKIP PM:** spec już istniał (docs/reviews/ads-verify-scripts.md zawiera pełen plan Sprint 1-5 z ads-expert/ads-verify pipeline). Sprint 5 (scheduling, undo, shared lists) świadomie odłożony per plan.
+- **Delegacja:** /build wewnętrzny (FAZA 1-6), 2 iteracje review po implementacji Sprint 1-4.
+- **Scope:**
+  - Sprint 1 UX: usunięcie fałszywego placeholdera, szeroki modal 1200px, metric columns (clk/impr/CTR/conv/CPA/cost/savings), savings heatmap (>500zł green, >50 warning, <50 muted), ukrycie pustych n-gram tabs, blokada Execute przy paramsEdited, filter kampanii + sort, grupowanie po kampanii, CSV export, markdown post-exec report
+  - Sprint 2 skrypty: A3 Low CTR Waste (mirror A1 z CTR threshold), D3 N-gram Audit Report (view-only top-N, grouped by text+campaign), lazy dry-run per category z useRef guard
+  - Sprint 2 UX: TagInput component — custom_brand_words + custom_competitor_words edytowalne przez chip UI (był hidden)
+  - Sprint 3: GET /scripts/{id}/history endpoint (JSON filter + Python fallback) + badge "Ostatnio: 3 dni temu · N zast." w ScriptTile + F1 Competitor Term Detection (ACTION_ALERT, reads Client.competitors)
+  - Sprint 4: per-campaign grouping, CSV export, MD post-execute summary (bundled w Sprint 1)
+- **Iteracja 2 — review fixes:**
+  - F1 używa `Client.competitors` (istniejąca kolumna) zamiast nieistniejącego `ai_context.competitors` (P1 data bug)
+  - D3 dedup po (text, campaign_id) zamiast samego text — zapobiega double-counting cost/conv_value gdy term w wielu kampaniach
+  - _helpers.py: extract `fetch_aggregated_terms` (A1 + A3 delegate, 60+ linii deduplikatu usunięte)
+  - ScriptsPage useRef dla fetched guards zamiast counts/history w deps (eliminuje O(N) re-fetch loops)
+  - History endpoint: `func.json_extract` zamiast in-memory filter (SQLite 3.38+, fallback bezpieczny)
+  - MATCH_SOURCE_HARD/SOFT/SEARCH_ACTION/PMAX_ALERT/AUDIT/COMPETITOR constants w base.py, frontend alertSources sync
+  - D3 top_n hard-cap 500 (DoS), A3 lag-guard warning path + batch_size w context_json
+- **Out of scope (świadomie odłożone):** Sprint 5 — scheduling/cron, undo per item, shared negative lists, "why not" debug mode, bulk param edit (wymagają nowych tabel/workers — po MVP production)
+- **Status:** DONE
+- **Wynik:** 663/663 backend pytest passed (+19 nowych testów: test_scripts_a3, test_scripts_d3, test_scripts_f1, test_scripts_router_history). Vite build OK. Review iter 1: code 7.5/10, security 7.5/10, domain 7.5/10 (9 findings: 2 CRITICAL, 4 HIGH, 3 WARN/P2). Iteracja 2: wszystkie CRITICAL/HIGH naprawione (F1 data source, D3 dedup, history JSON filter, useRef guards, shared fetch helper, match_source constants, D3 top_n cap, A3 warnings/batch_size). Commit 25dbbc9. Spec docs/reviews/ads-verify-scripts.md — 16 z 23 elementów done (Sprint 1-4), 5 odłożonych (Sprint 5 infrastructure), 2 NOT_NEEDED (C2 select antipattern, undo).
