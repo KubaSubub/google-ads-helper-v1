@@ -129,8 +129,9 @@ Base API URL: `/api/v1`
 - `POST /recommendations/{id}/apply?client_id=X&dry_run=false` (`allow_demo_write=true` required for DEMO)
 - `POST /recommendations/{id}/dismiss?client_id=X` (`allow_demo_write=true` required for DEMO; dismiss is local-only, no Google Ads API call)
 - `POST /recommendations/bulk-apply` — apply batch of recommendations by quick-script category (`allow_demo_write=true` required for DEMO)
-  - Body: `{client_id: int, category: "clean_waste"|"pause_burning"|"boost_winners"|"emergency_brake"|"add_negatives", dry_run: true}`
-  - `dry_run=true` (default): preview matching recommendations; `dry_run=false`: apply via ActionExecutor
+  - Body: `{client_id: int, category: "clean_waste"|"pause_burning"|"boost_winners"|"emergency_brake"|"add_negatives", dry_run: true, item_ids?: list[int]}`
+  - `dry_run=true` (default): preview matching recommendations. Preview items include `id`, `entity_name`, `campaign_name`, `reason`, `suggested_action`, `priority`, and `metrics_snapshot` (clicks/impressions/cost_usd/conversions/ctr/cpa/roas/quality_score) so the UI can build a per-item opt-out selection list.
+  - `dry_run=false`: apply via ActionExecutor. Optional `item_ids` narrows execution to user-selected rows from the preview (omit to execute the full matching set).
 
 ## Actions
 - `[PROD]` `GET /actions/?client_id=X&limit=50&offset=0`
@@ -291,6 +292,15 @@ Base API URL: `/api/v1`
 - `DELETE /rules/{rule_id}` — delete a rule
 - `POST /rules/{rule_id}/dry-run?client_id=X` — dry-run a rule (simulate execution without applying)
 - `POST /rules/{rule_id}/execute?client_id=X` — execute a rule
+
+## Scripts (Optimization Actions)
+- `GET /scripts/catalog` — all registered scripts grouped by category (for UI rendering)
+- `POST /scripts/{script_id}/dry-run` — preview mode: returns matching items without applying (body: `{client_id, date_from?, date_to?, params: {}}`)
+- `POST /scripts/{script_id}/execute` — apply script actions, honors `item_ids` filter (body: `{client_id, date_from?, date_to?, params: {}, item_ids?: [], item_overrides?: {}}`)
+- `GET /scripts/{script_id}/history` — execution history for a specific script (filtered by client_id)
+- `GET /scripts/config/{client_id}` — saved script configs for a client, merged with defaults
+- `PUT /scripts/{script_id}/config` — save per-client param overrides (body: `{client_id, params: {}}`)
+- `DELETE /scripts/{script_id}/config/{client_id}` — reset script config to defaults for a client
 
 ## Health
 - `GET /health` -> `{status: "ok", version, env}` (outside `/api/v1`)

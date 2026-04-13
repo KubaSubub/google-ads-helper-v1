@@ -389,6 +389,15 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Reuses `BudgetPacingModule` and `KpiCard` shared components.
 - Sprint 2: currency-aware formatting (per-account currency symbol), spend sparkline per row (56×20 LineChart from `spend_trend`).
 
+## Optimization Scripts Engine (P0+P1 + Sprint 1-4)
+- Modular script architecture in `backend/app/services/scripts/` with `BaseScript` class and shared helpers.
+- 9 date-aware optimization scripts: zero-conv waste (A1), irrelevant dictionary (A2), low CTR waste (A3), non-Latin script (A6), high-conv promotion (B1), duplicate coverage (C2), n-gram waste (D1), n-gram audit (D3), competitor term detection (F1).
+- Router: `scripts.py` — 7 endpoints: `GET /scripts/catalog`, `POST /scripts/{id}/dry-run`, `POST /scripts/{id}/execute`, `GET /scripts/{id}/history`, `GET /scripts/config/{client_id}`, `PUT /scripts/{id}/config`, `DELETE /scripts/{id}/config/{client_id}`.
+- Per-client config persistence with defaults merging.
+- Frontend: `ScriptsPage.jsx` (`features/scripts/`) — catalog view, dry-run preview, execute flow, execution history.
+- Route: `/scripts`, sidebar: "Skrypty" (Zap icon) in DZIAŁANIA group.
+- 7 backend test files with shared fixtures.
+
 ## PERFORMANCE_MAX / PMAX Naming Consistency
 - `constants/campaignTypes.js` uses `PERFORMANCE_MAX` as the canonical key (matching Google Ads API).
 - Display label: `PMax` (short, user-facing).

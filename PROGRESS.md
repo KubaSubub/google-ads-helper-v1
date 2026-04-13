@@ -1,14 +1,14 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-10 (docs-sync)
+# Updated: 2026-04-12 (docs-sync auto)
 
 ## Status
-- Backend: 607 tests passing
+- Backend: 663 tests collected (pytest --collect-only)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 167 total across 18 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 174 total across 19 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 7 auth, 7 rules, 7 mcc, 7 scripts, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
-- Frontend pages: 26 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview) — all with enriched UX
+- Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Scripts) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
@@ -58,6 +58,44 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## Optimization Scripts Engine — Sprint 1-4 (2026-04-13)
+- Spec: `docs/specs/scripts-p0-p1-fixes.md`, CEO entry in `docs/ceo-log.md`
+- New **scripts engine** — date-aware optimization scripts with configurable parameters, dry-run/execute flow, per-client config persistence
+- Backend: `backend/app/services/scripts/` — modular script architecture with `BaseScript` class, shared helpers (`_helpers.py`)
+  - 9 scripts implemented:
+    - `a1_zero_conv_waste` — zero-conversion keyword waste detection
+    - `a2_irrelevant_dictionary` — irrelevant search term dictionary matching
+    - `a3_low_ctr_waste` — low CTR keyword waste detection (Sprint 1-4)
+    - `a6_non_latin_script` — non-Latin script search term detection
+    - `b1_high_conv_promotion` — high-converting search term promotion
+    - `c2_duplicate_coverage` — duplicate keyword coverage analysis
+    - `d1_ngram_waste` — n-gram waste pattern detection
+    - `d3_ngram_audit` — n-gram audit report (Sprint 1-4)
+    - `f1_competitor_term` — competitor term detection (Sprint 1-4)
+- Backend: `backend/app/routers/scripts.py` — 7 endpoints (catalog, dry-run, execute, history, config CRUD)
+- Frontend: `frontend/src/features/scripts/ScriptsPage.jsx` — dedicated Scripts page at `/scripts` with catalog view, per-script dry-run/execute UI, execution history
+- Tests: 11 test files (`test_scripts_a1.py`, `test_scripts_a2.py`, `test_scripts_a3.py`, `test_scripts_a6.py`, `test_scripts_b1.py`, `test_scripts_c2.py`, `test_scripts_d1.py`, `test_scripts_d3.py`, `test_scripts_f1.py`, `test_scripts_helpers.py`, `test_scripts_router_history.py`) + shared `scripts_fixtures.py`
+- Commits: 1addab6 (P0+P1), 25dbbc9 (Sprint 1-4: UX polish + 3 new scripts + history)
+
+## Dashboard (Pulpit) Consolidation + Quick Scripts Preview Flow (2026-04-11)
+- Dashboard reworked as the single landing surface for daily operations; `/daily-audit` hidden from sidebar nav (still reachable by URL via `{hidden: true}` in `navConfig.js`)
+- Removed redundant widgets that duplicated dedicated tabs: Insights Feed, Campaign Table, PMax Split, Recent Actions (users are pointed at `/recommendations`, `/campaigns`, `/pmax`, `/action-history`)
+- Compact Budget Pacing card with expandable campaign list; QS Widget + Top Actions rendered as side-by-side compact squares
+- New **Quick Scripts** section on Dashboard (Clean Waste / Pause Burning / Boost Winners / Emergency Brake) powered by `POST /recommendations/bulk-apply`:
+  - Always-clickable tiles (no disabled state) — empty categories show an "all good" modal
+  - 3-phase execution flow: **Preview** (per-item cards with entity/campaign name, reason, priority badge, metrics snapshot, per-row checkbox to opt out) → **Executing** (locked modal with "do not close" spinner) → **Result** (ZMIANY ZAPISANE W GOOGLE ADS banner + deep link to `/action-history`)
+  - `POST /recommendations/bulk-apply` extended: preview items now carry `entity_name`, `campaign_name`, `reason`, `suggested_action`, `priority`, and `metrics_snapshot`; accepts optional `item_ids[]` on execution to honor user opt-outs
+- **Header filter bar** replaces sidebar-mounted client/campaign-type controls:
+  - `HeaderClientSelector.jsx` — dropdown with client list, Google Customer ID, manage link
+  - `HeaderCampaignTypeSelector.jsx` — segmented pills (ALL / Search / PMax / Shopping / …)
+  - Both hidden on `/mcc-overview` route
+- Dashboard data reactivity fixes: endpoints resolve state independently (previously `Promise.all` blocked Health Score on slow recommendations); date filters propagated to `getRecommendations` + `getQualityScoreAudit`; dashboard forces ENABLED-only campaigns; `CampaignMiniRanking` receives filtered campaigns so it respects the active campaign-type pill; Quick Scripts counts reload with recommendations refresh
+- TrendExplorer annotations: fetches action history for the selected date range, groups by date, renders `ReferenceLine` markers on the chart with rich tooltips (operation label, entity name, before→after values, timestamp)
+- KPI tooltips: full definitions for all 25 dashboard KPIs (benchmarks, formulas, practical advice) via viewport-aware floating info tooltip
+- `DayOfWeekWidget`: 5-level color scale with per-cell border colors; `CampaignMiniRanking`: column headers + "sortowane po ROAS" hint
+- Fixed compact Budget Pacing bar — previously read non-existent fields, now uses backend `status` / `actual_spend_usd` / `expected_spend_usd`
+- Commit: 646a265
 
 ## Settings — Marketing Mastermind Brief (2026-04-10)
 - Spec: `docs/specs/settings-mastermind-brief.md`, CEO entry in `docs/ceo-log.md`
