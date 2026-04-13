@@ -1,4 +1,4 @@
-﻿# AGENTS.md - Google Ads Helper (Canonical Agent Guide)
+# AGENTS.md - Google Ads Helper (Canonical Agent Guide)
 
 This file is the canonical instruction set for coding agents in this repository.
 Keep it concise, specific, and executable.
