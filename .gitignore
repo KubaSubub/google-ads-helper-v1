@@ -67,3 +67,7 @@ output/
 # Test artifacts
 frontend/test-results/
 frontend/e2e-sync-*.png
+
+# Diagnostic scripts + screenshots (local dev only)
+frontend/diag-*.mjs
+frontend/diag-*.png
