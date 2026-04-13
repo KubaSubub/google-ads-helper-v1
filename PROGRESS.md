@@ -332,7 +332,7 @@
 - All KRYTYCZNE items across all reviews are DONE. Open items are exclusively NICE TO HAVE / backlog for v1.1+
 
 ## Frontend Modular Architecture (2026-03-29 — commit 5b36e3a)
-- Extracted monolithic page components into feature modules under `frontend/src/features/` (14 modules):
+- Extracted monolithic page components into feature modules under `frontend/src/features/` (16 modules — 14 original + mcc-overview + scripts added later):
   - `audit-center/` — AuditCenterPage (replaces SearchOptimization, 25 analysis sections with bento card layout)
   - `benchmarks/` — BenchmarksPage (account KPI benchmarks, cross-client comparison)
   - `campaigns/` — CampaignsPage + CampaignKpiRow + CampaignTrendExplorer

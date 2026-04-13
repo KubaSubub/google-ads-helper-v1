@@ -226,7 +226,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Integrated into `/ceo`, `/done`, `/ads-user` pipelines as required verification step.
 
 ## Frontend Modular Architecture (features/)
-- 14 feature modules extracted under `frontend/src/features/`: audit-center, benchmarks, campaigns, competitive, cross-campaign, dashboard, display, dsa, keywords, pmax, rules, shopping, task-queue, video.
+- 16 feature modules under `frontend/src/features/`: audit-center, benchmarks, campaigns, competitive, cross-campaign, dashboard, display, dsa, keywords, mcc-overview, pmax, rules, scripts, shopping, task-queue, video.
 - Sidebar extracted to `frontend/src/components/layout/Sidebar/` (SidebarContent, ClientSelector, ClientDrawer, NavItem, CampaignTypePills, navConfig).
 - Shared components: `MatchBadge`, `MetricPill`, `SectionHeader` in `components/shared/`.
 - Constants: `designTokens.js`, `campaignTypes.js`.
@@ -293,7 +293,7 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## Frontend Modular Architecture
 - Monolithic page components (Dashboard 977→768 LOC, Campaigns 1180→779, Keywords 1035→55) refactored into feature modules under `frontend/src/features/`.
-- 14 feature modules: audit-center, benchmarks, campaigns, competitive, cross-campaign, dashboard, display, dsa, keywords, pmax, rules, shopping, task-queue, video.
+- 16 feature modules: audit-center, benchmarks, campaigns, competitive, cross-campaign, dashboard, display, dsa, keywords, mcc-overview, pmax, rules, scripts, shopping, task-queue, video.
 - Sidebar extracted into `components/layout/Sidebar/` with data-driven `navConfig.js`.
 - Routes centralized in `app/routes.jsx` with lazy loading for all pages.
 - Shared UI: `MatchBadge`, `MetricPill`, `SectionHeader` in `components/shared/`.
