@@ -723,18 +723,35 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                     >
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                         {selectable ? (
-                                                            <div style={{
-                                                                width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                                                                border: `1.5px solid ${selected ? accentColor : C.w25}`,
-                                                                background: selected ? accentColor : 'transparent',
-                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                            }}>
+                                                            <div
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    toggleItem(item.id)
+                                                                }}
+                                                                title={selected ? 'Kliknij aby pominąć ten term' : 'Kliknij aby dodać do wykluczeń'}
+                                                                style={{
+                                                                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                                                                    border: `1.5px solid ${selected ? accentColor : C.w25}`,
+                                                                    background: selected ? accentColor : 'transparent',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                            >
                                                                 {selected && <CheckCircle2 size={11} style={{ color: '#fff' }} />}
                                                             </div>
                                                         ) : (
                                                             <AlertTriangle size={14} style={{ color: C.w30, flexShrink: 0 }} />
                                                         )}
-                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div
+                                                            onClick={selectable && hasLocations ? (e) => {
+                                                                e.stopPropagation()
+                                                                toggleItem(item.id)
+                                                            } : undefined}
+                                                            style={{
+                                                                flex: 1, minWidth: 0,
+                                                                cursor: selectable && hasLocations ? 'pointer' : undefined,
+                                                            }}
+                                                        >
                                                             <div style={{ fontSize: 12, fontWeight: 600, color: isAlert ? C.w50 : C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                                 {item.entity_name}
                                                             </div>
@@ -822,7 +839,7 @@ function RunModal({ script, clientId, dateFrom, dateTo, onClose, onDone, showToa
                                                     {hasLocations && (
                                                         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.06)' }}>
                                                             <div style={{ fontSize: 9, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                                                                Wybierz ktora lokalizacje zostawic (pozostale dostana EXACT negative)
+                                                                Wybierz ktora lokalizacje zostawic (pozostale dostana EXACT negative) · odznacz checkbox po lewej aby pominac caly term
                                                             </div>
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                                                 {item.metrics.locations.map((loc, idx) => {
