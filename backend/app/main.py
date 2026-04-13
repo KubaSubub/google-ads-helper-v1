@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Google Ads Helper API",
     description="Local-first API for managing and optimizing Google Ads campaigns.",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan,
     default_response_class=UTCJsonResponse,
 )
