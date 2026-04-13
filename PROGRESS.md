@@ -1,14 +1,14 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-12 (docs-sync auto)
+# Updated: 2026-04-13 (docs-sync)
 
 ## Status
 - Backend: 663 tests collected (pytest --collect-only)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSync + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 174 total across 19 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 7 auth, 7 rules, 7 mcc, 7 scripts, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 175 total across 19 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 8 scripts, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSync, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
-- Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Scripts) — all with enriched UX
+- Frontend pages: 28 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Scripts) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
 - Campaigns: sort/filter sidebar, bidding target write (target CPA/ROAS)
 - AuditCenter: 25 bento cards, period comparison, card pinning, keyboard shortcuts (1-9/Esc/?)
@@ -73,19 +73,20 @@
     - `d1_ngram_waste` — n-gram waste pattern detection
     - `d3_ngram_audit` — n-gram audit report (Sprint 1-4)
     - `f1_competitor_term` — competitor term detection (Sprint 1-4)
-- Backend: `backend/app/routers/scripts.py` — 7 endpoints (catalog, dry-run, execute, history, config CRUD)
+- Backend: `backend/app/routers/scripts.py` — 8 endpoints (catalog, counts, dry-run, execute, history, config CRUD)
 - Frontend: `frontend/src/features/scripts/ScriptsPage.jsx` — dedicated Scripts page at `/scripts` with catalog view, per-script dry-run/execute UI, execution history
+- Sidebar: "Skrypty" (Zap icon) replaces "Rekomendacje" in DZIAŁANIA group; `/recommendations` route still reachable by URL (`hidden: true` in navConfig)
+- Per-client script config stored in `Client.script_configs` JSON column (auto-migrated)
 - Tests: 11 test files (`test_scripts_a1.py`, `test_scripts_a2.py`, `test_scripts_a3.py`, `test_scripts_a6.py`, `test_scripts_b1.py`, `test_scripts_c2.py`, `test_scripts_d1.py`, `test_scripts_d3.py`, `test_scripts_f1.py`, `test_scripts_helpers.py`, `test_scripts_router_history.py`) + shared `scripts_fixtures.py`
 - Commits: 1addab6 (P0+P1), 25dbbc9 (Sprint 1-4: UX polish + 3 new scripts + history)
 
-## Dashboard (Pulpit) Consolidation + Quick Scripts Preview Flow (2026-04-11)
+## Dashboard (Pulpit) Consolidation + Scripts Engine Integration (2026-04-11–13)
 - Dashboard reworked as the single landing surface for daily operations; `/daily-audit` hidden from sidebar nav (still reachable by URL via `{hidden: true}` in `navConfig.js`)
-- Removed redundant widgets that duplicated dedicated tabs: Insights Feed, Campaign Table, PMax Split, Recent Actions (users are pointed at `/recommendations`, `/campaigns`, `/pmax`, `/action-history`)
-- Compact Budget Pacing card with expandable campaign list; QS Widget + Top Actions rendered as side-by-side compact squares
-- New **Quick Scripts** section on Dashboard (Clean Waste / Pause Burning / Boost Winners / Emergency Brake) powered by `POST /recommendations/bulk-apply`:
-  - Always-clickable tiles (no disabled state) — empty categories show an "all good" modal
-  - 3-phase execution flow: **Preview** (per-item cards with entity/campaign name, reason, priority badge, metrics snapshot, per-row checkbox to opt out) → **Executing** (locked modal with "do not close" spinner) → **Result** (ZMIANY ZAPISANE W GOOGLE ADS banner + deep link to `/action-history`)
-  - `POST /recommendations/bulk-apply` extended: preview items now carry `entity_name`, `campaign_name`, `reason`, `suggested_action`, `priority`, and `metrics_snapshot`; accepts optional `item_ids[]` on execution to honor user opt-outs
+- Removed redundant widgets that duplicated dedicated tabs: Insights Feed, Campaign Table, PMax Split, Recent Actions (users are pointed at `/scripts`, `/campaigns`, `/pmax`, `/action-history`)
+- Compact Budget Pacing card (extracted to `BudgetPacingCard.jsx`), Anomaly Alerts card (extracted to `AnomalyAlertsCard.jsx`); QS Widget + Top Actions rendered as side-by-side compact squares
+- **Quick Scripts** section replaced with Scripts badge linking to `/scripts` page — badge shows total actionable items from scripts engine (fetched via `getScriptsCatalog` + per-script `dryRunScript` aggregation)
+- Old inline Quick Scripts tiles (Clean Waste / Pause Burning / Boost Winners / Emergency Brake) removed from Dashboard; `ScriptRunModal.jsx` extracted for reuse
+- Dashboard component extraction: ~500 LOC reduction via `BudgetPacingCard`, `AnomalyAlertsCard`, `ScriptRunModal` components
 - **Header filter bar** replaces sidebar-mounted client/campaign-type controls:
   - `HeaderClientSelector.jsx` — dropdown with client list, Google Customer ID, manage link
   - `HeaderCampaignTypeSelector.jsx` — segmented pills (ALL / Search / PMax / Shopping / …)

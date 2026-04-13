@@ -148,7 +148,7 @@ Base API URL: `/api/v1`
 ## Analytics - Advanced
 - `POST /analytics/correlation`
 - `POST /analytics/compare-periods`
-- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias)
+- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias; max span clamped to 365 days)
   - allowed metrics: `cost`, `clicks`, `impressions`, `conversions`, `ctr`, `cpc`, `roas`, `cpa`, `cvr`
 - `GET /analytics/health-score?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
 - `GET /analytics/campaign-trends?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
@@ -296,6 +296,7 @@ Base API URL: `/api/v1`
 ## Scripts (Optimization Actions)
 - `GET /scripts/catalog` — all registered scripts grouped by category (for UI rendering)
 - `POST /scripts/{script_id}/dry-run` — preview mode: returns matching items without applying (body: `{client_id, date_from?, date_to?, params: {}}`)
+- `GET /scripts/counts` — bulk counts: total_matching + savings for every registered script, cached 60s (query: `client_id`)
 - `POST /scripts/{script_id}/execute` — apply script actions, honors `item_ids` filter (body: `{client_id, date_from?, date_to?, params: {}, item_ids?: [], item_overrides?: {}}`)
 - `GET /scripts/{script_id}/history` — execution history for a specific script (filtered by client_id)
 - `GET /scripts/config/{client_id}` — saved script configs for a client, merged with defaults

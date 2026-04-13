@@ -133,3 +133,19 @@
 - **Out of scope (świadomie odłożone):** Sprint 5 — scheduling/cron, undo per item, shared negative lists, "why not" debug mode, bulk param edit (wymagają nowych tabel/workers — po MVP production)
 - **Status:** DONE
 - **Wynik:** 663/663 backend pytest passed (+19 nowych testów: test_scripts_a3, test_scripts_d3, test_scripts_f1, test_scripts_router_history). Vite build OK. Review iter 1: code 7.5/10, security 7.5/10, domain 7.5/10 (9 findings: 2 CRITICAL, 4 HIGH, 3 WARN/P2). Iteracja 2: wszystkie CRITICAL/HIGH naprawione (F1 data source, D3 dedup, history JSON filter, useRef guards, shared fetch helper, match_source constants, D3 top_n cap, A3 warnings/batch_size). Commit 25dbbc9. Spec docs/reviews/ads-verify-scripts.md — 16 z 23 elementów done (Sprint 1-4), 5 odłożonych (Sprint 5 infrastructure), 2 NOT_NEEDED (C2 select antipattern, undo).
+
+## [2026-04-13] Status Meeting + Dashboard Widgets: porządki wip + dokończenie zerwanego wątku
+- **Powód:** Prezes zwołał spotkanie statusowe. CEO ASSESS (4 scouty równolegle) wykrył 28 plików wip w 3 wątkach: (1) Dashboard widgets — 3 kompletne komponenty (AnomalyAlertsCard, BudgetPacingCard, ScriptRunModal) nie podpięte do Dashboard.jsx; (2) Scripts ads reviews — 3 niezacommitowane pliki docs/reviews; (3) Open specs — settings-hub-p0-fixes.md i search-terms-scripts-research.md. Przed nowym featurem trzeba zrobić porządek, żeby repo nie mieszało wątków. Decyzja Prezesa (AskUserQuestion): klasyfikuj i commituj w chunkach, potem dokończyć Dashboard widgets (zero nowych frontów).
+- **Intelligence used:** NIE (task to porządki + dokończenie wip, nie nowy feature). Brief świeży (2026-04-10) — top action #1 (Google auto-apply detection) zostaje w backlogu na następny sprint.
+- **Nakład:** S (porządki w 4-5 chunkach) + S-M (widgets integration, zależnie od stanu backendu endpointów)
+- **SKIP PM:** integration/refactor work + widgets już napisane (nie wymagają nowego design). Jeśli brakuje backend endpointów → escalate do /build.
+- **Delegacja:** bezpośrednie porządki git + integration work; w razie braku endpointu /build dashboard-widgets.
+- **Scope:**
+  - Chunk A: commit docs/reviews/ads-{user,expert,verify}-scripts.md
+  - Chunk B: commit docs/specs/{settings-hub-p0-fixes,search-terms-scripts-research}.md
+  - Chunk C: .gitignore dla frontend/diag-* artifacts
+  - Chunk D: commit backend/app/routers/analytics.py (trends 365d clamp bugfix)
+  - Chunk E: przejrzeć database.py, main.py, models/client.py, services/action_executor.py — commit lub odrzucić
+  - Chunk F: przejrzeć frontend context/routing/widgets zmiany — prawdopodobnie związane z Dashboard widgets
+  - Krok 2: sprawdzić Dashboard.jsx render + API endpointy (getAnomalies, getBudgetPacing, bulk-apply), dokończyć integrację, build+test+review
+- **Status:** STARTED
