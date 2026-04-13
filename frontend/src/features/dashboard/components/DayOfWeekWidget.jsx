@@ -49,17 +49,36 @@ function borderColor(value, min, max, invert) {
 }
 
 export default function DayOfWeekWidget() {
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
     const { allParams } = useFilter()
     const [data, setData] = useState(null)
     const [metric, setMetric] = useState('clicks')
+    const [error, setError] = useState(null)
 
     useEffect(() => {
         if (!selectedClientId) return
+        let cancelled = false
+        setError(null)
         getDayparting(selectedClientId, allParams)
-            .then(setData)
-            .catch(() => setData(null))
-    }, [selectedClientId, allParams])
+            .then(d => !cancelled && setData(d))
+            .catch(err => {
+                if (cancelled) return
+                console.error('[DayOfWeekWidget]', err)
+                setData(null)
+                setError(err.message || 'Nie udało się załadować danych dnia tygodnia')
+                showToast?.(`Dzień tygodnia: ${err.message || 'błąd ładowania'}`, 'error')
+            })
+        return () => { cancelled = true }
+    }, [selectedClientId, allParams, showToast])
+
+    if (error && !data) {
+        return (
+            <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                <span style={{ color: '#F87171', marginRight: 6 }}>⚠</span>
+                Dzień tygodnia — {error}
+            </div>
+        )
+    }
 
     if (!data?.days?.length) return null
 

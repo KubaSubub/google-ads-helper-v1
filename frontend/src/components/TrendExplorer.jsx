@@ -121,12 +121,13 @@ function formatBeforeAfter(entry) {
 }
 
 export default function TrendExplorer({ campaignIds = [] }) {
-    const { selectedClientId } = useApp()
+    const { selectedClientId, showToast } = useApp()
     const { filters, days } = useFilter()
     const [activeMetrics, setActiveMetrics] = useState(['cost', 'clicks'])
     const [showDropdown, setShowDropdown] = useState(false)
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(false)
+    const [loadError, setLoadError] = useState(null)
     const [isMock, setIsMock] = useState(false)
     const [correlationData, setCorrelationData] = useState(null) // { best: {pairLabel,label,r}, pairs: [{a,b,r,label}...] }
     const [showCorrelationPopup, setShowCorrelationPopup] = useState(false)
@@ -135,6 +136,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
     const fetchData = useCallback(async () => {
         if (!selectedClientId) return
         setLoading(true)
+        setLoadError(null)
         try {
             const params = {
                 metrics: activeMetrics.join(','),
@@ -149,10 +151,12 @@ export default function TrendExplorer({ campaignIds = [] }) {
         } catch (e) {
             console.error('TrendExplorer fetch error:', e)
             setData([])
+            setLoadError(e.message || 'Nie udało się załadować danych trendu')
+            showToast?.(`Trend Explorer: ${e.message || 'błąd ładowania'}`, 'error')
         } finally {
             setLoading(false)
         }
-    }, [selectedClientId, activeMetrics, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status])
+    }, [selectedClientId, activeMetrics, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status, showToast])
 
     useEffect(() => { fetchData() }, [fetchData])
 
@@ -560,6 +564,11 @@ export default function TrendExplorer({ campaignIds = [] }) {
             {loading ? (
                 <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
                     Ładowanie danych…
+                </div>
+            ) : loadError ? (
+                <div style={{ height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.w40, fontSize: 12, gap: 6 }}>
+                    <span style={{ color: C.danger }}>⚠ Nie udało się załadować trendu</span>
+                    <span style={{ fontSize: 11, color: C.w30 }}>{loadError}</span>
                 </div>
             ) : data.length === 0 ? (
                 <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>

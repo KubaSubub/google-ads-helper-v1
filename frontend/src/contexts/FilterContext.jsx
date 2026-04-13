@@ -80,9 +80,11 @@ export function FilterProvider({ children }) {
         setFilters(defaultFilters);
     }
 
-    // Computed days count for backward compatibility with APIs using `days` param
+    // Computed days count for backward compatibility with APIs using `days` param.
+    // ALWAYS returns a number — string presets (this_quarter, all_time, this_month, prev_month)
+    // are converted to actual day counts from dateFrom/dateTo to avoid downstream NaN crashes.
     const days = useMemo(() => {
-        if (filters.period) return filters.period;
+        if (typeof filters.period === 'number') return filters.period;
         const from = new Date(filters.dateFrom);
         const to = new Date(filters.dateTo);
         return Math.max(1, Math.round((to - from) / 86400000));

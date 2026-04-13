@@ -96,9 +96,15 @@ export function AppProvider({ children }) {
         }
     }, [selectedClientId]);
 
-    const showToast = useCallback((message, type = 'success', duration = 3000) => {
-        setToast({ message, type, id: Date.now() });
-        setTimeout(() => setToast(null), duration);
+    const showToast = useCallback((message, type = 'success', duration) => {
+        const id = Date.now();
+        setToast({ message, type, id });
+        // Errors persist until manual dismiss (X click) so user can read them.
+        // Success/info auto-dismiss after duration (default 3s).
+        const effectiveDuration = duration ?? (type === 'error' ? 0 : 3000);
+        if (effectiveDuration > 0) {
+            setTimeout(() => setToast(prev => (prev?.id === id ? null : prev)), effectiveDuration);
+        }
     }, []);
 
     const hideToast = useCallback(() => setToast(null), []);

@@ -287,20 +287,27 @@ export default function MCCOverviewPage() {
         // Run syncs sequentially. Parallel syncs hit Google Ads API rate limits
         // and SQLite write contention, pushing latency above the axios timeout
         // and causing deterministic failures.
-        const targets = stale.slice(0, 3)
+        const targets = stale
         let ok = 0
         let failed = 0
+        const failures = []
         showToast?.(`Synchronizuję 0/${targets.length}...`, 'info', 120_000)
         for (let i = 0; i < targets.length; i++) {
             const acc = targets[i]
             showToast?.(`Synchronizuję ${i + 1}/${targets.length}: ${acc.client_name}`, 'info', 120_000)
             const res = await runSync(acc.client_id, { silent: true })
-            if (res.ok) ok++; else failed++
+            if (res.ok) {
+                ok++
+            } else {
+                failed++
+                failures.push(`${acc.client_name}: ${res.message || 'błąd'}`)
+            }
         }
         if (failed === 0) {
             showToast?.(`Zsynchronizowano ${ok}/${targets.length} kont`, 'success')
         } else {
-            showToast?.(`Zsynchronizowano ${ok}/${targets.length} (${failed} z błędami)`, ok > 0 ? 'info' : 'error')
+            const detail = failures.join(' | ')
+            showToast?.(`Zsynchronizowano ${ok}/${targets.length} (${failed} z błędami) — ${detail}`, ok > 0 ? 'info' : 'error')
         }
         refreshClients()
         load()

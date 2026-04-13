@@ -19,31 +19,51 @@ const METRIC_OPTIONS = [
 ]
 
 export default function WoWChart() {
-    const { selectedClientId } = useApp()
-    const { allParams, days } = useFilter()
+    const { selectedClientId, showToast } = useApp()
+    const { campaignParams, days } = useFilter()
     const [metric, setMetric] = useState('cost')
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(false)
+    const [error, setError] = useState(null)
+
+    // WoW chart compares last N days vs previous N days. N is capped at 30
+    // (backend limit). Date range from global picker is intentionally NOT
+    // forwarded — passing date_from/date_to overrides `days` and would force
+    // the backend to compute a 6-year period for `all_time` preset, freezing
+    // the UI with thousands of data points.
+    const wowDays = Math.min(Math.max(Number(days) || 7, 7), 30)
 
     const load = useCallback(async () => {
         if (!selectedClientId) return
         setLoading(true)
+        setError(null)
         try {
             const resp = await getWoWComparison(selectedClientId, {
-                ...allParams,
+                ...campaignParams,
                 metric,
-                days: Math.min(days || 7, 30),
+                days: wowDays,
             })
             setData(resp)
         } catch (err) {
             console.error('[WoWChart]', err)
             setData(null)
+            setError(err.message || 'Nie udało się załadować porównania tydzień do tygodnia')
+            showToast?.(`Porównanie WoW: ${err.message || 'błąd ładowania'}`, 'error')
         } finally {
             setLoading(false)
         }
-    }, [selectedClientId, allParams, metric, days])
+    }, [selectedClientId, campaignParams, metric, wowDays, showToast])
 
     useEffect(() => { load() }, [load])
+
+    if (error && !loading && !data) {
+        return (
+            <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16, fontSize: 12, color: C.w40 }}>
+                <span style={{ color: C.danger, marginRight: 6 }}>⚠</span>
+                Porównanie okresów — {error}
+            </div>
+        )
+    }
 
     if (!data && !loading) return null
 

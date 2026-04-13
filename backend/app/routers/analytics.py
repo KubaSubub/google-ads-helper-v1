@@ -833,6 +833,13 @@ def get_trends(
     effective_status = campaign_status or status
     start, end = resolve_dates(days, date_from, date_to)
 
+    # Clamp range to 365 days. `days` Query has le=365 but date_from/date_to bypass it,
+    # so an `all_time` preset (~2300 days) would push thousands of points to the chart
+    # and freeze the UI. Keep `end` and walk `start` forward to a 365-day window.
+    max_span = timedelta(days=365)
+    if end - start > max_span:
+        start = end - max_span
+
     allowed = {"cost", "clicks", "impressions", "conversions", "ctr", "cpc", "roas", "cpa", "cvr"}
     metric_list = [m.strip() for m in metrics.split(",") if m.strip() in allowed]
     if not metric_list:
