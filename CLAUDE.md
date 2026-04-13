@@ -25,6 +25,12 @@ If there is any mismatch, follow `AGENTS.md`.
 **POLISH UI — all user-facing strings must use correct Polish diacritics:**
 - ą ć ę ł ń ó ś ź ż — always, in every label, tooltip, and message.
 
+**RESPONSE FORMAT — terse, link don't repeat:**
+- After completing a task: link to changed files, do NOT summarize their content.
+- Good: `[ceo.md](.claude/commands/ceo.md) updated` — Bad: repeating what was written inside.
+- If output was saved to a file (ceo-log, spec, review report) — link to it, don't reprint it.
+- Max 3-5 lines for a completed task response unless user asks for details.
+
 ---
 
 ## 1) Working Language
@@ -123,19 +129,19 @@ Always ask user before:
 - `.env` / credentials changes
 - dependency installation (`pip install`, `npm install` for new packages)
 
-## 6) Documentation Order — JIT (Just-In-Time)
+## 6) Documentation — JIT (Just-In-Time) z priorytetem
 
-Czytaj plik TYLKO gdy jest faktycznie potrzebny do zadania. Nie czytaj wszystkiego na starcie.
+Czytaj TYLKO gdy potrzebne. Stop gdy masz wystarczający kontekst — nie przechodzisz do N+1 jeśli N już odpowiedział.
 
-| Plik | Czytaj TYLKO gdy |
-|------|-----------------|
-| `AGENTS.md` | Nowa sesja z nieznanego obszaru lub konflikt z instrukcjami |
-| `PROGRESS.md` | `/ceo`, `/pm`, `/done`, pytanie o status projektu |
-| `DECISIONS.md` | Architektura, ADR, spór o design, nowe podejście techniczne |
-| `docs/API_ENDPOINTS.md` | Nowy endpoint, zmiana API, praca z routerami |
-| `docs/COMPLETED_FEATURES.md` | "Czy to już jest?" / `/pm-check` / weryfikacja zakresu |
-| `google_ads_optimization_playbook.md` | `/ads-expert`, `/ads-user` — wyłącznie |
-| `SEARCH_CAMPAIGN_WORKFLOW.md` | Praca z kampaniami Search, keyword strategy |
+**Kolejność priorytetów (czytaj od góry, zatrzymaj się gdy wystarczy):**
+
+1. `PROGRESS.md` — pierwsza orientacja: co zrobione, co otwarte. Czytaj przy każdym nowym zadaniu.
+2. `DECISIONS.md` — tylko gdy zadanie dotyczy architektury, ADR, wyboru technologii.
+3. `docs/API_ENDPOINTS.md` — tylko gdy tworzysz/zmieniasz endpoint lub router.
+4. `docs/COMPLETED_FEATURES.md` — tylko gdy pytanie brzmi "czy to już jest zaimplementowane?".
+5. `AGENTS.md` — tylko przy konflikcie instrukcji lub zupełnie nowym obszarze projektu.
+6. `google_ads_optimization_playbook.md` — **wyłącznie** przy `/ads-expert` i `/ads-user`.
+7. `SEARCH_CAMPAIGN_WORKFLOW.md` — **wyłącznie** przy pracy z kampaniami Search.
 
 ## 7) Skills & Commands
 

@@ -225,9 +225,75 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `VISUAL_AUDIT_REPORT.md`: per-page analysis + design system compliance check.
 - Integrated into `/ceo`, `/done`, `/ads-user` pipelines as required verification step.
 
+## Frontend Modular Architecture (features/)
+- 14 feature modules extracted under `frontend/src/features/`: audit-center, benchmarks, campaigns, competitive, cross-campaign, dashboard, display, dsa, keywords, pmax, rules, shopping, task-queue, video.
+- Sidebar extracted to `frontend/src/components/layout/Sidebar/` (SidebarContent, ClientSelector, ClientDrawer, NavItem, CampaignTypePills, navConfig).
+- Shared components: `MatchBadge`, `MetricPill`, `SectionHeader` in `components/shared/`.
+- Constants: `designTokens.js`, `campaignTypes.js`.
+- Routes centralized in `frontend/src/app/routes.jsx` with lazy loading.
+- Sidebar nav groups: PRZEGLĄD, DANE KAMPANII, DZIAŁANIA, MONITORING, AI, ANALIZA.
+
+## Automated Rules Engine (F3)
+- New router `rules.py` — 7 endpoints (GET/POST/PUT/DELETE/dry-run/execute per rule).
+- Model `AutomatedRule` — per-client rule definition with conditions, actions, schedule.
+- Service `rules_engine.py` — rule evaluation and execution engine.
+- Frontend: `RulesPage.jsx` at `/rules`.
+
+## Cross-Campaign Analysis (G4) + Benchmarks (H2) + Scheduled Sync (F1)
+- Cross-Campaign (G4): 3 endpoints (`keyword-overlap`, `budget-allocation`, `campaign-comparison`), `CrossCampaignPage.jsx` at `/cross-campaign`.
+- Benchmarks (H2): 2 endpoints (`benchmarks`, `client-comparison`), `BenchmarksPage.jsx` at `/benchmarks`.
+- Scheduled Sync (F1): `ScheduledSyncConfig` model, `scheduler.py` asyncio-based background runner, 3 endpoints (`GET/POST/DELETE /sync/schedule`).
+
+## DSA Support (C1/C2/C3)
+- 4 analytics endpoints: `dsa-targets`, `dsa-coverage`, `dsa-headlines`, `dsa-search-overlap`.
+- 2 models: `DsaTarget`, `DsaHeadline`.
+- Frontend: `DsaPage.jsx` at `/dsa`.
+
+## Task Queue / Plan dnia (H1)
+- `TaskQueuePage.jsx` at `/tasks` — aggregates actionable items from recommendations, alerts, wasted spend.
+- Priority badges, progress bar with localStorage persistence, quick action buttons per task type.
+
+## Write Safety Layer + Remote-First Bidding
+- `write_safety.py` — unified write-path safety: `record_write_action()`, daily limit helpers.
+- `PATCH /campaigns/{id}/bidding-target` — remote-first (API push → local commit; fallback to local-only with `pending_sync: true`).
+- `POST /analytics/offline-conversions/upload` — now functional (calls Google Ads API).
+- Pipeline: demo guard → safety check → audit log.
+
+## MCC Overview — Cross-Account Landing Page
+- `MccOverviewPage.jsx` at `/mcc-overview` — default entry point (/ redirects here).
+- Backend: `mcc.py` router with 7 endpoints: overview, new-access, dismiss-google-recommendations, negative-keyword-lists, shared-lists, shared-lists/{id}/items, billing-status.
+- Per-account metrics: spend, conversions, CPA, ROAS, budget pacing, health score, change activity, Google recs, alerts, last sync.
+- Sortable table columns, currency-aware formatting, spend sparkline per account row.
+- MCC shared exclusion lists (negative keyword + placement) with drill-down.
+
+## Settings — Marketing Mastermind Brief
+- `strategy_context` JSON column on `clients` (auto-migrated via `_ensure_sqlite_columns`).
+- `PATCH /clients/{id}` deep-merges `strategy_context` (partial updates, null is no-op).
+- Schemas: `StrategyContext`, `LessonEntry`, `DecisionLogEntry` with length validators.
+- Frontend: 5 brief sections in `Settings.jsx` (strategia, roadmap, log decyzji, lessons learned, brand voice).
+- `ConversionGoalsSection.jsx` with full-width ConversionAction table and `primary_for_goal` column.
+
+## Dashboard Consolidation + Scripts Engine Integration
+- Dashboard reworked as single daily-operations surface; `/daily-audit` hidden from nav (still accessible).
+- Removed redundant widgets (Insights Feed, Campaign Table, PMax Split, Recent Actions).
+- Header filter bar: `HeaderClientSelector.jsx` + `HeaderCampaignTypeSelector.jsx` (hidden on /mcc-overview).
+- Scripts Engine badge linking to `/scripts` showing total actionable items.
+- Component extraction: `BudgetPacingCard`, `AnomalyAlertsCard`, `ScriptRunModal` (~500 LOC reduction).
+- TrendExplorer annotations: action history markers on chart with rich tooltips.
+- KPI tooltips: full definitions for all 25 dashboard KPIs.
+
+## Optimization Scripts Engine
+- `backend/app/services/scripts/` — modular script architecture with `BaseScript`, `_helpers.py`.
+- 9 scripts: `a1_zero_conv_waste`, `a2_irrelevant_dictionary`, `a3_low_ctr_waste`, `a6_non_latin_script`, `b1_high_conv_promotion`, `c2_duplicate_coverage`, `d1_ngram_waste`, `d3_ngram_audit`, `f1_competitor_term`.
+- Router `scripts.py` — 8 endpoints: catalog, counts, dry-run, execute, history, config CRUD.
+- Frontend: `ScriptsPage.jsx` at `/scripts` — catalog view, per-script dry-run/execute UI, execution history.
+- Per-client config in `Client.script_configs` JSON column (auto-migrated).
+- Sidebar: "Skrypty" (Zap icon) in DZIAŁANIA group; `/recommendations` hidden but reachable.
+- 11 test files + shared `scripts_fixtures.py`.
+
 ## Frontend Modular Architecture
 - Monolithic page components (Dashboard 977→768 LOC, Campaigns 1180→779, Keywords 1035→55) refactored into feature modules under `frontend/src/features/`.
-- 9 feature modules: audit-center, campaigns, dashboard, keywords, shopping, pmax, display, video, competitive.
+- 14 feature modules: audit-center, benchmarks, campaigns, competitive, cross-campaign, dashboard, display, dsa, keywords, pmax, rules, shopping, task-queue, video.
 - Sidebar extracted into `components/layout/Sidebar/` with data-driven `navConfig.js`.
 - Routes centralized in `app/routes.jsx` with lazy loading for all pages.
 - Shared UI: `MatchBadge`, `MetricPill`, `SectionHeader` in `components/shared/`.

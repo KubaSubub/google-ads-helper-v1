@@ -1,4 +1,4 @@
-﻿# API Endpoints - Google Ads Helper
+# API Endpoints - Google Ads Helper
 
 Complete list of REST API endpoints.
 Base API URL: `/api/v1`

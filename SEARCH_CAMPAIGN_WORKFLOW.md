@@ -299,3 +299,12 @@
 8. **Landing page = połowa sukcesu.** Najlepsza reklama nie sprzeda na złym LP.
 9. **Nie walcz z algorytmem.** Daj mu dane (konwersje, wartości, audiences) i pozwól działać.
 10. **Wyłącz auto-applied recommendations.** Zawsze. Bez wyjątku.
+nn- [[Roadmapa Optymalizacji]] � co z tego workflow jest ju� zaimplementowanen- [[GAH - Weryfikacja Widok�w]] � status UI dla zak�adek Search
+
+
+## Powiązane
+
+- [[Google Ads Playbook]] — zasady optymalizacji i progi decyzyjne
+- [[Roadmapa Optymalizacji]] — co z tego workflow jest już zaimplementowane
+- [[GAH - Funkcje]] — które kroki workflow wspiera aplikacja
+- [[GAH - Weryfikacja Widoków]] — status UI dla zakładek Search

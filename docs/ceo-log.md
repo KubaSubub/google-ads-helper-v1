@@ -149,3 +149,21 @@
   - Chunk F: przejrzeć frontend context/routing/widgets zmiany — prawdopodobnie związane z Dashboard widgets
   - Krok 2: sprawdzić Dashboard.jsx render + API endpointy (getAnomalies, getBudgetPacing, bulk-apply), dokończyć integrację, build+test+review
 - **Status:** STARTED
+
+## [2026-04-13] Review: Google Ads Coverage Audit + Specialist Checklist
+- **Powód:** W vault Obsidian znaleziono dwa kluczowe dokumenty oceniające stan pokrycia Google Ads przez aplikację: `GOOGLE_ADS_COVERAGE.md` i `GOOGLE_ADS_SPECIALIST_CHECKLIST.md`. Nie były częścią roadmapy — wymagają przeglądu przez CEO i wciągnięcia braków na roadmapę v1.1/v2.
+- **Intelligence used:** NIE (analiza istniejących dokumentów)
+- **Nakład:** zadanie REVIEW (nie implementacja) — następna sesja /ceo
+- **Delegacja:** CEO w następnej sesji porówna te pliki ze stanem aplikacji (PROGRESS.md + COMPLETED_FEATURES.md) i zdecyduje co wchodzi na roadmapę v1.1.
+- **Pliki do przeczytania:**
+  - `docs/GOOGLE_ADS_COVERAGE.md` — co app pokrywa TAK / CZĘŚCIOWO / NIE per typ kampanii
+  - `docs/GOOGLE_ADS_SPECIALIST_CHECKLIST.md` — dzienny + tygodniowy workflow PPC specjalisty jako benchmark
+- **Kluczowe luki zidentyfikowane wstępnie:**
+  - Shopping: NIE (tylko podstawowe metryki list, brak optymalizacji)
+  - Display: NIE (brak wsparcia)
+  - Video: NIE (brak wsparcia)
+  - RSA: CZĘŚCIOWO (brak synca asset performance z API)
+  - Audiences: CZĘŚCIOWO (brak zarządzania listami, bid adjustment, In-Market)
+  - DSA: NIE (brak zarządzania celami stron, landing pages)
+  - Checklist daily: budżet OK, anomalies OK, search terms OK — ale "szybkie pauzy" i RSA rotacja do weryfikacji
+- **Status:** PENDING REVIEW — następna sesja /ceo musi to sprawdzić
