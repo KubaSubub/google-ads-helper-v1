@@ -1,5 +1,7 @@
 # Bugfix Spec: Settings Client Info Hub — P0/P1 fixes
-generated: 2026-04-10 | author: PM Agent | status: ready
+generated: 2026-04-10 | author: PM Agent | status: SUPERSEDED
+
+> **SUPERSEDED 2026-04-13** — Mastermind pivot (2026-04-10) zastąpił `ClientHealthSection.jsx` przez `ConversionGoalsSection.jsx` (scrollable table, all conversions, no slice). Karty linked accounts / sync health / attribution zostały usunięte z Settings. AC5 (conversions expand) już zaimplementowany. Spec nie wymaga implementacji.
 
 ## Skad to przyszlo
 CEO Decision: "Post-ship ads-user (Marek) + ads-expert review wykryły 4 bugi w Settings Client
