@@ -785,7 +785,6 @@ class ActionExecutor:
                 )
             if existing:
                 applied += 1
-                errors.append(f"Rec #{rec.id}: negative '{text}' already exists (goal achieved)")
                 rec.status = "applied"
                 rec.applied_at = utcnow().replace(tzinfo=None)
                 continue
