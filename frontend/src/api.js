@@ -20,8 +20,16 @@ api.interceptors.response.use(
             notifyUnauthorized();
         }
         const message = error.response?.data?.detail || error.message || 'Nieznany blad';
-        console.error('API Error:', message);
-        return Promise.reject({ message, status: error.response?.status });
+        const status = error.response?.status;
+        // 5xx = unexpected server errors — log as error
+        // 4xx = client/validation errors (expected in some flows) — warn only
+        // no status = network/timeout/CORS — always log as error
+        if (!status || status >= 500) {
+            console.error('API Error:', message);
+        } else if (status >= 400) {
+            console.warn('API Warning:', message, `(${status})`);
+        }
+        return Promise.reject({ message, status });
     }
 );
 

@@ -170,7 +170,10 @@ def _persist_recommendations(db: Session, client_id: int, generated: list[dict])
         for row in existing
     }
 
-    active_ids: list[int] = []
+    # Collect rec objects to resolve IDs after a single flush at the end.
+    # Avoid per-record db.flush() which causes 100+ individual SQL roundtrips
+    # and greatly increases SQLite lock contention with concurrent sync writers.
+    pending_refs: list[RecommendationModel] = []
 
     for rec_dict in generated:
         stable_key = rec_dict.get("stable_key") or build_stable_key(rec_dict, client_id)
@@ -229,9 +232,11 @@ def _persist_recommendations(db: Session, client_id: int, generated: list[dict])
         db_rec.context_outcome = rec_dict.get("context_outcome")
         db_rec.blocked_reasons = normalize_reason_codes(rec_dict.get("blocked_reasons"))
         db_rec.downgrade_reasons = normalize_reason_codes(rec_dict.get("downgrade_reasons"))
-        db.flush()
-        active_ids.append(db_rec.id)
+        pending_refs.append(db_rec)
 
+    # Single flush assigns PKs to all new records, then one commit completes the transaction.
+    db.flush()
+    active_ids = [ref.id for ref in pending_refs]
     db.commit()
     return active_ids
 

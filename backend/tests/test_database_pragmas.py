@@ -24,11 +24,14 @@ def _make_engine(db_path):
 
 
 def test_busy_timeout_pragma_is_set(tmp_path):
-    """Every new connection must report busy_timeout >= 5000 ms."""
+    """Every new connection must report busy_timeout >= 30000 ms.
+    Increased from 5000ms to reduce 'database is locked' 500s when
+    recommendations persist concurrently with an active sync.
+    """
     engine = _make_engine(tmp_path / "pragma.db")
     with engine.connect() as conn:
         value = conn.execute(text("PRAGMA busy_timeout")).scalar()
-        assert value == 5000, f"expected busy_timeout=5000, got {value}"
+        assert value >= 30000, f"expected busy_timeout>=30000, got {value}"
 
 
 def test_journal_mode_and_foreign_keys(tmp_path):
