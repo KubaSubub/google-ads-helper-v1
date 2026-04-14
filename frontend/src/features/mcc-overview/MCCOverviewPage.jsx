@@ -16,6 +16,7 @@ import { useFilter } from '../../contexts/FilterContext'
 import { LineChart, Line, Tooltip } from 'recharts'
 import PacingProgressBar from '../../components/modules/PacingProgressBar'
 import { C, B, T, R, S, CARD } from '../../constants/designTokens'
+import SyncHistoryPanel from './SyncHistoryPanel'
 
 const TH = T.th
 const TD = T.td
@@ -73,12 +74,54 @@ function SpendChange({ pct }) {
     )
 }
 
-function SyncIndicator({ lastSyncedAt, syncing }) {
-    if (syncing) return <RefreshCw size={13} style={{ color: C.accentBlue, animation: 'spin 1s linear infinite' }} />
-    if (!lastSyncedAt) return <span style={{ color: C.w30, fontSize: 11 }}>—</span>
-    const d = new Date(lastSyncedAt)
-    const label = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
-    return <span style={{ fontSize: 11, color: C.w50 }}>{label}</span>
+function FreshnessBadge({ lastSyncedAt, syncing, onClick }) {
+    if (syncing) {
+        return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <RefreshCw size={11} style={{ color: C.accentBlue, animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: 10, color: C.accentBlue }}>sync...</span>
+            </span>
+        )
+    }
+    let label, color, title
+    if (!lastSyncedAt) {
+        label = 'Nieaktualne'
+        color = C.danger
+        title = 'Nigdy nie synchronizowano'
+    } else {
+        const ageMs = Date.now() - new Date(lastSyncedAt).getTime()
+        const ageH = Math.round(ageMs / 3_600_000)
+        const d = new Date(lastSyncedAt)
+        const dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        title = `Ostatnia sync: ${dateStr}`
+        if (ageMs < 6 * 3_600_000) {
+            label = 'Świeże'
+            color = C.success
+        } else if (ageMs < 48 * 3_600_000) {
+            label = `Stare (${ageH}h)`
+            color = C.warning
+        } else {
+            label = 'Nieaktualne'
+            color = C.danger
+        }
+    }
+    return (
+        <span
+            onClick={onClick}
+            title={title}
+            style={{
+                display: 'inline-block', fontSize: 10, fontWeight: 500,
+                padding: '2px 6px', borderRadius: 999,
+                background: `${color}22`, color,
+                border: `1px solid ${color}55`,
+                cursor: onClick ? 'pointer' : 'default',
+                userSelect: 'none',
+                transition: 'opacity 0.15s',
+            }}
+        >
+            {label}
+        </span>
+    )
 }
 
 function SortHeader({ label, field, sortBy, sortDir, onSort, align }) {
@@ -172,6 +215,7 @@ export default function MCCOverviewPage() {
     const [hoveredAlert, setHoveredAlert] = useState(null)
     const [hoveredBilling, setHoveredBilling] = useState(null)
     const [selectedIds, setSelectedIds] = useState(new Set())
+    const [historyPanel, setHistoryPanel] = useState(null) // { clientId, clientName } | null
 
     const load = useCallback(async () => {
         try {
@@ -291,10 +335,9 @@ export default function MCCOverviewPage() {
         let ok = 0
         let failed = 0
         const failures = []
-        showToast?.(`Synchronizuję 0/${targets.length}...`, 'info', 120_000)
         for (let i = 0; i < targets.length; i++) {
             const acc = targets[i]
-            showToast?.(`Synchronizuję ${i + 1}/${targets.length}: ${acc.client_name}`, 'info', 120_000)
+            showToast?.(`Synchronizowanie kont ${i + 1}/${targets.length}...`, 'info', 120_000)
             const res = await runSync(acc.client_id, { silent: true })
             if (res.ok) {
                 ok++
@@ -682,8 +725,12 @@ export default function MCCOverviewPage() {
                                             )}
                                         </td>
                                         {/* Sync */}
-                                        <td style={{ ...TD, textAlign: 'center' }}>
-                                            <SyncIndicator lastSyncedAt={acc.last_synced_at} syncing={syncing} />
+                                        <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                            <FreshnessBadge
+                                                lastSyncedAt={acc.last_synced_at}
+                                                syncing={syncing}
+                                                onClick={!syncing ? () => setHistoryPanel({ clientId: acc.client_id, clientName: acc.client_name }) : undefined}
+                                            />
                                         </td>
                                         {/* Actions */}
                                         <td style={{ ...TD, textAlign: 'center' }}>
@@ -885,6 +932,14 @@ export default function MCCOverviewPage() {
                     </div>
                 )}
             </div>
+
+            {historyPanel && (
+                <SyncHistoryPanel
+                    clientId={historyPanel.clientId}
+                    clientName={historyPanel.clientName}
+                    onClose={() => setHistoryPanel(null)}
+                />
+            )}
 
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>

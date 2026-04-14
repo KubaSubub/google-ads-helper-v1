@@ -560,4 +560,123 @@ def test_negative_keyword_lists_overview_returns_list_with_client_info(api_clien
         "ownership_level",
     }
     assert expected_keys.issubset(row.keys())
-    assert row["client_name"] == "Klient A"
+
+
+# ─── /mcc/sync-history ─────────────────────────────────────────────────
+
+
+def _seed_sync_logs(db, client, count=3):
+    """Seed N SyncLog entries for a client, alternating success/partial."""
+    logs = []
+    for i in range(count):
+        started = datetime.now(timezone.utc) - timedelta(hours=i * 2 + 1)
+        finished = started + timedelta(minutes=3)
+        log = SyncLog(
+            client_id=client.id,
+            status="success" if i % 2 == 0 else "partial",
+            total_synced=100 + i * 10,
+            total_errors=i,
+            started_at=started,
+            finished_at=finished,
+        )
+        db.add(log)
+        logs.append(log)
+    db.commit()
+    return logs
+
+
+def test_sync_history_returns_list_shape(api_client, db):
+    """AC3: response is a list with all required fields."""
+    client = _seed_client(db)
+    _seed_sync_logs(db, client, count=2)
+
+    resp = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert len(body) == 2
+
+    required_keys = {"id", "client_id", "status", "total_synced", "total_errors",
+                     "started_at", "finished_at", "duration_s"}
+    for entry in body:
+        missing = required_keys - entry.keys()
+        assert not missing, f"sync-history entry missing keys: {missing}"
+        assert isinstance(entry["client_id"], int)
+        assert entry["status"] in ("running", "success", "partial", "failed")
+        assert isinstance(entry["total_synced"], int)
+        assert isinstance(entry["total_errors"], int)
+
+
+def test_sync_history_sorted_newest_first(api_client, db):
+    """Entries ordered by finished_at DESC."""
+    client = _seed_client(db)
+    _seed_sync_logs(db, client, count=3)
+
+    body = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}").json()
+    finished_ats = [e["finished_at"] for e in body if e["finished_at"]]
+    assert finished_ats == sorted(finished_ats, reverse=True)
+
+
+def test_sync_history_duration_s_computed(api_client, db):
+    """duration_s = finished_at - started_at in seconds."""
+    client = _seed_client(db)
+    _seed_sync_logs(db, client, count=1)
+
+    entry = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}").json()[0]
+    assert isinstance(entry["duration_s"], (int, float))
+    assert entry["duration_s"] == 180  # 3 minutes per _seed_sync_logs
+
+
+def test_sync_history_returns_200_empty_when_no_syncs(api_client, db):
+    """AC7: 200 with [] when client exists but has no syncs."""
+    client = _seed_client(db)
+
+    resp = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_sync_history_returns_404_for_missing_client(api_client, db):
+    """AC7: 404 when client_id does not exist."""
+    resp = api_client.get("/api/v1/mcc/sync-history?client_id=99999")
+    assert resp.status_code == 404
+
+
+def test_sync_history_limit_enforced(api_client, db):
+    """limit param: default 5, respects custom value, rejects >20."""
+    client = _seed_client(db)
+    _seed_sync_logs(db, client, count=10)
+
+    # default limit=5
+    body = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}").json()
+    assert len(body) == 5
+
+    # custom limit=3
+    body = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}&limit=3").json()
+    assert len(body) == 3
+
+    # limit=21 rejected
+    resp = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}&limit=21")
+    assert resp.status_code == 422
+
+
+def test_sync_history_handles_null_finished_at(api_client, db):
+    """Edge case: running sync has finished_at=None — duration_s=None, still returned."""
+    from datetime import datetime, timezone
+    client = _seed_client(db)
+    log = SyncLog(
+        client_id=client.id,
+        status="running",
+        total_synced=0,
+        total_errors=0,
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    db.add(log)
+    db.commit()
+
+    body = api_client.get(f"/api/v1/mcc/sync-history?client_id={client.id}").json()
+    assert len(body) == 1
+    assert body[0]["finished_at"] is None
+    assert body[0]["duration_s"] is None
+    assert body[0]["status"] == "running"

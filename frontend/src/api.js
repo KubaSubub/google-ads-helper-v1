@@ -380,6 +380,8 @@ export const getMccSharedListItems = (listId, listType = 'keyword') =>
     api.get(`/mcc/shared-lists/${listId}/items`, { params: { list_type: listType } })
 export const getMccBillingStatus = (customerId) =>
     api.get('/mcc/billing-status', { params: { customer_id: customerId } })
+export const getMccSyncHistory = (clientId, limit = 5) =>
+    api.get('/mcc/sync-history', { params: { client_id: clientId, limit } })
 
 // History
 export const getChangeHistory = (clientId, params = {}) =>

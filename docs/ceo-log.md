@@ -167,3 +167,10 @@
   - DSA: NIE (brak zarządzania celami stron, landing pages)
   - Checklist daily: budżet OK, anomalies OK, search terms OK — ale "szybkie pauzy" i RSA rotacja do weryfikacji
 - **Status:** PENDING REVIEW — następna sesja /ceo musi to sprawdzić
+
+## [2026-04-14] MCC Overview: Synchronizacja kont
+- **Powód:** User zlecił "synchronizacja kont widok mcc-overview". MCC Overview istnieje (7 endpointów, KPIs, waluta, sparkline) ale brak zarządzania synchem per konto — specjalista nie może sprawdzić statusu syncu / wymusić syncu bez wchodzenia w Settings każdego klienta osobno. To natural next step dla cross-account management workflow.
+- **Intelligence used:** NIE (task specyficzny, konkretne zlecenie usera)
+- **Nakład:** M
+- **Delegacja:** /pm build mcc-overview-sync → /cto --spec docs/specs/mcc-overview-sync.md
+- **Status:** STARTED

@@ -1,10 +1,12 @@
 """MCC overview router — cross-account aggregation endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.client import Client
+from app.models.sync_log import SyncLog
 from app.services.mcc_service import MCCService
 
 router = APIRouter(prefix="/mcc", tags=["mcc"])
@@ -68,6 +70,41 @@ def mcc_shared_list_items(
 ):
     """Drill-down: return items of a specific MCC shared list."""
     return MCCService(db).get_shared_list_items(list_id, list_type)
+
+
+@router.get("/sync-history")
+def mcc_sync_history(
+    client_id: int = Query(..., description="Client ID"),
+    limit: int = Query(5, ge=1, le=20, description="Max entries to return (1-20)"),
+    db: Session = Depends(get_db),
+):
+    """Return sync history for a specific client, newest first."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    logs = (
+        db.query(SyncLog)
+        .filter(SyncLog.client_id == client_id)
+        .order_by(SyncLog.finished_at.desc().nullslast(), SyncLog.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for log in logs:
+        duration_s = None
+        if log.started_at and log.finished_at:
+            duration_s = round((log.finished_at - log.started_at).total_seconds())
+        result.append({
+            "id": log.id,
+            "client_id": log.client_id,
+            "status": log.status,
+            "total_synced": log.total_synced,
+            "total_errors": log.total_errors,
+            "started_at": log.started_at.isoformat() if log.started_at else None,
+            "finished_at": log.finished_at.isoformat() if log.finished_at else None,
+            "duration_s": duration_s,
+        })
+    return result
 
 
 @router.get("/billing-status")
