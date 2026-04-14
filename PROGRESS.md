@@ -1,13 +1,13 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-13 (docs-sync verified)
+# Updated: 2026-04-14
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 666 tests collected (pytest --collect-only)
+- Backend: 673 tests collected (pytest --collect-only)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSyncConfig + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 175 total across 19 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 8 scripts, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 176 total across 19 routers (73 analytics, 13 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSyncConfig, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
 - Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Scripts) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown
@@ -59,6 +59,12 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## MCC Overview — Sync History Panel + Freshness Badge (2026-04-14)
+- New `SyncHistoryPanel` component in MCCOverviewPage — shows per-account sync history (status, duration, records synced, errors, timestamps)
+- Freshness badge per account row: `green` < 6h, `yellow` < 24h, `red` >= 24h or never synced
+- Backend: `GET /mcc/sync-history?client_id=X&limit=5` — already documented in API_ENDPOINTS.md (id, status, total_synced, total_errors, started_at, finished_at, duration_s)
+- Commit: 3fe53d4
 
 ## Optimization Scripts Engine — Sprint 1-4 (2026-04-13)
 - Spec: `docs/specs/scripts-p0-p1-fixes.md`, CEO entry in `docs/ceo-log.md`
@@ -196,13 +202,14 @@
 
 ## MCC Overview — Cross-Account Landing Page (2026-04-02)
 - New landing page `MccOverviewPage.jsx` (`features/mcc-overview/`) at `/mcc-overview` — default entry point (/ redirects to /mcc-overview)
-- Backend: `mcc.py` router with 7 endpoints:
+- Backend: `mcc.py` router with 8 endpoints:
   - `GET /mcc/overview` — aggregated KPIs, health scores, pacing, change activity for all clients
   - `GET /mcc/new-access` — detect new user emails in change history
   - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google recommendations
   - `GET /mcc/negative-keyword-lists` — negative keyword lists across all clients
   - `GET /mcc/shared-lists` — MCC-level shared negative keyword lists
   - `GET /mcc/shared-lists/{list_id}/items` — items in a specific MCC shared list
+  - `GET /mcc/sync-history` — sync history for a specific client (freshness badge, SyncHistoryPanel)
   - `GET /mcc/billing-status` — billing/payment status per customer
 - Per-account metrics: spend 30d (with delta %), conversions, CPA, ROAS, budget pacing (75%/120% thresholds), health score (6-pillar tooltip), change activity (total + external), Google recs pending, unresolved alerts, last sync
 - Full account metrics (clicks, impressions, CTR, CPC, CVR, conv value), new access badges, dismiss Google recs button, MCC shared lists, billing status endpoint
