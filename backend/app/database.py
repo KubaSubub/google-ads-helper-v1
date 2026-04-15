@@ -206,8 +206,11 @@ def _ensure_sqlite_columns():
 
         # BUG-H1 fix: SQLite NULL != NULL in UNIQUE constraints allows duplicate rows.
         # Add a functional unique index using COALESCE to treat NULLs as sentinel values.
+        # The index MUST include every dimension column that sync_*_metrics sets —
+        # otherwise rows from different segmentation types (parental/income) collide
+        # with each other on the (campaign, date, null_*) slot and fail on commit.
         if inspector.has_table("metrics_segmented"):
-            # Drop old index that doesn't include age_range/gender
+            # Drop old index that didn't include parental_status / income_range
             conn.execute(text("DROP INDEX IF EXISTS uq_metric_segmented_coalesced"))
             conn.execute(text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_metric_segmented_coalesced "
@@ -218,6 +221,8 @@ def _ensure_sqlite_columns():
                 "COALESCE(hour_of_day, -1), "
                 "COALESCE(age_range, '__NONE__'), "
                 "COALESCE(gender, '__NONE__'), "
+                "COALESCE(parental_status, '__NONE__'), "
+                "COALESCE(income_range, '__NONE__'), "
                 "COALESCE(ad_network_type, '__NONE__'))"
             ))
 

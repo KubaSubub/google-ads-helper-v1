@@ -3767,15 +3767,42 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             # Batch-resolve all criterion IDs to city names
             geo_name_map = self._resolve_geo_names(customer_id, criterion_ids)
 
-            # Second pass: upsert rows with resolved city names
-            count = 0
+            # Aggregate raw rows by (campaign, date, resolved_city) — multiple
+            # criterion IDs can map to the same resolved city name, creating
+            # duplicate storage keys that trigger UNIQUE constraint failures
+            # when autoflush=False defers inserts until commit.
+            batch: dict[tuple, dict] = {}
+            raw_by_city: dict[str, set] = {}  # resolved_city -> set of raw names (for existing lookup)
             for row in raw_rows:
                 campaign_google_id = str(row.campaign.id)
                 metric_date = date.fromisoformat(row.segments.date)
                 geo_city_raw = row.segments.geo_target_city
                 geo_city = geo_name_map.get(geo_city_raw, geo_city_raw) if geo_city_raw else "Unknown"
                 m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
+                key = (campaign_google_id, metric_date, geo_city)
+                if geo_city_raw:
+                    raw_by_city.setdefault(geo_city, set()).add(geo_city_raw)
+
+                if key in batch:
+                    agg = batch[key]
+                    agg["clicks"] += m.clicks
+                    agg["impressions"] += m.impressions
+                    agg["conversions"] += float(m.conversions)
+                    agg["conversion_value_micros"] += int(conv_value * 1_000_000)
+                    agg["cost_micros"] += m.cost_micros
+                else:
+                    batch[key] = {
+                        "clicks": m.clicks,
+                        "impressions": m.impressions,
+                        "conversions": float(m.conversions),
+                        "conversion_value_micros": int(conv_value * 1_000_000),
+                        "cost_micros": m.cost_micros,
+                    }
+
+            count = 0
+            for (campaign_google_id, metric_date, geo_city), agg in batch.items():
                 campaign = db.query(Campaign).filter(
                     Campaign.client_id == client_record.id,
                     Campaign.google_campaign_id == campaign_google_id,
@@ -3783,32 +3810,34 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 if not campaign:
                     continue
 
-                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
-
-                # Match by resolved name OR raw resource name (handles migration)
+                # Match by resolved name OR any raw resource name (handles migration from old encoding)
+                match_cities = [geo_city] + list(raw_by_city.get(geo_city, set()))
                 existing = db.query(MetricSegmented).filter(
                     MetricSegmented.campaign_id == campaign.id,
                     MetricSegmented.date == metric_date,
                     MetricSegmented.device.is_(None),
-                    MetricSegmented.geo_city.in_([geo_city, geo_city_raw]),
+                    MetricSegmented.geo_city.in_(match_cities),
                     MetricSegmented.hour_of_day.is_(None),
                     MetricSegmented.age_range.is_(None),
                     MetricSegmented.gender.is_(None),
                     MetricSegmented.ad_network_type.is_(None),
                 ).first()
 
+                ctr = (agg["clicks"] / agg["impressions"] * 100) if agg["impressions"] else 0.0
+                avg_cpc = int(agg["cost_micros"] / agg["clicks"]) if agg["clicks"] else 0
+
                 data = {
                     "campaign_id": campaign.id,
                     "date": metric_date,
                     "device": None,
                     "geo_city": geo_city,
-                    "clicks": m.clicks,
-                    "impressions": m.impressions,
-                    "ctr": m.ctr * 100,
-                    "conversions": float(m.conversions),
-                    "conversion_value_micros": int(conv_value * 1_000_000),
-                    "cost_micros": m.cost_micros,
-                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                    "clicks": agg["clicks"],
+                    "impressions": agg["impressions"],
+                    "ctr": ctr,
+                    "conversions": agg["conversions"],
+                    "conversion_value_micros": agg["conversion_value_micros"],
+                    "cost_micros": agg["cost_micros"],
+                    "avg_cpc_micros": avg_cpc,
                     "search_impression_share": None,
                 }
 
@@ -4236,21 +4265,43 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
 
         try:
             response = ga_service.search(customer_id=normalized_customer_id, query=query)
-            count = 0
+            # age_range_view returns one row per ad_group_criterion. Aggregate in memory
+            # so (campaign_google_id, date, age_range) is unique before touching DB —
+            # prevents UNIQUE constraint violations on uq_metric_segmented_coalesced
+            # when autoflush=False defers inserts until commit.
+            batch: dict[tuple, dict] = {}
             for row in response:
                 campaign_google_id = str(row.campaign.id)
                 metric_date = date.fromisoformat(row.segments.date)
                 age_range = row.ad_group_criterion.age_range.type.name
                 m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
+                key = (campaign_google_id, metric_date, age_range)
+                if key in batch:
+                    agg = batch[key]
+                    agg["clicks"] += m.clicks
+                    agg["impressions"] += m.impressions
+                    agg["conversions"] += float(m.conversions)
+                    agg["conversion_value_micros"] += int(conv_value * 1_000_000)
+                    agg["cost_micros"] += m.cost_micros
+                else:
+                    batch[key] = {
+                        "clicks": m.clicks,
+                        "impressions": m.impressions,
+                        "conversions": float(m.conversions),
+                        "conversion_value_micros": int(conv_value * 1_000_000),
+                        "cost_micros": m.cost_micros,
+                    }
+
+            count = 0
+            for (campaign_google_id, metric_date, age_range), agg in batch.items():
                 campaign = db.query(Campaign).filter(
                     Campaign.client_id == client_record.id,
                     Campaign.google_campaign_id == campaign_google_id,
                 ).first()
                 if not campaign:
                     continue
-
-                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
                 existing = db.query(MetricSegmented).filter(
                     MetricSegmented.campaign_id == campaign.id,
@@ -4263,17 +4314,21 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     MetricSegmented.ad_network_type.is_(None),
                 ).first()
 
+                # Recompute derivative metrics after aggregation
+                ctr = (agg["clicks"] / agg["impressions"] * 100) if agg["impressions"] else 0.0
+                avg_cpc = int(agg["cost_micros"] / agg["clicks"]) if agg["clicks"] else 0
+
                 data = {
                     "campaign_id": campaign.id,
                     "date": metric_date,
                     "age_range": age_range,
-                    "clicks": m.clicks,
-                    "impressions": m.impressions,
-                    "ctr": m.ctr * 100,
-                    "conversions": float(m.conversions),
-                    "conversion_value_micros": int(conv_value * 1_000_000),
-                    "cost_micros": m.cost_micros,
-                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                    "clicks": agg["clicks"],
+                    "impressions": agg["impressions"],
+                    "ctr": ctr,
+                    "conversions": agg["conversions"],
+                    "conversion_value_micros": agg["conversion_value_micros"],
+                    "cost_micros": agg["cost_micros"],
+                    "avg_cpc_micros": avg_cpc,
                 }
 
                 if existing:
@@ -4330,21 +4385,41 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
 
         try:
             response = ga_service.search(customer_id=normalized_customer_id, query=query)
-            count = 0
+            # Aggregate per-ad_group rows into (campaign, date, gender) before insert
+            # to avoid UNIQUE constraint violations (see sync_age_metrics for rationale).
+            batch: dict[tuple, dict] = {}
             for row in response:
                 campaign_google_id = str(row.campaign.id)
                 metric_date = date.fromisoformat(row.segments.date)
                 gender = row.ad_group_criterion.gender.type.name
                 m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
+                key = (campaign_google_id, metric_date, gender)
+                if key in batch:
+                    agg = batch[key]
+                    agg["clicks"] += m.clicks
+                    agg["impressions"] += m.impressions
+                    agg["conversions"] += float(m.conversions)
+                    agg["conversion_value_micros"] += int(conv_value * 1_000_000)
+                    agg["cost_micros"] += m.cost_micros
+                else:
+                    batch[key] = {
+                        "clicks": m.clicks,
+                        "impressions": m.impressions,
+                        "conversions": float(m.conversions),
+                        "conversion_value_micros": int(conv_value * 1_000_000),
+                        "cost_micros": m.cost_micros,
+                    }
+
+            count = 0
+            for (campaign_google_id, metric_date, gender), agg in batch.items():
                 campaign = db.query(Campaign).filter(
                     Campaign.client_id == client_record.id,
                     Campaign.google_campaign_id == campaign_google_id,
                 ).first()
                 if not campaign:
                     continue
-
-                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
                 existing = db.query(MetricSegmented).filter(
                     MetricSegmented.campaign_id == campaign.id,
@@ -4357,17 +4432,20 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     MetricSegmented.ad_network_type.is_(None),
                 ).first()
 
+                ctr = (agg["clicks"] / agg["impressions"] * 100) if agg["impressions"] else 0.0
+                avg_cpc = int(agg["cost_micros"] / agg["clicks"]) if agg["clicks"] else 0
+
                 data = {
                     "campaign_id": campaign.id,
                     "date": metric_date,
                     "gender": gender,
-                    "clicks": m.clicks,
-                    "impressions": m.impressions,
-                    "ctr": m.ctr * 100,
-                    "conversions": float(m.conversions),
-                    "conversion_value_micros": int(conv_value * 1_000_000),
-                    "cost_micros": m.cost_micros,
-                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                    "clicks": agg["clicks"],
+                    "impressions": agg["impressions"],
+                    "ctr": ctr,
+                    "conversions": agg["conversions"],
+                    "conversion_value_micros": agg["conversion_value_micros"],
+                    "cost_micros": agg["cost_micros"],
+                    "avg_cpc_micros": avg_cpc,
                 }
 
                 if existing:
@@ -4428,21 +4506,41 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
 
         try:
             response = ga_service.search(customer_id=normalized_customer_id, query=query)
-            count = 0
+            # Aggregate per-ad_group rows into (campaign, date, parental_status) before insert
+            # to avoid UNIQUE constraint violations (see sync_age_metrics for rationale).
+            batch: dict[tuple, dict] = {}
             for row in response:
                 campaign_google_id = str(row.campaign.id)
                 metric_date = date.fromisoformat(row.segments.date)
                 parental = row.ad_group_criterion.parental_status.type.name
                 m = row.metrics
+                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
+                key = (campaign_google_id, metric_date, parental)
+                if key in batch:
+                    agg = batch[key]
+                    agg["clicks"] += m.clicks
+                    agg["impressions"] += m.impressions
+                    agg["conversions"] += float(m.conversions)
+                    agg["conversion_value_micros"] += int(conv_value * 1_000_000)
+                    agg["cost_micros"] += m.cost_micros
+                else:
+                    batch[key] = {
+                        "clicks": m.clicks,
+                        "impressions": m.impressions,
+                        "conversions": float(m.conversions),
+                        "conversion_value_micros": int(conv_value * 1_000_000),
+                        "cost_micros": m.cost_micros,
+                    }
+
+            count = 0
+            for (campaign_google_id, metric_date, parental), agg in batch.items():
                 campaign = db.query(Campaign).filter(
                     Campaign.client_id == client_record.id,
                     Campaign.google_campaign_id == campaign_google_id,
                 ).first()
                 if not campaign:
                     continue
-
-                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
 
                 existing = db.query(MetricSegmented).filter(
                     MetricSegmented.campaign_id == campaign.id,
@@ -4457,17 +4555,20 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     MetricSegmented.income_range.is_(None),
                 ).first()
 
+                ctr = (agg["clicks"] / agg["impressions"] * 100) if agg["impressions"] else 0.0
+                avg_cpc = int(agg["cost_micros"] / agg["clicks"]) if agg["clicks"] else 0
+
                 data = {
                     "campaign_id": campaign.id,
                     "date": metric_date,
                     "parental_status": parental,
-                    "clicks": m.clicks,
-                    "impressions": m.impressions,
-                    "ctr": m.ctr * 100,
-                    "conversions": float(m.conversions),
-                    "conversion_value_micros": int(conv_value * 1_000_000),
-                    "cost_micros": m.cost_micros,
-                    "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
+                    "clicks": agg["clicks"],
+                    "impressions": agg["impressions"],
+                    "ctr": ctr,
+                    "conversions": agg["conversions"],
+                    "conversion_value_micros": agg["conversion_value_micros"],
+                    "cost_micros": agg["cost_micros"],
+                    "avg_cpc_micros": avg_cpc,
                 }
 
                 if existing:
@@ -4919,13 +5020,15 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             return 0
 
         ga_service = self.client.get_service("GoogleAdsService")
+        # Google Ads API v23 removed asset_group_asset.performance_label.
+        # Use asset_group_asset.status instead (ENABLED / PAUSED / REMOVED).
         query = """
             SELECT
                 asset_group.id,
                 campaign.id,
                 asset_group_asset.asset,
                 asset_group_asset.field_type,
-                asset_group_asset.performance_label,
+                asset_group_asset.status,
                 asset.id,
                 asset.type,
                 asset.text_asset.text
@@ -4946,7 +5049,8 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 google_asset_id = str(row.asset.id)
                 asset_type = row.asset.type.name if hasattr(row.asset.type, 'name') else str(row.asset.type)
                 field_type = row.asset_group_asset.field_type.name if hasattr(row.asset_group_asset.field_type, 'name') else str(row.asset_group_asset.field_type)
-                perf_label = row.asset_group_asset.performance_label.name if hasattr(row.asset_group_asset.performance_label, 'name') else str(row.asset_group_asset.performance_label)
+                # performance_label was removed in v23 — store status as proxy so downstream UI can still show state
+                perf_label = row.asset_group_asset.status.name if hasattr(row.asset_group_asset.status, 'name') else str(row.asset_group_asset.status)
 
                 # text_asset.text may not exist for non-text assets
                 text_content = None
@@ -5012,9 +5116,13 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             return 0
 
         ga_service = self.client.get_service("GoogleAdsService")
+        # Google Ads API v23: campaign.status must be in SELECT when used in WHERE.
+        # asset.sitelink_asset.final_urls is not a queryable field; drop it (sitelink
+        # URLs are not needed in UI — link_text is the displayed label).
         query = """
             SELECT
                 campaign.id,
+                campaign.status,
                 asset.id,
                 asset.type,
                 asset.name,
@@ -5023,7 +5131,6 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 asset.sitelink_asset.link_text,
                 asset.sitelink_asset.description1,
                 asset.sitelink_asset.description2,
-                asset.sitelink_asset.final_urls,
                 asset.callout_asset.callout_text,
                 asset.structured_snippet_asset.header,
                 asset.structured_snippet_asset.values,
@@ -5067,7 +5174,6 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                             "link_text": sl.link_text,
                             "description1": sl.description1 or "",
                             "description2": sl.description2 or "",
-                            "final_urls": list(sl.final_urls) if sl.final_urls else [],
                         }
                 except (AttributeError, TypeError):
                     pass
