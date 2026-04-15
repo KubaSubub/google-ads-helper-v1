@@ -173,4 +173,32 @@
 - **Intelligence used:** NIE (task specyficzny, konkretne zlecenie usera)
 - **Nakład:** M
 - **Delegacja:** /pm build mcc-overview-sync → /cto --spec docs/specs/mcc-overview-sync.md
-- **Status:** STARTED
+- **Status:** DONE
+- **Wynik:** GET /mcc/sync-history endpoint + FreshnessBadge (zielony/żółty/czerwony) + SyncHistoryPanel drawer + progress toast "Synchronizowanie kont X/N". 673 backend tests (+7 nowych), vite build OK. Review 7.5/10. Commit 3fe53d4, push OK. Ads-verify wygenerował nowy plan (8 MISSING: ROAS calc, filtr aktywnych, Health pillars, IS weighted) — Sprint 1 gotowy do implementacji.
+
+## [2026-04-15] Sync hotfix: 3 root causes blocking partial→success
+- **Powód:** Prezes raportował że sync nie kończy się sukcesem + błędy w konsoli, mimo poprzedniego fixu busy_timeout. Diagnoza przez własne uruchomienie sync na 3 realnych kontach wykazała PRAWDZIWE bugi nie związane z DB lock.
+- **Intelligence used:** NIE (operacyjny hotfix)
+- **Nakład:** M
+- **SKIP PM:** hotfix krytyczny — bezpośredni /bugfix
+- **Scope:**
+  1. `sync_asset_group_assets`: pole `asset_group_asset.performance_label` usunięte w API v23 → status jako proxy
+  2. `sync_campaign_assets`: brak `campaign.status` w SELECT (v23 wymaga gdy w WHERE) + `asset.sitelink_asset.final_urls` nie istnieje
+  3. `sync_age/gender/parental/geo_metrics`: pętla `query+add` z `autoflush=False` powoduje duplikaty w batchu → kolizja na commit. Fix: agregacja w pamięci przed insertem. Bonus: `uq_metric_segmented_coalesced` index nie zawierał `parental_status`/`income_range` — dodane.
+- **Status:** DONE
+- **Wynik:** Live sync na 3 klientach: Ohtime synced=5958/0err, Sushi 6386/0err, Armando 71404/0err. Wszystkie 24/24 phases OK (było `partial` z 2-5 fail). 673 testów pass. Commit 6a87056, push OK.
+
+## [2026-04-15] MCC Overview: Sprint 1+2+3 + currency P0
+- **Powód:** Po hotfixie sync, prezes zatwierdził scope sprintów 1-3 z ads-verify (Bell, CSV, Health pillars OUT). Krytyczne dodatkowe: currency-aware spend totals.
+- **Intelligence used:** NIE (sprint na podstawie ads-verify plus directives prezesa)
+- **Nakład:** M
+- **SKIP PM:** zakres potwierdzony bezpośrednio przez prezesa (zmiany mcc-overwiev od prezesa.md)
+- **Scope:**
+  - **P0 currency:** KPI 'Wydatki' adapts: shared currency → full sum, mixed → per-currency breakdown ('12 480 zł · $3 200')
+  - **Sprint 2 ROAS multiplier:** roas_pct→roas, *100 removed, '4.20x' UI, thresholds 4/2/<2
+  - **Sprint 2 active_only:** server-side filter + pill toggle Wszystkie/Aktywne, persisted localStorage
+  - **Sprint 3 IS weighted:** _aggregate_metrics używa sum(IS*cost)/sum(cost) zamiast func.avg
+  - **Sprint 1 quick wins:** IS column → expanded mode, Math.round clicks, localStorage sort/compact
+  - **Skipped:** Bell→/alerts, CSV export, Health Score pillars drilldown
+- **Status:** DONE
+- **Wynik:** 678 testów pass (+5 nowych lock tests: IS_null, active_only, roas_multiplier, IS_weighted, active_only_default). Vite build OK. 5 nowych contract testów jako regression shield. Commit a03c081, push OK.
