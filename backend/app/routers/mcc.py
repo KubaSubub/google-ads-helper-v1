@@ -22,12 +22,13 @@ class DismissRequest(BaseModel):
 def mcc_overview(
     date_from: str = Query(None, description="Start date YYYY-MM-DD (default: 1st of current month)"),
     date_to: str = Query(None, description="End date YYYY-MM-DD (default: today)"),
+    active_only: bool = Query(False, description="Hide accounts with zero spend in the period"),
     db: Session = Depends(get_db),
 ):
     from datetime import date as date_type
     d_from = date_type.fromisoformat(date_from) if date_from else None
     d_to = date_type.fromisoformat(date_to) if date_to else None
-    return MCCService(db).get_overview(date_from=d_from, date_to=d_to)
+    return MCCService(db).get_overview(date_from=d_from, date_to=d_to, active_only=active_only)
 
 
 @router.get("/new-access")

@@ -262,7 +262,8 @@ def test_mcc_overview_full_metrics(db):
     assert acc["conversion_rate_pct"] == 10.0
     assert acc["conversion_value"] == 150.0
     assert acc["cpa"] == 0.5
-    assert acc["roas_pct"] == 1000.0
+    # ROAS as multiplier: 150 conv_value / 15 spend = 10.0x (was 1000% before)
+    assert acc["roas"] == 10.0
 
 
 def test_mcc_overview_new_access_in_response(db):
@@ -532,7 +533,7 @@ _REQUIRED_ACCOUNT_FIELDS = {
     "clicks", "impressions", "ctr_pct", "avg_cpc",
     "spend", "spend_prev", "spend_change_pct",
     "conversions", "conversion_rate_pct", "conversion_value",
-    "cpa", "roas_pct", "search_impression_share_pct",
+    "cpa", "roas", "search_impression_share_pct",
     "pacing",
     "total_changes", "external_changes", "change_breakdown",
     "new_access_emails",
@@ -606,7 +607,7 @@ def test_lock_roas_none_when_no_conversions(db):
     svc = MCCService(db)
     result = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)
     acc = result["accounts"][0]
-    assert acc["roas_pct"] is None, "ROAS must be None when conv_value=0"
+    assert acc["roas"] is None, "ROAS must be None when conv_value=0"
     assert acc["cpa"] is None, "CPA must be None when conversions=0"
 
 
@@ -628,7 +629,7 @@ def test_lock_roas_calculated_when_both_positive(db):
     svc = MCCService(db)
     result = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)
     acc = result["accounts"][0]
-    assert acc["roas_pct"] == 500.0, "ROAS = 50/10*100 = 500%"
+    assert acc["roas"] == 5.0, "ROAS = 50/10 = 5.0x (multiplier, not percent)"
     assert acc["cpa"] == 2.0, "CPA = 10/5 = 2.0"
 
 
@@ -638,7 +639,7 @@ def test_lock_roas_none_when_no_spend(db):
     svc = MCCService(db)
     result = svc.get_overview()
     acc = result["accounts"][0]
-    assert acc["roas_pct"] is None
+    assert acc["roas"] is None
     assert acc["spend"] == 0
 
 
@@ -737,7 +738,7 @@ def test_lock_zero_metrics_yields_none_ratios(db):
     assert acc["avg_cpc"] is None
     assert acc["conversion_rate_pct"] is None
     assert acc["cpa"] is None
-    assert acc["roas_pct"] is None
+    assert acc["roas"] is None
     assert acc["search_impression_share_pct"] is None
 
 
@@ -1064,3 +1065,128 @@ def test_lock_spend_trend_aggregates_across_campaigns(db):
 
     assert len(trend) == 1
     assert trend[0]["spend"] == 5.0  # $3 + $2 = $5
+
+
+# ===================================================================
+# Sprint 1-3 LOCK TESTS — sprint scope from prezes (2026-04-15)
+# ===================================================================
+
+
+def test_mcc_overview_IS_none_when_no_data(db):
+    """LOCK Sprint 1: search_impression_share_pct must be None (not 0) when no IS rows.
+
+    Frontend renders '—' when None, but would render '0.0%' if backend returned 0.
+    """
+    client = _client(db, "NoIS", "999")
+    camp = _campaign(db, client.id)
+    today = date.today()
+    db.add(MetricDaily(
+        campaign_id=camp.id, date=today,
+        clicks=10, impressions=100, cost_micros=1_000_000,
+        # search_impression_share intentionally None
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    result = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)
+    acc = result["accounts"][0]
+    assert acc["search_impression_share_pct"] is None, "IS must be None, not 0, when no data"
+
+
+def test_mcc_overview_active_only_filters_zero_spend(db):
+    """LOCK Sprint 2: active_only=True excludes accounts with 0 spend in the period."""
+    a = _client(db, "Active", "1001")
+    b = _client(db, "Idle", "1002")
+    today = date.today()
+    camp_a = _campaign(db, a.id)
+    db.add(MetricDaily(
+        campaign_id=camp_a.id, date=today,
+        clicks=10, impressions=100, cost_micros=5_000_000,
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    # Without filter: both accounts present
+    all_result = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)
+    names = {acc["client_name"] for acc in all_result["accounts"]}
+    assert names == {"Active", "Idle"}
+
+    # With active_only: only the spending account
+    active_result = svc.get_overview(
+        date_from=today - timedelta(days=1), date_to=today, active_only=True,
+    )
+    names = {acc["client_name"] for acc in active_result["accounts"]}
+    assert names == {"Active"}
+
+
+def test_mcc_overview_roas_is_multiplier_not_percent(db):
+    """LOCK Sprint 2: ROAS must be a multiplier (e.g. 4.20) not a percent (420)."""
+    client = _client(db)
+    camp = _campaign(db, client.id)
+    today = date.today()
+    db.add(MetricDaily(
+        campaign_id=camp.id, date=today,
+        clicks=10, impressions=100,
+        cost_micros=10_000_000,        # $10 spend
+        conversions=5.0,
+        conversion_value_micros=42_000_000,  # $42 conv value -> 4.2x ROAS
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    acc = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)["accounts"][0]
+    assert acc["roas"] == 4.2, f"expected 4.20 (multiplier), got {acc['roas']}"
+    assert acc["roas"] < 100, "ROAS must be a multiplier, not a percent"
+    assert "roas_pct" not in acc, "Legacy roas_pct field must be removed from response"
+
+
+def test_mcc_overview_IS_weighted_by_spend(db):
+    """LOCK Sprint 3: IS aggregation must be cost-weighted, not a plain mean.
+
+    A 100k zł campaign at 80% IS should outweigh a 1k zł campaign at 10% IS —
+    a plain mean would give ~45%, but weighted should give ~79%.
+    """
+    client = _client(db)
+    big = _campaign(db, client.id, name="Big")
+    small = _campaign(db, client.id, name="Small")
+    today = date.today()
+    # Big: 100k spend, 80% IS
+    db.add(MetricDaily(
+        campaign_id=big.id, date=today,
+        clicks=1000, impressions=10000, cost_micros=100_000_000_000,  # 100k
+        search_impression_share=0.80,
+    ))
+    # Small: 1k spend, 10% IS
+    db.add(MetricDaily(
+        campaign_id=small.id, date=today,
+        clicks=10, impressions=100, cost_micros=1_000_000_000,  # 1k
+        search_impression_share=0.10,
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    acc = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)["accounts"][0]
+    # Weighted: (0.80 * 100000 + 0.10 * 1000) / (100000 + 1000) = 80100/101000 = 0.7931
+    # Expected display: ~79.3%
+    assert acc["search_impression_share_pct"] is not None
+    assert 78 < acc["search_impression_share_pct"] < 81, (
+        f"weighted IS should be ~79.3%, got {acc['search_impression_share_pct']}"
+    )
+
+
+def test_mcc_overview_active_only_default_false(db):
+    """LOCK: active_only param defaults to False — no behavior change without explicit opt-in."""
+    a = _client(db, "Active", "2001")
+    b = _client(db, "Idle", "2002")
+    today = date.today()
+    camp_a = _campaign(db, a.id)
+    db.add(MetricDaily(
+        campaign_id=camp_a.id, date=today,
+        clicks=10, impressions=100, cost_micros=1_000_000,
+    ))
+    db.commit()
+
+    svc = MCCService(db)
+    # Calling without the kwarg must include both accounts
+    result = svc.get_overview(date_from=today - timedelta(days=1), date_to=today)
+    assert len(result["accounts"]) == 2

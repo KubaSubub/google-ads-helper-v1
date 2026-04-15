@@ -62,7 +62,7 @@ REQUIRED_ACCOUNT_KEYS = {
     "conversion_rate_pct",
     "conversion_value",
     "cpa",
-    "roas_pct",
+    "roas",
     "search_impression_share_pct",
     # pacing
     "pacing",

@@ -208,9 +208,11 @@ export default function MCCOverviewPage() {
     const [sharedData, setSharedData] = useState(null)
     const [sharedOpen, setSharedOpen] = useState(false)
     const [expandedList, setExpandedList] = useState(null) // { id, type, items, loading }
-    const [sortBy, setSortBy] = useState('spend')
-    const [sortDir, setSortDir] = useState('desc')
-    const [compactMode, setCompactMode] = useState(true)
+    // Sort + compact + active filter persist across sessions (per Kuba's daily workflow)
+    const [sortBy, setSortBy] = useState(() => localStorage.getItem('mcc-sort-by') || 'spend')
+    const [sortDir, setSortDir] = useState(() => localStorage.getItem('mcc-sort-dir') || 'desc')
+    const [compactMode, setCompactMode] = useState(() => localStorage.getItem('mcc-compact') !== 'false')
+    const [activeOnly, setActiveOnly] = useState(() => localStorage.getItem('mcc-active-only') === 'true')
     const [billingStatuses, setBillingStatuses] = useState({})
     const [hoveredAlert, setHoveredAlert] = useState(null)
     const [hoveredBilling, setHoveredBilling] = useState(null)
@@ -220,14 +222,14 @@ export default function MCCOverviewPage() {
     const load = useCallback(async () => {
         try {
             setLoading(true)
-            const result = await getMccOverview(dateParams)
+            const result = await getMccOverview({ ...dateParams, active_only: activeOnly })
             setData(result)
         } catch {
             showToast?.('Błąd ładowania MCC overview', 'error')
         } finally {
             setLoading(false)
         }
-    }, [showToast, dateParams])
+    }, [showToast, dateParams, activeOnly])
 
     useEffect(() => { load() }, [load])
 
@@ -267,8 +269,32 @@ export default function MCCOverviewPage() {
     }
 
     const handleSort = (field) => {
-        if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-        else { setSortBy(field); setSortDir('desc') }
+        if (sortBy === field) {
+            const next = sortDir === 'asc' ? 'desc' : 'asc'
+            setSortDir(next)
+            localStorage.setItem('mcc-sort-dir', next)
+        } else {
+            setSortBy(field)
+            setSortDir('desc')
+            localStorage.setItem('mcc-sort-by', field)
+            localStorage.setItem('mcc-sort-dir', 'desc')
+        }
+    }
+
+    const toggleCompactMode = () => {
+        setCompactMode(p => {
+            const next = !p
+            localStorage.setItem('mcc-compact', String(next))
+            return next
+        })
+    }
+
+    const toggleActiveOnly = () => {
+        setActiveOnly(p => {
+            const next = !p
+            localStorage.setItem('mcc-active-only', String(next))
+            return next
+        })
     }
 
     const handleRowClick = (acc) => {
@@ -384,13 +410,20 @@ export default function MCCOverviewPage() {
         return sorted
     }, [rawAccounts, sortBy, sortDir])
 
+    // Sum spend per currency so the KPI strip can render a primary total + footnote
+    // when the MCC mixes currencies (e.g. PLN + USD). Plain spend sum across currencies
+    // is meaningless and would mislead Kuba.
+    const spendByCurrency = accounts.reduce((acc, a) => {
+        const cur = a.currency || 'PLN'
+        acc[cur] = (acc[cur] || 0) + (a.spend || 0)
+        return acc
+    }, {})
     const totalSpend = accounts.reduce((s, a) => s + (a.spend || 0), 0)
-    const totalClicks = accounts.reduce((s, a) => s + (a.clicks || 0), 0)
+    const totalClicks = accounts.reduce((s, a) => s + Math.round(a.clicks || 0), 0)
     const totalConv = accounts.reduce((s, a) => s + (a.conversions || 0), 0)
-    const totalImpr = accounts.reduce((s, a) => s + (a.impressions || 0), 0)
+    const totalImpr = accounts.reduce((s, a) => s + Math.round(a.impressions || 0), 0)
     const activeCount = accounts.filter(a => (a.spend || 0) > 0).length
-    const hasAnyIS = accounts.some(a => a.search_impression_share_pct != null)
-    const uniqueCurrencies = [...new Set(accounts.map(a => a.currency).filter(Boolean))]
+    const uniqueCurrencies = Object.keys(spendByCurrency)
     const sharedCurrency = uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : null
 
     const toggleSelect = (clientId, e) => {
@@ -462,7 +495,35 @@ export default function MCCOverviewPage() {
                             </button>
                         ))}
                     </div>
-                    <button onClick={() => setCompactMode(p => !p)} title={compactMode ? 'Pokaż wszystkie kolumny' : 'Tryb kompaktowy'} style={{
+                    {/* Aktywne / Wszystkie filter — server-side filter via active_only param */}
+                    <div style={{ display: 'flex', gap: 4, marginRight: 4 }}>
+                        <button
+                            onClick={() => activeOnly && toggleActiveOnly()}
+                            style={{
+                                padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                border: `1px solid ${!activeOnly ? C.accentBlue : C.w08}`,
+                                background: !activeOnly ? C.accentBlueBg : C.w04,
+                                color: !activeOnly ? 'white' : C.textPlaceholder,
+                                cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                        >
+                            Wszystkie
+                        </button>
+                        <button
+                            onClick={() => !activeOnly && toggleActiveOnly()}
+                            title="Pokaż tylko konta z wydatkami w okresie"
+                            style={{
+                                padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 500,
+                                border: `1px solid ${activeOnly ? C.accentBlue : C.w08}`,
+                                background: activeOnly ? C.accentBlueBg : C.w04,
+                                color: activeOnly ? 'white' : C.textPlaceholder,
+                                cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                        >
+                            Aktywne
+                        </button>
+                    </div>
+                    <button onClick={toggleCompactMode} title={compactMode ? 'Pokaż wszystkie kolumny' : 'Tryb kompaktowy'} style={{
                         display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 10px',
                         borderRadius: R.md, background: compactMode ? C.infoBg : C.w04, border: compactMode ? B.info : B.subtle,
                         color: compactMode ? C.accentBlue : C.w50, fontSize: 12, cursor: 'pointer',
@@ -488,10 +549,17 @@ export default function MCCOverviewPage() {
                 </div>
             </div>
 
-            {/* KPI strip */}
+            {/* KPI strip — Wydatki adapts to currency: single currency shows full sum,
+                mixed shows per-currency breakdown so Kuba never confuses 100k zł with 100k $. */}
             {(() => {
+                const spendValue = sharedCurrency
+                    ? fmtMoneyC(totalSpend, sharedCurrency)
+                    : uniqueCurrencies
+                        .sort((a, b) => spendByCurrency[b] - spendByCurrency[a])
+                        .map(cur => fmtMoneyC(spendByCurrency[cur], cur))
+                        .join(' · ')
                 const kpis = [
-                    { label: 'Wydatki', value: sharedCurrency ? fmtMoneyC(totalSpend, sharedCurrency) : fmtMoney(totalSpend) },
+                    { label: 'Wydatki', value: spendValue },
                     totalClicks > 0 && { label: 'Kliknięcia', value: fmtNum(totalClicks) },
                     totalImpr > 0 && { label: 'Wyświetlenia', value: fmtNum(totalImpr) },
                     { label: 'Konwersje', value: fmtNum(totalConv, 1) },
@@ -502,7 +570,11 @@ export default function MCCOverviewPage() {
                         {kpis.map(kpi => (
                             <div key={kpi.label} className={CARD} style={{ padding: '14px 16px' }}>
                                 <div style={T.kpiLabel}>{kpi.label}</div>
-                                <div style={{ ...T.kpiValue, fontSize: 18, marginTop: 2 }}>{kpi.value}</div>
+                                <div style={{
+                                    ...T.kpiValue,
+                                    fontSize: kpi.label === 'Wydatki' && !sharedCurrency ? 14 : 18,
+                                    marginTop: 2,
+                                }}>{kpi.value}</div>
                             </div>
                         ))}
                     </div>
@@ -560,8 +632,8 @@ export default function MCCOverviewPage() {
                                 {!compactMode && <SortHeader label="CVR" field="conversion_rate_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 {!compactMode && <SortHeader label="Wart. konw." field="conversion_value" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 <SortHeader label="CPA" field="cpa" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                <SortHeader label="ROAS" field="roas_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
-                                {hasAnyIS && <SortHeader label="IS" field="search_impression_share_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
+                                <SortHeader label="ROAS" field="roas" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />
+                                {!compactMode && <SortHeader label="IS" field="search_impression_share_pct" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="right" />}
                                 <SortHeader label="Health" field="health_score" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} align="center" />
                                 <th style={{ ...TH, minWidth: 120 }}>Pacing</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>Płatności</th>
@@ -639,20 +711,21 @@ export default function MCCOverviewPage() {
                                         {!compactMode && <td style={{ ...TD, textAlign: 'right' }}>{acc.conversion_value > 0 ? fmtMoneyC(acc.conversion_value, acc.currency) : '—'}</td>}
                                         {/* CPA */}
                                         <td style={{ ...TD, textAlign: 'right' }}>{acc.cpa != null ? fmtMoneyC(acc.cpa, acc.currency) : '—'}</td>
-                                        {/* ROAS */}
+                                        {/* ROAS — multiplier (e.g. 4.20x) instead of percent.
+                                            >=4x green, >=2x blue, <2x warning. */}
                                         <td style={{ ...TD, textAlign: 'right' }}>
-                                            {acc.roas_pct != null
-                                                ? <span style={{ color: acc.roas_pct >= 400 ? C.success : acc.roas_pct >= 200 ? C.accentBlue : C.warning }}>{acc.roas_pct.toFixed(0)}%</span>
+                                            {acc.roas != null
+                                                ? <span style={{ color: acc.roas >= 4.0 ? C.success : acc.roas >= 2.0 ? C.accentBlue : C.warning }}>{acc.roas.toFixed(2)}x</span>
                                                 : '—'}
                                         </td>
-                                        {/* Impression Share — hidden when no account has IS data */}
-                                        {hasAnyIS && (
+                                        {/* Impression Share — visible in expanded mode, dash if no data */}
+                                        {!compactMode && (
                                             <td style={{ ...TD, textAlign: 'right' }}>
                                                 {acc.search_impression_share_pct != null
                                                     ? <span style={{ color: acc.search_impression_share_pct >= 60 ? C.success : acc.search_impression_share_pct >= 30 ? C.warning : C.danger }}>
                                                         {acc.search_impression_share_pct.toFixed(1)}%
                                                     </span>
-                                                    : '—'}
+                                                    : <span style={{ color: C.w30 }}>—</span>}
                                             </td>
                                         )}
                                         {/* Health Score */}

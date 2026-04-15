@@ -39,7 +39,12 @@ class MCCService:
     # Public API
     # ------------------------------------------------------------------
 
-    def get_overview(self, date_from: date | None = None, date_to: date | None = None) -> dict:
+    def get_overview(
+        self,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        active_only: bool = False,
+    ) -> dict:
         today = date.today()
         if not date_from:
             date_from = today.replace(day=1)  # 1st of current month
@@ -54,7 +59,10 @@ class MCCService:
 
         accounts = []
         for client in clients:
-            accounts.append(self._build_account_data(client, date_from, date_to))
+            account = self._build_account_data(client, date_from, date_to)
+            if active_only and (account["spend"] or 0) <= 0:
+                continue
+            accounts.append(account)
 
         return {
             "synced_at": datetime.now(timezone.utc).isoformat(),
@@ -365,7 +373,8 @@ class MCCService:
         impressions = metrics["impressions"]
 
         cpa = round(spend / conversions, 2) if conversions > 0 else None
-        roas = round(conv_value / spend * 100, 1) if spend > 0 and conv_value > 0 else None
+        # ROAS as a multiplier (e.g. 4.20x), not a percentage. Frontend renders "4.20x".
+        roas = round(conv_value / spend, 2) if spend > 0 and conv_value > 0 else None
         ctr = round(clicks / impressions * 100, 2) if impressions > 0 else None
         avg_cpc = round(spend / clicks, 2) if clicks > 0 else None
         conv_rate = round(conversions / clicks * 100, 2) if clicks > 0 else None
@@ -468,7 +477,7 @@ class MCCService:
             "conversion_rate_pct": conv_rate,
             "conversion_value": round(conv_value, 2),
             "cpa": cpa,
-            "roas_pct": roas,
+            "roas": roas,
             "search_impression_share_pct": is_pct,
             # Pacing
             "pacing": pacing,
@@ -490,7 +499,13 @@ class MCCService:
         }
 
     def _aggregate_metrics(self, client_id: int, start: date, end: date) -> dict:
-        """Aggregate all key metrics for a client over a date range."""
+        """Aggregate all key metrics for a client over a date range.
+
+        Impression share is a weighted average by spend rather than a plain mean —
+        a 100k zł campaign at 80% IS should outweigh a 1k zł campaign at 10% IS,
+        which a plain func.avg would not reflect.
+        """
+        from sqlalchemy import case
         row = (
             self._campaign_metrics_query(client_id, start, end)
             .with_entities(
@@ -499,7 +514,22 @@ class MCCService:
                 func.sum(MetricDaily.cost_micros),
                 func.sum(MetricDaily.conversions),
                 func.sum(MetricDaily.conversion_value_micros),
-                func.avg(MetricDaily.search_impression_share),
+                # numerator: sum(IS * cost_micros) only for rows where IS is not null
+                func.sum(
+                    case(
+                        (MetricDaily.search_impression_share.isnot(None),
+                         MetricDaily.search_impression_share * MetricDaily.cost_micros),
+                        else_=0,
+                    )
+                ),
+                # denominator: sum(cost_micros) only for rows where IS is not null
+                func.sum(
+                    case(
+                        (MetricDaily.search_impression_share.isnot(None),
+                         MetricDaily.cost_micros),
+                        else_=0,
+                    )
+                ),
             )
             .first()
         )
@@ -508,7 +538,9 @@ class MCCService:
         cost_micros = int(row[2] or 0)
         conversions = float(row[3] or 0)
         conv_value_micros = int(row[4] or 0)
-        avg_is = round(float(row[5]), 4) if row[5] is not None else None
+        is_weighted_num = float(row[5] or 0)
+        is_weighted_denom = float(row[6] or 0)
+        avg_is = round(is_weighted_num / is_weighted_denom, 4) if is_weighted_denom > 0 else None
 
         return {
             "clicks": clicks,

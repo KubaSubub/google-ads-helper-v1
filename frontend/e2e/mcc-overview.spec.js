@@ -21,7 +21,7 @@ const MOCK_MCC_OVERVIEW = {
             ctr_pct: 5.16,
             avg_cpc: 1.68,
             cpa: 9.39,
-            roas_pct: 1904,
+            roas: 19.04,
             conversion_rate_pct: 17.9,
             search_impression_share_pct: 96.2,
             total_changes: 59,
@@ -53,7 +53,7 @@ const MOCK_MCC_OVERVIEW = {
             ctr_pct: 4.57,
             avg_cpc: 1.72,
             cpa: 77.51,
-            roas_pct: 77,
+            roas: 0.77,
             conversion_rate_pct: 2.2,
             search_impression_share_pct: null,
             total_changes: 95,
@@ -85,7 +85,7 @@ const MOCK_MCC_OVERVIEW = {
             ctr_pct: null,
             avg_cpc: null,
             cpa: null,
-            roas_pct: null,
+            roas: null,
             conversion_rate_pct: null,
             search_impression_share_pct: null,
             total_changes: 0,
@@ -210,8 +210,8 @@ test('MCC Overview — account row shows key metrics', async ({ page }) => {
     // Sushi Naka Naka metrics in compact mode
     await expect(page.locator('text=254,2')).toBeVisible();      // conversions
     await expect(page.locator('text=9,39')).toBeVisible();       // CPA
-    await expect(page.locator('text=1904%')).toBeVisible();      // ROAS
-    await expect(page.locator('text=96.2%')).toBeVisible();      // IS (toFixed — dot, not comma)
+    await expect(page.locator('text=19.04x')).toBeVisible();     // ROAS as multiplier (was 1904%)
+    // IS column moved to expanded mode — not asserted in compact view
 
     // Klimfix — inactive account shows zeros
     await expect(page.locator('text=Brak danych').first()).toBeVisible(); // pacing no_data
@@ -221,15 +221,16 @@ test('MCC Overview — table headers present in compact mode', async ({ page }) 
     await page.goto('/mcc-overview');
     await expect(page.locator('h1:has-text("Wszystkie konta")')).toBeVisible({ timeout: 10_000 });
 
-    const headers = ['Konto', 'Wydatki', 'Konwersje', 'CPA', 'ROAS', 'IS', 'Pacing', 'Płatności', 'Zmiany', 'Sync'];
+    const headers = ['Konto', 'Wydatki', 'Konwersje', 'CPA', 'ROAS', 'Pacing', 'Płatności', 'Zmiany', 'Sync'];
     for (const h of headers) {
         await expect(page.locator(`th:has-text("${h}")`).first()).toBeVisible();
     }
 
-    // Compact mode — these headers should NOT be visible
+    // Compact mode — these headers should NOT be visible (IS now part of this set)
     await expect(page.locator('th:has-text("Kliknięcia")')).not.toBeVisible();
     await expect(page.locator('th:has-text("CTR")')).not.toBeVisible();
     await expect(page.locator('th:has-text("CPC")')).not.toBeVisible();
+    await expect(page.locator('th:has-text("IS")')).not.toBeVisible();
 });
 
 // ─── 3. Compact mode toggle ────────────────────────────────────────
