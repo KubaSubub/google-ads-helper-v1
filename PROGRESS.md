@@ -1,9 +1,9 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-14
+# Updated: 2026-04-15
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 673 tests collected (pytest --collect-only)
+- Backend: 686 tests collected (pytest --collect-only)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSyncConfig + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
@@ -59,6 +59,20 @@
 1. **Tydz 1-2:** Cloud deploy (Railway/Fly.io) + PostgreSQL zamiast SQLite
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
+
+## MCC Overview — Sprint 1-3 + Currency P0 + Active Accounts Filter (2026-04-15)
+- P0 Currency-aware spend totals: single-currency MCC shows full sum; mixed-currency shows per-currency breakdown (e.g. `12 480,00 zł · $3 200,00`)
+- Sprint 1: IS column moved to expanded mode, Math.round on clicks/impressions in KPI strip, localStorage persistence for sortBy/sortDir/compactMode/activeOnly
+- Sprint 2: `active_only` filter on `GET /mcc/overview` + frontend "Wszystkie / Aktywne" pill toggle (server-side, persisted in localStorage); ROAS field renamed `roas_pct → roas`, stored as multiplier (e.g. `4.20x`, thresholds: >=4 green / >=2 blue / <2 warn)
+- Sprint 3: IS weighted average — `_aggregate_metrics` uses `sum(IS*cost)/sum(cost)` instead of naive `avg(IS)` (100k zł @ 80% IS correctly outweighs 1k zł @ 10%)
+- 5 new backend lock tests, 678 total. Vite build OK.
+- Scope: per `zmiany mcc-overwiev od prezesa.md`. Skipped by request: bell→/alerts, CSV export, health pillars drilldown.
+- Commit: a03c081
+
+## Sync Fix — partial→success + SQLite Lock + Correlation 400 (2026-04-15)
+- Fixed 3 root causes blocking full sync from completing with `success` status (commit 6a87056)
+- Fixed SQLite lock on recommendations persist during sync (commit 41f6666)
+- Fixed correlation 400 error in console (commit 41f6666)
 
 ## MCC Overview — Sync History Panel + Freshness Badge (2026-04-14)
 - New `SyncHistoryPanel` component in MCCOverviewPage — shows per-account sync history (status, duration, records synced, errors, timestamps)
