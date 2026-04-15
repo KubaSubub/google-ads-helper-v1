@@ -3961,7 +3961,8 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     customer_client.id,
                     customer_client.descriptive_name,
                     customer_client.manager,
-                    customer_client.level
+                    customer_client.level,
+                    customer_client.currency_code
                 FROM customer_client
                 WHERE customer_client.level <= 1
             """
@@ -3972,9 +3973,11 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 cc = row.customer_client
                 if cc.manager:
                     continue
+                currency_code = (getattr(cc, "currency_code", "") or "").strip().upper() or None
                 accounts.append({
                     "customer_id": str(cc.id),
                     "name": cc.descriptive_name or f"Account {cc.id}",
+                    "currency_code": currency_code,
                 })
 
             logger.info(f"Discovered {len(accounts)} client accounts under MCC {mcc_id}")

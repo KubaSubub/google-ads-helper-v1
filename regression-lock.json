@@ -1,0 +1,30 @@
+{
+  "locks": [
+    {
+      "file": "backend/app/services/google_ads.py",
+      "guardian_tests": [
+        "backend/tests/test_auth_session.py::test_discover_accounts_reads_mcc_from_secure_store",
+        "backend/tests/test_auth_session.py::test_discover_clients_persists_currency_for_new_and_existing",
+        "backend/tests/test_auth_session.py::test_discover_accounts_skips_manager_rows_but_keeps_currency",
+        "backend/tests/test_auth_session.py::test_discover_accounts_handles_missing_currency_attribute"
+      ],
+      "bug": "MCC discover hardcoded PLN — currency never read from customer_client.currency_code",
+      "fixed_date": "2026-04-15",
+      "commit": "pending"
+    },
+    {
+      "file": "backend/app/routers/clients.py",
+      "guardian_tests": [
+        "backend/tests/test_auth_session.py::test_discover_clients_persists_currency_for_new_and_existing",
+        "backend/tests/test_auth_session.py::test_discover_missing_currency_code_falls_back_to_pln_for_new_client",
+        "backend/tests/test_auth_session.py::test_discover_missing_currency_code_preserves_existing_client_currency",
+        "backend/tests/test_auth_session.py::test_discover_empty_string_currency_treated_as_missing",
+        "backend/tests/test_auth_session.py::test_discover_lowercase_currency_normalized_to_uppercase",
+        "backend/tests/test_auth_session.py::test_discover_currency_update_counter_reports_changed_clients"
+      ],
+      "bug": "/clients/discover did not persist currency_code for new clients and never refreshed it for existing ones",
+      "fixed_date": "2026-04-15",
+      "commit": "pending"
+    }
+  ]
+}

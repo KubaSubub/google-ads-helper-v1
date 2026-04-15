@@ -179,14 +179,15 @@ def test_auth_status_reports_not_ready_when_only_refresh_token_exists(api_client
 
 def test_discover_accounts_reads_mcc_from_secure_store(monkeypatch):
     class FakeCustomerClient:
-        def __init__(self, customer_id, name, manager=False):
+        def __init__(self, customer_id, name, manager=False, currency_code="USD"):
             self.id = customer_id
             self.descriptive_name = name
             self.manager = manager
+            self.currency_code = currency_code
 
     class FakeRow:
-        def __init__(self, customer_id, name, manager=False):
-            self.customer_client = FakeCustomerClient(customer_id, name, manager)
+        def __init__(self, customer_id, name, manager=False, currency_code="USD"):
+            self.customer_client = FakeCustomerClient(customer_id, name, manager, currency_code)
 
     class FakeSearchService:
         def __init__(self):
@@ -195,7 +196,8 @@ def test_discover_accounts_reads_mcc_from_secure_store(monkeypatch):
         def search(self, customer_id, query):
             self.called_customer_id = customer_id
             assert "customer_client" in query
-            return [FakeRow(4567891234, "Managed Account")]
+            assert "currency_code" in query
+            return [FakeRow(4567891234, "Managed Account", currency_code="USD")]
 
     class FakeClient:
         def __init__(self, service):
@@ -215,7 +217,214 @@ def test_discover_accounts_reads_mcc_from_secure_store(monkeypatch):
     accounts = google_ads_service.discover_accounts()
 
     assert fake_search_service.called_customer_id == "9988776655"
-    assert accounts == [{"customer_id": "4567891234", "name": "Managed Account"}]
+    assert accounts == [
+        {"customer_id": "4567891234", "name": "Managed Account", "currency_code": "USD"}
+    ]
+
+
+def test_discover_clients_persists_currency_for_new_and_existing(api_client, db, monkeypatch):
+    """Reproducer: discover must set client.currency from Google Ads customer_client.currency_code.
+
+    Before fix: all new clients default to 'PLN'; existing clients' currency never
+    refreshed from the API, so UI shows 'zl' everywhere even for USD/EUR accounts.
+    """
+    # Existing client mistakenly marked PLN — should be corrected to EUR on discover.
+    stale = Client(name="Stale Account", google_customer_id="1111111111", currency="PLN")
+    db.add(stale)
+    db.commit()
+
+    monkeypatch.setattr(
+        "app.routers.clients.google_ads_service.get_connection_diagnostics",
+        lambda: {
+            "authenticated": True,
+            "configured": True,
+            "ready": True,
+            "connected": True,
+            "reason": "ok",
+            "missing_credentials": [],
+            "has_login_customer_id": True,
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.clients.CredentialsService.get",
+        lambda key: "9988776655" if key == CredentialsService.LOGIN_CUSTOMER_ID else None,
+    )
+    monkeypatch.setattr(
+        "app.routers.clients.google_ads_service.discover_accounts",
+        lambda: [
+            {"customer_id": "1111111111", "name": "Stale Account", "currency_code": "EUR"},
+            {"customer_id": "2222222222", "name": "Fresh USD Acct", "currency_code": "USD"},
+        ],
+    )
+
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
+    assert response.status_code == 200
+
+    refreshed = db.query(Client).filter(Client.google_customer_id == "1111111111").one()
+    assert refreshed.currency == "EUR", (
+        "Existing client currency must be refreshed from MCC (was PLN, API reports EUR)."
+    )
+
+    new_client = db.query(Client).filter(Client.google_customer_id == "2222222222").one()
+    assert new_client.currency == "USD", (
+        "New discovered client must inherit currency_code from MCC, not default to PLN."
+    )
+
+
+def _patch_discover(monkeypatch, accounts):
+    monkeypatch.setattr(
+        "app.routers.clients.google_ads_service.get_connection_diagnostics",
+        lambda: {
+            "authenticated": True,
+            "configured": True,
+            "ready": True,
+            "connected": True,
+            "reason": "ok",
+            "missing_credentials": [],
+            "has_login_customer_id": True,
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.clients.CredentialsService.get",
+        lambda key: "9988776655" if key == CredentialsService.LOGIN_CUSTOMER_ID else None,
+    )
+    monkeypatch.setattr(
+        "app.routers.clients.google_ads_service.discover_accounts",
+        lambda: accounts,
+    )
+
+
+def test_discover_missing_currency_code_falls_back_to_pln_for_new_client(api_client, db, monkeypatch):
+    _patch_discover(monkeypatch, [
+        {"customer_id": "3000000001", "name": "No Currency", "currency_code": None},
+    ])
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
+    assert response.status_code == 200
+    client = db.query(Client).filter(Client.google_customer_id == "3000000001").one()
+    assert client.currency == "PLN"
+
+
+def test_discover_missing_currency_code_preserves_existing_client_currency(api_client, db, monkeypatch):
+    db.add(Client(name="Keep EUR", google_customer_id="3000000002", currency="EUR"))
+    db.commit()
+    _patch_discover(monkeypatch, [
+        {"customer_id": "3000000002", "name": "Keep EUR", "currency_code": None},
+    ])
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
+    assert response.status_code == 200
+    client = db.query(Client).filter(Client.google_customer_id == "3000000002").one()
+    assert client.currency == "EUR", "Missing currency_code must NOT overwrite existing value"
+
+
+def test_discover_empty_string_currency_treated_as_missing(api_client, db, monkeypatch):
+    db.add(Client(name="Keep USD", google_customer_id="3000000003", currency="USD"))
+    db.commit()
+    _patch_discover(monkeypatch, [
+        {"customer_id": "3000000003", "name": "Keep USD", "currency_code": "   "},
+    ])
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
+    assert response.status_code == 200
+    client = db.query(Client).filter(Client.google_customer_id == "3000000003").one()
+    assert client.currency == "USD"
+
+
+def test_discover_lowercase_currency_normalized_to_uppercase(api_client, db, monkeypatch):
+    _patch_discover(monkeypatch, [
+        {"customer_id": "3000000004", "name": "Lower GBP", "currency_code": "gbp"},
+    ])
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
+    assert response.status_code == 200
+    client = db.query(Client).filter(Client.google_customer_id == "3000000004").one()
+    assert client.currency == "GBP"
+
+
+def test_discover_currency_update_counter_reports_changed_clients(api_client, db, monkeypatch):
+    db.add(Client(name="C1", google_customer_id="3000000010", currency="PLN"))
+    db.add(Client(name="C2", google_customer_id="3000000011", currency="USD"))
+    db.add(Client(name="C3", google_customer_id="3000000012", currency="EUR"))
+    db.commit()
+    _patch_discover(monkeypatch, [
+        {"customer_id": "3000000010", "name": "C1", "currency_code": "EUR"},  # change
+        {"customer_id": "3000000011", "name": "C2", "currency_code": "USD"},  # same
+        {"customer_id": "3000000012", "name": "C3", "currency_code": "PLN"},  # change
+    ])
+    response = api_client.post("/api/v1/clients/discover", cookies=_auth_cookies())
+    body = response.json()
+    assert body["currency_updated"] == 2
+    assert body["added"] == 0
+    assert body["skipped"] == 3
+
+
+def test_discover_accounts_skips_manager_rows_but_keeps_currency(monkeypatch):
+    class FakeCC:
+        def __init__(self, cid, name, manager, currency):
+            self.id = cid
+            self.descriptive_name = name
+            self.manager = manager
+            self.currency_code = currency
+
+    class FakeRow:
+        def __init__(self, cc):
+            self.customer_client = cc
+
+    class FakeSearchService:
+        def search(self, customer_id, query):
+            return [
+                FakeRow(FakeCC(1, "Mgr", True, "USD")),
+                FakeRow(FakeCC(2, "Client A", False, "EUR")),
+                FakeRow(FakeCC(3, "Client B", False, "PLN")),
+            ]
+
+    class FakeClient:
+        def __init__(self, svc):
+            self._svc = svc
+
+        def get_service(self, _name):
+            return self._svc
+
+    monkeypatch.setattr(
+        "app.services.google_ads.CredentialsService.get",
+        lambda key: "9988776655" if key == CredentialsService.LOGIN_CUSTOMER_ID else None,
+    )
+    monkeypatch.setattr(google_ads_service, "client", FakeClient(FakeSearchService()), raising=False)
+
+    accounts = google_ads_service.discover_accounts()
+    assert len(accounts) == 2
+    assert {a["customer_id"]: a["currency_code"] for a in accounts} == {
+        "2": "EUR",
+        "3": "PLN",
+    }
+
+
+def test_discover_accounts_handles_missing_currency_attribute(monkeypatch):
+    class FakeCC:
+        def __init__(self):
+            self.id = 99
+            self.descriptive_name = "Legacy"
+            self.manager = False
+            # no currency_code attribute at all
+
+    class FakeRow:
+        customer_client = FakeCC()
+
+    class FakeSearchService:
+        def search(self, customer_id, query):
+            return [FakeRow()]
+
+    class FakeClient:
+        def get_service(self, _name):
+            return FakeSearchService()
+
+    monkeypatch.setattr(
+        "app.services.google_ads.CredentialsService.get",
+        lambda key: "9988776655" if key == CredentialsService.LOGIN_CUSTOMER_ID else None,
+    )
+    monkeypatch.setattr(google_ads_service, "client", FakeClient(), raising=False)
+
+    accounts = google_ads_service.discover_accounts()
+    assert accounts == [
+        {"customer_id": "99", "name": "Legacy", "currency_code": None}
+    ]
 
 
 def test_sync_campaigns_falls_back_to_minimal_query_when_extended_query_is_rejected(db, monkeypatch):

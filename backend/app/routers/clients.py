@@ -1036,23 +1036,37 @@ def discover_clients(
 
     added = 0
     skipped = 0
+    currency_updated = 0
     for account in accounts:
+        currency = (account.get("currency_code") or "").strip().upper() or None
         existing = db.query(Client).filter(
             Client.google_customer_id == account["customer_id"]
         ).first()
         if existing:
             skipped += 1
+            # Refresh currency from MCC if API reports a different value — otherwise
+            # stale defaults (PLN) stick around and the KPI strip mislabels USD/EUR spend.
+            if currency and existing.currency != currency:
+                existing.currency = currency
+                currency_updated += 1
             continue
 
-        db.add(Client(name=account["name"], google_customer_id=account["customer_id"]))
+        db.add(Client(
+            name=account["name"],
+            google_customer_id=account["customer_id"],
+            currency=currency or "PLN",
+        ))
         added += 1
 
     db.commit()
-    logger.info(f"Discover: added={added}, skipped={skipped}")
+    logger.info(
+        f"Discover: added={added}, skipped={skipped}, currency_updated={currency_updated}"
+    )
     return {
         "message": f"Dodano {added} klientow ({skipped} juz istnialo).",
         "added": added,
         "skipped": skipped,
+        "currency_updated": currency_updated,
     }
 
 
