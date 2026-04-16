@@ -311,7 +311,7 @@ export default function MCCOverviewPage() {
     // /sync/trigger is a 24-phase full sync. Real measurements show 20-45s per
     // client under contention. Default axios timeout (30s) is not enough —
     // use 3 minutes per client to cover worst case.
-    const SYNC_CALL_TIMEOUT_MS = 180_000
+    const SYNC_CALL_TIMEOUT_MS = 600_000
 
     // Shared sync routine. Returns { ok, message } — never throws.
     // `silent=true` suppresses toast (used by bulk flow which shows an aggregate toast).
