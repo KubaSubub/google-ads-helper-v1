@@ -705,16 +705,19 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
 
             count = 0
             seen_google_campaign_ids: set[str] = set()
+            existing_campaigns_map: dict[str, Campaign] = {
+                c.google_campaign_id: c
+                for c in db.query(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
             for row in response:
                 campaign = row.campaign
                 budget = row.campaign_budget
                 google_campaign_id = str(campaign.id)
                 seen_google_campaign_ids.add(google_campaign_id)
 
-                existing = db.query(Campaign).filter(
-                    Campaign.client_id == client_record.id,
-                    Campaign.google_campaign_id == google_campaign_id,
-                ).first()
+                existing = existing_campaigns_map.get(google_campaign_id)
 
                 bidding_strategy = existing.bidding_strategy if existing else None
                 if selected_query == "extended" and getattr(campaign, "bidding_strategy_type", None):
@@ -829,14 +832,17 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
         try:
             response = ga_service.search(customer_id=customer_id, query=query)
             count = 0
+            campaigns_map: dict[str, Campaign] = {
+                c.google_campaign_id: c
+                for c in db.query(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
             for row in response:
                 campaign_google_id = str(row.campaign.id)
                 m = row.metrics
 
-                campaign = db.query(Campaign).filter(
-                    Campaign.client_id == client_record.id,
-                    Campaign.google_campaign_id == campaign_google_id,
-                ).first()
+                campaign = campaigns_map.get(campaign_google_id)
                 if not campaign:
                     continue
 
@@ -895,24 +901,31 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             response = ga_service.search(customer_id=normalized_customer_id, query=query)
             count = 0
             seen_ad_group_keys: set[tuple[int, str]] = set()
+            campaigns_map: dict[str, Campaign] = {
+                c.google_campaign_id: c
+                for c in db.query(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
+            existing_ad_groups_map: dict[tuple[int, str], AdGroup] = {
+                (ag.campaign_id, ag.google_ad_group_id): ag
+                for ag in db.query(AdGroup)
+                .join(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
             for row in response:
                 ad_group = row.ad_group
                 campaign_google_id = str(row.campaign.id)
 
-                campaign = db.query(Campaign).filter(
-                    Campaign.client_id == client_record.id,
-                    Campaign.google_campaign_id == campaign_google_id,
-                ).first()
+                campaign = campaigns_map.get(campaign_google_id)
                 if not campaign:
                     continue
 
                 google_ad_group_id = str(ad_group.id)
                 seen_ad_group_keys.add((campaign.id, google_ad_group_id))
 
-                existing = db.query(AdGroup).filter(
-                    AdGroup.campaign_id == campaign.id,
-                    AdGroup.google_ad_group_id == google_ad_group_id,
-                ).first()
+                existing = existing_ad_groups_map.get((campaign.id, google_ad_group_id))
 
                 data = {
                     "campaign_id": campaign.id,
@@ -988,19 +1001,27 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             count = 0
             seen_ad_keys: set[tuple[int, str]] = set()
 
+            ad_groups_map: dict[str, AdGroup] = {
+                ag.google_ad_group_id: ag
+                for ag in db.query(AdGroup)
+                .join(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
+            existing_ads_map: dict[tuple[int, str], Ad] = {
+                (ad.ad_group_id, ad.google_ad_id): ad
+                for ad in db.query(Ad)
+                .join(AdGroup)
+                .join(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
+
             for row in response:
                 ad_data = row.ad_group_ad.ad
                 google_ad_group_id = str(row.ad_group.id)
 
-                ad_group = (
-                    db.query(AdGroup)
-                    .join(Campaign)
-                    .filter(
-                        Campaign.client_id == client_record.id,
-                        AdGroup.google_ad_group_id == google_ad_group_id,
-                    )
-                    .first()
-                )
+                ad_group = ad_groups_map.get(google_ad_group_id)
                 if not ad_group:
                     continue
 
@@ -1050,10 +1071,7 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     "ctr": round(row.metrics.ctr * 100, 2) if row.metrics.ctr else 0.0,
                 }
 
-                existing = db.query(Ad).filter(
-                    Ad.ad_group_id == ad_group.id,
-                    Ad.google_ad_id == google_ad_id,
-                ).first()
+                existing = existing_ads_map.get((ad_group.id, google_ad_id))
 
                 if existing:
                     for key, value in data.items():
@@ -2266,6 +2284,21 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             response = ga_service.search(customer_id=normalized_customer_id, query=query)
             count = 0
             seen_keyword_keys: set[tuple[int, str]] = set()
+            ad_groups_map: dict[str, AdGroup] = {
+                ag.google_ad_group_id: ag
+                for ag in db.query(AdGroup)
+                .join(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
+            existing_keywords_map: dict[tuple[int, str], Keyword] = {
+                (kw.ad_group_id, kw.google_keyword_id): kw
+                for kw in db.query(Keyword)
+                .join(AdGroup)
+                .join(Campaign)
+                .filter(Campaign.client_id == client_record.id)
+                .all()
+            }
             for row in response:
                 campaign_google_id = str(row.campaign.id)
                 ad_group_google_id = str(row.ad_group.id)
@@ -2284,25 +2317,14 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     )
                     continue
 
-                ad_group = (
-                    db.query(AdGroup)
-                    .join(Campaign)
-                    .filter(
-                        Campaign.client_id == client_record.id,
-                        AdGroup.google_ad_group_id == ad_group_google_id,
-                    )
-                    .first()
-                )
+                ad_group = ad_groups_map.get(ad_group_google_id)
                 if not ad_group:
                     continue
 
                 google_keyword_id = str(criterion.criterion_id)
                 seen_keyword_keys.add((ad_group.id, google_keyword_id))
 
-                existing = db.query(Keyword).filter(
-                    Keyword.ad_group_id == ad_group.id,
-                    Keyword.google_keyword_id == google_keyword_id,
-                ).first()
+                existing = existing_keywords_map.get((ad_group.id, google_keyword_id))
 
                 clicks = metrics.clicks
                 impressions = metrics.impressions
