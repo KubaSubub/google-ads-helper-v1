@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
+from app.dependencies import CommonFilters, common_filters
 from app.models import AdGroup, Campaign, Client, MetricDaily
 from app.schemas import CampaignResponse, CampaignUpdate, MetricDailyResponse, PaginatedResponse
 from app.services.campaign_roles import apply_manual_role_override, ensure_campaign_roles
@@ -16,25 +17,25 @@ router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 
 @router.get("/", response_model=PaginatedResponse)
 def list_campaigns(
-    client_id: int = Query(..., description="Filter by client ID"),
-    status: str = Query(None, description="Filter by status: ENABLED, PAUSED, REMOVED"),
-    campaign_type: str = Query(None, description="Filter by type: SEARCH, DISPLAY, etc."),
+    filters: CommonFilters = Depends(common_filters),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """List campaigns for a client with filtering and pagination."""
-    query = db.query(Campaign).filter(Campaign.client_id == client_id)
+    if filters.client_id is None:
+        raise HTTPException(status_code=400, detail="client_id is required")
+    query = db.query(Campaign).filter(Campaign.client_id == filters.client_id)
 
-    if status:
-        query = query.filter(Campaign.status == status.upper())
-    if campaign_type:
-        query = query.filter(Campaign.campaign_type == campaign_type.upper())
+    if filters.campaign_status:
+        query = query.filter(Campaign.status == filters.campaign_status)
+    if filters.campaign_type:
+        query = query.filter(Campaign.campaign_type == filters.campaign_type)
 
     total = query.count()
     items = query.order_by(Campaign.name).offset((page - 1) * page_size).limit(page_size).all()
 
-    client = db.get(Client, client_id)
+    client = db.get(Client, filters.client_id)
     if items and client and ensure_campaign_roles(items, client):
         db.commit()
         for item in items:

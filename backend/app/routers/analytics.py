@@ -17,6 +17,7 @@ except ImportError as _import_err:
 
 from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
+from app.dependencies import CommonFilters, common_filters
 from app.models import MetricDaily, Campaign, Client, Keyword, KeywordDaily, AdGroup, Alert, MetricSegmented
 from app.schemas import PeriodComparisonRequest, PeriodComparisonResponse, CorrelationRequest
 from app.services.analytics_service import AnalyticsService
@@ -440,23 +441,23 @@ def compare_periods(data: PeriodComparisonRequest, db: Session = Depends(get_db)
 
 @router.get("/dashboard-kpis")
 def dashboard_kpis(
-    client_id: int = Query(...),
-    days: int = Query(30, ge=1, le=365),
-    date_from: date = Query(None, description="Start date (overrides days)"),
-    date_to: date = Query(None, description="End date (overrides days)"),
-    campaign_type: str = Query("ALL"),
-    campaign_status: str = Query(None, description="Campaign status filter"),
-    status: str = Query("ALL", description="Alias for campaign_status (backward compat)"),
+    filters: CommonFilters = Depends(common_filters),
     db: Session = Depends(get_db),
 ):
     """Aggregated KPIs with period-over-period comparison."""
-    effective_status = campaign_status or status
-    current_start, today = resolve_dates(days, date_from, date_to)
+    if filters.client_id is None:
+        raise HTTPException(status_code=400, detail="client_id is required")
+    client_id = filters.client_id
+    current_start, today = filters.date_from, filters.date_to
     period_len = (today - current_start).days
     previous_start = current_start - timedelta(days=period_len)
 
     svc = AnalyticsService(db)
-    campaign_ids = svc._filter_campaign_ids(client_id, campaign_type, effective_status)
+    campaign_ids = svc._filter_campaign_ids(
+        client_id,
+        filters.campaign_type,
+        filters.campaign_status,
+    )
     if not campaign_ids:
         return {"current": {}, "previous": {}, "change_pct": {}}
 

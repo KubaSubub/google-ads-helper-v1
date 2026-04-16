@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.demo_guard import ensure_demo_write_allowed
+from app.dependencies import CommonFilters, common_filters
 from app.models import Ad, AdGroup, Campaign, Keyword, KeywordDaily, NegativeKeyword
 from app.models.action_log import ActionLog
 from app.models.negative_keyword_list import NegativeKeywordList, NegativeKeywordListItem
@@ -50,9 +51,10 @@ def _apply_keyword_filters(
         query = query.filter(Keyword.status.in_(("ENABLED", "PAUSED")))
     if match_type:
         query = query.filter(Keyword.match_type == match_type.upper())
-    if campaign_type and campaign_type != "ALL":
+    # campaign_type / campaign_status come pre-normalized by common_filters (None = no filter, no "ALL" sentinel)
+    if campaign_type:
         query = query.filter(Campaign.campaign_type == campaign_type)
-    if campaign_status and campaign_status != "ALL":
+    if campaign_status:
         query = query.filter(Campaign.status == campaign_status)
     if search:
         query = query.filter(Keyword.text.ilike(f"%{search}%"))
@@ -126,16 +128,10 @@ def _serialize_negative_keyword(
 
 @router.get("/keywords/", response_model=PaginatedResponse[KeywordResponse])
 def list_keywords(
-    client_id: int = Query(None),
-    campaign_id: int = Query(None),
-    ad_group_id: int = Query(None),
-    status: str = Query(None),
+    filters: CommonFilters = Depends(common_filters),
+    keyword_status: str = Query(None, alias="status", description="Keyword status: ENABLED, PAUSED, REMOVED"),
     match_type: str = Query(None),
-    campaign_type: str = Query(None, description="Filter by campaign type: SEARCH, PERFORMANCE_MAX, etc."),
-    campaign_status: str = Query(None, description="Filter by campaign status: ENABLED, PAUSED, REMOVED"),
     include_removed: bool = Query(False, description="Include keywords marked as REMOVED in local cache"),
-    date_from: date = Query(None, description="Aggregate daily metrics from this date"),
-    date_to: date = Query(None, description="Aggregate daily metrics to this date"),
     search: str = Query(None),
     sort_by: str = Query("cost", description="cost, clicks, impressions, ctr, conversions"),
     sort_order: str = Query("desc"),
@@ -145,7 +141,20 @@ def list_keywords(
 ):
     """List keywords with filtering. When date_from/date_to provided, metrics are aggregated from KeywordDaily."""
 
-    if date_from is not None and date_to is not None:
+    if filters.client_id is None and filters.campaign_id is None:
+        raise HTTPException(status_code=400, detail="client_id or campaign_id is required")
+
+    client_id = filters.client_id
+    campaign_id = filters.campaign_id
+    ad_group_id = filters.ad_group_id
+    status = keyword_status
+    campaign_type = filters.campaign_type
+    campaign_status = filters.campaign_status
+    date_from = filters.date_from
+    date_to = filters.date_to
+
+    # Aggregation path when caller supplied a date range; snapshot path otherwise.
+    if filters.dates_explicit:
         agg = (
             db.query(
                 KeywordDaily.keyword_id,

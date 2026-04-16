@@ -13,6 +13,27 @@ function notifyUnauthorized() {
     }
 }
 
+// Dev-only guard — warn when a known data endpoint is hit without client_id.
+// Mirrors backend DATA_ENDPOINTS (tests/test_filters_contract.py). Grow as rollout progresses.
+const DATA_ENDPOINTS = new Set([
+    '/campaigns/',
+    '/keywords/',
+    '/analytics/dashboard-kpis',
+]);
+
+if (import.meta.env?.DEV) {
+    api.interceptors.request.use((config) => {
+        const path = (config.url || '').split('?')[0];
+        if (DATA_ENDPOINTS.has(path)) {
+            const params = config.params || {};
+            if (params.client_id == null) {
+                console.warn(`[filters] ${path} called without client_id — use useFilteredQuery() or buildFilterParams()`);
+            }
+        }
+        return config;
+    });
+}
+
 api.interceptors.response.use(
     (response) => response.data,
     (error) => {
