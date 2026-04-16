@@ -150,6 +150,7 @@ Base API URL: `/api/v1`
 - `POST /analytics/compare-periods`
 - `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias; max span clamped to 365 days)
   - allowed metrics: `cost`, `clicks`, `impressions`, `conversions`, `ctr`, `cpc`, `roas`, `cpa`, `cvr`
+- `GET /analytics/trends-by-device?client_id=X&metric=clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&campaign_ids=1,2` — daily time-series for a single metric split across device segments (MOBILE, DESKTOP, TABLET, OTHER); powers TrendExplorer device segmentation
 - `GET /analytics/health-score?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
 - `GET /analytics/campaign-trends?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
 - `GET /analytics/wow-comparison?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&metric=cost&campaign_type=ALL&campaign_status=&status=ALL` — current vs previous period with day-of-week alignment for overlay chart. Allowed metrics: cost, clicks, impressions, conversions, ctr, cpc, roas, cpa
