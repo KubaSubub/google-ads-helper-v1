@@ -1,53 +1,65 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-    ComposedChart, Line, XAxis, YAxis, Tooltip, Legend,
-    ResponsiveContainer, CartesianGrid, ReferenceLine,
+    ComposedChart, Line, XAxis, YAxis, Tooltip,
+    ResponsiveContainer, CartesianGrid, ReferenceLine, Brush,
 } from 'recharts'
-import { Plus, X, TrendingUp } from 'lucide-react'
-import { getCorrelationMatrix, getTrends, getActionHistory } from '../api'
+import { Plus, X, TrendingUp, Settings, Save, Layers } from 'lucide-react'
+import { getCorrelationMatrix, getTrends, getTrendsByDevice, getUnifiedTimeline } from '../api'
 import { useFilter } from '../contexts/FilterContext'
 import { useApp } from '../contexts/AppContext'
-import { C, T, S, R, B, PILL, MODAL, TOOLTIP_STYLE, SEVERITY, TRANSITION, FONT } from '../constants/designTokens'
+import { C, B } from '../constants/designTokens'
+import {
+    rollingCorrelation,
+    forecastPoints,
+    computeDelta,
+    mergePeriodOverPeriod,
+    loadPresets,
+    savePreset,
+    deletePreset,
+} from './trendExplorerUtils'
 
-const METRIC_COLORS = [C.accentBlue, C.accentPurple, C.success, C.warning, C.danger]
+const METRIC_COLORS = [C.accentBlue, C.accentPurple, C.success, C.warning, C.danger, '#06B6D4', '#EC4899']
+const MAX_METRICS = 7
+const DEVICE_COLORS = { MOBILE: '#4F8EF7', DESKTOP: '#7B5CE0', TABLET: '#FBBF24', OTHER: '#9CA3AF' }
 
+// Unified metric set shared by Dashboard (aggregated) and Campaigns (per-campaign).
 const METRIC_OPTIONS = [
     { key: 'cost', label: 'Koszt (zł)', unit: 'PLN' },
     { key: 'clicks', label: 'Kliknięcia', unit: '' },
     { key: 'impressions', label: 'Wyświetlenia', unit: '' },
     { key: 'conversions', label: 'Konwersje', unit: '' },
-    { key: 'ctr', label: 'CTR (%)', unit: '%', tooltip: 'Click-Through Rate — stosunek kliknięć do wyświetleń' },
-    { key: 'cpc', label: 'CPC (avg)', unit: 'PLN', tooltip: 'Cost Per Click — średni koszt kliknięcia' },
-    { key: 'roas', label: 'ROAS', unit: '', tooltip: 'Return On Ad Spend — przychód na wydaną złotówkę' },
-    { key: 'cpa', label: 'CPA', unit: 'PLN', tooltip: 'Cost Per Acquisition — koszt pozyskania konwersji' },
-    { key: 'cvr', label: 'CVR (%)', unit: '%', tooltip: 'Conversion Rate — procent kliknięć zakończonych konwersją' },
+    { key: 'conversion_value', label: 'Wartość konw.', unit: 'PLN' },
+    { key: 'ctr', label: 'CTR (%)', unit: '%', tooltip: 'Click-Through Rate' },
+    { key: 'cpc', label: 'CPC (avg)', unit: 'PLN', tooltip: 'Średni koszt kliknięcia' },
+    { key: 'cpa', label: 'CPA', unit: 'PLN', tooltip: 'Koszt pozyskania konwersji' },
+    { key: 'cvr', label: 'CVR (%)', unit: '%', tooltip: 'Conversion Rate' },
+    { key: 'roas', label: 'ROAS', unit: '', tooltip: 'Return On Ad Spend' },
+    { key: 'search_impression_share', label: 'Impression Share', unit: '%', searchOnly: true },
+    { key: 'search_top_impression_share', label: 'Top IS', unit: '%', searchOnly: true },
+    { key: 'search_abs_top_impression_share', label: 'Abs Top IS', unit: '%', searchOnly: true },
+    { key: 'search_budget_lost_is', label: 'Budget Lost IS', unit: '%', searchOnly: true },
+    { key: 'search_rank_lost_is', label: 'Rank Lost IS', unit: '%', searchOnly: true },
+    { key: 'search_click_share', label: 'Click Share', unit: '%', searchOnly: true },
+    { key: 'abs_top_impression_pct', label: 'Abs Top %', unit: '%' },
+    { key: 'top_impression_pct', label: 'Top Impr %', unit: '%' },
 ]
+const METRIC_LABELS = Object.fromEntries(METRIC_OPTIONS.map(m => [m.key, m.label]))
 
-const CORRELATION_METRIC_MAP = {
-    cost: 'cost_micros',
-    clicks: 'clicks',
-    impressions: 'impressions',
-    conversions: 'conversions',
-    ctr: 'ctr',
-    cpc: 'avg_cpc_micros',
-    roas: 'roas',
-    cvr: 'conversion_rate',
-}
+const PCT_KEYS = new Set([
+    'ctr', 'cvr',
+    'search_impression_share', 'search_top_impression_share', 'search_abs_top_impression_share',
+    'search_budget_lost_is', 'search_rank_lost_is', 'search_click_share',
+    'abs_top_impression_pct', 'top_impression_pct',
+])
+const MONEY_KEYS = new Set(['cost', 'cpc', 'cpa', 'conversion_value'])
 
 function getCorrelationLabel(r) {
     if (r === null || r === undefined) return null
     const abs = Math.abs(r)
     const sign = r > 0 ? '+' : ''
-    if (abs > 0.7) {
-        return r > 0
-            ? `${sign}${r.toFixed(2)} ↑ silna dodatnia`
-            : `${r.toFixed(2)} ↓ silna ujemna`
-    }
-    if (abs > 0.4) {
-        return r > 0
-            ? `${sign}${r.toFixed(2)} → umiarkowana dodatnia`
-            : `${r.toFixed(2)} → umiarkowana ujemna`
-    }
+    if (abs > 0.7) return r > 0 ? `${sign}${r.toFixed(2)} ↑ silna dodatnia` : `${r.toFixed(2)} ↓ silna ujemna`
+    if (abs > 0.4) return r > 0 ? `${sign}${r.toFixed(2)} → umiarkowana dodatnia` : `${r.toFixed(2)} → umiarkowana ujemna`
     return `${r.toFixed(2)} ≈ słaba / brak`
 }
 
@@ -56,17 +68,13 @@ function formatDate(dateStr) {
     return `${d.getDate()}.${(d.getMonth() + 1).toString().padStart(2, '0')}`
 }
 
-// Determine if two metrics need dual Y-axis (different units)
 function needsDualAxis(metrics) {
-    const pct = ['ctr', 'cvr']
-    const money = ['cost', 'cpc', 'cpa']
-    const hasPct = metrics.some(m => pct.includes(m))
-    const hasMoney = metrics.some(m => money.includes(m))
-    const hasCount = metrics.some(m => !pct.includes(m) && !money.includes(m))
+    const hasPct = metrics.some(m => PCT_KEYS.has(m))
+    const hasMoney = metrics.some(m => MONEY_KEYS.has(m))
+    const hasCount = metrics.some(m => !PCT_KEYS.has(m) && !MONEY_KEYS.has(m))
     return (hasPct && (hasMoney || hasCount)) || (hasMoney && hasCount)
 }
 
-// ─── Action event helpers ─────────────────────────────────────────────────────
 const OPERATION_LABELS = {
     UPDATE_BID: 'Zmiana stawki',
     PAUSE_KEYWORD: 'Wstrzymanie słowa kluczowego',
@@ -120,68 +128,164 @@ function formatBeforeAfter(entry) {
     return parts.length > 0 ? parts : null
 }
 
-export default function TrendExplorer({ campaignIds = [] }) {
+// Shift a date string by N days
+function shiftDate(dateStr, deltaDays) {
+    const d = new Date(dateStr)
+    d.setDate(d.getDate() + deltaDays)
+    return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Unified Trend Explorer — used in both Dashboard (aggregated) and Campaigns (scoped).
+ *
+ * Props:
+ *   campaignIds?: number[]   — restrict to these campaigns
+ *   campaignType?: string    — non-SEARCH hides search-only metrics
+ *   campaignName?: string    — filter action markers to that campaign
+ */
+export default function TrendExplorer({ campaignIds = [], campaignType = null, campaignName = null }) {
+    const navigate = useNavigate()
     const { selectedClientId, showToast } = useApp()
-    const { filters, days } = useFilter()
+    const { filters } = useFilter()
     const [activeMetrics, setActiveMetrics] = useState(['cost', 'clicks'])
     const [showDropdown, setShowDropdown] = useState(false)
+    const [showOptions, setShowOptions] = useState(false)
+    const [showPresetsMenu, setShowPresetsMenu] = useState(false)
     const [data, setData] = useState([])
+    const [prevData, setPrevData] = useState([])
+    const [deviceData, setDeviceData] = useState(null)
     const [loading, setLoading] = useState(false)
     const [loadError, setLoadError] = useState(null)
     const [isMock, setIsMock] = useState(false)
-    const [correlationData, setCorrelationData] = useState(null) // { best: {pairLabel,label,r}, pairs: [{a,b,r,label}...] }
+    const [correlationData, setCorrelationData] = useState(null)
     const [showCorrelationPopup, setShowCorrelationPopup] = useState(false)
     const [actionEvents, setActionEvents] = useState([])
+    const [deltaPopup, setDeltaPopup] = useState(null) // { date, metrics, delta }
+    const [presetsVersion, setPresetsVersion] = useState(0)
 
+    // Display options (persist in component state, optionally saved in preset)
+    const [options, setOptions] = useState({
+        showDots: false,
+        showForecast: false,
+        showRollingCorrelation: false,
+        showPeriodOverPeriod: false,
+        showZoomBrush: false,
+        showDeviceSegmentation: false,
+    })
+    const toggleOption = (key) => setOptions(o => ({ ...o, [key]: !o[key] }))
+
+    const variant = (campaignIds && campaignIds.length > 0) ? 'campaigns' : 'dashboard'
+
+    const campaignIdsKey = useMemo(() => (campaignIds || []).join(','), [campaignIds])
+    const presets = useMemo(() => loadPresets(), [presetsVersion])
+
+    // Filter metric options: non-SEARCH campaign type hides search-only
+    const availableOptions = useMemo(() => {
+        if (campaignType && campaignType !== 'SEARCH') {
+            return METRIC_OPTIONS.filter(m => !m.searchOnly)
+        }
+        return METRIC_OPTIONS
+    }, [campaignType])
+
+    useEffect(() => {
+        const allowed = new Set(availableOptions.map(m => m.key))
+        setActiveMetrics(prev => {
+            const filtered = prev.filter(m => allowed.has(m))
+            return filtered.length > 0 ? filtered : ['cost', 'clicks']
+        })
+    }, [availableOptions])
+
+    // ─── Main data fetch ──────────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
         if (!selectedClientId) return
         setLoading(true)
         setLoadError(null)
         try {
-            const params = {
+            const baseParams = {
                 metrics: activeMetrics.join(','),
                 date_from: filters.dateFrom,
                 date_to: filters.dateTo,
             }
-            if (filters.campaignType !== 'ALL') params.campaign_type = filters.campaignType
-            if (filters.status !== 'ALL') params.status = filters.status
-            const result = await getTrends(selectedClientId, params)
-            setData(result.data || [])
-            setIsMock(result.is_mock || false)
+            if (campaignIdsKey) {
+                baseParams.campaign_ids = campaignIdsKey
+            } else {
+                if (filters.campaignType !== 'ALL') baseParams.campaign_type = filters.campaignType
+                if (filters.status !== 'ALL') baseParams.status = filters.status
+            }
+
+            const fetches = [getTrends(selectedClientId, baseParams)]
+
+            // Period-over-period: fetch the previous period aligned day-for-day
+            if (options.showPeriodOverPeriod && filters.dateFrom && filters.dateTo) {
+                const from = new Date(filters.dateFrom)
+                const to = new Date(filters.dateTo)
+                const span = Math.round((to - from) / 86400000)
+                const prevParams = {
+                    ...baseParams,
+                    date_from: shiftDate(filters.dateFrom, -(span + 1)),
+                    date_to: shiftDate(filters.dateTo, -(span + 1)),
+                }
+                fetches.push(getTrends(selectedClientId, prevParams).catch(() => ({ data: [] })))
+            } else {
+                fetches.push(Promise.resolve({ data: [] }))
+            }
+
+            // Device segmentation on the first active metric
+            if (options.showDeviceSegmentation) {
+                const devParams = {
+                    metric: activeMetrics[0],
+                    date_from: filters.dateFrom,
+                    date_to: filters.dateTo,
+                }
+                if (campaignIdsKey) devParams.campaign_ids = campaignIdsKey
+                fetches.push(getTrendsByDevice(selectedClientId, devParams).catch(() => null))
+            } else {
+                fetches.push(Promise.resolve(null))
+            }
+
+            const [trendResult, prevResult, devResult] = await Promise.all(fetches)
+            setData(trendResult.data || [])
+            setPrevData(prevResult?.data || [])
+            setDeviceData(devResult?.devices || null)
+            setIsMock(trendResult.is_mock || false)
         } catch (e) {
             console.error('TrendExplorer fetch error:', e)
             setData([])
+            setPrevData([])
+            setDeviceData(null)
             setLoadError(e.message || 'Nie udało się załadować danych trendu')
             showToast?.(`Trend Explorer: ${e.message || 'błąd ładowania'}`, 'error')
         } finally {
             setLoading(false)
         }
-    }, [selectedClientId, activeMetrics, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status, showToast])
+    }, [selectedClientId, activeMetrics, filters.dateFrom, filters.dateTo, filters.campaignType, filters.status, campaignIdsKey, options.showPeriodOverPeriod, options.showDeviceSegmentation, showToast])
 
     useEffect(() => { fetchData() }, [fetchData])
 
-    // Fetch action history for annotations
+    // ─── Action timeline ──────────────────────────────────────────────────────
     useEffect(() => {
         if (!selectedClientId) { setActionEvents([]); return }
         let cancelled = false
-        getActionHistory(selectedClientId, {
-            limit: 50,
-            executed_from: filters.dateFrom,
-            executed_to: filters.dateTo,
-        })
+        const params = { limit: 200 }
+        if (filters.dateFrom) params.date_from = filters.dateFrom
+        if (filters.dateTo) params.date_to = filters.dateTo
+        if (campaignName) params.campaign_name = campaignName
+        getUnifiedTimeline(selectedClientId, params)
             .then(res => {
                 if (cancelled) return
-                setActionEvents(res?.actions || [])
+                const all = res?.entries || []
+                const scoped = campaignName ? all.filter(e => e.campaign_name === campaignName) : all
+                setActionEvents(scoped)
             })
             .catch(() => !cancelled && setActionEvents([]))
         return () => { cancelled = true }
-    }, [selectedClientId, filters.dateFrom, filters.dateTo])
+    }, [selectedClientId, filters.dateFrom, filters.dateTo, campaignName])
 
-    // Group actions by date for annotations
     const eventsByDate = useMemo(() => {
         const map = {}
         ;(actionEvents || []).forEach(e => {
-            const d = (e.executed_at || e.timestamp || '').slice(0, 10)
+            const ts = e.timestamp || e.executed_at || e.change_date_time || ''
+            const d = ts.slice(0, 10)
             if (d) {
                 if (!map[d]) map[d] = []
                 map[d].push(e)
@@ -191,7 +295,28 @@ export default function TrendExplorer({ campaignIds = [] }) {
     }, [actionEvents])
     const eventDates = Object.keys(eventsByDate)
 
-    // Rich tooltip — shows metric values + action details for the day
+    // ─── Enriched chart data: merge period-over-period + forecast ────────────
+    const enrichedData = useMemo(() => {
+        let result = data
+        if (options.showPeriodOverPeriod && prevData.length > 0) {
+            result = mergePeriodOverPeriod(result, prevData, activeMetrics)
+        }
+        if (options.showForecast && result.length >= 3) {
+            const forecast = forecastPoints(result, activeMetrics, 7)
+            // Ensure forecast rows also carry a 'continuation' value for the last real day
+            // so the dashed line connects smoothly.
+            result = [...result, ...forecast]
+        }
+        return result
+    }, [data, prevData, options.showPeriodOverPeriod, options.showForecast, activeMetrics])
+
+    // ─── Rolling correlation series (first 2 active metrics) ─────────────────
+    const rollingCorrSeries = useMemo(() => {
+        if (!options.showRollingCorrelation || activeMetrics.length < 2 || data.length < 14) return null
+        return rollingCorrelation(data, activeMetrics[0], activeMetrics[1], 14)
+    }, [options.showRollingCorrelation, activeMetrics, data])
+
+    // ─── Tooltip with clickable event actions ────────────────────────────────
     const CustomTooltip = ({ active, payload, label }) => {
         if (!active || !payload?.length) return null
         const events = eventsByDate[label] || []
@@ -203,78 +328,96 @@ export default function TrendExplorer({ campaignIds = [] }) {
                 padding: '10px 14px',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                 fontSize: 12,
-                maxWidth: 340,
+                maxWidth: 360,
                 pointerEvents: 'auto',
             }}>
                 <div style={{ color: C.w50, marginBottom: 6 }}>{label}</div>
-                {payload.map((p, i) => (
-                    <div key={i} style={{ color: p.color, marginBottom: 2 }}>
-                        {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL', { maximumFractionDigits: 2 }) ?? p.value}</strong>
-                    </div>
-                ))}
+                {payload
+                    .filter(p => !p.dataKey?.startsWith('__'))
+                    .map((p, i) => (
+                        <div key={i} style={{ color: p.color, marginBottom: 2 }}>
+                            {p.name}: <strong>{p.value?.toLocaleString?.('pl-PL', { maximumFractionDigits: 2 }) ?? p.value}</strong>
+                        </div>
+                    ))}
                 {events.length > 0 && (
                     <div style={{ borderTop: B.subtle, marginTop: 8, paddingTop: 8 }}>
                         <div style={{ fontSize: 10, color: C.accentBlue, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             ● {events.length} {events.length === 1 ? 'zmiana' : 'zmian'} w tym dniu
                         </div>
-                        {events.slice(0, 4).map((e, i) => {
+                        {events.slice(0, 3).map((e, i) => {
                             const op = e.operation || e.action_type
                             const beforeAfter = formatBeforeAfter(e)
-                            const ts = e.executed_at || e.timestamp
+                            const ts = e.timestamp || e.executed_at
+                            const isHelper = e.source !== 'external'
                             return (
-                                <div key={i} style={{
-                                    padding: '5px 0',
-                                    borderBottom: i < Math.min(events.length, 4) - 1 ? `1px solid ${C.w06}` : 'none',
-                                }}>
+                                <div key={i} style={{ padding: '5px 0', borderBottom: i < Math.min(events.length, 3) - 1 ? `1px solid ${C.w06}` : 'none' }}>
                                     <div className="flex items-center gap-2" style={{ marginBottom: 2 }}>
-                                        <span style={{ fontSize: 11, color: C.textPrimary, fontWeight: 500 }}>
-                                            {getOperationLabel(op)}
-                                        </span>
-                                        {ts && (
-                                            <span style={{ fontSize: 9, color: C.w30, marginLeft: 'auto' }}>
-                                                {formatTimestamp(ts)}
-                                            </span>
-                                        )}
+                                        <span style={{
+                                            fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 999,
+                                            background: isHelper ? 'rgba(79,142,247,0.2)' : 'rgba(251,191,36,0.2)',
+                                            color: isHelper ? '#4F8EF7' : '#FBBF24',
+                                        }}>{isHelper ? 'HELPER' : 'ZEWN.'}</span>
+                                        <span style={{ fontSize: 11, color: C.textPrimary, fontWeight: 500 }}>{getOperationLabel(op)}</span>
+                                        {ts && <span style={{ fontSize: 9, color: C.w30, marginLeft: 'auto' }}>{formatTimestamp(ts)}</span>}
                                     </div>
-                                    {e.entity_name && (
-                                        <div style={{ fontSize: 10, color: C.w40, marginBottom: 2 }}>
-                                            {e.entity_name}
-                                        </div>
-                                    )}
+                                    {e.entity_name && <div style={{ fontSize: 10, color: C.w40, marginBottom: 2 }}>{e.entity_name}</div>}
                                     {beforeAfter && beforeAfter.map((line, j) => (
-                                        <div key={j} style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'monospace' }}>
-                                            {line}
-                                        </div>
+                                        <div key={j} style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'monospace' }}>{line}</div>
                                     ))}
                                 </div>
                             )
                         })}
-                        {events.length > 4 && (
+                        {events.length > 3 && (
                             <div style={{ fontSize: 10, color: C.w30, fontStyle: 'italic', paddingTop: 4 }}>
-                                +{events.length - 4} więcej…
+                                +{events.length - 3} więcej…
                             </div>
                         )}
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                            <button
+                                onClick={(ev) => { ev.stopPropagation(); handleDeltaClick(label) }}
+                                style={{
+                                    fontSize: 10, padding: '4px 8px', borderRadius: 6,
+                                    background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)',
+                                    color: '#4F8EF7', cursor: 'pointer',
+                                }}
+                            >
+                                📊 Analiza delta
+                            </button>
+                            <button
+                                onClick={(ev) => { ev.stopPropagation(); navigate('/action-history') }}
+                                style={{
+                                    fontSize: 10, padding: '4px 8px', borderRadius: 6,
+                                    background: 'rgba(123,92,224,0.15)', border: '1px solid rgba(123,92,224,0.3)',
+                                    color: '#A78BFA', cursor: 'pointer',
+                                }}
+                            >
+                                → Historia
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
         )
     }
 
-    // Close popups on outside click
+    // ─── Close popups on outside click ───────────────────────────────────────
     useEffect(() => {
-        if (!showCorrelationPopup && !showDropdown) return
+        if (!showCorrelationPopup && !showDropdown && !showOptions && !showPresetsMenu && !deltaPopup) return
         const handler = (e) => {
-            if (!e.target.closest('[data-correlation-popup]') && !e.target.closest('[data-metric-dropdown]')) {
+            if (!e.target.closest('[data-te-popup]')) {
                 setShowCorrelationPopup(false)
                 setShowDropdown(false)
+                setShowOptions(false)
+                setShowPresetsMenu(false)
+                setDeltaPopup(null)
             }
         }
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
-    }, [showCorrelationPopup, showDropdown])
+    }, [showCorrelationPopup, showDropdown, showOptions, showPresetsMenu, deltaPopup])
 
     const addMetric = (key) => {
-        if (activeMetrics.length >= 5 || activeMetrics.includes(key)) return
+        if (activeMetrics.length >= MAX_METRICS || activeMetrics.includes(key)) return
         setActiveMetrics(prev => [...prev, key])
         setShowDropdown(false)
     }
@@ -284,49 +427,38 @@ export default function TrendExplorer({ campaignIds = [] }) {
         setActiveMetrics(prev => prev.filter(m => m !== key))
     }
 
+    // ─── Correlation ──────────────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false
-
         const fetchCorrelation = async () => {
             if (activeMetrics.length < 2 || data.length < 3) {
                 if (!cancelled) setCorrelationData(null)
                 return
             }
-
-            // Map all active metrics to backend names
-            const mapped = activeMetrics
-                .map(k => ({ key: k, backend: CORRELATION_METRIC_MAP[k] }))
-                .filter(m => m.backend)
-            if (mapped.length < 2) {
-                if (!cancelled) setCorrelationData(null)
-                return
-            }
-
             try {
                 const response = await getCorrelationMatrix({
-                    campaign_ids: campaignIds,
-                    metrics: mapped.map(m => m.backend),
+                    campaign_ids: campaignIds && campaignIds.length > 0 ? campaignIds : undefined,
+                    metrics: activeMetrics,
                     date_from: filters.dateFrom || undefined,
                     date_to: filters.dateTo || undefined,
                 })
                 if (cancelled) return
-
-                // Build all correlation pairs
                 const pairs = []
-                let bestIdx = 0
-                for (let i = 0; i < mapped.length; i++) {
-                    for (let j = i + 1; j < mapped.length; j++) {
-                        const r = response?.matrix?.[mapped[i].backend]?.[mapped[j].backend]
+                let bestIdx = -1
+                for (let i = 0; i < activeMetrics.length; i++) {
+                    for (let j = i + 1; j < activeMetrics.length; j++) {
+                        const a = activeMetrics[i]
+                        const b = activeMetrics[j]
+                        const r = response?.matrix?.[a]?.[b]
                         if (typeof r === 'number') {
-                            const labelA = METRIC_OPTIONS.find(m => m.key === mapped[i].key)?.label ?? mapped[i].key
-                            const labelB = METRIC_OPTIONS.find(m => m.key === mapped[j].key)?.label ?? mapped[j].key
+                            const labelA = METRIC_LABELS[a] ?? a
+                            const labelB = METRIC_LABELS[b] ?? b
                             pairs.push({ a: labelA, b: labelB, r, label: getCorrelationLabel(r) })
-                            if (Math.abs(r) > Math.abs(pairs[bestIdx].r)) bestIdx = pairs.length - 1
+                            if (bestIdx < 0 || Math.abs(r) > Math.abs(pairs[bestIdx].r)) bestIdx = pairs.length - 1
                         }
                     }
                 }
-
-                if (pairs.length > 0) {
+                if (pairs.length > 0 && bestIdx >= 0) {
                     const best = pairs[bestIdx]
                     setCorrelationData({
                         best: { pairLabel: `${best.a} vs ${best.b}`, label: best.label, r: best.r },
@@ -339,28 +471,73 @@ export default function TrendExplorer({ campaignIds = [] }) {
                 if (!cancelled) setCorrelationData(null)
             }
         }
-
         fetchCorrelation()
         return () => { cancelled = true }
-    }, [activeMetrics, campaignIds, data, filters.dateFrom, filters.dateTo])
-    const dual = needsDualAxis(activeMetrics)
-    const pctMetrics = ['ctr', 'cvr']
+    }, [activeMetrics, campaignIdsKey, data, filters.dateFrom, filters.dateTo])
 
-    const availableToAdd = METRIC_OPTIONS.filter(m => !activeMetrics.includes(m.key))
+    // ─── Delta analysis (click from tooltip) ─────────────────────────────────
+    const handleDeltaClick = useCallback((markerDate) => {
+        const delta = computeDelta(data, markerDate, activeMetrics, 7)
+        if (!delta) {
+            showToast?.('Za mało danych dla analizy delta (potrzeba min. 1 dzień przed i po)', 'warning')
+            return
+        }
+        setDeltaPopup({ date: markerDate, delta })
+    }, [data, activeMetrics, showToast])
+
+    // ─── Presets ──────────────────────────────────────────────────────────────
+    const handleSavePreset = () => {
+        const name = window.prompt('Nazwa presetu:')
+        if (!name) return
+        savePreset(name.trim(), { metrics: activeMetrics, options })
+        setPresetsVersion(v => v + 1)
+        showToast?.(`Preset "${name}" zapisany`, 'success')
+    }
+    const handleLoadPreset = (name) => {
+        const preset = presets[name]
+        if (!preset) return
+        setActiveMetrics(preset.metrics || ['cost', 'clicks'])
+        if (preset.options) setOptions(o => ({ ...o, ...preset.options }))
+        setShowPresetsMenu(false)
+        showToast?.(`Preset "${name}" załadowany`, 'success')
+    }
+    const handleDeletePreset = (name) => {
+        if (!window.confirm(`Usunąć preset "${name}"?`)) return
+        deletePreset(name)
+        setPresetsVersion(v => v + 1)
+    }
+
+    // ─── Cross-link ───────────────────────────────────────────────────────────
+    const crossLinkTarget = variant === 'dashboard' ? '/campaigns' : '/'
+    const crossLinkLabel = variant === 'dashboard' ? 'Rozbij per kampania →' : '← Widok konta'
+
+    const dual = needsDualAxis(activeMetrics)
+    const availableToAdd = availableOptions.filter(m => !activeMetrics.includes(m.key))
 
     return (
         <div className="v2-card" style={{ padding: '20px 24px' }}>
-            {/* Header */}
+            {/* ─── Header ────────────────────────────────────────────────── */}
             <div className="flex items-center justify-between mb-4" style={{ flexWrap: 'wrap', gap: 12 }}>
                 <div className="flex items-center gap-2">
                     <TrendingUp size={16} style={{ color: C.accentBlue }} />
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                         Trend Explorer
                     </span>
+                    <button
+                        onClick={() => navigate(crossLinkTarget)}
+                        title={crossLinkLabel}
+                        style={{
+                            fontSize: 10, padding: '2px 8px', borderRadius: 999,
+                            background: C.w04, border: B.subtle, color: C.w50,
+                            cursor: 'pointer', marginLeft: 6,
+                        }}
+                    >
+                        {crossLinkLabel}
+                    </button>
                 </div>
 
-                <div className="flex items-center gap-3 flex-wrap">
-                    {/* Active metric pills */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Metric pills */}
                     {activeMetrics.map((key, idx) => {
                         const opt = METRIC_OPTIONS.find(m => m.key === key)
                         return (
@@ -378,11 +555,7 @@ export default function TrendExplorer({ campaignIds = [] }) {
                             >
                                 <span title={opt?.tooltip || undefined}>{opt?.label ?? key}</span>
                                 {activeMetrics.length > 1 && (
-                                    <button
-                                        onClick={() => removeMetric(key)}
-                                        style={{ color: C.w40, lineHeight: 1 }}
-                                        className="hover:text-white/70"
-                                    >
+                                    <button onClick={() => removeMetric(key)} style={{ color: C.w40, lineHeight: 1 }} className="hover:text-white/70">
                                         <X size={12} />
                                     </button>
                                 )}
@@ -390,20 +563,15 @@ export default function TrendExplorer({ campaignIds = [] }) {
                         )
                     })}
 
-                    {/* Add metric button */}
-                    {activeMetrics.length < 5 && availableToAdd.length > 0 && (
-                        <div style={{ position: 'relative' }} data-metric-dropdown>
+                    {/* Add metric */}
+                    {activeMetrics.length < MAX_METRICS && availableToAdd.length > 0 && (
+                        <div style={{ position: 'relative' }} data-te-popup>
                             <button
-                                onClick={() => setShowDropdown(v => !v)}
+                                onClick={() => { setShowDropdown(v => !v); setShowOptions(false); setShowExportMenu(false); setShowPresetsMenu(false) }}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
-                                    background: C.w04,
-                                    border: B.medium,
-                                    borderRadius: 999,
-                                    padding: '3px 12px',
-                                    fontSize: 12,
-                                    color: C.w50,
-                                    cursor: 'pointer',
+                                    background: C.w04, border: B.medium, borderRadius: 999,
+                                    padding: '3px 12px', fontSize: 12, color: C.w50, cursor: 'pointer',
                                 }}
                                 className="hover:border-white/20 hover:text-white/70"
                             >
@@ -411,31 +579,20 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                 Dodaj metrykę
                             </button>
                             {showDropdown && (
-                                <div
-                                    style={{
-                                        position: 'absolute', top: '100%', right: 0, marginTop: 6,
-                                        background: C.surfaceElevated,
-                                        border: B.hover,
-                                        borderRadius: 8,
-                                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                                        zIndex: 50,
-                                        minWidth: 160,
-                                        overflow: 'hidden',
-                                    }}
-                                >
+                                <div style={{
+                                    position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                                    background: C.surfaceElevated, border: B.hover, borderRadius: 8,
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 50,
+                                    minWidth: 200, maxHeight: 340, overflowY: 'auto',
+                                }}>
                                     {availableToAdd.map(opt => (
                                         <button
                                             key={opt.key}
                                             onClick={() => addMetric(opt.key)}
                                             style={{
-                                                display: 'block', width: '100%',
-                                                textAlign: 'left',
-                                                padding: '8px 14px',
-                                                fontSize: 12,
-                                                color: C.w70,
-                                                cursor: 'pointer',
-                                                background: 'transparent',
-                                                border: 'none',
+                                                display: 'block', width: '100%', textAlign: 'left',
+                                                padding: '8px 14px', fontSize: 12, color: C.w70,
+                                                cursor: 'pointer', background: 'transparent', border: 'none',
                                             }}
                                             className="hover:bg-white/5 hover:text-white"
                                         >
@@ -447,28 +604,20 @@ export default function TrendExplorer({ campaignIds = [] }) {
                         </div>
                     )}
 
-                    {/* Correlation badge — click to show full matrix */}
+                    {/* Correlation badge */}
                     {correlationData && (
-                        <div style={{ position: 'relative' }} data-correlation-popup>
+                        <div style={{ position: 'relative' }} data-te-popup>
                             <button
                                 onClick={() => setShowCorrelationPopup(v => !v)}
                                 style={{
-                                    fontSize: 11,
-                                    color: C.w40,
-                                    paddingLeft: 8,
-                                    background: 'none',
-                                    border: 'none',
+                                    fontSize: 11, color: C.w40, paddingLeft: 8,
+                                    background: 'none', border: 'none',
                                     borderLeft: `1px solid ${C.w08}`,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 4,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
                                 }}
                                 className="hover:text-white/60"
                             >
-                                <span style={{ color: C.w30 }}>
-                                    Kor.
-                                </span>
+                                <span style={{ color: C.w30 }}>Kor.</span>
                                 <span style={{
                                     color: Math.abs(correlationData.best.r) > 0.7 ? C.success
                                          : Math.abs(correlationData.best.r) > 0.4 ? C.warning
@@ -477,54 +626,24 @@ export default function TrendExplorer({ campaignIds = [] }) {
                                     {correlationData.best.r > 0 ? '+' : ''}{correlationData.best.r.toFixed(2)}
                                 </span>
                                 {correlationData.pairs.length > 1 && (
-                                    <span style={{ fontSize: 9, color: C.w25 }}>
-                                        ({correlationData.pairs.length} par)
-                                    </span>
+                                    <span style={{ fontSize: 9, color: C.w25 }}>({correlationData.pairs.length} par)</span>
                                 )}
                             </button>
-
                             {showCorrelationPopup && (
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        top: '100%',
-                                        right: 0,
-                                        marginTop: 6,
-                                        background: C.surfaceElevated,
-                                        border: B.hover,
-                                        borderRadius: 8,
-                                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                                        zIndex: 50,
-                                        minWidth: 280,
-                                        padding: '12px 0',
-                                    }}
-                                >
-                                    <div style={{
-                                        padding: '0 14px 8px',
-                                        fontSize: 11,
-                                        fontWeight: 600,
-                                        color: C.w50,
-                                        borderBottom: B.subtle,
-                                        marginBottom: 4,
-                                    }}>
+                                <div style={{
+                                    position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                                    background: C.surfaceElevated, border: B.hover, borderRadius: 8,
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 50,
+                                    minWidth: 280, padding: '12px 0',
+                                }}>
+                                    <div style={{ padding: '0 14px 8px', fontSize: 11, fontWeight: 600, color: C.w50, borderBottom: B.subtle, marginBottom: 4 }}>
                                         Macierz korelacji (Pearson)
                                     </div>
                                     {correlationData.pairs.map((pair, i) => {
                                         const absR = Math.abs(pair.r)
-                                        const rColor = absR > 0.7 ? C.success
-                                                      : absR > 0.4 ? C.warning
-                                                      : C.textMuted
+                                        const rColor = absR > 0.7 ? C.success : absR > 0.4 ? C.warning : C.textMuted
                                         return (
-                                            <div
-                                                key={i}
-                                                style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center',
-                                                    padding: '6px 14px',
-                                                    fontSize: 11,
-                                                }}
-                                            >
+                                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 14px', fontSize: 11 }}>
                                                 <span style={{ color: C.w60, flex: 1 }}>
                                                     {pair.a} <span style={{ color: C.w20 }}>vs</span> {pair.b}
                                                 </span>
@@ -538,115 +657,404 @@ export default function TrendExplorer({ campaignIds = [] }) {
                             )}
                         </div>
                     )}
+
+                    {/* Options gear */}
+                    <div style={{ position: 'relative' }} data-te-popup>
+                        <button
+                            onClick={() => { setShowOptions(v => !v); setShowDropdown(false); setShowExportMenu(false); setShowPresetsMenu(false) }}
+                            title="Opcje widoku"
+                            style={{
+                                display: 'flex', alignItems: 'center',
+                                background: C.w04, border: B.medium, borderRadius: 6,
+                                padding: '5px 8px', color: C.w50, cursor: 'pointer',
+                            }}
+                        >
+                            <Settings size={12} />
+                        </button>
+                        {showOptions && (
+                            <div style={{
+                                position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                                background: C.surfaceElevated, border: B.hover, borderRadius: 8,
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 50,
+                                minWidth: 240, padding: '8px 0',
+                            }}>
+                                <div style={{ padding: '4px 14px 8px', fontSize: 10, fontWeight: 600, color: C.w40, textTransform: 'uppercase' }}>
+                                    Opcje widoku
+                                </div>
+                                {[
+                                    ['showDots', 'Kropki na linii'],
+                                    ['showForecast', 'Prognoza 7 dni (linear)'],
+                                    ['showRollingCorrelation', 'Korelacja krocząca (14d)'],
+                                    ['showPeriodOverPeriod', 'Nakładka: poprzedni okres'],
+                                    ['showZoomBrush', 'Zoom brush (oś czasu)'],
+                                    ['showDeviceSegmentation', 'Segmentacja per urządzenie'],
+                                ].map(([key, label]) => (
+                                    <label key={key} style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        padding: '6px 14px', fontSize: 12, color: C.w70, cursor: 'pointer',
+                                    }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={options[key]}
+                                            onChange={() => toggleOption(key)}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                        {label}
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Presets */}
+                    <div style={{ position: 'relative' }} data-te-popup>
+                        <button
+                            onClick={() => { setShowPresetsMenu(v => !v); setShowDropdown(false); setShowOptions(false); setShowExportMenu(false) }}
+                            title="Presety"
+                            style={{
+                                display: 'flex', alignItems: 'center',
+                                background: C.w04, border: B.medium, borderRadius: 6,
+                                padding: '5px 8px', color: C.w50, cursor: 'pointer',
+                            }}
+                        >
+                            <Save size={12} />
+                        </button>
+                        {showPresetsMenu && (
+                            <div style={{
+                                position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                                background: C.surfaceElevated, border: B.hover, borderRadius: 8,
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 50,
+                                minWidth: 220, padding: '8px 0',
+                            }}>
+                                <div style={{ padding: '4px 14px 6px', fontSize: 10, fontWeight: 600, color: C.w40, textTransform: 'uppercase' }}>
+                                    Presety metryk
+                                </div>
+                                <button
+                                    onClick={handleSavePreset}
+                                    style={{
+                                        display: 'block', width: '100%', textAlign: 'left',
+                                        padding: '6px 14px', fontSize: 12, color: C.accentBlue,
+                                        cursor: 'pointer', background: 'transparent', border: 'none',
+                                    }}
+                                    className="hover:bg-white/5"
+                                >
+                                    + Zapisz bieżący układ
+                                </button>
+                                {Object.keys(presets).length === 0 ? (
+                                    <div style={{ padding: '6px 14px', fontSize: 11, color: C.w30, fontStyle: 'italic' }}>
+                                        Brak zapisanych presetów
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ borderTop: B.subtle, marginTop: 4 }} />
+                                        {Object.keys(presets).map(name => (
+                                            <div key={name} style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '4px 14px',
+                                            }}>
+                                                <button
+                                                    onClick={() => handleLoadPreset(name)}
+                                                    style={{
+                                                        flex: 1, textAlign: 'left', fontSize: 12, color: C.w70,
+                                                        background: 'transparent', border: 'none', cursor: 'pointer',
+                                                        padding: '4px 0',
+                                                    }}
+                                                    className="hover:text-white"
+                                                >
+                                                    {name}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeletePreset(name)}
+                                                    style={{ color: C.w30, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                                                    className="hover:text-red-400"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                 </div>
             </div>
 
-            {/* Mock data warning banner */}
+            {/* ─── Mock banner ──────────────────────────────────────────── */}
             {isMock && !loading && (
                 <div style={{
                     background: 'rgba(251, 191, 36, 0.1)',
                     border: '1px solid #FBBF24',
-                    borderRadius: 6,
-                    padding: '10px 14px',
-                    marginBottom: 12,
-                    fontSize: 12,
-                    color: C.warning,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
+                    borderRadius: 6, padding: '10px 14px', marginBottom: 12,
+                    fontSize: 12, color: C.warning,
+                    display: 'flex', alignItems: 'center', gap: 10,
                 }}>
                     <span>⚠️</span>
                     <span>Brak rzeczywistych danych — synchronizuj konto aby zebrać dane metryk</span>
                 </div>
             )}
 
-            {/* Chart */}
-            {loading ? (
-                <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
-                    Ładowanie danych…
-                </div>
-            ) : loadError ? (
-                <div style={{ height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.w40, fontSize: 12, gap: 6 }}>
-                    <span style={{ color: C.danger }}>⚠ Nie udało się załadować trendu</span>
-                    <span style={{ fontSize: 11, color: C.w30 }}>{loadError}</span>
-                </div>
-            ) : data.length === 0 ? (
-                <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
-                    Brak danych dla wybranych filtrów
-                </div>
-            ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                    <ComposedChart data={data} margin={{ top: 4, right: dual ? 40 : 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                        <XAxis
-                            dataKey="date"
-                            tickFormatter={formatDate}
-                            tick={{ fontSize: 10, fill: C.w30 }}
-                            axisLine={false}
-                            tickLine={false}
-                        />
-                        <YAxis
-                            yAxisId="left"
-                            tick={{ fontSize: 10, fill: C.w30 }}
-                            axisLine={false}
-                            tickLine={false}
-                            width={40}
-                        />
-                        {dual && (
-                            <YAxis
-                                yAxisId="right"
-                                orientation="right"
+            {/* ─── Chart ──────────────────────────────────────────────── */}
+            <div>
+                {loading ? (
+                    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
+                        Ładowanie danych…
+                    </div>
+                ) : loadError ? (
+                    <div style={{ height: 260, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.w40, fontSize: 12, gap: 6 }}>
+                        <span style={{ color: C.danger }}>⚠ Nie udało się załadować trendu</span>
+                        <span style={{ fontSize: 11, color: C.w30 }}>{loadError}</span>
+                    </div>
+                ) : enrichedData.length === 0 ? (
+                    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
+                        Brak danych dla wybranych filtrów
+                    </div>
+                ) : (
+                    <ResponsiveContainer width="100%" height={options.showZoomBrush ? 300 : 260}>
+                        <ComposedChart data={enrichedData} margin={{ top: 4, right: dual ? 40 : 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis
+                                dataKey="date"
+                                tickFormatter={formatDate}
                                 tick={{ fontSize: 10, fill: C.w30 }}
                                 axisLine={false}
                                 tickLine={false}
-                                width={40}
                             />
-                        )}
-                        <Tooltip content={<CustomTooltip />} />
-                        {/* Action markers — dashed vertical line with dot label */}
-                        {eventDates.map(d => (
-                            <ReferenceLine
-                                key={d}
-                                x={d}
-                                yAxisId="left"
-                                stroke="#4F8EF7"
-                                strokeDasharray="4 3"
-                                strokeWidth={1.5}
-                                label={{ value: '●', position: 'top', fill: '#4F8EF7', fontSize: 11 }}
-                            />
-                        ))}
-                        {activeMetrics.map((key, idx) => {
-                            const opt = METRIC_OPTIONS.find(m => m.key === key)
-                            const yAxis = dual && idx > 0 && pctMetrics.includes(key) ? 'right' : 'left'
-                            return (
-                                <Line
-                                    key={key}
-                                    yAxisId={yAxis}
-                                    type="monotone"
-                                    dataKey={key}
-                                    name={opt?.label ?? key}
-                                    stroke={METRIC_COLORS[idx]}
-                                    strokeWidth={1.8}
-                                    dot={false}
-                                    activeDot={{ r: 4, fill: METRIC_COLORS[idx] }}
+                            <YAxis yAxisId="left" tick={{ fontSize: 10, fill: C.w30 }} axisLine={false} tickLine={false} width={45} />
+                            {dual && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: C.w30 }} axisLine={false} tickLine={false} width={40} />}
+                            <Tooltip content={<CustomTooltip />} />
+                            {eventDates.map(d => {
+                                const isHelper = eventsByDate[d].some(e => e.source !== 'external')
+                                return (
+                                    <ReferenceLine
+                                        key={d} x={d} yAxisId="left"
+                                        stroke={isHelper ? '#4F8EF7' : '#FBBF24'}
+                                        strokeDasharray="4 3" strokeWidth={1.5}
+                                        label={{ value: '●', position: 'top', fill: isHelper ? '#4F8EF7' : '#FBBF24', fontSize: 12 }}
+                                    />
+                                )
+                            })}
+                            {/* Main metric lines */}
+                            {activeMetrics.map((key, idx) => {
+                                const opt = METRIC_OPTIONS.find(m => m.key === key)
+                                const yAxis = dual && PCT_KEYS.has(key) ? 'right' : 'left'
+                                return (
+                                    <Line
+                                        key={key}
+                                        yAxisId={yAxis}
+                                        type="monotone"
+                                        dataKey={key}
+                                        name={opt?.label ?? key}
+                                        stroke={METRIC_COLORS[idx]}
+                                        strokeWidth={1.8}
+                                        dot={options.showDots ? { r: 2, fill: METRIC_COLORS[idx] } : false}
+                                        activeDot={{ r: 4, fill: METRIC_COLORS[idx] }}
+                                        connectNulls
+                                    />
+                                )
+                            })}
+                            {/* Period-over-period overlay (dashed) */}
+                            {options.showPeriodOverPeriod && activeMetrics.map((key, idx) => {
+                                const yAxis = dual && PCT_KEYS.has(key) ? 'right' : 'left'
+                                return (
+                                    <Line
+                                        key={`prev_${key}`}
+                                        yAxisId={yAxis}
+                                        type="monotone"
+                                        dataKey={`__prev_${key}`}
+                                        name={`${METRIC_LABELS[key] || key} (poprz.)`}
+                                        stroke={METRIC_COLORS[idx]}
+                                        strokeWidth={1.2}
+                                        strokeDasharray="5 4"
+                                        strokeOpacity={0.55}
+                                        dot={false}
+                                        connectNulls
+                                    />
+                                )
+                            })}
+                            {/* Forecast ghost lines */}
+                            {options.showForecast && activeMetrics.map((key, idx) => {
+                                const yAxis = dual && PCT_KEYS.has(key) ? 'right' : 'left'
+                                return (
+                                    <Line
+                                        key={`fc_${key}`}
+                                        yAxisId={yAxis}
+                                        type="monotone"
+                                        dataKey={`${key}__forecast`}
+                                        name={`${METRIC_LABELS[key] || key} (prog.)`}
+                                        stroke={METRIC_COLORS[idx]}
+                                        strokeWidth={1.4}
+                                        strokeDasharray="2 3"
+                                        strokeOpacity={0.75}
+                                        dot={false}
+                                        connectNulls
+                                    />
+                                )
+                            })}
+                            {options.showZoomBrush && (
+                                <Brush
+                                    dataKey="date"
+                                    height={24}
+                                    stroke="#4F8EF7"
+                                    fill="rgba(79,142,247,0.08)"
+                                    tickFormatter={formatDate}
+                                    travellerWidth={8}
                                 />
-                            )
-                        })}
-                    </ComposedChart>
-                </ResponsiveContainer>
+                            )}
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                )}
+            </div>
+
+            {/* ─── Rolling correlation mini-chart ───────────────────────── */}
+            {options.showRollingCorrelation && rollingCorrSeries && (
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: B.subtle }}>
+                    <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.05em' }}>
+                        Korelacja krocząca (14d): {METRIC_LABELS[activeMetrics[0]]} vs {METRIC_LABELS[activeMetrics[1]]}
+                    </div>
+                    <ResponsiveContainer width="100%" height={60}>
+                        <ComposedChart data={rollingCorrSeries} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
+                            <XAxis dataKey="date" hide />
+                            <YAxis domain={[-1, 1]} tick={{ fontSize: 9, fill: C.w30 }} width={30} axisLine={false} tickLine={false} ticks={[-1, 0, 1]} />
+                            <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" />
+                            <ReferenceLine y={0.7} stroke="rgba(74,222,128,0.25)" strokeDasharray="2 2" />
+                            <ReferenceLine y={-0.7} stroke="rgba(248,113,113,0.25)" strokeDasharray="2 2" />
+                            <Line type="monotone" dataKey="r" stroke="#A78BFA" strokeWidth={1.5} dot={false} connectNulls />
+                            <Tooltip
+                                contentStyle={{ background: C.surfaceElevated, border: B.hover, borderRadius: 6, fontSize: 11 }}
+                                formatter={(v) => [v?.toFixed?.(2) ?? '—', 'r']}
+                                labelFormatter={formatDate}
+                            />
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </div>
             )}
 
-            {/* Legend for action markers */}
-            {eventDates.length > 0 && !loading && data.length > 0 && (
-                <div className="flex items-center gap-3 mt-2" style={{ fontSize: 10, color: C.w30 }}>
+            {/* ─── Device segmentation mini-chart ───────────────────────── */}
+            {options.showDeviceSegmentation && deviceData && Object.keys(deviceData).length > 0 && (
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: B.subtle }}>
+                    <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+                        <Layers size={11} style={{ color: C.w50 }} />
+                        <span style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Segmentacja per urządzenie: {METRIC_LABELS[activeMetrics[0]]}
+                        </span>
+                    </div>
+                    <ResponsiveContainer width="100%" height={120}>
+                        <ComposedChart
+                            data={(() => {
+                                // Merge device series into a single keyed-by-date dataset
+                                const dateMap = new Map()
+                                Object.entries(deviceData).forEach(([dev, series]) => {
+                                    series.forEach(pt => {
+                                        if (!dateMap.has(pt.date)) dateMap.set(pt.date, { date: pt.date })
+                                        dateMap.get(pt.date)[dev] = pt.value
+                                    })
+                                })
+                                return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+                            })()}
+                            margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 9, fill: C.w30 }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 9, fill: C.w30 }} width={40} axisLine={false} tickLine={false} />
+                            <Tooltip
+                                contentStyle={{ background: C.surfaceElevated, border: B.hover, borderRadius: 6, fontSize: 11 }}
+                                labelFormatter={formatDate}
+                            />
+                            {Object.keys(deviceData).map(dev => (
+                                <Line
+                                    key={dev}
+                                    type="monotone"
+                                    dataKey={dev}
+                                    name={dev}
+                                    stroke={DEVICE_COLORS[dev] || '#9CA3AF'}
+                                    strokeWidth={1.5}
+                                    dot={false}
+                                    connectNulls
+                                />
+                            ))}
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
+
+            {/* ─── Legend ─────────────────────────────────────────────── */}
+            {eventDates.length > 0 && !loading && enrichedData.length > 0 && (
+                <div className="flex items-center gap-4 mt-2" style={{ fontSize: 10, color: C.w30 }}>
                     <span className="flex items-center gap-1">
                         <span style={{ width: 14, height: 0, borderTop: '1.5px dashed #4F8EF7', display: 'inline-block' }} />
                         <span style={{ color: '#4F8EF7' }}>●</span>
-                        <span>Zmiana na koncie</span>
+                        <span>Akcja Helper</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <span style={{ width: 14, height: 0, borderTop: '1.5px dashed #FBBF24', display: 'inline-block' }} />
+                        <span style={{ color: '#FBBF24' }}>●</span>
+                        <span>Zmiana zewnętrzna</span>
                     </span>
                     <span style={{ color: C.w25 }}>
                         {actionEvents.length} {actionEvents.length === 1 ? 'akcja' : 'akcji'} w okresie
                     </span>
+                </div>
+            )}
+
+            {/* ─── Delta analysis popup ───────────────────────────────── */}
+            {deltaPopup && (
+                <div
+                    data-te-popup
+                    style={{
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        background: C.surfaceElevated, border: B.hover, borderRadius: 10,
+                        boxShadow: '0 16px 64px rgba(0,0,0,0.6)', zIndex: 200,
+                        minWidth: 360, maxWidth: 480, padding: '18px 22px',
+                    }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
+                                Analiza delta: {deltaPopup.date}
+                            </div>
+                            <div style={{ fontSize: 10, color: C.w40, marginTop: 2 }}>
+                                Średnia 7 dni przed vs 7 dni po akcji
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setDeltaPopup(null)}
+                            style={{ color: C.w40, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {activeMetrics.map(key => {
+                            const d = deltaPopup.delta[key]
+                            if (!d) return null
+                            const pct = d.pctChange
+                            const color = pct === null ? C.w40
+                                        : pct > 5 ? C.success
+                                        : pct < -5 ? C.danger
+                                        : C.warning
+                            return (
+                                <div key={key} style={{
+                                    display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+                                    alignItems: 'center', gap: 10, padding: '8px 10px',
+                                    background: C.w04, borderRadius: 6, fontSize: 12,
+                                }}>
+                                    <span style={{ color: C.textPrimary, fontWeight: 500 }}>{METRIC_LABELS[key]}</span>
+                                    <span style={{ color: C.w50 }}>{d.before.toLocaleString('pl-PL', { maximumFractionDigits: 2 })}</span>
+                                    <span style={{ color: C.w30 }}>→</span>
+                                    <span style={{ color, fontWeight: 600 }}>
+                                        {d.after.toLocaleString('pl-PL', { maximumFractionDigits: 2 })}
+                                        {pct !== null && (
+                                            <span style={{ fontSize: 10, marginLeft: 6 }}>
+                                                ({pct > 0 ? '+' : ''}{pct.toFixed(1)}%)
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+                            )
+                        })}
+                    </div>
                 </div>
             )}
         </div>

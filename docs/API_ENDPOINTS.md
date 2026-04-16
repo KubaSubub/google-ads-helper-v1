@@ -231,12 +231,13 @@ Base API URL: `/api/v1`
 - `GET /analytics/dsa-search-overlap?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — DSA search term overlap with manual keywords
 
 ## MCC (Cross-Account Overview)
-- `GET /mcc/overview?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — aggregated data for all client accounts: full metrics (clicks, impressions, CTR, avg CPC, spend, conversions, CVR, conversion value, CPA, ROAS), pacing, health score with 6-pillar breakdown, change activity (total + external), new access emails, Google recs pending, unresolved alerts, last sync. Defaults: `date_from=1st of current month`, `date_to=today`.
+- `GET /mcc/overview?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&active_only=false` — aggregated data for all client accounts: full metrics (clicks, impressions, CTR, avg CPC, spend, conversions, CVR, conversion value, CPA, ROAS as multiplier), pacing, health score with 6-pillar breakdown, change activity (total + external), new access emails, Google recs pending, unresolved alerts, last sync. Defaults: `date_from=1st of current month`, `date_to=today`. `active_only=true` excludes accounts with spend<=0 in the period.
 - `GET /mcc/new-access?client_id=X&days=30` — detect new user emails in change history (last N days vs 31-90 days ago, excluding specialist_emails)
 - `POST /mcc/dismiss-google-recommendations` — bulk dismiss Google Ads API recommendations (body: `{client_id, recommendation_ids?, dismiss_all?}`)
 - `GET /mcc/negative-keyword-lists` — all negative keyword lists across all clients with item counts
 - `GET /mcc/shared-lists` — MCC-level exclusion lists from manager account via MccLink hierarchy: both negative keyword lists and placement exclusion lists
 - `GET /mcc/shared-lists/{list_id}/items?list_type=keyword|placement` — drill-down: items of a specific MCC shared exclusion list (defaults to `keyword`)
+- `GET /mcc/sync-history?client_id=X&limit=5` — sync history for a specific client, newest first (limit 1-20, default 5); returns id, status, total_synced, total_errors, started_at, finished_at, duration_s
 - `GET /mcc/billing-status?customer_id=X` — check billing/payment status via Google Ads billing_setup API (returns status or error if access insufficient)
 
 ## Scheduled Sync (F1)

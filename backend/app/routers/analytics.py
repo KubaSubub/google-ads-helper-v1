@@ -25,7 +25,28 @@ from app.utils.date_utils import resolve_dates
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
-VALID_METRICS = {"clicks", "impressions", "ctr", "conversions", "conversion_rate", "cost_micros", "roas", "avg_cpc_micros"}
+# Unified metric names shared across /trends, /correlation, /wow-comparison.
+# Frontend TrendExplorer uses these exact keys.
+TREND_METRICS = {
+    "cost", "clicks", "impressions", "conversions", "conversion_value",
+    "ctr", "cpc", "cpa", "cvr", "roas",
+    "search_impression_share", "search_top_impression_share", "search_abs_top_impression_share",
+    "search_budget_lost_is", "search_rank_lost_is", "search_click_share",
+    "abs_top_impression_pct", "top_impression_pct",
+}
+# Backward-compat aliases accepted by /correlation for clients sending legacy names.
+CORRELATION_LEGACY_ALIASES = {
+    "cost_micros": "cost",
+    "avg_cpc_micros": "cpc",
+    "conversion_rate": "cvr",
+}
+# Raw MetricDaily column names used by /compare-periods and /forecast (getattr-based).
+# These are actual SQLAlchemy columns — do not mix with TREND_METRICS.
+LEGACY_COLUMN_METRICS = {
+    "clicks", "impressions", "ctr", "conversions", "conversion_rate",
+    "cost_micros", "roas", "avg_cpc_micros",
+}
+VALID_METRICS = TREND_METRICS  # /correlation uses this set
 FORECAST_METRIC_ALIASES = {
     "cost": "cost_micros",
     "cpc": "avg_cpc_micros",
@@ -266,8 +287,14 @@ def correlation_matrix(data: CorrelationRequest, db: Session = Depends(get_db)):
     Aggregates MetricDaily per day first (same as /trends), then computes
     correlation on the daily aggregates. This avoids mixing campaign-level
     rows which would distort the time-series correlation.
+
+    Accepts unified metric names (cost, cpc, cpa, cvr, roas, search_impression_share, ...).
+    Legacy names (cost_micros, avg_cpc_micros, conversion_rate) are auto-aliased for
+    backward compatibility with older clients.
     """
-    invalid = set(data.metrics) - VALID_METRICS
+    # Normalize legacy names to unified ones
+    requested = [CORRELATION_LEGACY_ALIASES.get(m, m) for m in data.metrics]
+    invalid = set(requested) - TREND_METRICS
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid metrics: {invalid}")
 
@@ -283,22 +310,41 @@ def correlation_matrix(data: CorrelationRequest, db: Session = Depends(get_db)):
     if len(rows) < 3:
         raise HTTPException(status_code=400, detail="Not enough data points for correlation (need at least 3)")
 
-    # Aggregate per day (same logic as get_trends) to get true time-series
+    # Aggregate per day with weighted share accumulators
     from collections import defaultdict
-    day_map = defaultdict(lambda: {"clicks": 0, "impressions": 0, "cost_micros": 0,
-                                    "conversions": 0.0, "conv_value_micros": 0})
+    def _fresh():
+        return {
+            "clicks": 0, "impressions": 0, "cost_micros": 0,
+            "conversions": 0.0, "conv_value_micros": 0,
+            # numerators for impression-weighted shares
+            "_sis_num": 0.0, "_stis_num": 0.0, "_satis_num": 0.0,
+            "_blis_num": 0.0, "_rlis_num": 0.0, "_scs_num": 0.0,
+            "_atip_num": 0.0, "_tip_num": 0.0,
+            "_share_weight": 0,
+        }
+    day_map: dict = defaultdict(_fresh)
     for r in rows:
         d = day_map[r.date]
+        imp = r.impressions or 0
         d["clicks"] += r.clicks or 0
-        d["impressions"] += r.impressions or 0
+        d["impressions"] += imp
         d["cost_micros"] += r.cost_micros or 0
         d["conversions"] += r.conversions or 0
         d["conv_value_micros"] += r.conversion_value_micros or 0
+        if imp > 0:
+            d["_share_weight"] += imp
+            if r.search_impression_share is not None:       d["_sis_num"]  += r.search_impression_share * imp
+            if r.search_top_impression_share is not None:   d["_stis_num"] += r.search_top_impression_share * imp
+            if r.search_abs_top_impression_share is not None: d["_satis_num"] += r.search_abs_top_impression_share * imp
+            if r.search_budget_lost_is is not None:         d["_blis_num"] += r.search_budget_lost_is * imp
+            if r.search_rank_lost_is is not None:           d["_rlis_num"] += r.search_rank_lost_is * imp
+            if r.search_click_share is not None:            d["_scs_num"]  += r.search_click_share * imp
+            if r.abs_top_impression_pct is not None:        d["_atip_num"] += r.abs_top_impression_pct * imp
+            if r.top_impression_pct is not None:            d["_tip_num"]  += r.top_impression_pct * imp
 
     if len(day_map) < 3:
         raise HTTPException(status_code=400, detail="Not enough daily data points for correlation (need at least 3 days)")
 
-    # Derive metrics per day (matching /trends output)
     daily_rows = []
     for agg in day_map.values():
         clicks = agg["clicks"]
@@ -307,22 +353,31 @@ def correlation_matrix(data: CorrelationRequest, db: Session = Depends(get_db)):
         conversions = agg["conversions"]
         conv_value = agg["conv_value_micros"] / 1_000_000
         cost = cost_micros / 1_000_000
-        avg_cpc = cost / clicks if clicks else 0
+        w = agg["_share_weight"] or 1
 
         daily_rows.append({
+            "cost": cost,
             "clicks": clicks,
             "impressions": impressions,
-            "cost_micros": cost_micros,
             "conversions": conversions,
-            "ctr": clicks / impressions if impressions else 0,
-            "roas": conv_value / cost if cost else 0,
-            "avg_cpc_micros": int(cost_micros / clicks) if clicks else 0,
-            "conversion_rate": conversions / clicks if clicks else 0,
+            "conversion_value": conv_value,
+            "ctr": (clicks / impressions * 100) if impressions else 0,
+            "cpc": (cost / clicks) if clicks else 0,
+            "cpa": (cost / conversions) if conversions else 0,
+            "cvr": (conversions / clicks * 100) if clicks else 0,
+            "roas": (conv_value / cost) if cost else 0,
+            "search_impression_share": (agg["_sis_num"] / w * 100) if agg["_share_weight"] else 0,
+            "search_top_impression_share": (agg["_stis_num"] / w * 100) if agg["_share_weight"] else 0,
+            "search_abs_top_impression_share": (agg["_satis_num"] / w * 100) if agg["_share_weight"] else 0,
+            "search_budget_lost_is": (agg["_blis_num"] / w * 100) if agg["_share_weight"] else 0,
+            "search_rank_lost_is": (agg["_rlis_num"] / w * 100) if agg["_share_weight"] else 0,
+            "search_click_share": (agg["_scs_num"] / w * 100) if agg["_share_weight"] else 0,
+            "abs_top_impression_pct": (agg["_atip_num"] / w * 100) if agg["_share_weight"] else 0,
+            "top_impression_pct": (agg["_tip_num"] / w * 100) if agg["_share_weight"] else 0,
         })
 
     df = pd.DataFrame(daily_rows)
-    # Only keep requested metrics that exist in df
-    valid_cols = [m for m in data.metrics if m in df.columns]
+    valid_cols = [m for m in requested if m in df.columns]
     if len(valid_cols) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 valid metrics for correlation")
 
@@ -338,7 +393,7 @@ def correlation_matrix(data: CorrelationRequest, db: Session = Depends(get_db)):
 @router.post("/compare-periods", response_model=PeriodComparisonResponse)
 def compare_periods(data: PeriodComparisonRequest, db: Session = Depends(get_db)):
     """Compare a metric across two time periods for a campaign."""
-    if data.metric not in VALID_METRICS:
+    if data.metric not in LEGACY_COLUMN_METRICS:
         raise HTTPException(status_code=400, detail=f"Invalid metric: {data.metric}")
 
     def _get_values(start: date, end: date) -> list[float]:
@@ -727,7 +782,7 @@ def forecast_metric(
 ):
     """Simple linear regression forecast for a campaign metric."""
     normalized_metric = FORECAST_METRIC_ALIASES.get(metric, metric)
-    if normalized_metric not in VALID_METRICS:
+    if normalized_metric not in LEGACY_COLUMN_METRICS:
         raise HTTPException(status_code=400, detail=f"Invalid metric: {metric}")
 
     cutoff = date.today() - timedelta(days=history_days)
@@ -817,33 +872,39 @@ def forecast_metric(
 @router.get("/trends")
 def get_trends(
     client_id: int = Query(..., description="Client ID"),
-    metrics: str = Query("cost,clicks", description="Comma-separated metrics: cost,clicks,ctr,cpc,conversions,roas,cpa,impressions,cvr"),
+    metrics: str = Query("cost,clicks", description="Comma-separated metrics from TREND_METRICS"),
     days: int = Query(30, ge=7, le=365, description="Lookback period in days"),
     date_from: date = Query(None, description="Start date (overrides days)"),
     date_to: date = Query(None, description="End date (overrides days)"),
     campaign_type: str = Query("ALL", description="ALL | SEARCH | PERFORMANCE_MAX | DISPLAY | SHOPPING"),
     campaign_status: str = Query(None, description="Campaign status filter"),
     status: str = Query("ALL", description="Alias for campaign_status (backward compat)"),
+    campaign_ids: str = Query(None, description="Comma-separated campaign IDs — restrict aggregation to these"),
     db: Session = Depends(get_db),
 ):
     """Daily aggregated metrics for TrendExplorer chart.
 
     Returns time-series data per day. Falls back to mock data if no MetricDaily rows exist.
+    When `campaign_ids` is provided, aggregation is restricted to those campaigns —
+    used by the Campaigns tab to scope Trend Explorer to a single selected campaign.
     """
     effective_status = campaign_status or status
     start, end = resolve_dates(days, date_from, date_to)
 
-    # Clamp range to 365 days. `days` Query has le=365 but date_from/date_to bypass it,
-    # so an `all_time` preset (~2300 days) would push thousands of points to the chart
-    # and freeze the UI. Keep `end` and walk `start` forward to a 365-day window.
     max_span = timedelta(days=365)
     if end - start > max_span:
         start = end - max_span
 
-    allowed = {"cost", "clicks", "impressions", "conversions", "ctr", "cpc", "roas", "cpa", "cvr"}
-    metric_list = [m.strip() for m in metrics.split(",") if m.strip() in allowed]
+    metric_list = [m.strip() for m in metrics.split(",") if m.strip() in TREND_METRICS]
     if not metric_list:
         metric_list = ["cost", "clicks"]
+
+    id_filter: list[int] | None = None
+    if campaign_ids:
+        try:
+            id_filter = [int(x) for x in campaign_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="campaign_ids must be comma-separated integers")
 
     service = AnalyticsService(db)
     return service.get_trends(
@@ -853,6 +914,52 @@ def get_trends(
         date_to=end,
         campaign_type=campaign_type,
         campaign_status=effective_status,
+        campaign_ids=id_filter,
+    )
+
+
+@router.get("/trends-by-device")
+def get_trends_by_device(
+    client_id: int = Query(..., description="Client ID"),
+    metric: str = Query("clicks", description="Single metric to split by device"),
+    days: int = Query(30, ge=7, le=365),
+    date_from: date = Query(None),
+    date_to: date = Query(None),
+    campaign_type: str = Query("ALL"),
+    campaign_status: str = Query(None),
+    campaign_ids: str = Query(None, description="Comma-separated campaign IDs"),
+    db: Session = Depends(get_db),
+):
+    """Daily time-series for a single metric, split across device segments.
+
+    Powers TrendExplorer's device-segmentation option. Returns one series per
+    device (MOBILE, DESKTOP, TABLET, OTHER) for the selected metric over the
+    requested period.
+    """
+    start, end = resolve_dates(days, date_from, date_to)
+    max_span = timedelta(days=365)
+    if end - start > max_span:
+        start = end - max_span
+
+    if metric not in TREND_METRICS:
+        raise HTTPException(status_code=400, detail=f"Invalid metric: {metric}")
+
+    id_filter: list[int] | None = None
+    if campaign_ids:
+        try:
+            id_filter = [int(x) for x in campaign_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="campaign_ids must be comma-separated integers")
+
+    service = AnalyticsService(db)
+    return service.get_trends_by_device(
+        client_id=client_id,
+        metric=metric,
+        date_from=start,
+        date_to=end,
+        campaign_ids=id_filter,
+        campaign_type=campaign_type,
+        campaign_status=campaign_status,
     )
 
 

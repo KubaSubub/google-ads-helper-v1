@@ -295,29 +295,43 @@ class AnalyticsService:
         date_to: date | None = None,
         campaign_type: str = "ALL",
         campaign_status: str = "ALL",
+        campaign_ids: list[int] | None = None,
         # backward compat alias
         status: str | None = None,
     ) -> dict:
         """Return daily aggregated metrics for TrendExplorer chart.
 
-        Queries MetricDaily joined to Campaign, aggregates per day.
+        Queries MetricDaily joined to Campaign, aggregates per day. Supports all
+        18 unified metrics (cost, clicks, ..., search_impression_share, click_share, ...).
+        Share metrics are impression-weighted when aggregating across multiple campaigns.
+
+        When `campaign_ids` is provided, aggregation is restricted to those IDs
+        (intersected with the client's campaigns). Used by the Campaigns tab to
+        scope Trend Explorer to a single selected campaign.
+
         Falls back to mock data if MetricDaily is empty.
         """
         effective_status = campaign_status if status is None else status
         from app.utils.date_utils import resolve_dates as _rd
         date_from, date_to = _rd(days, date_from, date_to)
 
-        campaign_ids = self._filter_campaign_ids(client_id, campaign_type, effective_status)
+        client_campaign_ids = self._filter_campaign_ids(client_id, campaign_type, effective_status)
+        if campaign_ids is not None:
+            # Intersect with client scope so cross-client requests are rejected silently
+            allowed_set = set(client_campaign_ids)
+            target_campaign_ids = [cid for cid in campaign_ids if cid in allowed_set]
+        else:
+            target_campaign_ids = client_campaign_ids
+
         period_days = (date_to - date_from).days
 
-        if not campaign_ids:
+        if not target_campaign_ids:
             return {"period_days": period_days, "data": [], "totals": {}}
 
-        # Query daily rows
         rows = (
             self.db.query(MetricDaily)
             .filter(
-                MetricDaily.campaign_id.in_(campaign_ids),
+                MetricDaily.campaign_id.in_(target_campaign_ids),
                 MetricDaily.date >= date_from,
                 MetricDaily.date <= date_to,
             )
@@ -325,26 +339,44 @@ class AnalyticsService:
             .all()
         )
 
-        # Aggregate per day
+        def _fresh():
+            return {
+                "clicks": 0, "impressions": 0, "cost_micros": 0,
+                "conversions": 0.0, "conv_value_micros": 0,
+                "_sis_num": 0.0, "_stis_num": 0.0, "_satis_num": 0.0,
+                "_blis_num": 0.0, "_rlis_num": 0.0, "_scs_num": 0.0,
+                "_atip_num": 0.0, "_tip_num": 0.0, "_share_weight": 0,
+            }
+
         day_map: dict[date, dict] = {}
         for r in rows:
             d = r.date
             if d not in day_map:
-                day_map[d] = {"clicks": 0, "impressions": 0, "cost_micros": 0, "conversions": 0.0, "conv_value_micros": 0}
-            day_map[d]["clicks"] += r.clicks or 0
-            day_map[d]["impressions"] += r.impressions or 0
-            day_map[d]["cost_micros"] += r.cost_micros or 0
-            day_map[d]["conversions"] += r.conversions or 0
-            day_map[d]["conv_value_micros"] += r.conversion_value_micros or 0
+                day_map[d] = _fresh()
+            agg = day_map[d]
+            imp = r.impressions or 0
+            agg["clicks"] += r.clicks or 0
+            agg["impressions"] += imp
+            agg["cost_micros"] += r.cost_micros or 0
+            agg["conversions"] += r.conversions or 0
+            agg["conv_value_micros"] += r.conversion_value_micros or 0
+            if imp > 0:
+                agg["_share_weight"] += imp
+                if r.search_impression_share is not None:         agg["_sis_num"]  += r.search_impression_share * imp
+                if r.search_top_impression_share is not None:     agg["_stis_num"] += r.search_top_impression_share * imp
+                if r.search_abs_top_impression_share is not None: agg["_satis_num"] += r.search_abs_top_impression_share * imp
+                if r.search_budget_lost_is is not None:           agg["_blis_num"] += r.search_budget_lost_is * imp
+                if r.search_rank_lost_is is not None:             agg["_rlis_num"] += r.search_rank_lost_is * imp
+                if r.search_click_share is not None:              agg["_scs_num"]  += r.search_click_share * imp
+                if r.abs_top_impression_pct is not None:          agg["_atip_num"] += r.abs_top_impression_pct * imp
+                if r.top_impression_pct is not None:              agg["_tip_num"]  += r.top_impression_pct * imp
 
-        # If no real data → generate mock from campaign aggregates
         is_mock = False
         if not day_map:
             is_mock = True
             logger.warning("Returning mock trend data — no MetricDaily rows found for campaigns")
-            day_map = self._mock_daily_data(campaign_ids, date_from, date_to)
+            day_map = self._mock_daily_data(target_campaign_ids, date_from, date_to)
 
-        # Build output rows with derived metrics
         data = []
         for d in sorted(day_map.keys()):
             agg = day_map[d]
@@ -352,35 +384,44 @@ class AnalyticsService:
             impressions = agg["impressions"]
             cost_micros = agg["cost_micros"]
             conversions = agg["conversions"]
-            conv_value_usd = agg.get("conv_value_micros", 0) / 1_000_000
-            cost_usd = cost_micros / 1_000_000
+            conv_value = agg.get("conv_value_micros", 0) / 1_000_000
+            cost = cost_micros / 1_000_000
 
-            ctr = clicks / impressions if impressions else 0
-            cpc = cost_usd / clicks if clicks else 0
-            roas = conv_value_usd / cost_usd if cost_usd else 0  # Real ROAS = revenue / cost
-            cpa = cost_usd / conversions if conversions else 0
-            cvr = conversions / clicks if clicks else 0
+            ctr = (clicks / impressions * 100) if impressions else 0
+            cpc = (cost / clicks) if clicks else 0
+            roas = (conv_value / cost) if cost else 0
+            cpa = (cost / conversions) if conversions else 0
+            cvr = (conversions / clicks * 100) if clicks else 0
 
-            row: dict = {"date": str(d)}
+            w = agg.get("_share_weight", 0)
+            def _share(num_key: str) -> float:
+                return round((agg.get(num_key, 0) / w * 100), 2) if w else 0
+
             metric_map = {
-                "cost": round(cost_usd, 2),
+                "cost": round(cost, 2),
                 "clicks": clicks,
                 "impressions": impressions,
                 "conversions": round(conversions, 2),
-                "ctr": round(ctr * 100, 4),
+                "conversion_value": round(conv_value, 2),
+                "ctr": round(ctr, 4),
                 "cpc": round(cpc, 2),
-                "roas": round(roas, 2),
                 "cpa": round(cpa, 2),
-                "cvr": round(cvr * 100, 4),
+                "cvr": round(cvr, 4),
+                "roas": round(roas, 2),
+                "search_impression_share": _share("_sis_num"),
+                "search_top_impression_share": _share("_stis_num"),
+                "search_abs_top_impression_share": _share("_satis_num"),
+                "search_budget_lost_is": _share("_blis_num"),
+                "search_rank_lost_is": _share("_rlis_num"),
+                "search_click_share": _share("_scs_num"),
+                "abs_top_impression_pct": _share("_atip_num"),
+                "top_impression_pct": _share("_tip_num"),
             }
+            row: dict = {"date": str(d)}
             for m in metrics:
-                if m in metric_map:
-                    row[m] = metric_map[m]
-                else:
-                    row[m] = 0
+                row[m] = metric_map.get(m, 0)
             data.append(row)
 
-        # Totals
         total_cost = sum(day_map[d]["cost_micros"] for d in day_map) / 1_000_000
         total_clicks = sum(day_map[d]["clicks"] for d in day_map)
         total_conversions = sum(day_map[d]["conversions"] for d in day_map)
@@ -400,11 +441,11 @@ class AnalyticsService:
         """Generate mock daily data when MetricDaily is empty.
 
         Distributes keyword-level aggregates evenly across days with ±20% noise.
+        Includes conv_value_micros so ROAS is non-zero in mock mode.
         """
         from app.models.keyword import Keyword
         from app.models.ad_group import AdGroup
 
-        # Aggregate from keywords as baseline
         keywords = (
             self.db.query(Keyword)
             .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
@@ -416,16 +457,18 @@ class AnalyticsService:
         total_impressions = sum(k.impressions or 0 for k in keywords)
         total_cost_micros = sum(k.cost_micros or 0 for k in keywords)
         total_conversions = sum(k.conversions or 0 for k in keywords)
+        total_conv_value_micros = sum(getattr(k, "conversion_value_micros", 0) or 0 for k in keywords)
 
         days = (date_to - date_from).days or 1
         day_clicks = total_clicks / days
         day_impressions = total_impressions / days
         day_cost = total_cost_micros / days
         day_conv = total_conversions / days
+        day_conv_value = total_conv_value_micros / days
 
         day_map: dict[date, dict] = {}
         current = date_from
-        rand = random.Random(42)  # deterministic
+        rand = random.Random(42)
         while current <= date_to:
             noise = lambda: 1 + rand.uniform(-0.2, 0.2)
             day_map[current] = {
@@ -433,6 +476,8 @@ class AnalyticsService:
                 "impressions": max(0, int(day_impressions * noise())),
                 "cost_micros": max(0, int(day_cost * noise())),
                 "conversions": max(0, round(day_conv * noise(), 1)),
+                "conv_value_micros": max(0, int(day_conv_value * noise())),
+                "_share_weight": 0,  # no mock shares — keeps them at 0 in output
             }
             current += timedelta(days=1)
         return day_map
@@ -1257,6 +1302,99 @@ class AnalyticsService:
             })
 
         return {"period_days": period_days, "devices": devices}
+
+    # -----------------------------------------------------------------------
+    # NEW: Trends split by device (time-series per segment)
+    # -----------------------------------------------------------------------
+
+    def get_trends_by_device(
+        self,
+        client_id: int,
+        metric: str,
+        days: int = 30,
+        date_from: date | None = None, date_to: date | None = None,
+        campaign_ids: list[int] | None = None,
+        campaign_type: str = "ALL",
+        campaign_status: str | None = None,
+    ) -> dict:
+        """Return daily time-series for a single metric, split by device.
+
+        Used by TrendExplorer's device-segmentation option. For each day,
+        derives the selected metric for MOBILE / DESKTOP / TABLET / OTHER
+        from MetricSegmented aggregated across the matching campaigns.
+        """
+        from app.utils.date_utils import resolve_dates as _rd
+        date_from, date_to = _rd(days, date_from, date_to)
+        period_days = (date_to - date_from).days
+
+        client_campaign_ids = self._filter_campaign_ids(client_id, campaign_type, campaign_status)
+        if campaign_ids is not None:
+            allowed = set(client_campaign_ids)
+            target = [cid for cid in campaign_ids if cid in allowed]
+        else:
+            target = client_campaign_ids
+
+        if not target:
+            return {"period_days": period_days, "metric": metric, "devices": {}}
+
+        rows = (
+            self.db.query(MetricSegmented)
+            .filter(
+                MetricSegmented.campaign_id.in_(target),
+                MetricSegmented.date >= date_from,
+                MetricSegmented.date <= date_to,
+                MetricSegmented.device.isnot(None),
+            )
+            .all()
+        )
+
+        by_dev_day: dict[str, dict[date, dict]] = {}
+        for r in rows:
+            dev = r.device
+            if dev not in by_dev_day:
+                by_dev_day[dev] = {}
+            d = r.date
+            if d not in by_dev_day[dev]:
+                by_dev_day[dev][d] = {"clicks": 0, "impressions": 0, "cost_micros": 0,
+                                      "conversions": 0.0, "conv_value_micros": 0}
+            agg = by_dev_day[dev][d]
+            agg["clicks"] += r.clicks or 0
+            agg["impressions"] += r.impressions or 0
+            agg["cost_micros"] += r.cost_micros or 0
+            agg["conversions"] += r.conversions or 0
+            agg["conv_value_micros"] += r.conversion_value_micros or 0
+
+        def _value_for_day(agg: dict) -> float:
+            clicks = agg["clicks"]
+            impressions = agg["impressions"]
+            cost = agg["cost_micros"] / 1_000_000
+            conversions = agg["conversions"]
+            conv_value = agg["conv_value_micros"] / 1_000_000
+            if metric == "cost": return round(cost, 2)
+            if metric == "clicks": return clicks
+            if metric == "impressions": return impressions
+            if metric == "conversions": return round(conversions, 2)
+            if metric == "conversion_value": return round(conv_value, 2)
+            if metric == "ctr": return round((clicks / impressions * 100) if impressions else 0, 4)
+            if metric == "cpc": return round((cost / clicks) if clicks else 0, 2)
+            if metric == "cpa": return round((cost / conversions) if conversions else 0, 2)
+            if metric == "cvr": return round((conversions / clicks * 100) if clicks else 0, 4)
+            if metric == "roas": return round((conv_value / cost) if cost else 0, 2)
+            return 0
+
+        devices: dict[str, list[dict]] = {}
+        for dev, day_map in by_dev_day.items():
+            series = []
+            for d in sorted(day_map.keys()):
+                series.append({"date": str(d), "value": _value_for_day(day_map[d])})
+            devices[dev] = series
+
+        return {
+            "period_days": period_days,
+            "metric": metric,
+            "devices": devices,
+            "is_mock": len(rows) == 0,
+        }
 
     # -----------------------------------------------------------------------
     # NEW: Geo Breakdown

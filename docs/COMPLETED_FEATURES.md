@@ -261,10 +261,19 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 
 ## MCC Overview — Cross-Account Landing Page
 - `MccOverviewPage.jsx` at `/mcc-overview` — default entry point (/ redirects here).
-- Backend: `mcc.py` router with 7 endpoints: overview, new-access, dismiss-google-recommendations, negative-keyword-lists, shared-lists, shared-lists/{id}/items, billing-status.
+- Backend: `mcc.py` router with 8 endpoints: overview, new-access, dismiss-google-recommendations, negative-keyword-lists, shared-lists, shared-lists/{id}/items, sync-history, billing-status.
 - Per-account metrics: spend, conversions, CPA, ROAS, budget pacing, health score, change activity, Google recs, alerts, last sync.
 - Sortable table columns, currency-aware formatting, spend sparkline per account row.
 - MCC shared exclusion lists (negative keyword + placement) with drill-down.
+- `GET /mcc/sync-history?client_id=X&limit=5` — per-client sync history for freshness badge and SyncHistoryPanel.
+
+## MCC Overview — Sprint 1-3 + Currency P0 + Active Accounts Filter
+- Currency-aware KPI strip: single-currency MCC sums correctly; mixed-currency shows per-currency breakdown (e.g. `12 480,00 zł · $3 200,00`). Currency read dynamically from Google Ads API `customer` resource (not hardcoded).
+- `active_only` param on `GET /mcc/overview` — server-side filter excludes accounts with spend<=0 in period; frontend "Wszystkie / Aktywne" pill toggle persists to localStorage
+- ROAS field: `roas_pct` renamed to `roas`, stored as multiplier (e.g. `4.20x`); thresholds: >=4 green / >=2 blue / <2 warn
+- IS weighted average: `sum(IS*cost)/sum(cost)` instead of naive mean (cost-proportional, not flat average)
+- localStorage persistence for sortBy / sortDir / compactMode / activeOnly
+- IS column in expanded mode (always visible, dash if no data)
 
 ## Settings — Marketing Mastermind Brief
 - `strategy_context` JSON column on `clients` (auto-migrated via `_ensure_sqlite_columns`).
@@ -491,3 +500,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Display label: `PMax` (short, user-facing).
 - `CAMP_TYPES` array and `CAMP_TYPE_LABELS` map both use `PERFORMANCE_MAX` consistently.
 - `globalFilters.js` campaign type options also use `PERFORMANCE_MAX` value.
+
+## MCC Overview — Sync History Panel + Freshness Badge
+- `SyncHistoryPanel` component in `MCCOverviewPage.jsx` — shows per-account sync history (status, duration, records synced, errors, timestamps).
+- Freshness badge per account row: green (< 6h), yellow (< 24h), red (>= 24h or never synced).
+- Backend: `GET /mcc/sync-history?client_id=X&limit=5` (1-20, default 5) — returns id, status, total_synced, total_errors, started_at, finished_at, duration_s.
+- Commit: 3fe53d4.

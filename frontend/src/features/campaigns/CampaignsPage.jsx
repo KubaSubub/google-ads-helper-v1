@@ -5,7 +5,7 @@ import {
     Filter, X, ArrowDownUp,
 } from 'lucide-react'
 import {
-    getCampaigns, getCampaignKPIs, getCampaignMetrics, updateCampaign,
+    getCampaigns, getCampaignKPIs, updateCampaign,
     getDeviceBreakdown, getGeoBreakdown, getBudgetPacing,
     getUnifiedTimeline, getCampaignsSummary,
 } from '../../api'
@@ -17,7 +17,7 @@ import { LoadingSpinner, ErrorMessage } from '../../components/UI'
 import { BudgetPacingModule } from '../../components/modules'
 import DarkSelect from '../../components/DarkSelect'
 import CampaignKpiRow from './components/CampaignKpiRow'
-import CampaignTrendExplorer from './components/CampaignTrendExplorer'
+import TrendExplorer from '../../components/TrendExplorer'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -207,7 +207,6 @@ export default function CampaignsPage() {
     const [campaigns, setCampaigns] = useState([])
     const [selected, setSelected] = useState(null)
     const [kpis, setKpis] = useState(null)
-    const [metrics, setMetrics] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
 
@@ -252,19 +251,14 @@ export default function CampaignsPage() {
     const selectCampaign = useCallback(async (campaign) => {
         setSelected(campaign)
         setKpis(null)
-        setMetrics([])
         setDeviceData(null)
         setGeoData(null)
         setBudgetPacing(null)
         setActionTimeline([])
 
         try {
-            const [kpiData, metricData] = await Promise.all([
-                getCampaignKPIs(campaign.id, null, dateParams).catch(() => null),
-                getCampaignMetrics(campaign.id, filters.dateFrom, filters.dateTo).catch(() => []),
-            ])
+            const kpiData = await getCampaignKPIs(campaign.id, null, dateParams).catch(() => null)
             setKpis(kpiData)
-            setMetrics(metricData)
         } catch (err) {
             console.error('Failed to load campaign details:', err)
         }
@@ -650,12 +644,14 @@ export default function CampaignsPage() {
                             {/* 1. KPI Tiles (ALL metrics) */}
                             <CampaignKpiRow kpis={kpis} campaignType={selected.campaign_type} />
 
-                            {/* 2. Trend Explorer */}
-                            <CampaignTrendExplorer
-                                metrics={metrics}
-                                actionEvents={actionTimeline}
-                                campaignType={selected.campaign_type}
-                            />
+                            {/* 2. Trend Explorer — unified component scoped to this campaign */}
+                            <div style={{ marginBottom: 16 }}>
+                                <TrendExplorer
+                                    campaignIds={[selected.id]}
+                                    campaignType={selected.campaign_type}
+                                    campaignName={selected.name}
+                                />
+                            </div>
 
                             {/* 3. Budget Pacing */}
                             <BudgetPacingModule

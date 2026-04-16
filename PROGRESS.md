@@ -60,6 +60,11 @@
 2. **Tydz 2-3:** Multi-user auth + team workspace
 3. **Tydz 3-4:** "Top 5 actions today" z PLN impact + one-click apply + email digest
 
+## MCC Currency Fix — Dynamic from Google Ads API (2026-04-15)
+- Fixed hardcoded PLN currency — now reads `currency_code` dynamically from Google Ads API `customer` resource during sync
+- Affects MCC Overview spend totals and per-account currency formatting
+- Commit: 94587d6
+
 ## MCC Overview — Sprint 1-3 + Currency P0 + Active Accounts Filter (2026-04-15)
 - P0 Currency-aware spend totals: single-currency MCC shows full sum; mixed-currency shows per-currency breakdown (e.g. `12 480,00 zł · $3 200,00`)
 - Sprint 1: IS column moved to expanded mode, Math.round on clicks/impressions in KPI strip, localStorage persistence for sortBy/sortDir/compactMode/activeOnly

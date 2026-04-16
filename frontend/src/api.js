@@ -67,13 +67,6 @@ export const updateCampaign = (campaignId, data) =>
     api.patch(`/campaigns/${campaignId}`, data);
 export const getCampaignKPIs = (campaignId, days = 30, params = {}) =>
     api.get(`/campaigns/${campaignId}/kpis`, { params: { days, ...params } });
-export const getCampaignMetrics = (campaignId, dateFrom, dateTo) => {
-    const params = {};
-    if (dateFrom) params.date_from = dateFrom;
-    if (dateTo) params.date_to = dateTo;
-    return api.get(`/campaigns/${campaignId}/metrics`, { params });
-};
-
 // Keywords
 export const getKeywords = (params = {}) =>
     api.get('/keywords/', { params: typeof params === 'object' ? params : { campaign_id: params } });
@@ -212,6 +205,8 @@ export const getHealth = () => api.get('/health');
 // V2 Analytics
 export const getTrends = (clientId, params = {}) =>
     api.get('/analytics/trends', { params: { client_id: clientId, ...params } });
+export const getTrendsByDevice = (clientId, params = {}) =>
+    api.get('/analytics/trends-by-device', { params: { client_id: clientId, ...params } });
 export const getHealthScore = (clientId, params = {}) =>
     api.get('/analytics/health-score', { params: { client_id: clientId, ...params } });
 export const getCampaignTrends = (clientId, days, params = {}) =>
