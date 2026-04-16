@@ -3,12 +3,25 @@
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 686 tests collected (pytest --collect-only)
+- Backend: 698 tests collected (pytest --collect-only)
+
+## CommonFilters Contract — Canonical Data-Endpoint Filter (2026-04-16)
+- One source of truth for `client_id` / `date_from` / `date_to` / `campaign_type` / `campaign_status` across data-returning endpoints
+- Backend:
+  - `app/dependencies/filters.py` — `CommonFilters` dataclass + `common_filters` `Depends`; normalizes `"ALL"` sentinel → `None`, uppercases enums, resolves `days` → `date_from`/`date_to`, tracks `dates_explicit` for dual aggregation/snapshot modes
+  - POC migration: `GET /campaigns/`, `GET /keywords/`, `GET /analytics/dashboard-kpis` now consume `CommonFilters` via `Depends`
+  - `tests/test_common_filters.py` (10 unit tests) + `tests/test_filters_contract.py` (gate: DATA_ENDPOINTS registry must declare `Depends(common_filters)`, enforced by walking FastAPI dependant tree)
+- Frontend:
+  - `hooks/useFilteredQuery.js` — canonical data-fetch hook; injects `selectedClientId` + `allParams` from `AppContext`/`FilterContext`
+  - `utils/buildFilterParams.js` — imperative variant for event handlers
+  - `api.js` dev-only request interceptor warns when a known data endpoint is called without `client_id`
+- Remaining ~35 endpoints + 16 pages migrate incrementally; each addition to `DATA_ENDPOINTS` enforces the contract automatically
+- Commit: d174775
 
 ## Trend Explorer Unification + VISION + Vault Integration v2 (2026-04-16)
 
 ### Trend Explorer Unification
-- `CampaignTrendExplorer.jsx` merged into unified `frontend/src/components/TrendExplorer.jsx`; shared helpers extracted to `trendExplorerUtils.js`
+- `CampaignTrendExplorer.jsx` merged into unified `frontend/src/components/TrendExplorer.jsx` (deleted); shared helpers extracted to `frontend/src/components/trendExplorerUtils.js`
 - Backend: unified metric vocabulary across `/analytics/trends`, `/analytics/correlation`, `/analytics/wow-comparison` (`TREND_METRICS` set in `routers/analytics.py`)
   - 18 metrics total: `cost, clicks, impressions, conversions, conversion_value, ctr, cpc, cpa, cvr, roas, search_impression_share, search_top_impression_share, search_abs_top_impression_share, search_budget_lost_is, search_rank_lost_is, search_click_share, abs_top_impression_pct, top_impression_pct`
   - `CORRELATION_LEGACY_ALIASES` provides backward compat for legacy names (`cost_micros` → `cost`, `avg_cpc_micros` → `cpc`, `conversion_rate` → `cvr`)

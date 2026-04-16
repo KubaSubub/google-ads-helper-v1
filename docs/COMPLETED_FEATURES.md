@@ -506,3 +506,20 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - Freshness badge per account row: green (< 6h), yellow (< 24h), red (>= 24h or never synced).
 - Backend: `GET /mcc/sync-history?client_id=X&limit=5` (1-20, default 5) — returns id, status, total_synced, total_errors, started_at, finished_at, duration_s.
 - Commit: 3fe53d4.
+
+## Trend Explorer Unification + TREND_METRICS Vocabulary
+- `CampaignTrendExplorer.jsx` (features/campaigns/components/) deleted; all campaign trend rendering merged into unified `frontend/src/components/TrendExplorer.jsx`.
+- `frontend/src/components/trendExplorerUtils.js` — extracted shared helpers (metric formatting, color mapping, device segment helpers).
+- Backend: `TREND_METRICS` set in `routers/analytics.py` — unified metric vocabulary across `/analytics/trends`, `/analytics/correlation`, `/analytics/wow-comparison`.
+  - 18 metrics: `cost, clicks, impressions, conversions, conversion_value, ctr, cpc, cpa, cvr, roas, search_impression_share, search_top_impression_share, search_abs_top_impression_share, search_budget_lost_is, search_rank_lost_is, search_click_share, abs_top_impression_pct, top_impression_pct`
+  - `CORRELATION_LEGACY_ALIASES`: backward compat for `cost_micros` -> `cost`, `avg_cpc_micros` -> `cpc`, `conversion_rate` -> `cvr`.
+  - Share metrics are impression-weighted when aggregating across multiple campaigns.
+- `GET /analytics/trends` accepts optional `campaign_ids` query param to scope aggregation to specific campaigns.
+- `getTrendsByDevice` added to `frontend/src/api.js`; unused `getCampaignMetrics` removed.
+
+## CommonFilters Contract — Canonical Data-Endpoint Filter
+- `app/dependencies/filters.py` — `CommonFilters` dataclass + `common_filters` Depends; normalizes `"ALL"` sentinel -> None, uppercases enums, resolves `days` -> `date_from`/`date_to`, tracks `dates_explicit`.
+- POC migration: `GET /campaigns/`, `GET /keywords/`, `GET /analytics/dashboard-kpis` consume `CommonFilters` via Depends.
+- `tests/test_common_filters.py` (10 unit tests) + `tests/test_filters_contract.py` (contract gate on DATA_ENDPOINTS registry).
+- Frontend: `hooks/useFilteredQuery.js` — canonical data-fetch hook; `utils/buildFilterParams.js` — imperative variant.
+- `api.js` dev-only request interceptor warns when a known data endpoint is called without `client_id`.
