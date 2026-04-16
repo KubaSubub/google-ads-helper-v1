@@ -4,6 +4,29 @@
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
 - Backend: 686 tests collected (pytest --collect-only)
+
+## Trend Explorer Unification + VISION + Vault Integration v2 (2026-04-16)
+
+### Trend Explorer Unification
+- `CampaignTrendExplorer.jsx` merged into unified `frontend/src/components/TrendExplorer.jsx`; shared helpers extracted to `trendExplorerUtils.js`
+- Backend: unified metric vocabulary across `/analytics/trends`, `/analytics/correlation`, `/analytics/wow-comparison` (`TREND_METRICS` set in `routers/analytics.py`)
+  - 18 metrics total: `cost, clicks, impressions, conversions, conversion_value, ctr, cpc, cpa, cvr, roas, search_impression_share, search_top_impression_share, search_abs_top_impression_share, search_budget_lost_is, search_rank_lost_is, search_click_share, abs_top_impression_pct, top_impression_pct`
+  - `CORRELATION_LEGACY_ALIASES` provides backward compat for legacy names (`cost_micros` → `cost`, `avg_cpc_micros` → `cpc`, `conversion_rate` → `cvr`)
+  - Share metrics are impression-weighted during multi-campaign aggregation
+- `GET /analytics/trends` now accepts optional `campaign_ids` query param — scopes aggregation to specific campaign IDs
+- `getTrendsByDevice` helper added to `frontend/src/api.js`; unused `getCampaignMetrics` helper removed
+- `google_ads.py` campaign sync: prefetch existing campaigns into a dict before row loop (avoids N per-row queries)
+
+### Ads Review Pipeline — MCC Overview + Trend Explorer
+- New review docs in `docs/reviews/`:
+  - MCC Overview: `ads-user-mcc-overview.md`, `ads-expert-mcc-overview.md`, `ads-verify-mcc-overview.md` — 11 items (2 PARTIAL / 8 MISSING / 1 NOT_NEEDED); partial items addressed by 2026-04-15 Sprint 1-3
+  - Trend Explorer: `ads-user-trend-explorer.md`, `ads-expert-trend-explorer.md`, `ads-verify-trend-explorer.md` — 14 items (3 P0 + 4 P1 + 4 P2 + 3 P3); plan drives the unification work above
+- New testing doc: `docs/testing/mcc-overview.md`
+
+### VISION + Vault Integration
+- New top-level `VISION.md` — canonical self-learning system vision (three-layer architecture: Google Ads ↔ GAH ↔ Obsidian), sourced from 2026-04-16 dictation
+- New spec `docs/specs/vault-integration-plan.md` (v2) — Obsidian vault integration plan aligned with VISION.md ("Obsidian = long-term brain, SQLite = working memory")
+- Archived `docs/specs/mcc-overview-sync.md` (superseded)
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSyncConfig + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)

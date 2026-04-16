@@ -146,10 +146,15 @@ Base API URL: `/api/v1`
 - `GET /analytics/z-score-anomalies?client_id=X&metric=cost&days=90&threshold=2.0` — z-score anomaly detection per campaign per day for a given metric (metrics: cost, clicks, impressions, conversions, ctr)
 
 ## Analytics - Advanced
-- `POST /analytics/correlation`
+- `POST /analytics/correlation` — body: `{client_id, metrics: [..], days?, date_from?, date_to?, campaign_ids?: [..]}`.
+  - Accepts unified metric names (see `/analytics/trends` below). Legacy names (`cost_micros`, `avg_cpc_micros`, `conversion_rate`) are auto-aliased for backward compatibility.
 - `POST /analytics/compare-periods`
-- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias; max span clamped to 365 days)
-  - allowed metrics: `cost`, `clicks`, `impressions`, `conversions`, `ctr`, `cpc`, `roas`, `cpa`, `cvr`
+- `GET /analytics/trends?client_id=X&metrics=cost,clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL&campaign_ids=1,2` (date_from/date_to override days; campaign_status preferred, status=alias; max span clamped to 365 days; `campaign_ids` optional, scopes aggregation to specific campaigns)
+  - allowed metrics (unified `TREND_METRICS` — shared with `/correlation` and `/wow-comparison`):
+    - core: `cost`, `clicks`, `impressions`, `conversions`, `conversion_value`
+    - derived: `ctr`, `cpc`, `cpa`, `cvr`, `roas`
+    - share: `search_impression_share`, `search_top_impression_share`, `search_abs_top_impression_share`, `search_budget_lost_is`, `search_rank_lost_is`, `search_click_share`, `abs_top_impression_pct`, `top_impression_pct`
+  - share metrics are impression-weighted when aggregating across multiple campaigns
 - `GET /analytics/trends-by-device?client_id=X&metric=clicks&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&campaign_ids=1,2` — daily time-series for a single metric split across device segments (MOBILE, DESKTOP, TABLET, OTHER); powers TrendExplorer device segmentation
 - `GET /analytics/health-score?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)
 - `GET /analytics/campaign-trends?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` (date_from/date_to override days)

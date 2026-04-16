@@ -139,15 +139,16 @@ function SortHeader({ label, field, sortBy, sortDir, onSort, align }) {
     )
 }
 
-function AlertTooltip({ alerts }) {
+function AlertTooltip({ alerts, x, y }) {
     if (!alerts?.length) return null
     return (
         <div style={{
-            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-            marginBottom: 6, padding: '8px 10px', borderRadius: R.md, minWidth: 200, maxWidth: 300,
+            position: 'fixed', left: x, top: y - 6, transform: 'translateX(-50%) translateY(-100%)',
+            padding: '8px 10px', borderRadius: R.md, minWidth: 200, maxWidth: 300,
             background: C.surfaceElevated, border: B.hover,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 10,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 9999,
             fontSize: 11, color: C.w70,
+            pointerEvents: 'none',
         }}>
             {alerts.map((a, i) => (
                 <div key={i} style={{ padding: '3px 0', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
@@ -161,7 +162,7 @@ function AlertTooltip({ alerts }) {
     )
 }
 
-function BillingTooltip({ status }) {
+function BillingTooltip({ status, x, y }) {
     if (!status) return null
     const messages = {
         ok: 'Płatności skonfigurowane poprawnie',
@@ -173,11 +174,12 @@ function BillingTooltip({ status }) {
     const colors = { ok: C.success, no_billing: C.danger, no_access: C.w40, unknown: C.w40, error: C.danger }
     return (
         <div style={{
-            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-            marginBottom: 6, padding: '8px 10px', borderRadius: R.md, minWidth: 180, maxWidth: 260,
+            position: 'fixed', left: x, top: y - 6, transform: 'translateX(-50%) translateY(-100%)',
+            padding: '8px 10px', borderRadius: R.md, minWidth: 180, maxWidth: 260,
             background: C.surfaceElevated, border: B.hover,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 10,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 9999,
             fontSize: 11, color: colors[status.status] || C.w50,
+            pointerEvents: 'none',
         }}>
             {messages[status.status] || messages.unknown}
         </div>
@@ -215,7 +217,9 @@ export default function MCCOverviewPage() {
     const [activeOnly, setActiveOnly] = useState(() => localStorage.getItem('mcc-active-only') === 'true')
     const [billingStatuses, setBillingStatuses] = useState({})
     const [hoveredAlert, setHoveredAlert] = useState(null)
+    const [alertPos, setAlertPos] = useState({ x: 0, y: 0 })
     const [hoveredBilling, setHoveredBilling] = useState(null)
+    const [billingPos, setBillingPos] = useState({ x: 0, y: 0 })
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [historyPanel, setHistoryPanel] = useState(null) // { clientId, clientName } | null
 
@@ -677,12 +681,12 @@ export default function MCCOverviewPage() {
                                                 {acc.unresolved_alerts > 0 && (
                                                     <span
                                                         style={{ cursor: 'default', position: 'relative' }}
-                                                        onMouseEnter={() => setHoveredAlert(acc.client_id)}
+                                                        onMouseEnter={e => { setHoveredAlert(acc.client_id); setAlertPos({ x: e.clientX, y: e.clientY }) }}
                                                         onMouseLeave={() => setHoveredAlert(null)}
                                                         onClick={e => e.stopPropagation()}
                                                     >
                                                         <Bell size={13} style={{ color: C.danger }} />
-                                                        {hoveredAlert === acc.client_id && <AlertTooltip alerts={acc.alert_details} />}
+                                                        {hoveredAlert === acc.client_id && <AlertTooltip alerts={acc.alert_details} x={alertPos.x} y={alertPos.y} />}
                                                     </span>
                                                 )}
                                                 {hasNewAccess && (
@@ -774,7 +778,7 @@ export default function MCCOverviewPage() {
                                         <td style={{ ...TD, textAlign: 'center', position: 'relative' }}>
                                             <span
                                                 style={{ cursor: 'default' }}
-                                                onMouseEnter={() => setHoveredBilling(acc.client_id)}
+                                                onMouseEnter={e => { setHoveredBilling(acc.client_id); setBillingPos({ x: e.clientX, y: e.clientY }) }}
                                                 onMouseLeave={() => setHoveredBilling(null)}
                                                 onClick={e => e.stopPropagation()}
                                             >
@@ -782,7 +786,7 @@ export default function MCCOverviewPage() {
                                                     ? <RefreshCw size={11} style={{ color: C.w20, animation: 'spin 1s linear infinite' }} />
                                                     : <CreditCard size={14} style={{ color: billingColor }} />
                                                 }
-                                                {hoveredBilling === acc.client_id && billing && <BillingTooltip status={billing} />}
+                                                {hoveredBilling === acc.client_id && billing && <BillingTooltip status={billing} x={billingPos.x} y={billingPos.y} />}
                                             </span>
                                         </td>
                                         {/* Zmiany */}
