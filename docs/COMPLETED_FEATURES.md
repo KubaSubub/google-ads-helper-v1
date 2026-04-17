@@ -523,3 +523,9 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `tests/test_common_filters.py` (10 unit tests) + `tests/test_filters_contract.py` (contract gate on DATA_ENDPOINTS registry).
 - Frontend: `hooks/useFilteredQuery.js` — canonical data-fetch hook; `utils/buildFilterParams.js` — imperative variant.
 - `api.js` dev-only request interceptor warns when a known data endpoint is called without `client_id`.
+
+## Health Score — Cost-Weighted Penalties + Root-Cause Dedup
+- `AnalyticsService.health_score()` — Performance pillar penalties scale with share of total spend (not campaign count): a $15 zero-conv campaign no longer weighs as much as a $5000 zero-conv campaign.
+- `zero_conv_cost_share` + `low_roas_cost_share` fields exposed on `pillars.performance.details`.
+- `primary_problem_campaigns` field on the health-score response — campaign IDs flagged by the Performance pillar are skipped by the Efficiency pillar to avoid double-counting the same root cause.
+- 3 backend tests in `test_analytics_endpoints.py`: `test_cost_weighted_penalty_smaller_for_tiny_campaign`, `test_root_cause_dedup_no_stacking_on_efficiency`, `test_primary_problem_campaigns_exposed`.

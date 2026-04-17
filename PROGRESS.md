@@ -1,9 +1,18 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-16
+# Updated: 2026-04-17
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 698 tests collected (pytest --collect-only)
+- Backend: 701 tests collected (pytest --collect-only)
+
+## Health Score — Cost-Weighted Penalties + Root-Cause Dedup (2026-04-17)
+- `AnalyticsService.health_score()` — Performance pillar penalties now scale with share of total spend, not campaign count ($15 zero-conv vs $5000 zero-conv no longer weighted equally)
+- `zero_conv_cost_share` + `low_roas_cost_share` fields added to `pillars.performance.details`
+- New `primary_problem_campaigns` field on health-score response — campaign IDs flagged in Performance pillar are skipped by Efficiency pillar to avoid double-counting the same root cause
+- 3 new backend tests in `test_analytics_endpoints.py` (698 → 701):
+  - `test_cost_weighted_penalty_smaller_for_tiny_campaign`
+  - `test_root_cause_dedup_no_stacking_on_efficiency`
+  - `test_primary_problem_campaigns_exposed`
 
 ## CommonFilters Contract — Canonical Data-Endpoint Filter (2026-04-16)
 - One source of truth for `client_id` / `date_from` / `date_to` / `campaign_type` / `campaign_status` across data-returning endpoints
