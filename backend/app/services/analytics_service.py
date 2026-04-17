@@ -565,26 +565,38 @@ class AnalyticsService:
         # =====================================================================
         # PILLAR 1: PERFORMANCE (25%) — conversions, ROAS, zero-conv campaigns
         # =====================================================================
+        # Penalties are cost-weighted: magnitude scales with share of total spend
+        # at risk, not campaign count. A $15 zero-conv campaign and a $5000 one
+        # do not carry equal weight. Campaigns flagged here populate
+        # primary_problem_ids so Efficiency pillar can skip them (root-cause dedup).
         perf_score = 100
         perf_details = {}
+        primary_problem_ids: set[int] = set()
 
-        # 1a. Zero-conversion campaigns with significant spend
-        no_conv_camps = []
-        for cid, agg in camp_agg.items():
-            if agg["clicks"] > 10 and agg["conversions"] == 0:
-                no_conv_camps.append(agg["campaign"].name)
-        if no_conv_camps:
-            pct_no_conv = len(no_conv_camps) / campaigns_with_data
-            perf_score -= min(pct_no_conv * 60, 40)  # up to -40 if all camps have 0 conv
+        # 1a. Zero-conversion campaigns with significant spend.
+        # Spend floor ($5) prevents trivially cheap campaigns (e.g. DSA with
+        # 10 clicks at $0.05 CPC) from polluting primary_problem_ids and
+        # distorting the Efficiency dedup downstream.
+        no_conv_ids = {
+            cid for cid, agg in camp_agg.items()
+            if agg["clicks"] > 10 and agg["conversions"] == 0 and agg["cost"] >= 5
+        }
+        no_conv_cost = sum(camp_agg[cid]["cost"] for cid in no_conv_ids)
+        no_conv_share = no_conv_cost / total_cost if total_cost > 0 else 0
+        if no_conv_ids:
+            # Up to -40 when 50%+ of spend produces zero conversions
+            perf_score -= min(no_conv_share * 80, 40)
             issues.append({
                 "severity": "HIGH",
-                "message": f"{len(no_conv_camps)} kampanii bez konwersji (>10 kliknięć, 0 konwersji)",
+                "message": f"{len(no_conv_ids)} kampanii bez konwersji (>10 kliknięć, 0 konwersji)",
                 "action": "recommendations",
             })
-        perf_details["zero_conv_campaigns"] = len(no_conv_camps)
+            primary_problem_ids.update(no_conv_ids)
+        perf_details["zero_conv_campaigns"] = len(no_conv_ids)
+        perf_details["zero_conv_cost_share"] = round(no_conv_share * 100, 1)
 
         # 1b. Low ROAS campaigns (non-brand, cost > $20)
-        low_roas_camps = []
+        low_roas_ids: set[int] = set()
         for cid, agg in camp_agg.items():
             camp = agg["campaign"]
             is_brand = (camp.campaign_role_final or "").upper() in ("BRAND", "BRAND_EXACT")
@@ -592,16 +604,21 @@ class AnalyticsService:
                 continue
             roas = agg["conv_value"] / agg["cost"] if agg["cost"] > 0 else 0
             if roas < 1.0:
-                low_roas_camps.append(camp.name)
-        if low_roas_camps:
-            pct_low_roas = len(low_roas_camps) / max(1, campaigns_with_data)
-            perf_score -= min(pct_low_roas * 50, 35)  # up to -35
+                low_roas_ids.add(cid)
+        low_roas_cost = sum(camp_agg[cid]["cost"] for cid in low_roas_ids)
+        low_roas_share = low_roas_cost / total_cost if total_cost > 0 else 0
+        if low_roas_ids:
+            # Up to -35 when 50%+ of spend is on sub-1 ROAS campaigns
+            perf_score -= min(low_roas_share * 70, 35)
             issues.append({
-                "severity": "HIGH" if len(low_roas_camps) > 2 else "MEDIUM",
-                "message": f"{len(low_roas_camps)} kampanii z ROAS < 1 (tracisz pieniądze)",
+                "severity": "HIGH" if low_roas_share > 0.30 else "MEDIUM",
+                "message": f"{len(low_roas_ids)} kampanii z ROAS < 1 (tracisz pieniądze)",
                 "action": "campaigns",
             })
-        perf_details["low_roas_campaigns"] = len(low_roas_camps)
+            primary_problem_ids.update(low_roas_ids)
+        perf_details["low_roas_campaigns"] = len(low_roas_ids)
+        perf_details["low_roas_cost_share"] = round(low_roas_share * 100, 1)
+        perf_details["primary_problem_campaigns"] = len(primary_problem_ids)
 
         # 1c. Overall ROAS health
         overall_roas = total_conv_value / total_cost if total_cost > 0 else 0
@@ -713,18 +730,34 @@ class AnalyticsService:
         eff_score = 100
         eff_details = {}
 
-        # 3a. Wasted spend — keywords with cost but 0 conversions
-        if ad_group_ids and total_cost > 0:
-            wasted_kw = self.db.query(
-                func.sum(Keyword.cost_micros)
-            ).filter(
-                Keyword.ad_group_id.in_(ad_group_ids),
-                Keyword.status == "ENABLED",
-                Keyword.conversions == 0,
-                Keyword.cost_micros > 0,
-            ).scalar() or 0
+        # Root-cause dedup shared scope: campaigns NOT already flagged as primary
+        # problems in Performance. Their waste is an independent symptom, not a
+        # re-expression of the same root cause.
+        healthy_camp_ids = [cid for cid in campaign_ids if cid not in primary_problem_ids]
+        healthy_cost = sum(camp_agg[cid]["cost"] for cid in healthy_camp_ids if cid in camp_agg)
+
+        # 3a. Wasted spend — keywords with cost but 0 conversions, scoped to
+        # healthy campaigns. Denominator is healthy_cost so the ratio reflects
+        # waste *within the healthy slice* (using total_cost would understate
+        # severity when a large share of spend is already excluded).
+        if ad_group_ids and healthy_cost > 0:
+            healthy_ag_ids = [
+                ag.id for ag in self.db.query(AdGroup).filter(
+                    AdGroup.campaign_id.in_(healthy_camp_ids)
+                ).all()
+            ] if healthy_camp_ids else []
+            wasted_kw = 0
+            if healthy_ag_ids:
+                wasted_kw = self.db.query(
+                    func.sum(Keyword.cost_micros)
+                ).filter(
+                    Keyword.ad_group_id.in_(healthy_ag_ids),
+                    Keyword.status == "ENABLED",
+                    Keyword.conversions == 0,
+                    Keyword.cost_micros > 0,
+                ).scalar() or 0
             wasted_kw_usd = wasted_kw / 1_000_000
-            wasted_pct = wasted_kw_usd / total_cost if total_cost > 0 else 0
+            wasted_pct = wasted_kw_usd / healthy_cost
 
             if wasted_pct > 0.4:
                 eff_score -= 35
@@ -746,16 +779,18 @@ class AnalyticsService:
         else:
             eff_details["wasted_spend_pct"] = 0
 
-        # 3b. Search term waste — search terms with cost but 0 conversions
-        waste_terms = self.db.query(
-            func.sum(SearchTerm.cost_micros)
-        ).filter(
-            SearchTerm.campaign_id.in_(campaign_ids),
-            SearchTerm.conversions == 0,
-            SearchTerm.cost_micros > 0,
-        ).scalar() or 0
+        # 3b. Search term waste — same healthy-only scope as 3a.
+        waste_terms = 0
+        if healthy_camp_ids:
+            waste_terms = self.db.query(
+                func.sum(SearchTerm.cost_micros)
+            ).filter(
+                SearchTerm.campaign_id.in_(healthy_camp_ids),
+                SearchTerm.conversions == 0,
+                SearchTerm.cost_micros > 0,
+            ).scalar() or 0
         waste_terms_usd = waste_terms / 1_000_000
-        st_waste_pct = waste_terms_usd / total_cost if total_cost > 0 else 0
+        st_waste_pct = waste_terms_usd / healthy_cost if healthy_cost > 0 else 0
         if st_waste_pct > 0.3:
             eff_score -= 25
             issues.append({

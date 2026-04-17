@@ -349,6 +349,136 @@ class TestHealthScore:
         # Brand excluded from low ROAS check
         assert data["breakdown"]["performance"]["details"]["low_roas_campaigns"] == 0
 
+    def _seed_two_campaigns_one_zero_conv(self, db, bad_cost_per_day_micros: int):
+        """Helper: one healthy campaign + one zero-conv campaign with tunable spend."""
+        import uuid
+        tag = uuid.uuid4().hex[:8]
+        client = Client(name=f"CW-{tag}", google_customer_id=f"cw-{tag}")
+        db.add(client)
+        db.flush()
+        good = Campaign(
+            client_id=client.id, google_campaign_id=f"g-{tag}",
+            name="Healthy", status="ENABLED", campaign_type="SEARCH",
+            budget_micros=50_000_000,
+        )
+        bad = Campaign(
+            client_id=client.id, google_campaign_id=f"b-{tag}",
+            name="ZeroConv", status="ENABLED", campaign_type="SEARCH",
+            budget_micros=50_000_000,
+        )
+        db.add_all([good, bad])
+        db.flush()
+        today = date.today()
+        for i in range(7):
+            d = today - timedelta(days=i)
+            db.add(MetricDaily(
+                campaign_id=good.id, date=d,
+                clicks=100, impressions=1000,
+                cost_micros=10_000_000, conversions=5.0,
+                conversion_value_micros=60_000_000,  # ROAS 6
+            ))
+            db.add(MetricDaily(
+                campaign_id=bad.id, date=d,
+                clicks=50, impressions=1000,
+                cost_micros=bad_cost_per_day_micros, conversions=0,
+                conversion_value_micros=0,
+            ))
+        db.commit()
+        return client, good, bad
+
+    def test_cost_weighted_penalty_smaller_for_tiny_campaign(self, api_client, db):
+        """A zero-conv campaign with trivial spend penalizes less than one with large spend.
+
+        Cost share, not campaign count, drives the penalty magnitude.
+        """
+        # Tiny zero-conv: $2/day × 7 = $14 out of ~$84 total (~17% share)
+        c_small, _, _ = self._seed_two_campaigns_one_zero_conv(db, 2_000_000)
+        # Large zero-conv: $20/day × 7 = $140 out of ~$210 total (~67% share)
+        c_large, _, _ = self._seed_two_campaigns_one_zero_conv(db, 20_000_000)
+
+        r_small = api_client.get(f"/api/v1/analytics/health-score?client_id={c_small.id}&days=7").json()
+        r_large = api_client.get(f"/api/v1/analytics/health-score?client_id={c_large.id}&days=7").json()
+
+        perf_small = r_small["breakdown"]["performance"]["score"]
+        perf_large = r_large["breakdown"]["performance"]["score"]
+
+        # Both flag one zero-conv campaign, but large share → larger penalty → lower score
+        assert r_small["breakdown"]["performance"]["details"]["zero_conv_campaigns"] == 1
+        assert r_large["breakdown"]["performance"]["details"]["zero_conv_campaigns"] == 1
+        assert perf_small > perf_large, (
+            f"small-share penalty should be lighter: small={perf_small}, large={perf_large}"
+        )
+        # Cost share is exposed as a diagnostic
+        assert r_small["breakdown"]["performance"]["details"]["zero_conv_cost_share"] < \
+               r_large["breakdown"]["performance"]["details"]["zero_conv_cost_share"]
+
+    def test_root_cause_dedup_no_stacking_on_efficiency(self, api_client, db):
+        """Zero-conv campaign's keywords AND search terms must NOT penalize Efficiency.
+
+        Performance owns the root cause; Efficiency stays clean unless
+        waste appears in OTHER (healthy) campaigns. Covers both 3a (keyword
+        waste) and 3b (search term waste) dedup paths.
+        """
+        client = Client(name="Dedup Test", google_customer_id="dd1")
+        db.add(client)
+        db.flush()
+        # Single campaign: zero-conv with spending keywords (the classic double-penalty case)
+        bad = Campaign(
+            client_id=client.id, google_campaign_id="bd1",
+            name="Zero conv with waste", status="ENABLED", campaign_type="SEARCH",
+            budget_micros=50_000_000,
+        )
+        db.add(bad)
+        db.flush()
+        ag = AdGroup(campaign_id=bad.id, google_ad_group_id="bdag1", name="AG", status="ENABLED")
+        db.add(ag)
+        db.flush()
+        # Keywords with cost but zero conversions (would trigger "wasted spend" pillar 3a)
+        for i in range(3):
+            db.add(Keyword(
+                ad_group_id=ag.id, google_keyword_id=f"bk{i}",
+                text=f"term{i}", match_type="EXACT", status="ENABLED",
+                quality_score=7, cost_micros=5_000_000, conversions=0,
+            ))
+        today = date.today()
+        week_ago = today - timedelta(days=7)
+        # Search terms with cost but zero conversions (would trigger pillar 3b)
+        for i in range(3):
+            db.add(SearchTerm(
+                ad_group_id=ag.id, campaign_id=bad.id,
+                text=f"wasted query {i}",
+                clicks=20, impressions=200,
+                cost_micros=3_000_000, conversions=0,
+                ctr=10.0, date_from=week_ago, date_to=today,
+            ))
+        for i in range(7):
+            db.add(MetricDaily(
+                campaign_id=bad.id, date=today - timedelta(days=i),
+                clicks=50, impressions=1000,
+                cost_micros=15_000_000, conversions=0, conversion_value_micros=0,
+            ))
+        db.commit()
+        data = api_client.get(
+            f"/api/v1/analytics/health-score?client_id={client.id}&days=7"
+        ).json()
+
+        # Performance penalty fires (primary signal)
+        assert data["breakdown"]["performance"]["details"]["zero_conv_campaigns"] == 1
+        # Efficiency stays clean — the keywords AND search terms belong to the
+        # already-flagged campaign; neither 3a nor 3b double-penalizes.
+        assert data["breakdown"]["efficiency"]["details"]["wasted_spend_pct"] == 0
+        assert data["breakdown"]["efficiency"]["details"]["search_term_waste_pct"] == 0
+
+    def test_primary_problem_campaigns_exposed(self, api_client, db):
+        """primary_problem_campaigns diagnostic is exposed in performance.details."""
+        client, _, _ = _seed_full(db)
+        data = api_client.get(
+            f"/api/v1/analytics/health-score?client_id={client.id}"
+        ).json()
+        assert "primary_problem_campaigns" in data["breakdown"]["performance"]["details"]
+        assert "zero_conv_cost_share" in data["breakdown"]["performance"]["details"]
+        assert "low_roas_cost_share" in data["breakdown"]["performance"]["details"]
+
 
 class TestCampaignTrends:
     def test_campaign_trends_returns_200(self, api_client, db):
