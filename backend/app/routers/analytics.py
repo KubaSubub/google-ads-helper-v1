@@ -21,6 +21,7 @@ from app.dependencies import CommonFilters, common_filters
 from app.models import MetricDaily, Campaign, Client, Keyword, KeywordDaily, AdGroup, Alert, MetricSegmented
 from app.schemas import PeriodComparisonRequest, PeriodComparisonResponse, CorrelationRequest
 from app.services.analytics_service import AnalyticsService
+from app.services.cache import dashboard_kpis_cache
 from app.utils.formatters import micros_to_currency
 from app.utils.date_utils import resolve_dates
 
@@ -452,6 +453,15 @@ def dashboard_kpis(
     period_len = (today - current_start).days
     previous_start = current_start - timedelta(days=period_len)
 
+    cache_key = (
+        f"client={client_id}|dashboard-kpis"
+        f"|from={current_start.isoformat()}|to={today.isoformat()}"
+        f"|ctype={filters.campaign_type or ''}|cstatus={filters.campaign_status or ''}"
+    )
+    cached = dashboard_kpis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     svc = AnalyticsService(db)
     campaign_ids = svc._filter_campaign_ids(
         client_id,
@@ -459,7 +469,9 @@ def dashboard_kpis(
         filters.campaign_status,
     )
     if not campaign_ids:
-        return {"current": {}, "previous": {}, "change_pct": {}}
+        empty_payload = {"current": {}, "previous": {}, "change_pct": {}}
+        dashboard_kpis_cache[cache_key] = empty_payload
+        return empty_payload
 
     # Count active campaigns for the KPI grid
     active_campaigns = (
@@ -568,7 +580,9 @@ def dashboard_kpis(
 
     change = {k: _pct(current[k], previous[k]) for k in current}
 
-    return {"current": current, "previous": previous, "change_pct": change, "period_days": period_len}
+    payload = {"current": current, "previous": previous, "change_pct": change, "period_days": period_len}
+    dashboard_kpis_cache[cache_key] = payload
+    return payload
 
 
 # ---------------------------------------------------------------------------

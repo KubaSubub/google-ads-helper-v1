@@ -4,6 +4,7 @@
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
 - Backend: 701 tests collected (pytest --collect-only)
+- API endpoints: 187 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 
 ## ADR-020 — Sync Consolidated into MCC Overview (2026-04-18)
 - New policy (DECISIONS.md ADR-020): all sync UI lives only in MCC Overview; `incremental` is the only default; startup auto-sync in background; manual sync via modal with two options (Pełny / Ostatnie N dni)
@@ -65,7 +66,7 @@
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSyncConfig + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 177 total across 19 routers (74 analytics, 13 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 search-terms, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 187 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSyncConfig, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
 - Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Scripts) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown

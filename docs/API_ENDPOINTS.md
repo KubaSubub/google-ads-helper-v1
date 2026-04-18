@@ -90,6 +90,9 @@ Base API URL: `/api/v1`
 - `DELETE /negative-keywords/{negative_keyword_id}` — soft-delete (sets status to REMOVED; `allow_demo_write` enforced)
 - `GET /ad-groups/?client_id=X&campaign_id=` — lightweight ad group list for dropdowns
 - `GET /ads/?client_id=X&campaign_id=&ad_group_id=&status=&sort_by=cost&sort_order=desc&page=1&page_size=50`
+- `GET /rsa-health?client_id=X&severity=ALL|HIGH|MEDIUM|LOW|OK` — per-ad-group RSA health report (SEARCH only); flags single-RSA ad groups, groups without any GOOD/EXCELLENT ad, under-filled RSAs
+- `GET /cannibalization?client_id=X&severity=ALL&limit=100&min_combined_cost_usd=0` — keyword pair cannibalization (duplicate EXACT same ad group HIGH, EXACT vs PHRASE MEDIUM, cross-ad-group same text MEDIUM); sorted by combined spend desc
+- `GET /negative-conflicts?client_id=X&limit=100&min_cost_usd=0` — negative keywords silently blocking positive keywords in the same scope; sorted by blocked-positive spend desc
 
 ### Negative Keyword Lists
 - `GET /negative-keyword-lists/?client_id=X` — list all negative keyword lists with item counts
@@ -121,6 +124,8 @@ Base API URL: `/api/v1`
 - `GET /search-terms/summary?campaign_id=X&days=30` (note: `campaign_id` is required)
 - `POST /search-terms/bulk-add-negative` — add selected terms as negative keywords (body: `{search_term_ids, level: campaign|ad_group, match_type, client_id}`; `allow_demo_write` enforced)
 - `POST /search-terms/bulk-add-keyword` — promote selected terms as positive keywords to a target ad group (body: `{search_term_ids, ad_group_id, match_type, client_id}`; `allow_demo_write` enforced)
+- `POST /search-terms/suggest-match-types` — per-term EXACT/PHRASE recommendation with Polish justification + confidence score (body: `{search_term_ids}`)
+- `POST /search-terms/bulk-add-keyword-with-suggestions` — bulk-add with per-term match-type overrides (body: `{client_id, search_term_ids, ad_group_id, default_match_type, overrides: [{search_term_id, match_type}]}`; `allow_demo_write` enforced)
 - `POST /search-terms/bulk-preview` — preview details for selected search terms before bulk action (body: `{search_term_ids, client_id}`)
 
 ## Recommendations
@@ -177,7 +182,11 @@ Base API URL: `/api/v1`
 - `GET /analytics/ngram-analysis?client_id=X&ngram_size=1&min_occurrences=2&campaign_type=&campaign_status=`
 - `GET /analytics/match-type-analysis?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
 - `GET /analytics/landing-pages?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/landing-page-diagnostics?client_id=X&severity=ALL|HIGH|MEDIUM|LOW` — per-LP diagnostic flags (LP experience QS component, CVR vs account avg, message-match risk, tracking template complexity)
 - `GET /analytics/wasted-spend?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/offline-conversion-lag?client_id=X` — health + lag stats for offline conversion uploads (failure rate, pending backlog, lag distribution)
+- `GET /analytics/seasonal-comparison?client_id=X&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&comparison_type=year_over_year|rolling&months_offset=3` — compare current window vs same window last year (default) or N months ago
+- `GET /analytics/audience-overlap?client_id=X&days=30&severity=ALL|HIGH|MEDIUM` — audience redundancy detection across campaigns
 - `GET /analytics/search-term-trends?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&min_clicks=5&campaign_type=&campaign_status=` — search term trend analysis (B2)
 - `GET /analytics/close-variants?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — close variant analysis (B3)
 - `GET /analytics/conversion-health?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=` — conversion tracking health audit (A3)
@@ -201,6 +210,7 @@ Base API URL: `/api/v1`
 
 ## Analytics - Google Ads Coverage Expansion (Wave A-E)
 - `GET /analytics/auction-insights?client_id=X&campaign_id=&days=30&date_from=&date_to=` — competitor visibility metrics (IS, overlap, position above, outranking, top of page)
+- `GET /analytics/auction-insights-trend?client_id=X&window_days=14&min_outranking_delta_pp=0&trend_label=ALL|RISING_FAST|RISING|STABLE|FALLING|FALLING_FAST` — per-competitor Auction Insights trend over rolling window (current vs previous, delta in percentage points, slope, trend label)
 - `GET /analytics/shopping-product-groups?client_id=X&campaign_id=` — Shopping product group performance tree
 - `GET /analytics/placement-performance?client_id=X&campaign_id=&days=30&date_from=&date_to=` — Display/Video placement performance (top 100)
 - `POST /analytics/placement-exclusion?client_id=X&campaign_id=X&placement_url=X` — add placement exclusion to campaign (`allow_demo_write` enforced)

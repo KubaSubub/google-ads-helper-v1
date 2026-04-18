@@ -15,6 +15,7 @@ from app.demo_guard import ensure_demo_write_allowed
 from app.database import get_db
 from app.models.recommendation import Recommendation as RecommendationModel
 from app.services.action_executor import ActionExecutor
+from app.services.cache import invalidate_client, recommendations_cache
 from app.services.google_ads import google_ads_service
 from app.services.recommendation_contract import (
     ACTION,
@@ -332,6 +333,17 @@ def get_recommendations(
     from app.utils.date_utils import resolve_dates
     start, end = resolve_dates(days, date_from, date_to)
     effective_days = (end - start).days
+
+    cache_key = (
+        f"client={client_id}|recommendations"
+        f"|priority={priority or ''}|status={status or ''}|category={category or ''}"
+        f"|source={source or ''}|exec={executable if executable is not None else ''}"
+        f"|from={start.isoformat()}|to={end.isoformat()}"
+    )
+    cached = recommendations_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         generated = recommendations_engine.generate_all(db, client_id, effective_days)
         generated.extend(_get_native_recommendations(db, client_id))
@@ -347,7 +359,9 @@ def get_recommendations(
 
     results = _apply_filters(results, priority, status, category, source, executable)
     summary = _build_summary(results)
-    return {**summary, "recommendations": results}
+    payload = {**summary, "recommendations": results}
+    recommendations_cache[cache_key] = payload
+    return payload
 
 
 @router.get("/summary")
@@ -408,6 +422,8 @@ def apply_recommendation(
     if result["status"] == "blocked":
         raise HTTPException(status_code=422, detail=result["reason"])
 
+    if not dry_run:
+        invalidate_client(client_id)
     return result
 
 
@@ -441,6 +457,7 @@ def dismiss_recommendation(
 
     rec.status = "dismissed"
     db.commit()
+    invalidate_client(client_id)
     return {"status": "success", "message": f"Recommendation {recommendation_id} dismissed"}
 
 
@@ -669,6 +686,9 @@ def bulk_apply_recommendations(
         # Update item statuses in response
         for item in items:
             item["status"] = item_status.get(item["id"], "pending")
+
+        if applied > 0:
+            invalidate_client(body.client_id)
 
     skipped_count = len(skipped_recs)
 
