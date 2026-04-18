@@ -61,19 +61,26 @@ from app.routers import (
     sync,
 )
 from app.security import require_session
-from app.services.scheduler import start_scheduler, stop_scheduler
+from app.services.startup_sync import run_startup_sync_in_background
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB tables on startup, cleanup on shutdown."""
+    """Initialize DB tables on startup, cleanup on shutdown.
+
+    Per ADR-020: sync runs on startup as a background task — discover +
+    per-client incremental (or 30d for new). The legacy `services.scheduler`
+    asyncio loop is no longer started (kept as dead code).
+    """
     logger.info("Starting Google Ads Helper API...")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     init_db()
     logger.info(f"Database ready: {settings.database_url}")
-    start_scheduler()
+    # Fire-and-forget: UI becomes available immediately; clients dopinają się
+    # po kolei. Failure is logged, never propagated.
+    import asyncio
+    asyncio.create_task(run_startup_sync_in_background())
     yield
-    stop_scheduler()
     logger.info("Shutting down...")
 
 

@@ -1,9 +1,22 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-17
+# Updated: 2026-04-18
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
 - Backend: 701 tests collected (pytest --collect-only)
+
+## ADR-020 — Sync Consolidated into MCC Overview (2026-04-18)
+- New policy (DECISIONS.md ADR-020): all sync UI lives only in MCC Overview; `incremental` is the only default; startup auto-sync in background; manual sync via modal with two options (Pełny / Ostatnie N dni)
+- Backend:
+  - New `app/services/startup_sync.py` — async background task: silent MCC discover + per-client incremental (or fixed 30d for new clients); launched from `main.py` lifespan
+  - `main.py` no longer calls `start_scheduler()` (scheduler.py left as dead code per user decision)
+- Frontend:
+  - `components/SyncModal.jsx` — rewritten: two options only (Pełny / Ostatnie N dni with number input), supports bulk via `clientIds[]` with sequential per-client loop + aggregate progress
+  - `features/mcc-overview/MCCOverviewPage.jsx` — removed "Odkryj konta", "Synchronizuj nieaktualne" header buttons; removed dead `handleSync` / `runSync` / `syncingIds`; bulk bar "Synchronizuj" opens new modal with selected client IDs
+  - `components/layout/Sidebar/ClientDrawer.jsx` — per-client Sync button + SyncModal rendering removed (handlers kept as dead code)
+  - `pages/Settings.jsx` — "Synchronizacja" section wrapped in `{false && (...)}` (dead code)
+- Dead code retained (not deleted): `services/scheduler.py`, `routers/scheduled_sync.py`, `models/scheduled_sync.py`, `POST /sync/trigger`, `components/SyncButton.jsx`, `hooks/useSync.js`, `api.js:syncClient`
+- Build: `npm run build` ✓ 0 errors; backend import OK
 
 ## Health Score — Cost-Weighted Penalties + Root-Cause Dedup (2026-04-17)
 - `AnalyticsService.health_score()` — Performance pillar penalties now scale with share of total spend, not campaign count ($15 zero-conv vs $5000 zero-conv no longer weighted equally)

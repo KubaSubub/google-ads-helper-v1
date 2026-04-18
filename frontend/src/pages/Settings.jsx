@@ -1110,7 +1110,9 @@ export default function Settings() {
                     </div>
                 </section>
 
-                {/* Synchronizacja */}
+                {/* ADR-020: Synchronizacja section hidden — sync lives only in MCC Overview.
+                    State, handlers and JSX left as dead code for quick re-enable if policy changes. */}
+                {false && (
                 <section>
                     <h3 className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
                         <RefreshCw size={16} style={{ color: C.accentBlue }} />
@@ -1223,6 +1225,7 @@ export default function Settings() {
                         </div>
                     </div>
                 </section>
+                )}
 
                 {/* Konta MCC */}
                 {mccAccounts && mccAccounts.accounts && mccAccounts.accounts.length > 0 && (

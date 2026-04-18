@@ -2,14 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     RefreshCw, TrendingUp, TrendingDown, ArrowRight,
-    Bell, ExternalLink, Search,
+    Bell, ExternalLink,
     ChevronDown, ChevronRight, Shield, List,
     UserPlus, CreditCard, Columns, Globe, Ban,
 } from 'lucide-react'
 import {
     getMccOverview, getMccSharedLists, getMccSharedListItems,
-    syncClient,
-    discoverClients,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
@@ -17,6 +15,7 @@ import { LineChart, Line, Tooltip } from 'recharts'
 import PacingProgressBar from '../../components/modules/PacingProgressBar'
 import { C, B, T, R, S, CARD } from '../../constants/designTokens'
 import SyncHistoryPanel from './SyncHistoryPanel'
+import SyncModal from '../../components/SyncModal'
 
 const TH = T.th
 const TD = T.td
@@ -206,7 +205,6 @@ export default function MCCOverviewPage() {
     const { filters, setFilter, dateParams } = useFilter()
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
-    const [syncingIds, setSyncingIds] = useState(new Set())
     const [sharedData, setSharedData] = useState(null)
     const [sharedOpen, setSharedOpen] = useState(false)
     const [expandedList, setExpandedList] = useState(null) // { id, type, items, loading }
@@ -222,6 +220,8 @@ export default function MCCOverviewPage() {
     const [billingPos, setBillingPos] = useState({ x: 0, y: 0 })
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [historyPanel, setHistoryPanel] = useState(null) // { clientId, clientName } | null
+    // Bulk sync modal — per ADR-020, sync is only triggered via checkbox + button
+    const [syncModal, setSyncModal] = useState(null)        // { clientIds: number[], clientNames: string[] } | null
 
     const load = useCallback(async () => {
         try {
@@ -312,94 +312,10 @@ export default function MCCOverviewPage() {
         navigate(path)
     }
 
-    // /sync/trigger is a 24-phase full sync. Real measurements show 20-45s per
-    // client under contention. Default axios timeout (30s) is not enough —
-    // use 3 minutes per client to cover worst case.
-    const SYNC_CALL_TIMEOUT_MS = 600_000
-
-    // Shared sync routine. Returns { ok, message } — never throws.
-    // `silent=true` suppresses toast (used by bulk flow which shows an aggregate toast).
-    const runSync = async (clientId, { silent = false } = {}) => {
-        setSyncingIds(prev => new Set(prev).add(clientId))
-        try {
-            const result = await syncClient(clientId, 30, { timeout: SYNC_CALL_TIMEOUT_MS })
-            if (result?.success) {
-                if (!silent) showToast?.('Synchronizacja zakończona', 'success')
-                return { ok: true }
-            }
-            const msg = result?.message || 'Synchronizacja nie powiodła się'
-            if (!silent) showToast?.(msg, 'error')
-            return { ok: false, message: msg }
-        } catch (err) {
-            const isTimeout = /timeout/i.test(err?.message || '')
-            const msg = isTimeout ? 'Synchronizacja przekroczyła limit czasu' : 'Błąd synchronizacji'
-            if (!silent) showToast?.(msg, 'error')
-            return { ok: false, message: msg }
-        } finally {
-            setSyncingIds(prev => { const n = new Set(prev); n.delete(clientId); return n })
-        }
-    }
-
-    const handleSync = async (clientId, e) => {
-        e.stopPropagation()
-        const result = await runSync(clientId)
-        if (result.ok) {
-            refreshClients()
-            load()
-        }
-    }
-
-    const handleSyncAll = async () => {
-        if (!data?.accounts?.length) return
-        if (syncingIds.size > 0) return // prevent re-entry while a sync is running
-        const staleThreshold = 6 * 60 * 60 * 1000
-        const stale = data.accounts.filter(acc =>
-            !acc.last_synced_at || Date.now() - new Date(acc.last_synced_at).getTime() > staleThreshold
-        )
-        if (!stale.length) { showToast?.('Wszystkie konta aktualne', 'info'); return }
-
-        // Run syncs sequentially. Parallel syncs hit Google Ads API rate limits
-        // and SQLite write contention, pushing latency above the axios timeout
-        // and causing deterministic failures.
-        const targets = stale
-        let ok = 0
-        let failed = 0
-        const failures = []
-        for (let i = 0; i < targets.length; i++) {
-            const acc = targets[i]
-            showToast?.(`Synchronizowanie kont ${i + 1}/${targets.length}...`, 'info', 120_000)
-            const res = await runSync(acc.client_id, { silent: true })
-            if (res.ok) {
-                ok++
-            } else {
-                failed++
-                failures.push(`${acc.client_name}: ${res.message || 'błąd'}`)
-            }
-        }
-        if (failed === 0) {
-            showToast?.(`Zsynchronizowano ${ok}/${targets.length} kont`, 'success')
-        } else {
-            const detail = failures.join(' | ')
-            showToast?.(`Zsynchronizowano ${ok}/${targets.length} (${failed} z błędami) — ${detail}`, ok > 0 ? 'info' : 'error')
-        }
+    const handleSyncModalClose = () => {
+        setSyncModal(null)
         refreshClients()
         load()
-    }
-
-    const handleDiscover = async () => {
-        try {
-            const result = await discoverClients()
-            const added = result?.added || 0
-            if (added > 0) {
-                showToast?.(`Odkryto ${added} ${added === 1 ? 'nowe konto' : 'nowych kont'}`, 'success')
-                refreshClients()
-                load()
-            } else {
-                showToast?.('Brak nowych kont w MCC', 'info')
-            }
-        } catch {
-            showToast?.('Błąd wykrywania kont', 'error')
-        }
     }
 
     const rawAccounts = data?.accounts || []
@@ -445,25 +361,13 @@ export default function MCCOverviewPage() {
         else setSelectedIds(new Set(accounts.map(a => a.client_id)))
     }
 
-    const handleBulkSync = async () => {
+    // ADR-020: bulk sync opens the modal where user picks Pełny / N dni.
+    // Actual streaming + sequential loop lives inside SyncModal.
+    const handleBulkSync = () => {
         if (!selectedIds.size) return
-        if (syncingIds.size > 0) return
         const ids = [...selectedIds]
-        let ok = 0
-        let failed = 0
-        for (let i = 0; i < ids.length; i++) {
-            showToast?.(`Synchronizuję ${i + 1}/${ids.length}`, 'info', 120_000)
-            const res = await runSync(ids[i], { silent: true })
-            if (res.ok) ok++; else failed++
-        }
-        showToast?.(
-            failed === 0
-                ? `Zsynchronizowano ${ok}/${ids.length} kont`
-                : `Zsynchronizowano ${ok}/${ids.length} (${failed} z błędami)`,
-            failed === 0 ? 'success' : (ok > 0 ? 'info' : 'error'),
-        )
-        refreshClients()
-        load()
+        const names = ids.map(id => accounts.find(a => a.client_id === id)?.client_name || '')
+        setSyncModal({ clientIds: ids, clientNames: names })
     }
 
     return (
@@ -533,22 +437,6 @@ export default function MCCOverviewPage() {
                         color: compactMode ? C.accentBlue : C.w50, fontSize: 12, cursor: 'pointer',
                     }}>
                         <Columns size={13} />
-                    </button>
-                    <button onClick={handleSyncAll} disabled={syncingIds.size > 0} style={{
-                        display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
-                        borderRadius: R.md, background: C.infoBg, border: B.info,
-                        color: C.accentBlue, fontSize: 12, fontWeight: 500,
-                        cursor: syncingIds.size > 0 ? 'wait' : 'pointer',
-                        opacity: syncingIds.size > 0 ? 0.6 : 1,
-                    }}>
-                        <RefreshCw size={13} className={syncingIds.size > 0 ? 'animate-spin' : ''} /> Synchronizuj nieaktualne
-                    </button>
-                    <button onClick={handleDiscover} style={{
-                        display: 'flex', alignItems: 'center', gap: S.sm, padding: '7px 14px',
-                        borderRadius: R.md, background: C.w04, border: B.subtle,
-                        color: C.w50, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                    }}>
-                        <Search size={13} /> Odkryj konta
                     </button>
                 </div>
             </div>
@@ -648,7 +536,8 @@ export default function MCCOverviewPage() {
                         </thead>
                         <tbody>
                             {accounts.map(acc => {
-                                const syncing = syncingIds.has(acc.client_id)
+                                // Syncing indicator is driven by the modal itself (ADR-020) — no per-row spinner here.
+                                const syncing = false
                                 const hasNewAccess = acc.new_access_emails?.length > 0
                                 const billing = billingStatuses[acc.google_customer_id]
                                 const billingColor = billing?.status === 'ok' ? C.success
@@ -1017,6 +906,13 @@ export default function MCCOverviewPage() {
                     onClose={() => setHistoryPanel(null)}
                 />
             )}
+
+            <SyncModal
+                isOpen={!!syncModal}
+                clientIds={syncModal?.clientIds || []}
+                clientNames={syncModal?.clientNames || []}
+                onClose={handleSyncModalClose}
+            />
 
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>

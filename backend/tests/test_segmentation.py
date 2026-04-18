@@ -61,6 +61,7 @@ def test_irrelevant_segment(db):
     result = service._classify(
         db.query(SearchTerm).filter(SearchTerm.text == "darmowe kursy google ads").first(),
         {},
+        {},
         _IRRELEVANT_PATTERNS,
     )
     assert result == "IRRELEVANT"
@@ -68,13 +69,14 @@ def test_irrelevant_segment(db):
     result2 = service._classify(
         db.query(SearchTerm).filter(SearchTerm.text == "tutorial google ads").first(),
         {},
+        {},
         _IRRELEVANT_PATTERNS,
     )
     assert result2 == "IRRELEVANT"
 
 
 def test_high_performer_segment(db):
-    """Terms with conv >= 3 and CVR > campaign avg should be HIGH_PERFORMER."""
+    """Terms with conv >= absolute floor AND CVR > campaign avg should be HIGH_PERFORMER."""
     client = _setup_data(db, [
         {"text": "agency google ads", "clicks": 50, "conversions": 5, "impressions": 500},
     ])
@@ -82,16 +84,18 @@ def test_high_performer_segment(db):
     service = SearchTermsService(db)
     # Campaign avg CVR = 0.05 (5%), term CVR = 5/50 = 0.10 (10%) > 0.05
     campaign_cvrs = {1: 0.05}
+    # Empty totals → relative threshold collapses to floor (3 conversions) → passes.
     result = service._classify(
         db.query(SearchTerm).first(),
         campaign_cvrs,
+        {},
         _IRRELEVANT_PATTERNS,
     )
     assert result == "HIGH_PERFORMER"
 
 
 def test_waste_segment(db):
-    """Terms with clicks >= 5, conv = 0, CTR < 1% should be WASTE."""
+    """Terms with clicks >= floor, conv = 0, CTR < 1% should be WASTE."""
     client = _setup_data(db, [
         {
             "text": "random query",
@@ -103,7 +107,7 @@ def test_waste_segment(db):
     ])
 
     service = SearchTermsService(db)
-    result = service._classify(db.query(SearchTerm).first(), {}, _IRRELEVANT_PATTERNS)
+    result = service._classify(db.query(SearchTerm).first(), {}, {}, _IRRELEVANT_PATTERNS)
     assert result == "WASTE"
 
 
@@ -114,7 +118,7 @@ def test_other_segment_default(db):
     ])
 
     service = SearchTermsService(db)
-    result = service._classify(db.query(SearchTerm).first(), {}, _IRRELEVANT_PATTERNS)
+    result = service._classify(db.query(SearchTerm).first(), {}, {}, _IRRELEVANT_PATTERNS)
     assert result == "OTHER"
 
 
@@ -126,5 +130,28 @@ def test_irrelevant_takes_priority(db):
 
     service = SearchTermsService(db)
     campaign_cvrs = {1: 0.01}
-    result = service._classify(db.query(SearchTerm).first(), campaign_cvrs, _IRRELEVANT_PATTERNS)
+    result = service._classify(db.query(SearchTerm).first(), campaign_cvrs, {}, _IRRELEVANT_PATTERNS)
     assert result == "IRRELEVANT"  # "darmowe" is an irrelevant keyword
+
+
+def test_high_performer_respects_volume_scale(db):
+    """On high-volume campaigns the HIGH_PERFORMER threshold scales up.
+
+    Campaign has 10000 conversions in 30d → 2% floor = 200 conversions required.
+    A term with 5 conversions (previously HIGH_PERFORMER) now stays OTHER
+    because it's noise relative to campaign volume.
+    """
+    client = _setup_data(db, [
+        {"text": "noise term", "clicks": 50, "conversions": 5, "impressions": 500},
+    ])
+
+    service = SearchTermsService(db)
+    campaign_cvrs = {1: 0.05}  # term CVR still > avg
+    campaign_totals = {1: {"conversions": 10000.0, "clicks": 100000}}
+    result = service._classify(
+        db.query(SearchTerm).first(),
+        campaign_cvrs,
+        campaign_totals,
+        _IRRELEVANT_PATTERNS,
+    )
+    assert result == "OTHER"  # 5 conversions below scale-adjusted floor of 200

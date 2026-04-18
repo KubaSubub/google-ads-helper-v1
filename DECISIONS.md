@@ -115,3 +115,19 @@
 **Why:** The loose pin `>=25.1.0` caused a silent upgrade from SDK 25.x (API v18) to SDK 29.1.0 (API v23). Documentation and ADR-018 still referenced API v18, while production code was already running on v23. This created a documentation-reality mismatch: PMax negatives were technically available but not recognized as such.
 **Rule:** Always pin the SDK to an exact version (`==`). Always pass the API version explicitly to the client constructor. Update both when upgrading.
 **Trade-off:** Requires manual `requirements.txt` update for SDK upgrades — this is intentional to force conscious version management.
+
+## ADR-020: Sync lives only in MCC Overview — `incremental` is the only default
+**Decision:** All sync UI and logic are consolidated into the MCC Overview page. No sync buttons in Sidebar, Settings, or anywhere else. The `incremental` preset is the only default sync mode across the app (app startup, bulk "Synchronizuj nieaktualne").
+**Rules:**
+- **App startup (auto):** `clients/discover` runs silently, then for each client:
+  - existing client with `coverage.data_to` → `incremental` (from `data_to + 1` to yesterday)
+  - new client (no coverage) → fixed **30 days**
+  - no other scenarios at startup
+- **Manual sync in MCC Overview:** checkbox rows → "Synchronizuj" button → modal with **two** options only:
+  - **Pełny** — full history per phase (max `max_days` from `PHASE_REGISTRY`)
+  - **Ostatnie N dni** — user enters N, applied to all phases
+- `quick` and `metrics_only` presets removed from UI. `incremental` and `full` remain in backend; `fixed` is used by the "N dni" option.
+- `date_to` is always yesterday (today is incomplete per Google Ads API).
+**Why:** Previous state had 3 sync entry points (MCC, Sidebar, Settings), 3 different default periods (30d / 30d / 90d), 4 presets, plus a background scheduler with its own hardcoded 30d path — none of them agreed. Single entry point + single default removes confusion and API quota waste.
+**Supersedes:** ADR-005 (manual-only), the F1 scheduled sync asyncio loop (`services/scheduler.py` disabled), and the multi-preset modal.
+**Removed code:** `components/SyncButton.jsx`, `hooks/useSync.js`, `handleSync` dead path in MCC, Settings "Synchronizuj teraz", Sidebar per-client sync button, `POST /sync/trigger` (replaced by `/sync/trigger-stream` everywhere).

@@ -68,7 +68,9 @@ class AnalyticsService:
             return {
                 "total_spend_usd": 0, "total_clicks": 0, "total_impressions": 0,
                 "total_conversions": 0, "total_conversion_value_usd": 0,
-                "avg_ctr_pct": 0, "avg_cpc_usd": 0, "cpa_usd": 0, "roas": 0,
+                "avg_ctr_pct": 0, "avg_cpc_usd": 0, "cpa_usd": 0,
+                "roas": None,
+                "conversion_value_tracked": False,
                 "active_campaigns": 0,
             }
 
@@ -95,7 +97,20 @@ class AnalyticsService:
         avg_ctr = (total_clicks / total_impressions * 100) if total_impressions else 0
         avg_cpc = (total_spend_usd / total_clicks) if total_clicks else 0
         cpa = (total_spend_usd / total_conversions) if total_conversions else 0
-        roas = (total_conv_value_usd / total_spend_usd) if total_spend_usd else 0
+
+        # ROAS semantics:
+        # - None  → conversion value is not tracked on this account (conversions > 0 but value = 0).
+        #           Downstream ROAS-based recommendations must be suppressed to avoid
+        #           false "low ROAS" alerts.
+        # - 0.0   → value IS tracked but genuinely zero return on spend (cost without attributed value).
+        # - >0    → normal ROAS.
+        conversion_value_tracked = total_conv_value_micros > 0 or total_conversions == 0
+        if not total_spend_usd:
+            roas = None
+        elif total_conversions > 0 and total_conv_value_micros == 0:
+            roas = None  # value not tracked; don't fabricate a zero
+        else:
+            roas = total_conv_value_usd / total_spend_usd
 
         return {
             "total_spend_usd": round(total_spend_usd, 2),
@@ -106,7 +121,8 @@ class AnalyticsService:
             "avg_ctr_pct": round(avg_ctr, 2),
             "avg_cpc_usd": round(avg_cpc, 2),
             "cpa_usd": round(cpa, 2),
-            "roas": round(roas, 2),
+            "roas": round(roas, 2) if roas is not None else None,
+            "conversion_value_tracked": conversion_value_tracked,
             "active_campaigns": len([c for c in campaigns if c.status == "ENABLED"]),
         }
 

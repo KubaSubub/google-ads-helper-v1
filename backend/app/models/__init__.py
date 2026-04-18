@@ -44,6 +44,7 @@ from .scheduled_sync import ScheduledSyncConfig
 from .automated_rule import AutomatedRule, AutomatedRuleLog
 from .dsa_target import DsaTarget
 from .dsa_headline import DsaHeadline
+from .bid_simulator import BidSimulatorPoint
 
 __all__ = [
     "Client",
@@ -91,5 +92,6 @@ __all__ = [
     "DsaHeadline",
     "PlacementExclusionList",
     "PlacementExclusionListItem",
+    "BidSimulatorPoint",
 ]
 

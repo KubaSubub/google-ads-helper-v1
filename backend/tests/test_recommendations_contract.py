@@ -78,11 +78,14 @@ def test_recommendation_type_enum_matches_active_ruleset():
         "ASSET_GROUP_AD_STRENGTH",
         "AUDIENCE_PERFORMANCE_ANOMALY",
         "MISSING_EXTENSIONS_ALERT",
+        # v2.2 rules (R32+)
+        "ATTRIBUTION_MODEL_WARNING",
+        "NEGATIVE_KEYWORD_CONFLICT",
     }
     actual = {member.value for member in RecommendationType}
 
     assert expected == actual
-    assert len(actual) == 34
+    assert len(actual) == 36
 
 
 def test_recommendations_filters_are_deterministic(api_client, db, monkeypatch):

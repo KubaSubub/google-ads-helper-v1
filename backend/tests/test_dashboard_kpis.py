@@ -186,4 +186,8 @@ def test_dashboard_kpis_change_pct_when_previous_zero(api_client, db):
     data = resp.json()
 
     assert data["change_pct"]["clicks"] == 100.0  # previous is 0, current > 0
-    assert data["change_pct"]["roas"] == 0.0       # both 0
+    # conversions > 0 but conversion_value_micros = 0 → "value not tracked" → roas is None,
+    # therefore change_pct is None (cannot compute a delta from unavailable data).
+    # This prevents false "low ROAS" alerts on accounts that never configured conversion values.
+    assert data["current"]["roas"] is None
+    assert data["change_pct"]["roas"] is None

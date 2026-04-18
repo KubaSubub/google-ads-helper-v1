@@ -64,6 +64,12 @@ class SearchTermsService:
         # Pre-compute campaign avg CVR from MetricDaily (last 30 days)
         campaign_cvrs = self._get_campaign_avg_cvrs(client_id)
 
+        # Pre-compute per-campaign conversion and click totals so HIGH_PERFORMER / WASTE
+        # thresholds can scale with campaign volume instead of using absolute numbers.
+        # A flat '3 conversions' threshold misclassifies noise as HIGH_PERFORMER on
+        # large accounts and hides real winners behind under-powered tests on small ones.
+        campaign_totals = self._get_campaign_totals(client_id)
+
         # Build word-boundary regex patterns for irrelevant keywords
         irrelevant_patterns = [
             re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
@@ -73,7 +79,7 @@ class SearchTermsService:
         segmented = 0
         for term in terms:
             old_segment = term.segment
-            new_segment = self._classify(term, campaign_cvrs, irrelevant_patterns)
+            new_segment = self._classify(term, campaign_cvrs, campaign_totals, irrelevant_patterns)
             term.segment = new_segment
             if new_segment != old_segment:
                 segmented += 1
@@ -84,8 +90,8 @@ class SearchTermsService:
     # Reasons per segment for UI display
     SEGMENT_REASONS = {
         "IRRELEVANT": "Zawiera nieodpowiednie słowo kluczowe",
-        "HIGH_PERFORMER": "≥3 konwersje, CVR powyżej średniej kampanii",
-        "WASTE": "≥5 kliknięć, 0 konwersji, CTR<1%",
+        "HIGH_PERFORMER": "Konwersje powyżej progu dla wolumenu kampanii (min 3, ≥ 2% konwersji 30d), CVR powyżej średniej kampanii",
+        "WASTE": "Kliknięcia powyżej progu dla wolumenu kampanii (min 5, ≥ 0,2% kliknięć 30d), 0 konwersji, CTR<1%",
         "OTHER": "Niewystarczające dane do klasyfikacji",
     }
 
@@ -202,33 +208,93 @@ class SearchTermsService:
             "segments": segments,
         }
 
-    def _classify(self, term: SearchTerm, campaign_cvrs: dict, irrelevant_patterns: list) -> str:
-        """Classify single search term into segment."""
+    # Absolute floors — protect low-volume accounts from "everything is OTHER".
+    HIGH_PERFORMER_MIN_CONV_FLOOR = 3          # Never below this, even on small accounts.
+    HIGH_PERFORMER_VOLUME_PCT = 0.02           # ≥ 2% of campaign's 30d conversions.
+    WASTE_MIN_CLICKS_FLOOR = 5                 # Never below this.
+    WASTE_VOLUME_PCT = 0.002                   # ≥ 0.2% of campaign's 30d clicks.
+
+    def _classify(
+        self,
+        term: SearchTerm,
+        campaign_cvrs: dict,
+        campaign_totals: dict,
+        irrelevant_patterns: list,
+    ) -> str:
+        """Classify single search term into segment.
+
+        HIGH_PERFORMER and WASTE thresholds scale with campaign volume — a search
+        term with 3 conversions is gold on a $20/day account and noise on a $5k/day
+        account. Using relative thresholds avoids false HIGH_PERFORMER on huge
+        campaigns and missing real winners on small ones.
+        """
         query_text = (term.text or "").lower()
         clicks = term.clicks or 0
         conversions = term.conversions or 0.0
+
+        campaign_id = term.campaign_id or (term.ad_group.campaign_id if term.ad_group else None)
+        totals = campaign_totals.get(campaign_id, {"conversions": 0.0, "clicks": 0})
 
         # 1. IRRELEVANT - word boundary match against irrelevant keywords
         for pattern in irrelevant_patterns:
             if pattern.search(query_text):
                 return "IRRELEVANT"
 
-        # 2. HIGH_PERFORMER - conv >= 3 AND CVR > campaign avg
-        if conversions >= 3:
-            campaign_id = term.campaign_id or (term.ad_group.campaign_id if term.ad_group else None)
+        # 2. HIGH_PERFORMER - scale-aware conversion threshold AND CVR > campaign avg
+        hp_min_conv = max(
+            self.HIGH_PERFORMER_MIN_CONV_FLOOR,
+            totals["conversions"] * self.HIGH_PERFORMER_VOLUME_PCT,
+        )
+        if conversions >= hp_min_conv:
             campaign_cvr = campaign_cvrs.get(campaign_id, 0)
             term_cvr = (conversions / clicks) if clicks > 0 else 0
             if term_cvr > campaign_cvr:
                 return "HIGH_PERFORMER"
 
-        # 3. WASTE - clicks >= 5, conv = 0, CTR < 1%
-        if clicks >= 5 and conversions == 0:
+        # 3. WASTE - scale-aware click threshold, conv = 0, CTR < 1%
+        waste_min_clicks = max(
+            self.WASTE_MIN_CLICKS_FLOOR,
+            int(totals["clicks"] * self.WASTE_VOLUME_PCT),
+        )
+        if clicks >= waste_min_clicks and conversions == 0:
             ctr_pct = term.ctr or 0  # already percentage
             if ctr_pct < 1.0:
                 return "WASTE"
 
         # 4. OTHER - default
         return "OTHER"
+
+    def _get_campaign_totals(self, client_id: int) -> dict:
+        """Return per-campaign totals for the last 30 days: {campaign_id: {conversions, clicks}}.
+
+        Powers scale-aware thresholds in _classify().
+        """
+        from datetime import date, timedelta
+
+        cutoff = date.today() - timedelta(days=30)
+
+        results = (
+            self.db.query(
+                MetricDaily.campaign_id,
+                func.sum(MetricDaily.conversions).label("total_conv"),
+                func.sum(MetricDaily.clicks).label("total_clicks"),
+            )
+            .join(Campaign)
+            .filter(
+                Campaign.client_id == client_id,
+                MetricDaily.date >= cutoff,
+            )
+            .group_by(MetricDaily.campaign_id)
+            .all()
+        )
+
+        return {
+            campaign_id: {
+                "conversions": float(total_conv or 0),
+                "clicks": int(total_clicks or 0),
+            }
+            for campaign_id, total_conv, total_clicks in results
+        }
 
     def _get_campaign_avg_cvrs(self, client_id: int) -> dict:
         """Compute avg CVR per campaign from MetricDaily (last 30 days).

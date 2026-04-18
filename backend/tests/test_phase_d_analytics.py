@@ -615,6 +615,9 @@ class TestPhaseDRecommendationTypes:
         assert hasattr(RecommendationType, "AUDIENCE_PERFORMANCE_ANOMALY")
         assert hasattr(RecommendationType, "MISSING_EXTENSIONS_ALERT")
 
-    def test_enum_count_is_34(self):
+    def test_enum_count_is_36(self):
+        """v2.2 added ATTRIBUTION_MODEL_WARNING (R32) and NEGATIVE_KEYWORD_CONFLICT (R33)."""
         from app.services.recommendations import RecommendationType
-        assert len(RecommendationType) == 34
+        assert len(RecommendationType) == 36
+        assert hasattr(RecommendationType, "ATTRIBUTION_MODEL_WARNING")
+        assert hasattr(RecommendationType, "NEGATIVE_KEYWORD_CONFLICT")

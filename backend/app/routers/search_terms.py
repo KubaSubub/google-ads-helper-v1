@@ -200,6 +200,27 @@ class BulkAddKeywordRequest(BaseModel):
     client_id: int
 
 
+class PerTermMatchTypeOverride(BaseModel):
+    search_term_id: int
+    match_type: str               # EXACT, PHRASE, BROAD
+
+
+class BulkAddKeywordWithSuggestionsRequest(BaseModel):
+    """Adds keywords using per-term match types (optionally driven by the
+    match-type suggestion service). Unspecified terms fall back to `default_match_type`.
+    """
+    search_term_ids: list[int]
+    ad_group_id: int
+    default_match_type: str = "PHRASE"
+    overrides: list[PerTermMatchTypeOverride] = []
+    client_id: int
+
+
+class SuggestMatchTypesRequest(BaseModel):
+    search_term_ids: list[int]
+    client_id: int
+
+
 class BulkPreviewRequest(BaseModel):
     search_term_ids: list[int]
     client_id: int
@@ -378,6 +399,130 @@ def bulk_add_keyword(
                 status="APPLIED",
                 execution_mode="LOCAL",
                 new_value_json=f'{{"texts": {items}, "ad_group_id": {body.ad_group_id}, "match_type": "{body.match_type}"}}',
+            )
+            db.add(action)
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")
+
+    return {
+        "added": added,
+        "skipped_duplicates": skipped,
+        "items": items,
+    }
+
+
+@router.post("/suggest-match-types")
+def suggest_match_types(
+    body: SuggestMatchTypesRequest,
+    db: Session = Depends(get_db),
+):
+    """Return a match-type recommendation (EXACT / PHRASE) per search term.
+
+    Operators rarely promote a term as BROAD — BROAD is the source category the
+    term came from, not the destination. The service therefore suggests only
+    EXACT or PHRASE and returns a short Polish justification plus a confidence
+    score so the UI can highlight strong vs weak signals.
+    """
+    from app.services.match_type_suggestion import suggest_for_terms
+
+    if not body.search_term_ids:
+        raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
+
+    terms = db.query(SearchTerm).filter(SearchTerm.id.in_(body.search_term_ids)).all()
+    if not terms:
+        raise HTTPException(status_code=400, detail="No search terms found for the given IDs")
+
+    return {
+        "suggestions": suggest_for_terms(terms),
+    }
+
+
+@router.post("/bulk-add-keyword-with-suggestions")
+def bulk_add_keyword_with_suggestions(
+    body: BulkAddKeywordWithSuggestionsRequest,
+    db: Session = Depends(get_db),
+):
+    """Like /bulk-add-keyword but supports per-term match types.
+
+    Use /suggest-match-types first to get a per-term recommendation, let the user
+    confirm/override, then POST overrides here. The endpoint validates each match
+    type and skips duplicates (same text in same ad group) identically to the
+    single-match-type variant.
+    """
+    ensure_demo_write_allowed(db, body.client_id)
+
+    if not body.search_term_ids:
+        raise HTTPException(status_code=400, detail="search_term_ids must not be empty")
+
+    allowed = {"EXACT", "PHRASE", "BROAD"}
+    if body.default_match_type not in allowed:
+        raise HTTPException(status_code=400, detail="default_match_type must be EXACT, PHRASE, or BROAD")
+
+    override_map: dict[int, str] = {}
+    for o in body.overrides:
+        if o.match_type not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"override match_type for term {o.search_term_id} must be EXACT, PHRASE, or BROAD",
+            )
+        override_map[o.search_term_id] = o.match_type
+
+    target_ad_group = db.query(AdGroup).filter(AdGroup.id == body.ad_group_id).first()
+    if not target_ad_group:
+        raise HTTPException(status_code=400, detail=f"Ad group {body.ad_group_id} not found")
+
+    terms = db.query(SearchTerm).filter(SearchTerm.id.in_(body.search_term_ids)).all()
+    if not terms:
+        raise HTTPException(status_code=400, detail="No search terms found for the given IDs")
+
+    added = 0
+    skipped = 0
+    items: list[dict] = []
+
+    try:
+        for term in terms:
+            match_type = override_map.get(term.id, body.default_match_type)
+            existing = (
+                db.query(Keyword)
+                .filter(
+                    Keyword.text == term.text,
+                    Keyword.ad_group_id == body.ad_group_id,
+                    Keyword.match_type == match_type,
+                )
+                .first()
+            )
+            if existing:
+                skipped += 1
+                continue
+
+            kw = Keyword(
+                ad_group_id=body.ad_group_id,
+                text=term.text,
+                match_type=match_type,
+                status="ENABLED",
+                bid_micros=0,
+            )
+            db.add(kw)
+            added += 1
+            items.append({"text": term.text, "match_type": match_type})
+
+        db.commit()
+
+        if added > 0:
+            action = ActionLog(
+                client_id=body.client_id,
+                action_type="BULK_ADD_KEYWORD_WITH_SUGGESTIONS",
+                entity_type="keyword",
+                entity_id=str(body.ad_group_id),
+                status="APPLIED",
+                execution_mode="LOCAL",
+                new_value_json=(
+                    f'{{"items": {len(items)}, "ad_group_id": {body.ad_group_id}, '
+                    f'"default_match_type": "{body.default_match_type}", '
+                    f'"overrides": {len(override_map)}}}'
+                ),
             )
             db.add(action)
             db.commit()

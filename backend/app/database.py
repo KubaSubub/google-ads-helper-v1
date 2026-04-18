@@ -185,6 +185,11 @@ def _ensure_sqlite_columns():
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recommendations_stable_key ON recommendations (stable_key)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recommendations_campaign_id ON recommendations (campaign_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recommendations_ad_group_id ON recommendations (ad_group_id)"))
+        # Composite index for time-range queries on /dashboard-kpis, /trends, /correlation, /wow-comparison.
+        # The uq_metric_daily UNIQUE constraint gives SQLite an autoindex on the same columns,
+        # but a named index makes ANALYZE results stable and the planner choice explicit.
+        if inspector.has_table("metrics_daily"):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_metrics_daily_campaign_date ON metrics_daily (campaign_id, date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_keywords_criterion_kind ON keywords (criterion_kind)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_negative_keywords_google_criterion_id ON negative_keywords (google_criterion_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_negative_keywords_negative_scope ON negative_keywords (negative_scope)"))
@@ -209,6 +214,9 @@ def _ensure_sqlite_columns():
         # The index MUST include every dimension column that sync_*_metrics sets —
         # otherwise rows from different segmentation types (parental/income) collide
         # with each other on the (campaign, date, null_*) slot and fail on commit.
+        # Refresh planner statistics after any schema/index changes above.
+        conn.execute(text("ANALYZE"))
+
         if inspector.has_table("metrics_segmented"):
             # Drop old index that didn't include parental_status / income_range
             conn.execute(text("DROP INDEX IF EXISTS uq_metric_segmented_coalesced"))

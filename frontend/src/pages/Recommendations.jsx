@@ -59,6 +59,9 @@ const TYPE_CONFIG = {
     ASSET_GROUP_AD_STRENGTH: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Siła reklam grupy zasobów' },
     AUDIENCE_PERFORMANCE_ANOMALY: { icon: TrendingDown, color: C.danger, bg: C.dangerBg, label: 'Anomalia odbiorców' },
     MISSING_EXTENSIONS_ALERT: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Brakujące rozszerzenia' },
+    // v2.2 (R32+)
+    ATTRIBUTION_MODEL_WARNING: { icon: ShieldAlert, color: C.warning, bg: C.warningBg, label: 'Ostrzeżenie: model atrybucji' },
+    NEGATIVE_KEYWORD_CONFLICT: { icon: ShieldAlert, color: C.danger, bg: C.dangerBg, label: 'Konflikt negatywu z pozytywem' },
 }
 
 const PRIORITY_CONFIG = {

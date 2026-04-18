@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Download, Loader2, Plus, RefreshCw, Search, Users, X } from 'lucide-react'
+import { Download, Loader2, Plus, Search, Users, X } from 'lucide-react'
 import { useApp } from '../../../contexts/AppContext'
 import { discoverClients, getDataCoverage } from '../../../api'
-import SyncModal from '../../SyncModal'
 
 export default function ClientDrawer({ open, onClose }) {
     const { selectedClientId, setSelectedClientId, clients, showToast, refreshClients } = useApp()
@@ -311,29 +310,7 @@ export default function ClientDrawer({ open, onClose }) {
                                                 {client.name}
                                             </span>
                                         </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleSync(client.id)
-                                            }}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 4,
-                                                padding: '4px 10px',
-                                                borderRadius: 5,
-                                                fontSize: 10,
-                                                background: 'rgba(255,255,255,0.06)',
-                                                border: 'none',
-                                                color: 'rgba(255,255,255,0.4)',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.15s',
-                                            }}
-                                            className="hover:bg-white/[0.1]"
-                                        >
-                                            <RefreshCw size={10} />
-                                            Sync
-                                        </button>
+                                        {/* ADR-020: per-client Sync button removed — sync lives only in MCC Overview */}
                                     </div>
                                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', display: 'flex', flexDirection: 'column', gap: 2 }}>
                                         <span>{client.google_customer_id}</span>
@@ -358,12 +335,7 @@ export default function ClientDrawer({ open, onClose }) {
                 </div>
             </div>
 
-            <SyncModal
-                isOpen={!!syncModalClient}
-                clientId={syncModalClient?.id}
-                clientName={syncModalClient?.name}
-                onClose={handleSyncModalClose}
-            />
+            {/* ADR-020: SyncModal not rendered here — sync lives only in MCC Overview */}
         </div>
     )
 }

@@ -68,11 +68,15 @@ def _safe_float(val):
 
 
 def _safe_is(val):
-    """Convert impression share from API (0.0-1.0 or None)."""
+    """Convert impression share from API (0.0-1.0 or None).
+
+    Preserves 0.0 as a legitimate signal ("campaign got zero impressions in this segment")
+    — only returns None when the API itself returned None. Previously conflated the two,
+    losing the distinction between "no data" and "0% IS".
+    """
     if val is None:
         return None
-    f = float(val)
-    return f if f > 0 else None
+    return float(val)
 
 
 def _qs_enum(val):
@@ -5485,6 +5489,159 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             logger.error(f"Error syncing campaign audiences: {e}")
             db.rollback()
             raise
+
+    # ------------------------------------------------------------------
+    # Bid simulator (keyword-level) — forecast curves from Google Ads
+    # ------------------------------------------------------------------
+    def sync_bid_simulator_points(
+        self, db: Session, customer_id: str, max_keywords: int = 500
+    ) -> int:
+        """Fetch bid-simulator curves for top-spend ENABLED keywords.
+
+        Google exposes bid simulator data as a list of `bid_simulator_point`
+        forecasts (bid_micros → forecasted clicks/impressions/cost/conversions)
+        via the `keyword_view` resource. Not every keyword has a simulator — low-
+        volume keywords, PMax, and most DISPLAY keywords return nothing.
+
+        The sync targets the top `max_keywords` ENABLED Search keywords by recent
+        spend so we spend API quota on the most actionable bids. Call it daily;
+        curves are rewritten (old rows for the same keyword+window deleted first).
+
+        Returns number of points inserted.
+        """
+        if not self.is_connected:
+            logger.warning("Google Ads API not connected — skipping bid simulator sync")
+            return 0
+
+        from app.models.bid_simulator import BidSimulatorPoint
+
+        client = self._find_client_record(db, customer_id)
+        if not client:
+            logger.warning(f"Cannot resolve client for customer_id={customer_id}; skip bid simulator sync")
+            return 0
+
+        # Build lookup from Google criterion_id → local Keyword row for ENABLED
+        # Search keywords. Bid simulators are computed per-criterion by Google and
+        # only available for a subset of keywords (those with enough recent data).
+        # Fetching the account-wide set and matching locally is faster and returns
+        # everything Google has, instead of guessing which top-spend keywords
+        # happen to be among the simulated ones.
+        kw_lookup_rows = (
+            db.query(Keyword, AdGroup.google_ad_group_id.label("gag_id"))
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client.id,
+                Campaign.status == "ENABLED",
+                Campaign.campaign_type == "SEARCH",
+                Keyword.status == "ENABLED",
+                Keyword.criterion_kind == "POSITIVE",
+            )
+            .all()
+        )
+        if not kw_lookup_rows:
+            logger.info("No eligible keywords for bid simulator sync")
+            return 0
+
+        kw_lookup: dict[str, Keyword] = {
+            str(kw.google_keyword_id): kw for kw, _ in kw_lookup_rows if kw.google_keyword_id
+        }
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        today = date.today()
+        window_start_default = today - timedelta(days=7)
+        window_end_default = today - timedelta(days=1)
+
+        # Fresh-overwrite pattern: clear all existing points for this client's keywords.
+        # Dates vary per simulator row so the per-window uniqueness is handled by the
+        # DB's UNIQUE(keyword_id, start_date, end_date, bid_micros) constraint, but
+        # clearing first avoids stale entries Google has dropped.
+        kw_id_list = [kw.id for kw in kw_lookup.values()]
+        if kw_id_list:
+            db.query(BidSimulatorPoint).filter(
+                BidSimulatorPoint.keyword_id.in_(kw_id_list),
+            ).delete(synchronize_session=False)
+            db.commit()
+
+        total_points = 0
+        fetched_now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Query account-wide; Google returns only the (few) keywords for which it
+        # has computed simulators. Filter to CPC_BID so we skip target_cpa / target_roas
+        # flavours that need a different schema.
+        query = """
+            SELECT
+                ad_group_criterion_simulation.criterion_id,
+                ad_group_criterion_simulation.ad_group_id,
+                ad_group_criterion_simulation.type,
+                ad_group_criterion_simulation.modification_method,
+                ad_group_criterion_simulation.start_date,
+                ad_group_criterion_simulation.end_date,
+                ad_group_criterion_simulation.cpc_bid_point_list.points
+            FROM ad_group_criterion_simulation
+            WHERE ad_group_criterion_simulation.type = 'CPC_BID'
+        """
+
+        try:
+            response = list(ga_service.search(customer_id=customer_id, query=query))
+        except Exception as e:
+            logger.warning(f"Bid simulator query failed: {e}")
+            return 0
+
+        for row in response:
+            sim = row.ad_group_criterion_simulation
+            criterion_id = str(sim.criterion_id)
+            local_kw = kw_lookup.get(criterion_id)
+            if not local_kw:
+                # Google returned a simulator for a keyword we don't have locally
+                # (paused / non-SEARCH / out of sync) — skip rather than error.
+                continue
+
+            # Google returns ISO-date strings for start_date / end_date.
+            row_start = sim.start_date or str(window_start_default)
+            row_end = sim.end_date or str(window_end_default)
+            try:
+                actual_start = date.fromisoformat(row_start) if isinstance(row_start, str) else row_start
+                actual_end = date.fromisoformat(row_end) if isinstance(row_end, str) else row_end
+            except (ValueError, TypeError):
+                actual_start = window_start_default
+                actual_end = window_end_default
+
+            points = []
+            if sim.cpc_bid_point_list:
+                points = list(sim.cpc_bid_point_list.points or [])
+
+            for idx, pt in enumerate(points):
+                bid_micros = int(getattr(pt, "cpc_bid_micros", 0) or 0)
+                # biddable_conversions_value is a double (not micros in SDK proto)
+                bcv = getattr(pt, "biddable_conversions_value", 0) or 0
+                db.add(BidSimulatorPoint(
+                    client_id=client.id,
+                    entity_type="keyword",
+                    keyword_id=local_kw.id,
+                    ad_group_id=local_kw.ad_group_id,
+                    start_date=actual_start,
+                    end_date=actual_end,
+                    point_index=idx,
+                    bid_micros=bid_micros,
+                    forecasted_clicks=int(getattr(pt, "clicks", 0) or 0),
+                    forecasted_impressions=int(getattr(pt, "impressions", 0) or 0),
+                    forecasted_cost_micros=int(getattr(pt, "cost_micros", 0) or 0),
+                    forecasted_conversions=float(getattr(pt, "biddable_conversions", 0) or 0),
+                    forecasted_conversions_value_micros=int(bcv * 1_000_000),
+                    forecasted_top_slot_impressions=int(getattr(pt, "top_slot_impressions", 0) or 0),
+                    fetched_at=fetched_now,
+                ))
+                total_points += 1
+
+        try:
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Bid simulator commit failed: {e}")
+            db.rollback()
+
+        logger.info(f"Synced {total_points} bid simulator points")
+        return total_points
 
 
 # ------------------------------------------------------------------

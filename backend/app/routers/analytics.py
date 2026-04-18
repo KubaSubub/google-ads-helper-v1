@@ -506,7 +506,15 @@ def dashboard_kpis(
         total_cost_usd = micros_to_currency(total_cost_micros)
         total_conv_value_usd = micros_to_currency(total_conv_value_micros)
         total_all_conv_value_usd = micros_to_currency(total_all_conv_value_micros)
-        roas = round((total_conv_value_usd / total_cost_usd) if total_cost_usd else 0, 2)
+        # ROAS: distinguish "value not tracked" (conversions > 0 but conv_value = 0 → None)
+        # from "value tracked, actual zero return" (conversions = 0 → 0).
+        # Prevents false "low ROAS" alerts on accounts that never configured conversion values.
+        if not total_cost_usd:
+            roas = None
+        elif total_conversions > 0 and total_conv_value_micros == 0:
+            roas = None
+        else:
+            roas = round(total_conv_value_usd / total_cost_usd, 2)
         cpa = round((total_cost_usd / total_conversions) if total_conversions else 0, 2)
         cvr = round((total_conversions / total_clicks * 100) if total_clicks else 0, 2)
         avg_cpc_usd = round((total_cost_usd / total_clicks) if total_clicks else 0, 2)
@@ -1451,6 +1459,150 @@ def get_landing_pages(
     )
 
 
+@router.get("/landing-page-diagnostics")
+def landing_page_diagnostics(
+    client_id: int = Query(..., description="Client ID"),
+    severity: str = Query("ALL", description="HIGH / MEDIUM / LOW / ALL"),
+    db: Session = Depends(get_db),
+):
+    """Per-LP diagnostic flags — LP experience QS component, CVR vs account avg,
+    message-match risk (many ad groups → one LP), tracking template complexity.
+    """
+    from app.services.landing_page_service import landing_page_report
+
+    items = landing_page_report(db, client_id)
+    if severity != "ALL":
+        items = [i for i in items if i["severity"] == severity.upper()]
+    return {"total": len(items), "items": items}
+
+
+# ---------------------------------------------------------------------------
+# Dayparting — hourly breakdown + bid-schedule suggestions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dayparting")
+def dayparting(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90),
+    include_suggestions: bool = Query(True, description="Include bid-schedule suggestions"),
+    min_hour_cost_usd: float = Query(20.0, ge=0.0, description="Minimum spend per hour to warrant a suggestion"),
+    db: Session = Depends(get_db),
+):
+    """Hour-of-day performance heatmap + bid-schedule recommendations.
+
+    Returns 24 rows (one per hour) with clicks/cost/conversions/CPA/ROAS and
+    delta vs account average. Optionally includes `suggestions` — hours where
+    CPA is materially off-baseline with recommended bid-adjustment %.
+    """
+    from app.services.dayparting_service import (
+        bid_schedule_suggestions,
+        hourly_breakdown,
+    )
+
+    result = hourly_breakdown(db, client_id, days)
+    if include_suggestions:
+        result["suggestions"] = bid_schedule_suggestions(
+            db, client_id, days=days, min_cost_usd=min_hour_cost_usd
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Shopping product-group performance + feed heuristics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/shopping-product-groups")
+def shopping_product_groups(
+    client_id: int = Query(..., description="Client ID"),
+    severity: str = Query("ALL", description="HIGH / MEDIUM / LOW / ALL"),
+    db: Session = Depends(get_db),
+):
+    """Shopping UNIT/SUBDIVISION findings: zero-impression (feed issue), zero-conv waste,
+    low-ROAS vs campaign avg, high-ROAS underserved, orphan subdivisions.
+    """
+    from app.services.shopping_product_group_service import product_group_report
+
+    items = product_group_report(db, client_id)
+    if severity != "ALL":
+        items = [i for i in items if i["severity"] == severity.upper()]
+    return {"total": len(items), "items": items}
+
+
+# ---------------------------------------------------------------------------
+# Offline conversion import lag tracker
+# ---------------------------------------------------------------------------
+
+
+@router.get("/offline-conversion-lag")
+def offline_conversion_lag_endpoint(
+    client_id: int = Query(..., description="Client ID"),
+    db: Session = Depends(get_db),
+):
+    """Health + lag stats for offline conversion uploads.
+
+    Flags stale upload pipelines, failure rates, pending backlog. Returns lag
+    distribution (days between conversion time and upload) to help the operator
+    interpret partial last-7-days data.
+    """
+    from app.services.offline_conversion_lag_service import offline_conversion_lag
+    return offline_conversion_lag(db, client_id)
+
+
+# ---------------------------------------------------------------------------
+# YoY / seasonal comparison
+# ---------------------------------------------------------------------------
+
+
+@router.get("/seasonal-comparison")
+def seasonal_comparison(
+    client_id: int = Query(..., description="Client ID"),
+    date_from: date = Query(..., description="Current window start"),
+    date_to: date = Query(..., description="Current window end"),
+    comparison_type: str = Query(
+        "year_over_year",
+        description="year_over_year or rolling (uses months offset)",
+    ),
+    months_offset: int = Query(3, ge=1, le=24, description="Months offset for rolling comparison"),
+    db: Session = Depends(get_db),
+):
+    """Compare current window against same window last year (default) or N months ago."""
+    from app.services.seasonal_comparison_service import (
+        rolling_comparison,
+        yoy_comparison,
+    )
+
+    if comparison_type == "rolling":
+        return rolling_comparison(db, client_id, date_from, date_to, months=months_offset)
+    return yoy_comparison(db, client_id, date_from, date_to)
+
+
+# ---------------------------------------------------------------------------
+# Audience overlap / redundancy
+# ---------------------------------------------------------------------------
+
+
+@router.get("/audience-overlap")
+def audience_overlap(
+    client_id: int = Query(..., description="Client ID"),
+    days: int = Query(30, ge=7, le=90),
+    severity: str = Query("ALL", description="HIGH / MEDIUM / ALL"),
+    db: Session = Depends(get_db),
+):
+    """Flag audience pairs on the same campaign that are likely redundant.
+
+    Signals used: same audience_type, Jaccard name similarity, similar CVR/CPA
+    profile. Requires >= 2 signals to fire. Review queue, not auto-apply.
+    """
+    from app.services.audience_overlap_service import detect_audience_redundancy
+
+    items = detect_audience_redundancy(db, client_id, window_days=days)
+    if severity != "ALL":
+        items = [i for i in items if i["severity"] == severity.upper()]
+    return {"total": len(items), "items": items}
+
+
 # ---------------------------------------------------------------------------
 # Wasted Spend — zero-conversion waste summary
 # ---------------------------------------------------------------------------
@@ -2335,6 +2487,40 @@ def auction_insights(
         "trends": trends,
         "period": {"from": str(start), "to": str(end)},
         "total_competitors": len(competitors),
+    }
+
+
+@router.get("/auction-insights-trend")
+def auction_insights_trend(
+    client_id: int = Query(...),
+    window_days: int = Query(14, ge=7, le=60, description="Length of the current window; previous window has the same length"),
+    min_outranking_delta_pp: float = Query(
+        0.0,
+        description="Filter to competitors whose outranking_share delta >= this many percentage points",
+    ),
+    trend_label: str = Query(
+        "ALL",
+        description="Filter by trend_label: RISING_FAST, RISING, STABLE, FALLING, FALLING_FAST, ALL",
+    ),
+    db: Session = Depends(get_db),
+):
+    """Per-competitor Auction Insights trend over a rolling window.
+
+    Returns current-window avg vs previous-window avg, delta in percentage points,
+    slope across the current window, and a trend label. Sorted by outranking-share
+    delta desc so competitors gaining the most on you surface first.
+    """
+    from app.services.auction_insights_trend_service import compute_trends
+
+    items = compute_trends(db, client_id, window_days=window_days)
+    if trend_label != "ALL":
+        items = [i for i in items if i["trend_label"] == trend_label.upper()]
+    items = [i for i in items if i["outranking_share_delta_pp"] >= min_outranking_delta_pp]
+
+    return {
+        "window_days": window_days,
+        "total": len(items),
+        "items": items,
     }
 
 

@@ -791,3 +791,98 @@ def list_ads(
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size,
     )
+
+
+# ---------------------------------------------------------------------------
+# RSA Ad-Group Health Report
+# ---------------------------------------------------------------------------
+
+@router.get("/rsa-health")
+def rsa_health(
+    client_id: int = Query(..., description="Client ID"),
+    severity: str = Query("ALL", description="HIGH / MEDIUM / LOW / OK / ALL"),
+    db: Session = Depends(get_db),
+):
+    """Per-ad-group RSA health report (SEARCH only). No new API sync — uses local cache.
+
+    Flags single-RSA ad groups, ad groups without any GOOD/EXCELLENT ad, under-filled RSAs.
+    For full asset-level performance (per-headline CTR / performance_label) a new sync
+    of `ad_group_ad_asset_view` is required and is not yet implemented.
+    """
+    from app.services.rsa_health_service import ad_group_rsa_report
+
+    items = ad_group_rsa_report(db, client_id)
+    if severity != "ALL":
+        items = [i for i in items if i["severity"] == severity.upper()]
+    return {"total": len(items), "items": items}
+
+
+# ---------------------------------------------------------------------------
+# Keyword Cannibalization Detection
+# ---------------------------------------------------------------------------
+
+@router.get("/cannibalization")
+def keyword_cannibalization(
+    client_id: int = Query(..., description="Client ID"),
+    severity: str = Query(
+        "ALL",
+        description="Filter by severity: HIGH, MEDIUM, LOW, ALL",
+    ),
+    limit: int = Query(100, ge=1, le=500),
+    min_combined_cost_usd: float = Query(
+        0.0,
+        ge=0.0,
+        description="Only return findings with combined keyword spend >= this amount",
+    ),
+    db: Session = Depends(get_db),
+):
+    """Surface keyword pairs that cannibalize each other.
+
+    Three kinds: duplicate EXACT in same ad group (HIGH), EXACT vs PHRASE in same
+    ad group (MEDIUM), cross-ad-group same text (MEDIUM). Results sorted by combined
+    spend descending so high-impact cases surface first.
+    """
+    from app.services.keyword_cannibalization_service import detect_cannibalization
+
+    findings = detect_cannibalization(db, client_id)
+    if severity != "ALL":
+        findings = [f for f in findings if f["severity"] == severity.upper()]
+    findings = [f for f in findings if f["combined_cost_usd"] >= min_combined_cost_usd]
+    return {
+        "total": len(findings),
+        "returned": min(len(findings), limit),
+        "items": findings[:limit],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Negative Keyword ↔ Positive Keyword Conflict Detection
+# ---------------------------------------------------------------------------
+
+@router.get("/negative-conflicts")
+def negative_keyword_conflicts(
+    client_id: int = Query(..., description="Client ID"),
+    limit: int = Query(100, ge=1, le=500, description="Max conflicts returned"),
+    min_cost_usd: float = Query(
+        0.0,
+        ge=0.0,
+        description="Only return conflicts where the blocked positive keyword's "
+                    "spend is at least this amount in USD",
+    ),
+    db: Session = Depends(get_db),
+):
+    """Surface negative keywords that silently block positive keywords in the same scope.
+
+    Example conflict: campaign-scoped phrase-match negative 'cheap shoes' blocks
+    an ad-group exact-match positive 'cheap running shoes' — positive never serves.
+    Sorted by blocked-positive spend descending so high-impact conflicts surface first.
+    """
+    from app.services.negative_conflict_service import detect_conflicts
+
+    all_conflicts = detect_conflicts(db, client_id)
+    filtered = [c for c in all_conflicts if (c["positive_cost_usd"] or 0) >= min_cost_usd]
+    return {
+        "total": len(filtered),
+        "returned": min(len(filtered), limit),
+        "items": filtered[:limit],
+    }

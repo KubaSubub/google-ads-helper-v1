@@ -67,6 +67,58 @@ def _ctr_micros_to_pct(ctr_val: float | int | None) -> float:
     """CTR is now stored as percentage (5.0 = 5%). Return as-is."""
     return round(float(ctr_val or 0), 2)
 
+
+# Minimum conversions required before CPA is treated as an actionable signal.
+# Google Ads data-driven attribution produces fractional conversions (e.g. 0.3);
+# a CPA computed from 0.3 conversions is mathematically defined but operationally
+# noise — no full conversion actually happened. Recommendations that act on CPA
+# must require at least one whole attributed conversion.
+MIN_CONVERSIONS_FOR_CPA = 1.0
+
+
+def _actionable_cpa(cost_usd: float, conversions: float | None) -> float | None:
+    """Return CPA in USD only when conversions crosses the actionability floor.
+
+    Returns None when conversions is None, <= 0, or below MIN_CONVERSIONS_FOR_CPA.
+    Callers must treat None as 'no actionable CPA yet' and skip the recommendation.
+    """
+    if conversions is None or conversions < MIN_CONVERSIONS_FOR_CPA:
+        return None
+    return cost_usd / conversions
+
+
+def _is_in_learning(campaign) -> bool:
+    """Return True when a campaign is in a smart-bidding LEARNING phase.
+
+    Read from Campaign.primary_status_reasons (stored as JSON array string from
+    Google Ads API). Any reason containing the token 'LEARNING' counts —
+    covers BIDDING_STRATEGY_LEARNING, BIDDING_STRATEGY_CONSTRAINED_LEARNING,
+    and forward-compat variants.
+    """
+    reasons_raw = getattr(campaign, "primary_status_reasons", None)
+    if not reasons_raw:
+        return False
+    import json
+    try:
+        reasons = json.loads(reasons_raw) if isinstance(reasons_raw, str) else reasons_raw
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not reasons:
+        return False
+    return any("LEARNING" in str(r).upper() for r in reasons)
+
+
+# Campaign-type scope for rule dispatch.
+# SEARCH campaigns have manual positive keywords, QS, CTR per keyword, RSA ads.
+# PMax doesn't expose keywords but does expose search terms via campaign_search_term_view —
+# search-term rules must include PMax while keyword-level rules must exclude it.
+# DISPLAY / VIDEO / DISCOVERY / DEMAND_GEN / SHOPPING are forward-compat placeholders
+# — today the app skips keyword-level rules on all of them; future work will add
+# placement-level, asset-level, and product-group-level rule sets.
+CAMPAIGN_TYPES_WITH_KEYWORDS = ("SEARCH",)
+CAMPAIGN_TYPES_WITH_SEARCH_TERMS = ("SEARCH", "PERFORMANCE_MAX")
+CAMPAIGN_TYPES_WITH_ASSET_GROUPS = ("PERFORMANCE_MAX",)
+
 class RecommendationType(str, Enum):
     # MVP (R1-R7)
     PAUSE_KEYWORD = "PAUSE_KEYWORD"
@@ -107,6 +159,9 @@ class RecommendationType(str, Enum):
     ASSET_GROUP_AD_STRENGTH = "ASSET_GROUP_AD_STRENGTH"
     AUDIENCE_PERFORMANCE_ANOMALY = "AUDIENCE_PERFORMANCE_ANOMALY"
     MISSING_EXTENSIONS_ALERT = "MISSING_EXTENSIONS_ALERT"
+    # v2.2 (R32+)
+    ATTRIBUTION_MODEL_WARNING = "ATTRIBUTION_MODEL_WARNING"
+    NEGATIVE_KEYWORD_CONFLICT = "NEGATIVE_KEYWORD_CONFLICT"
 
 
 class Priority(str, Enum):
@@ -232,6 +287,65 @@ class RecommendationsEngine:
         "r31_min_callouts": 4,
     }
 
+    # Campaign-role-aware overrides. Playbook CZĘŚĆ 10.1 defined the targets; the engine
+    # looks up `THRESHOLDS_BY_ROLE[role].get(key, DEFAULT_THRESHOLDS[key])`.
+    # Brand keywords at 3-5% CTR are normal; generic at 0.5-2% is normal. One threshold
+    # set for both mis-flags brand (too noisy) or under-flags generic (misses issues).
+    #
+    # Roles mirror `Campaign.campaign_role_final` values set by `campaign_roles.py`:
+    # BRAND / GENERIC / COMPETITOR / DSA / PMAX / SHOPPING / VIDEO.
+    THRESHOLDS_BY_ROLE: dict[str, dict] = {
+        "BRAND": {
+            # Brand CTR normal 3-8% — bumping pause threshold so a 2% brand CTR still flags
+            "r1_low_ctr_threshold": 2.0,
+            "r11_max_ctr": 2.0,
+            # Brand keywords should rarely have 0 conversions if click volume exists — keep spend guard high
+            "r1_min_spend": 100.0,
+            "r1_min_clicks": 50,
+            # Brand ROAS target: 4×+
+            "r7_roas_ratio": 2.0,
+            # Brand QS should be 7+; flag below 7 instead of default 5
+            "r8_max_qs": 7,
+        },
+        "GENERIC": {
+            # Generic baseline matches DEFAULT_THRESHOLDS — listed for explicitness
+            "r1_low_ctr_threshold": 0.5,
+            "r11_max_ctr": 0.5,
+            "r1_min_spend": 50.0,
+            "r1_min_clicks": 30,
+            "r7_roas_ratio": 2.0,
+            "r8_max_qs": 5,
+        },
+        "COMPETITOR": {
+            # Competitor campaigns have lower CTR (1-2.5%), higher CPA — expect and accept it
+            "r1_low_ctr_threshold": 0.3,
+            "r11_max_ctr": 0.3,
+            "r1_min_spend": 75.0,
+            "r1_min_clicks": 40,
+            # Competitor QS is systemically lower — 5 is tolerable
+            "r8_max_qs": 5,
+            # ROAS 2× minimum, more forgiving than brand
+            "r7_roas_ratio": 1.5,
+        },
+        "DSA": {
+            # Dynamic Search Ads: no keyword, match on site content — CTR 1-3%
+            "r1_low_ctr_threshold": 0.5,
+            "r11_max_ctr": 0.5,
+            "r8_max_qs": 5,
+        },
+        "PMAX": {
+            # Keyword-level rules don't apply to PMax (campaign-type filter already skips),
+            # but leave sane defaults for search-term rules (R4, R5) that DO run here.
+            "r4_min_conversions": 5,    # Higher floor — PMax signal is noisier
+        },
+        "SHOPPING": {
+            # Product-group rules not yet implemented — defaults OK for now
+        },
+        "VIDEO": {
+            # View-rate rules not yet implemented — defaults OK for now
+        },
+    }
+
     # Words that indicate irrelevant intent (word boundary matched)
     IRRELEVANT_WORDS = [
         # English
@@ -252,6 +366,24 @@ class RecommendationsEngine:
 
     def __init__(self, thresholds: dict = None):
         self.thresholds = {**self.DEFAULT_THRESHOLDS, **(thresholds or {})}
+
+    def _t(self, key: str, campaign=None):
+        """Return threshold for `key`, applying campaign-role override if available.
+
+        Falls back to `self.thresholds[key]` (DEFAULT_THRESHOLDS merged with user overrides).
+        Pass the Campaign object whose role should be consulted; passing None yields the default.
+        """
+        role = None
+        if campaign is not None:
+            role = (
+                getattr(campaign, "campaign_role_final", None)
+                or getattr(campaign, "campaign_role_auto", None)
+            )
+        if role and role in self.THRESHOLDS_BY_ROLE:
+            override = self.THRESHOLDS_BY_ROLE[role].get(key)
+            if override is not None:
+                return override
+        return self.thresholds[key]
 
     def generate_all(
         self,
@@ -311,6 +443,10 @@ class RecommendationsEngine:
         recommendations.extend(self._rule_30_audience_performance_anomaly(db, client_id, days))
         recommendations.extend(self._rule_31_missing_extensions(db, client_id, days))
 
+        # v2.2 rules (R32+) — account-wide context alerts surfacing previously-unused data.
+        recommendations.extend(self._rule_32_attribution_warning(db, client_id, days))
+        recommendations.extend(self._rule_33_negative_keyword_conflicts(db, client_id, days))
+
         recommendations.extend(self._analytics_alerts(db, client_id, days, recommendations))
 
         enriched = [self._finalize_recommendation(db, client_id, days, rec) for rec in recommendations]
@@ -332,6 +468,7 @@ class RecommendationsEngine:
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
             .filter(
                 Campaign.client_id == client_id,
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
                 Keyword.status == "ENABLED",
             )
             .all()
@@ -349,11 +486,17 @@ class RecommendationsEngine:
             kw_cost = _micros_to_usd(kw.cost_micros)
             kw_ctr = _ctr_micros_to_pct(kw.ctr)
 
+            # Role-aware thresholds: brand tolerates higher 0-conv spend, generic doesn't.
+            r1_min_spend = self._t("r1_min_spend", campaign)
+            r1_min_clicks = self._t("r1_min_clicks", campaign)
+            r1_low_ctr = self._t("r1_low_ctr_threshold", campaign)
+            r1_low_ctr_min_impr = self._t("r1_low_ctr_min_impr", campaign)
+
             # Check 1: High spend, no conversions
             if (
-                kw_cost >= t["r1_min_spend"]
+                kw_cost >= r1_min_spend
                 and (kw.conversions or 0) == 0
-                and (kw.clicks or 0) >= t["r1_min_clicks"]
+                and (kw.clicks or 0) >= r1_min_clicks
             ):
                 recs.append(Recommendation(
                     type=RecommendationType.PAUSE_KEYWORD,
@@ -372,10 +515,10 @@ class RecommendationsEngine:
                     metadata={"spend": kw_cost, "clicks": kw.clicks},
                 ))
 
-            # Check 2: Very low CTR (irrelevant keyword)
+            # Check 2: Very low CTR (irrelevant keyword) — role-aware threshold
             elif (
-                (kw.impressions or 0) >= t["r1_low_ctr_min_impr"]
-                and kw_ctr < t["r1_low_ctr_threshold"]
+                (kw.impressions or 0) >= r1_low_ctr_min_impr
+                and kw_ctr < r1_low_ctr
             ):
                 recs.append(Recommendation(
                     type=RecommendationType.PAUSE_KEYWORD,
@@ -406,11 +549,21 @@ class RecommendationsEngine:
 
         campaigns = (
             db.query(Campaign)
-            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
+            )
             .all()
         )
 
         for campaign in campaigns:
+            # Do not recommend bid changes on campaigns in smart-bidding LEARNING.
+            # Manual bid nudges during learning reset the strategy and burn 7–14 days
+            # of budget while the algorithm re-converges.
+            if _is_in_learning(campaign):
+                continue
+
             keywords = (
                 db.query(Keyword)
                 .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
@@ -430,14 +583,16 @@ class RecommendationsEngine:
             avg_cvr = (total_conv / total_clicks * 100) if total_clicks > 0 else 0
 
             total_cost_usd = sum(_micros_to_usd(k.cost_micros) for k in keywords)
-            avg_cpa = (total_cost_usd / total_conv) if total_conv > 0 else 999999
+            avg_cpa = _actionable_cpa(total_cost_usd, total_conv)
 
             for kw in keywords:
                 if (kw.clicks or 0) == 0 or (kw.conversions or 0) < 2:
                     continue
                 kw_cvr = (kw.conversions / kw.clicks * 100)
                 kw_cost = _micros_to_usd(kw.cost_micros)
-                kw_cpa = (kw_cost / kw.conversions) if kw.conversions > 0 else 999999
+                kw_cpa = _actionable_cpa(kw_cost, kw.conversions)
+                if kw_cpa is None or avg_cpa is None:
+                    continue
 
                 if kw_cvr > avg_cvr * t["r2_cvr_multiplier"] and kw_cpa < avg_cpa * t["r2_cpa_multiplier"]:
                     recs.append(Recommendation(
@@ -474,11 +629,19 @@ class RecommendationsEngine:
 
         campaigns = (
             db.query(Campaign)
-            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.status == "ENABLED",
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
+            )
             .all()
         )
 
         for campaign in campaigns:
+            # Skip smart-bidding LEARNING campaigns — see R2 for rationale.
+            if _is_in_learning(campaign):
+                continue
+
             keywords = (
                 db.query(Keyword)
                 .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
@@ -495,13 +658,17 @@ class RecommendationsEngine:
 
             total_cost = sum(_micros_to_usd(k.cost_micros) for k in keywords)
             total_conv = sum(k.conversions or 0 for k in keywords)
-            avg_cpa = total_cost / total_conv if total_conv > 0 else 0
+            avg_cpa = _actionable_cpa(total_cost, total_conv)
+            if avg_cpa is None:
+                continue
 
             for kw in keywords:
                 kw_cost = _micros_to_usd(kw.cost_micros)
-                if kw_cost < t["r3_min_spend"] or (kw.conversions or 0) == 0:
+                if kw_cost < t["r3_min_spend"]:
                     continue
-                kw_cpa = kw_cost / kw.conversions
+                kw_cpa = _actionable_cpa(kw_cost, kw.conversions)
+                if kw_cpa is None:
+                    continue
 
                 if kw_cpa > avg_cpa * t["r3_cpa_multiplier"]:
                     recs.append(Recommendation(
@@ -546,6 +713,9 @@ class RecommendationsEngine:
                 Campaign.id.label("campaign_id"),
                 SearchTerm.ad_group_id.label("ad_group_id"),
                 SearchTerm.source.label("source"),
+                Campaign.campaign_role_final.label("campaign_role"),
+                Campaign.campaign_role_auto.label("campaign_role_auto"),
+                Campaign.campaign_type.label("campaign_type"),
             )
             .join(Campaign, SearchTerm.campaign_id == Campaign.id)
             .filter(Campaign.client_id == client_id)
@@ -555,6 +725,9 @@ class RecommendationsEngine:
                 Campaign.id,
                 SearchTerm.ad_group_id,
                 SearchTerm.source,
+                Campaign.campaign_role_final,
+                Campaign.campaign_role_auto,
+                Campaign.campaign_type,
             )
             .all()
         )
@@ -595,7 +768,21 @@ class RecommendationsEngine:
                 "ad_group_id": term.ad_group_id,
             }
 
-            if total_conv >= t["r4_min_conversions"]:
+            # Role-aware min conversions — PMax needs a higher floor (5) because
+            # its search terms come from a noisier attribution model.
+            # Build a lightweight stand-in with campaign_role_final for _t() lookup.
+            class _RoleStub:
+                pass
+            stub = _RoleStub()
+            stub.campaign_role_final = term.campaign_role
+            stub.campaign_role_auto = term.campaign_role_auto
+            # PMAX role from campaign_type as fallback if role not yet classified
+            if not term.campaign_role and not term.campaign_role_auto:
+                if term.campaign_type == "PERFORMANCE_MAX":
+                    stub.campaign_role_auto = "PMAX"
+            r4_min_conv = self._t("r4_min_conversions", stub)
+
+            if total_conv >= r4_min_conv:
                 if source == "SEARCH" and term.ad_group_id:
                     recs.append(Recommendation(
                         type=RecommendationType.ADD_KEYWORD,
@@ -798,10 +985,15 @@ class RecommendationsEngine:
         recs = []
         t = self.thresholds
 
+        # Ad-level CTR comparison — only meaningful on SEARCH (RSA within ad group).
+        # PMax uses asset rotations across channels; asset-strength rules (R29) cover that.
         ad_groups = (
             db.query(AdGroup)
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
-            .filter(Campaign.client_id == client_id)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
+            )
             .all()
         )
 
@@ -936,16 +1128,28 @@ class RecommendationsEngine:
         t = self.thresholds
         QS_LABELS = {1: "BELOW_AVERAGE", 2: "AVERAGE", 3: "ABOVE_AVERAGE"}
 
+        # Fetch with the widest possible QS cutoff (max across roles) so per-role filter
+        # in Python can include brand keywords with QS=6 (brand threshold = 7) and
+        # generic keywords with QS=4 (generic threshold = 5). Without this, the DB
+        # filter cuts off before per-role evaluation.
+        max_qs_cutoff = max(
+            self.DEFAULT_THRESHOLDS["r8_max_qs"],
+            *(
+                role_overrides.get("r8_max_qs", self.DEFAULT_THRESHOLDS["r8_max_qs"])
+                for role_overrides in self.THRESHOLDS_BY_ROLE.values()
+            ),
+        )
         keywords = (
             db.query(Keyword)
             .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
             .filter(
                 Campaign.client_id == client_id,
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
                 Keyword.status == "ENABLED",
                 Keyword.quality_score.isnot(None),
                 Keyword.quality_score > 0,
-                Keyword.quality_score < t["r8_max_qs"],
+                Keyword.quality_score < max_qs_cutoff,
                 Keyword.impressions > t["r8_min_impressions"],
             )
             .all()
@@ -958,6 +1162,10 @@ class RecommendationsEngine:
                 .filter(AdGroup.id == kw.ad_group_id)
                 .first()
             )
+            # Per-role QS threshold — brand wants 7+, generic 5+, competitor 5+.
+            role_qs_threshold = self._t("r8_max_qs", campaign)
+            if kw.quality_score >= role_qs_threshold:
+                continue
             camp_name = campaign.name if campaign else "Unknown"
 
             # Determine weakest subcomponent
@@ -994,6 +1202,81 @@ class RecommendationsEngine:
                     "predicted_ctr": kw.historical_search_predicted_ctr,
                     "creative_quality": kw.historical_creative_quality,
                     "landing_page_quality": kw.historical_landing_page_quality,
+                },
+            ))
+
+        # Fallback path — Google Ads omits the 1-10 Quality Score on low-impression keywords,
+        # but still exposes the three historical components on a 1-3 scale
+        # (1=BELOW_AVERAGE, 2=AVERAGE, 3=ABOVE_AVERAGE). Flag keywords where at least
+        # two of the three components are BELOW_AVERAGE: a clear weak-quality signal
+        # even without the main score. Avoids missing problematic keywords just because
+        # they haven't accumulated enough traffic to earn a score.
+        fallback_kws = (
+            db.query(Keyword)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .join(Campaign, AdGroup.campaign_id == Campaign.id)
+            .filter(
+                Campaign.client_id == client_id,
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
+                Keyword.status == "ENABLED",
+                # Main score absent or 0
+                (Keyword.quality_score.is_(None)) | (Keyword.quality_score == 0),
+                Keyword.impressions > 0,
+            )
+            .all()
+        )
+        seen_keyword_ids = {r.entity_id for r in recs if r.entity_type == "keyword"}
+        for kw in fallback_kws:
+            if kw.id in seen_keyword_ids:
+                continue
+            components = [
+                kw.historical_search_predicted_ctr,
+                kw.historical_creative_quality,
+                kw.historical_landing_page_quality,
+            ]
+            valid = [c for c in components if c is not None and c > 0]
+            if len(valid) < 2:
+                continue
+            below_avg_count = sum(1 for c in valid if c == 1)
+            if below_avg_count < 2:
+                continue
+
+            campaign = (
+                db.query(Campaign)
+                .join(AdGroup, Campaign.id == AdGroup.campaign_id)
+                .filter(AdGroup.id == kw.ad_group_id)
+                .first()
+            )
+            camp_name = campaign.name if campaign else "Unknown"
+
+            subcomponents = {
+                "Expected CTR": kw.historical_search_predicted_ctr,
+                "Ad Relevance": kw.historical_creative_quality,
+                "Landing Page": kw.historical_landing_page_quality,
+            }
+            weak_components = [name for name, v in subcomponents.items() if v == 1]
+
+            recs.append(Recommendation(
+                type=RecommendationType.QS_ALERT,
+                priority=Priority.MEDIUM,
+                entity_type="keyword",
+                entity_id=kw.id,
+                entity_name=kw.text,
+                campaign_name=camp_name,
+                category="ALERT",
+                reason=(
+                    f"Brak QS 1-10 (za mało impresji), ale {below_avg_count} z 3 komponentów "
+                    f"historycznych = BELOW_AVERAGE: {', '.join(weak_components)}"
+                ),
+                current_value=f"QS: brak, Impr: {kw.impressions}, Słabe: {', '.join(weak_components)}",
+                recommended_action=f"Popraw: {', '.join(weak_components)}",
+                metadata={
+                    "quality_score": None,
+                    "qs_fallback": True,
+                    "predicted_ctr": kw.historical_search_predicted_ctr,
+                    "creative_quality": kw.historical_creative_quality,
+                    "landing_page_quality": kw.historical_landing_page_quality,
+                    "weak_components": weak_components,
                 },
             ))
 
@@ -1111,6 +1394,45 @@ class RecommendationsEngine:
                 rank_lost > t["r10_min_rank_lost_pct"]
                 and budget_lost < t["r10_max_budget_lost_pct"]
             ):
+                # Compute the campaign's weighted avg Quality Score to give
+                # the user an immediate answer to "bid up, or fix QS first?"
+                avg_qs = self._campaign_avg_quality_score(db, campaign.id)
+                low_qs_kw_count = self._campaign_low_qs_keyword_count(
+                    db, campaign.id, t["r8_max_qs"]
+                )
+
+                if avg_qs is not None and avg_qs < 6:
+                    root_cause = "low_quality_score"
+                    action = (
+                        f"QS średnio {avg_qs:.1f}/10 — zanim zwiększysz bid, "
+                        f"popraw {low_qs_kw_count} keywords z QS<{t['r8_max_qs']} "
+                        f"(ad copy / landing page / expected CTR)"
+                    )
+                elif avg_qs is not None and avg_qs >= 7:
+                    root_cause = "bid_too_low"
+                    action = (
+                        f"QS zdrowy ({avg_qs:.1f}/10) — podbij stawki "
+                        f"w tej kampanii, żeby odzyskać Ad Rank"
+                    )
+                else:
+                    root_cause = "qs_and_bid_mixed"
+                    action = (
+                        "Rozważ najpierw QS (komponenty historical) "
+                        "— później zwiększ stawki"
+                    )
+
+                reason_parts = [
+                    f"Tracisz {rank_lost:.0f}% wyświetleń przez Ad Rank",
+                    f"budget-lost IS tylko {budget_lost:.0f}% (nie budget to problem)",
+                ]
+                if avg_qs is not None:
+                    reason_parts.append(f"avg QS: {avg_qs:.1f}/10")
+                if low_qs_kw_count:
+                    reason_parts.append(
+                        f"{low_qs_kw_count} keywords z QS<{t['r8_max_qs']}"
+                    )
+                reason = "; ".join(reason_parts) + "."
+
                 recs.append(Recommendation(
                     type=RecommendationType.IS_RANK_ALERT,
                     priority=Priority.MEDIUM,
@@ -1119,24 +1441,63 @@ class RecommendationsEngine:
                     entity_name=campaign.name,
                     campaign_name=campaign.name,
                     category="ALERT",
-                    reason=(
-                        f"Tracisz {rank_lost:.0f}% wyświetleń z powodu niskiego "
-                        f"Ad Rank. Sprawdź Quality Score keywords i trafność reklam."
-                    ),
+                    reason=reason,
                     current_value=(
                         f"Rank Lost IS: {rank_lost:.0f}%, "
-                        f"Budget Lost IS: {budget_lost:.0f}%"
+                        f"Budget Lost IS: {budget_lost:.0f}%, "
+                        f"avg QS: {avg_qs:.1f}/10" if avg_qs is not None
+                        else f"Rank Lost IS: {rank_lost:.0f}%, "
+                             f"Budget Lost IS: {budget_lost:.0f}%"
                     ),
-                    recommended_action=(
-                        "Popraw Quality Score keywords lub zwiększ stawki"
-                    ),
+                    recommended_action=action,
                     metadata={
                         "rank_lost_pct": round(rank_lost, 1),
                         "budget_lost_pct": round(budget_lost, 1),
+                        "avg_quality_score": avg_qs,
+                        "low_qs_keyword_count": low_qs_kw_count,
+                        "root_cause": root_cause,
                     },
                 ))
 
         return recs
+
+    # Helpers used by R10 IS-root-cause diagnosis.
+    def _campaign_avg_quality_score(self, db: Session, campaign_id: int) -> float | None:
+        """Impression-weighted average QS across enabled keywords in a campaign.
+        Returns None when no keyword has a score yet.
+        """
+        rows = (
+            db.query(Keyword.quality_score, Keyword.impressions)
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .filter(
+                AdGroup.campaign_id == campaign_id,
+                Keyword.status == "ENABLED",
+                Keyword.quality_score.isnot(None),
+                Keyword.quality_score > 0,
+            )
+            .all()
+        )
+        total_impr = sum((r.impressions or 1) for r in rows)
+        if not rows or total_impr == 0:
+            return None
+        weighted_sum = sum((r.quality_score or 0) * (r.impressions or 1) for r in rows)
+        return weighted_sum / total_impr
+
+    def _campaign_low_qs_keyword_count(
+        self, db: Session, campaign_id: int, qs_threshold: int
+    ) -> int:
+        return (
+            db.query(func.count(Keyword.id))
+            .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
+            .filter(
+                AdGroup.campaign_id == campaign_id,
+                Keyword.status == "ENABLED",
+                Keyword.quality_score.isnot(None),
+                Keyword.quality_score > 0,
+                Keyword.quality_score < qs_threshold,
+            )
+            .scalar()
+        ) or 0
 
     # -----------------------------------------------------------------------
     # RULE 11: Low CTR + High Impressions — Irrelevant Keyword
@@ -1153,6 +1514,7 @@ class RecommendationsEngine:
             .join(Campaign, AdGroup.campaign_id == Campaign.id)
             .filter(
                 Campaign.client_id == client_id,
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
                 Keyword.status == "ENABLED",
                 Keyword.impressions > t["r11_min_impressions"],
                 Keyword.match_type.in_(["BROAD", "PHRASE"]),
@@ -1162,17 +1524,17 @@ class RecommendationsEngine:
 
         for kw in keywords:
             kw_ctr = _ctr_micros_to_pct(kw.ctr)
-            if kw_ctr >= t["r11_max_ctr"]:
-                continue
-            if (kw.conversions or 0) > 0:
-                continue
-
             campaign = (
                 db.query(Campaign)
                 .join(AdGroup, Campaign.id == AdGroup.campaign_id)
                 .filter(AdGroup.id == kw.ad_group_id)
                 .first()
             )
+            # Role-aware CTR threshold — brand is normal at 3-5%, generic at 0.5-2%.
+            if kw_ctr >= self._t("r11_max_ctr", campaign):
+                continue
+            if (kw.conversions or 0) > 0:
+                continue
             camp_name = campaign.name if campaign else "Unknown"
 
             recs.append(Recommendation(
@@ -1214,7 +1576,8 @@ class RecommendationsEngine:
         t = self.thresholds
         min_spend_micros = 50_000_000  # $50 minimum total spend
 
-        # Per-client (account-level) alert — aggregate all keywords across campaigns
+        # Per-client (account-level) alert — aggregate all keywords across SEARCH campaigns.
+        # PMax / DISPLAY / VIDEO don't expose keyword-level cost in a way that maps to this rule.
         keywords = (
             db.query(Keyword)
             .join(AdGroup, Keyword.ad_group_id == AdGroup.id)
@@ -1222,6 +1585,7 @@ class RecommendationsEngine:
             .filter(
                 Campaign.client_id == client_id,
                 Campaign.status == "ENABLED",
+                Campaign.campaign_type.in_(CAMPAIGN_TYPES_WITH_KEYWORDS),
                 Keyword.status == "ENABLED",
             )
             .all()
@@ -1556,9 +1920,23 @@ class RecommendationsEngine:
         )
 
         for campaign in campaigns:
-            daily_budget = _micros_to_usd(campaign.budget_micros)
-            monthly_budget = daily_budget * days_in_month
-            expected_spend = monthly_budget * month_pct
+            budget_amount_usd = _micros_to_usd(campaign.budget_micros)
+            # Respect budget_type. DAILY: expected = daily × days_elapsed_in_month.
+            # TOTAL / CUSTOM: expected = total_budget × fraction_of_campaign_period_elapsed.
+            # For TOTAL-budget campaigns we fall back to the same month-pacing heuristic
+            # until campaign.start_date / end_date are consumed here (future work);
+            # the `budget_type` is at least attached to the metadata so the UI can
+            # surface it and reason about corner cases.
+            budget_type = (getattr(campaign, "budget_type", None) or "DAILY").upper()
+            if budget_type == "DAILY":
+                monthly_budget = budget_amount_usd * days_in_month
+                expected_spend = budget_amount_usd * days_elapsed
+            else:
+                # TOTAL / CUSTOM — treat the stored amount as the full-period budget.
+                # Still prorate by elapsed month fraction so we surface mid-period
+                # overspend signals even when start/end dates aren't stored locally yet.
+                monthly_budget = budget_amount_usd
+                expected_spend = budget_amount_usd * month_pct
 
             metrics = (
                 db.query(func.sum(MetricDaily.cost_micros))
@@ -1604,6 +1982,7 @@ class RecommendationsEngine:
                         "expected_spend": round(expected_spend, 2),
                         "days_elapsed": days_elapsed,
                         "days_in_month": days_in_month,
+                        "budget_type": budget_type,
                     },
                 ))
 
@@ -1639,6 +2018,7 @@ class RecommendationsEngine:
                         "expected_spend": round(expected_spend, 2),
                         "days_elapsed": days_elapsed,
                         "days_in_month": days_in_month,
+                        "budget_type": budget_type,
                     },
                 ))
 
@@ -2673,6 +3053,140 @@ class RecommendationsEngine:
                         "missing_types": missing,
                     },
                 ))
+        return recs
+
+    # -----------------------------------------------------------------------
+    # RULE 32: Attribution Model Warning
+    # -----------------------------------------------------------------------
+    def _rule_32_attribution_warning(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """Flag accounts using GOOGLE_ADS_LAST_CLICK on their primary conversion action.
+
+        Last-click attribution undercounts assists from brand / generic campaigns and
+        makes upper-funnel spend look less effective than it is. Any ROAS-based
+        recommendation (R7 reallocate, R23 scaling) rendered under last-click needs
+        a disclaimer — the rule surfaces that context once per account.
+        """
+        from app.models.conversion_action import ConversionAction
+
+        actions = (
+            db.query(ConversionAction)
+            .filter(
+                ConversionAction.client_id == client_id,
+                ConversionAction.status == "ENABLED",
+            )
+            .all()
+        )
+        if not actions:
+            return []
+
+        # Primary = include_in_conversions_metric + primary_for_goal when available.
+        primary = next(
+            (a for a in actions if a.include_in_conversions_metric and a.primary_for_goal),
+            None,
+        )
+        if primary is None:
+            primary = next((a for a in actions if a.include_in_conversions_metric), None)
+        if primary is None or not primary.attribution_model:
+            return []
+
+        model = (primary.attribution_model or "").upper()
+        # LAST_CLICK-family variants.
+        if "LAST_CLICK" not in model:
+            return []
+
+        # Count active campaigns to size the concern: single-campaign accounts
+        # don't benefit from multi-touch attribution; multi-campaign ones do.
+        campaign_count = (
+            db.query(func.count(Campaign.id))
+            .filter(Campaign.client_id == client_id, Campaign.status == "ENABLED")
+            .scalar()
+        ) or 0
+        if campaign_count < 2:
+            return []
+
+        return [Recommendation(
+            type=RecommendationType.ATTRIBUTION_MODEL_WARNING,
+            priority=Priority.MEDIUM,
+            entity_type="client",
+            entity_id=client_id,
+            entity_name="Account",
+            campaign_name="(wszystkie kampanie)",
+            category="ALERT",
+            reason=(
+                f"Konwersja główna '{primary.name}' używa {model}. "
+                f"Last-click niedoszacowuje kampanie brand / generyczne wspierające "
+                f"konwersje na koncu lejka — ROAS tych kampanii w GAH będzie zaniżony."
+            ),
+            current_value=f"Attribution: {model}; Active campaigns: {campaign_count}",
+            recommended_action=(
+                "Porównaj z DATA_DRIVEN w Narzędzia → Atrybucja → Porównaj modele. "
+                "Jeśli DATA_DRIVEN zwraca wyższe ROAS dla brandu, rozważ zmianę modelu."
+            ),
+            metadata={
+                "attribution_model": model,
+                "primary_conversion_name": primary.name,
+                "primary_conversion_category": primary.category,
+                "active_campaign_count": campaign_count,
+            },
+        )]
+
+    # -----------------------------------------------------------------------
+    # RULE 33: Negative Keyword Conflict Detection
+    # -----------------------------------------------------------------------
+    def _rule_33_negative_keyword_conflicts(
+        self, db: Session, client_id: int, days: int
+    ) -> list[Recommendation]:
+        """Surface negatives that conflict with active positive keywords in the same scope.
+
+        A phrase-match negative 'cheap shoes' silently blocks an exact-match positive
+        'cheap running shoes' when both live in the same campaign. Users accumulate
+        these over years and never see them because Google Ads UI buries the report.
+        This rule flags the highest-impact conflicts (positive has spend / conversions).
+        """
+        from app.services.negative_conflict_service import detect_conflicts
+
+        conflicts = detect_conflicts(db, client_id)
+        recs: list[Recommendation] = []
+        for c in conflicts[:50]:  # cap surface area — 50 per refresh
+            recs.append(Recommendation(
+                type=RecommendationType.NEGATIVE_KEYWORD_CONFLICT,
+                priority=Priority.HIGH if (c["positive_cost_usd"] or 0) >= 50 else Priority.MEDIUM,
+                entity_type="keyword",
+                entity_id=c["positive_keyword_id"],
+                entity_name=c["positive_text"],
+                campaign_name=c["campaign_name"],
+                category="ALERT",
+                reason=(
+                    f"Negatyw '{c['negative_text']}' ({c['negative_match_type']}) blokuje "
+                    f"słowo pozytywne '{c['positive_text']}' ({c['positive_match_type']}) "
+                    f"w {c['scope']} '{c['scope_name']}'. "
+                    f"Pozytyw wydał ${c['positive_cost_usd']:.2f}, konw.: {c['positive_conversions']:.1f}."
+                ),
+                current_value=(
+                    f"Pozytyw spend: ${c['positive_cost_usd']:.2f}, "
+                    f"konw.: {c['positive_conversions']:.1f}"
+                ),
+                recommended_action=(
+                    f"Usuń negatyw '{c['negative_text']}' lub zaw ęź go "
+                    f"(dodaj frazę która pasuje TYLKO do tego co chcesz wykluczyć)"
+                ),
+                metadata={
+                    "negative_id": c["negative_id"],
+                    "negative_text": c["negative_text"],
+                    "negative_match_type": c["negative_match_type"],
+                    "positive_keyword_id": c["positive_keyword_id"],
+                    "positive_text": c["positive_text"],
+                    "positive_match_type": c["positive_match_type"],
+                    "scope": c["scope"],
+                    "scope_id": c["scope_id"],
+                    "scope_name": c["scope_name"],
+                    "positive_cost_usd": c["positive_cost_usd"],
+                    "positive_conversions": c["positive_conversions"],
+                    "conflict_kind": c["conflict_kind"],
+                },
+            ))
         return recs
 
     def _campaign_metrics_snapshot(self, db: Session, campaign: Campaign, cutoff: date) -> dict | None:

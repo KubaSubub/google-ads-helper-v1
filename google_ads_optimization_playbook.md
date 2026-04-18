@@ -651,4 +651,143 @@ Jeśli aplikacja kosztuje $500/month → ROI = 740%
 
 ---
 
+# CZĘŚĆ 10: OPTYMALIZACJA PER-ROLE (v2.2)
+
+Progi z CZĘŚCI 1-9 są domyślne. Poniższe tabele nadpisują je dla konkretnej `campaign_role_final` / `campaign_type`. Specjalista używający jednego thresholdu do wszystkich kampanii popełnia pierwszy zwykle błąd — brandowa CTR 4% nie jest "niski", a generyczna CTR 3% to znakomity wynik.
+
+## 10.1 Thresholdy per campaign role
+
+| Metryka | BRAND | GENERIC | COMPETITOR | DSA | PMAX | SHOPPING | VIDEO |
+|---------|-------|---------|------------|-----|------|----------|-------|
+| Oczekiwany CTR (Search) | 3-8% | 0.5-2% | 0.8-2.5% | 1-3% | n/d* | n/d* | view-rate 20-40% |
+| CPA względem target | ≤ 0.8× | ≤ 1× | ≤ 1.2× | ≤ 1× | ≤ 1.2× | ≤ 1× | n/d (CPV) |
+| ROAS minimum | 4× | 2× | 2× | 2× | 3× | 3× | view-through |
+| Pauza keyword przy 0 conv — min clicks | 50 | 30 | 30 | 30 | n/d | n/d | n/d |
+| QS minimum | 7 | 6 | 5 | 6 | n/d | n/d | n/d |
+| IS minimum (brand lockout) | 85% | 40% | 30% | 40% | n/d | n/d | n/d |
+
+\* PMax/Shopping/Video nie mają keyword-level CTR w tym samym sensie; ocena przez asset-level engagement.
+
+**Implementacja w kodzie:** każda z reguł R1-R33 powinna dostać override threshold per `campaign_role_final`. Jeśli brak override → użyj defaultu.
+
+## 10.2 Protokół LEARNING period (smart bidding)
+
+Kampanie Smart Bidding (TARGET_CPA, TARGET_ROAS, MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE) przechodzą fazę uczenia:
+- **Nowa kampania:** 7-14 dni aż `primary_status_reasons` przestanie zawierać `BIDDING_STRATEGY_LEARNING`.
+- **Po każdej istotnej zmianie** (target zmieniony >20%, budget >30%, strategia zmieniona): kolejne 7-14 dni.
+- **STUCK_LEARNING (>21 dni):** sygnał problemu z conversion volume lub podstrajania zbyt często.
+
+### Zasady (gdy kampania w LEARNING)
+1. **NIE zmieniaj bid / target / budgetu**. Wyłącznie monitor.
+2. **NIE pauzuj keywordów** — każdy pause to sygnał do algorytmu że trzeba się przeuczyć.
+3. **NIE dodawaj negatywów** chyba że to ewidentny brand-unsafe lub spam (wtedy blokuje wydatek szybciej).
+4. **Monitoruj conversion volume:** R21 `SMART_BIDDING_DATA_STARVATION` ostrzega przy < 30 konw./30 dni dla tCPA, < 50 dla tROAS.
+
+### Kod
+- R25 `LEARNING_PERIOD_ALERT` generuje alert o statusie.
+- R2/R3 (INCREASE_BID/DECREASE_BID) aktywnie pomijają kampanie z `_is_in_learning(campaign) == True`.
+
+## 10.3 Strategia atrybucji
+
+| Attribution model | Efekt na brand | Efekt na generic | Rekomendacja |
+|-------------------|----------------|------------------|--------------|
+| `GOOGLE_ADS_LAST_CLICK` | **Zaniżony** (nie widać assistów) | Standardowy | Migruj do DATA_DRIVEN jeśli > 300 konw./miesiąc |
+| `DATA_DRIVEN` | Właściwy (credit za assist) | Właściwy | Default dla dojrzałych kont |
+| `POSITION_BASED` | Lekko zawyżony na brand | Zaniżony | Rzadko używany |
+| `LINEAR` | Rozłożony równomiernie | Rozłożony | Raczej dla raportów niż Smart Bidding |
+| `TIME_DECAY` | Credit dla touchpointów bliżej konwersji | Standard | Dla długich cykli sprzedaży |
+
+**Konto z LAST_CLICK i >= 2 kampaniami:** R32 `ATTRIBUTION_MODEL_WARNING` wyświetla alert — ROAS/CPA brandu i generyki są zaniżone, raporty zawierają disclaimer.
+
+## 10.4 Decision tree: Impression Share loss
+
+```
+Kampania traci IS (< 80%)
+├── budget_lost_is > 30%
+│   └── BUDGET PROBLEM
+│       ├── ROAS > 3×  → zwiększ budżet (R9 rekomenduje auto)
+│       ├── ROAS 1-3× → zwiększ budżet O 20%, mierz 14 dni
+│       └── ROAS < 1× → NAPRAW RENTOWNOŚĆ przed zwiększaniem
+├── rank_lost_is > 30% AND budget_lost_is < 10%
+│   └── RANK PROBLEM (R10 działa właśnie tutaj)
+│       ├── avg_quality_score < 6 → POPRAW QS (R8)
+│       │   ├── expected_ctr BELOW_AVERAGE → testuj nowe RSA
+│       │   ├── ad_relevance BELOW_AVERAGE → popraw dopasowanie keyword→ad
+│       │   └── landing_page BELOW_AVERAGE → sprawdź speed/UX
+│       └── avg_quality_score >= 7 → BID UP (safe)
+└── obie >= 20%
+    └── MIXED — napraw QS najpierw, potem skaluj budżet
+```
+
+## 10.5 PMax workflow (campaign_type = PERFORMANCE_MAX)
+
+**Różnice od SEARCH:**
+- Brak keyword-level bidów. Jedyne dźwignie: tCPA/tROAS, budget, asset groups, signals, audience signals.
+- Search terms widoczne przez `campaign_search_term_view` (sync path separate: `sync_pmax_search_terms`).
+- Asset strength per asset group, nie per ad.
+- Brand exclusions na poziomie kampanii (od API v20).
+
+### Akcje dostępne
+| Akcja | Dostępna? | Narzędzie |
+|-------|-----------|-----------|
+| Add negative keyword | ✅ na poziomie konta/kampanii | R5 + bulk-add-negative |
+| Pause keyword | ❌ (brak keywordów) | n/d |
+| Change bid | ❌ | zmień tCPA/tROAS zamiast |
+| Asset rotation | ✅ | ręcznie przez Google Ads |
+| Signal tuning | ✅ (audience signals) | ręcznie |
+| Channel exclusion | partially | brand safety controls |
+
+### Reguły aktywne na PMax
+Search-term reguły: R4 (ADD_KEYWORD — omija PMax automatycznie), R5 (ADD_NEGATIVE — działa), R12 (WASTED_SPEND), R18 (NGRAM_NEGATIVE).
+Asset-level: R28 (PMAX_CHANNEL_IMBALANCE), R29 (ASSET_GROUP_AD_STRENGTH).
+Budżet/learning: R17 (BUDGET_PACING), R21 (data starvation), R25 (learning), R32 (attribution).
+
+Reguły keyword-level (R1, R2, R3, R6, R8, R11, R12-keyword-part) **pomijają PMax** przez filtr `CAMPAIGN_TYPES_WITH_KEYWORDS`.
+
+## 10.6 Shopping/Video/Demand Gen — stan obsługi
+
+**Stan obecny (v2.2):** Search + PMax są full-range; pozostałe typy mają szkielet (model + częściowy sync) ale reguły domain nie są jeszcze zdefiniowane.
+
+**Roadmap:**
+- SHOPPING: feed diagnostics (missing images, category errors), product-group performance rules.
+- VIDEO: view-rate benchmarking, view-through-conversion analysis, placement quality.
+- DEMAND_GEN / DISCOVERY: podobne do PMax signals ale z Discover feed.
+
+Gdy dodawane, rozszerzyć `CAMPAIGN_TYPES_WITH_KEYWORDS` (jeżeli ma keywordy — dla Discovery Search-like: tak) lub dodać nowe stałe `CAMPAIGN_TYPES_WITH_PRODUCT_GROUPS`, `CAMPAIGN_TYPES_WITH_VIDEO_ASSETS`.
+
+## 10.7 Audyt negative conflicts
+
+Negatywy akumulują się przez lata i cicho blokują pozytywy. Standardowy audyt (R33 `NEGATIVE_KEYWORD_CONFLICT`):
+
+1. Uruchom `/keywords/negative-conflicts?client_id=X&min_cost_usd=50` — lista pozytywów z > $50 wydatku które są blokowane.
+2. Dla każdego konfliktu: zdecyduj który z dwóch zostaje.
+   - Negatyw był dodany "bo jeden search term się nie podobał" ale teraz blokuje wiele wartościowych? Usuń.
+   - Pozytyw jest lowej jakości i dobrze że jest blokowany? Zostaw, rozważ pauzowanie pozytywu.
+3. Rozróżnij scope: AD_GROUP vs CAMPAIGN. Campaign-level negatyw wpływa na wszystkie ad groups.
+4. Po każdej zmianie: monitor 14 dni — czy ruch na blokowanym pozytywie wzrósł zgodnie z oczekiwaniem?
+
+## 10.8 Seasonality
+
+- **Seasonality Adjustments (Google tool):** ustawiaj przed znanym eventem (Black Friday, Boxing Day, Q1 spadek e-commerce) na +/-15-30%.
+- **NIE używaj** jeśli event trwa krócej niż 7 dni (noise > signal) lub dłużej niż 14 dni (zmień target zamiast).
+- **Monitor po event:** cofnij adjustment automatycznie, manualny lift nie powinien trwać dłużej niż okres.
+
+## 10.9 Landing page strategia
+
+1. **One LP per ad group** — nie mixuj intencji; każdy ad group = jedna strona docelowa lub blisko-powiązany set.
+2. **Message match:** headline reklamy = główny call-to-action na LP (różne frazy = niski QS ad relevance).
+3. **Page speed:** < 3s na 3G mobile. Każda dodatkowa sekunda = -10% conversion rate (benchmark Google).
+4. **Mobile-first:** > 60% ruchu Google Ads to mobile; LP bez mobile layout = catastrofa.
+5. **Check LP experience QS component** (`historical_landing_page_quality`): BELOW_AVERAGE = problem z UX, nie z keywordem.
+
+## 10.10 Bid simulator usage
+
+(Feature roadmap — wymaga syncu `keyword_plan_ad_group_keyword_forecast` / `bid_landscape` z API — obecnie nie jest zaimplementowane.)
+
+Docelowo: przed każdą rekomendacją bid-up/bid-down, sprawdź forecast:
+- Obecny bid $2 → 150 klik./mo. Bid $2.50 → 210 klik./mo. Marginalny CPC nowych klik. = ($2.50×210 - $2×150) / (210-150) = $4.25.
+- Jeśli marginalny CPC > target CPA × target CVR: bid-up nieopłacalny.
+
+---
+
 **Pytania? Uwagi? Gotowy do kodu? 🚀**
