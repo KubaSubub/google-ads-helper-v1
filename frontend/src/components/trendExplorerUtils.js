@@ -127,6 +127,74 @@ export function mergePeriodOverPeriod(currentData, previousData, metrics) {
 // ─── localStorage presets ─────────────────────────────────────────────────────
 const PRESETS_KEY = 'trendExplorer.presets.v1'
 
+// Built-in presets keyed for every PPC workflow that appears in the playbook.
+// Read-only — shown in the menu before user-saved ones, cannot be overwritten or deleted.
+// `searchOnly: true` means the preset uses Search-only metrics and should be hidden
+// for non-SEARCH campaign types.
+export const BUILT_IN_PRESETS = {
+    'Daily Review': {
+        builtIn: true,
+        description: 'Codzienny przegląd: koszt, ruch, konwersje, efektywność',
+        metrics: ['cost', 'clicks', 'conversions', 'ctr', 'cpa'],
+        options: { showPeriodOverPeriod: true },
+        guide: [
+            'Koszt vs kropkowana (poprzedni okres) — czy dzienny budżet nie ucieka?',
+            'CTR spada dzień po dniu — sygnał wyczerpania reklam lub sezonowości',
+            'Koszt stabilny, a CPA rośnie — wydajność siada, przejrzyj słabe słowa',
+            'Dni z dużym spadkiem konwersji oznaczone markerem akcji — sprawdź co się zmieniło',
+        ],
+    },
+    'Weekly Review z klientem': {
+        builtIn: true,
+        description: 'Prezentacja tygodniowa: koszt vs przychód + korelacja krocząca',
+        metrics: ['cost', 'conversions', 'conversion_value', 'roas'],
+        options: { showPeriodOverPeriod: true, showRollingCorrelation: true },
+        guide: [
+            'ROAS to główny KPI dla klienta — porównaj z kropkowaną (poprzedni tydzień)',
+            'Korelacja krocząca koszt ↔ konwersje: spada → pieniądze nie generują wyników',
+            'Delta grid (tryb pełnoekranowy) idzie 1:1 do raportu tygodniowego',
+            'Jeśli conversion_value nie rośnie razem z kosztem — czas na rewizję budżetu',
+        ],
+    },
+    'Search IS Deep Dive': {
+        builtIn: true,
+        searchOnly: true,
+        description: 'Share-of-voice: gdzie tracimy wyświetlenia i kliknięcia',
+        metrics: ['search_impression_share', 'search_budget_lost_is', 'search_rank_lost_is', 'search_click_share'],
+        options: { showDots: true },
+        guide: [
+            'Budget Lost IS > 10% — budżet za mały; zwiększ lub przesuń ze słabszej kampanii',
+            'Rank Lost IS > 10% — stawki za niskie; podnieś bid na top keyword-ach',
+            'Click Share niski, IS wysoki — reklamy widać, nie klika się; test nowych RSA',
+            'IS nagle spada — konkurent wystartował kampanię, sprawdź Auction Insights',
+        ],
+    },
+    'Quick Wins Hunt': {
+        builtIn: true,
+        description: 'Polowanie na optymalizacje: CPA, CVR, CTR, ROAS + rolling corr',
+        metrics: ['cpa', 'cvr', 'ctr', 'roas'],
+        options: { showRollingCorrelation: true },
+        guide: [
+            'Szukasz rozjazdu: CTR w górę, CVR w dół → złe search terms, czas na negatywy',
+            'CPA nagle leci w górę przy stałym ROAS → zmiana konkurencji; podnieś max CPA lub pauzuj',
+            'Korelacja krocząca CPA ↔ ROAS blisko +1: wzrost CPA nie boli; blisko −1: czerwona flaga',
+            'Dni gdzie wszystkie 4 metryki pogorszyły się razem — kandydaci na pełny audyt',
+        ],
+    },
+    'Diagnose Drop': {
+        builtIn: true,
+        description: 'Diagnoza spadku: forecast + nakładka poprzedniego okresu',
+        metrics: ['cost', 'conversions', 'cpa', 'roas'],
+        options: { showPeriodOverPeriod: true, showForecast: true },
+        guide: [
+            'Kropkowana linia = poprzedni okres. Gdzie rozjazd jest największy — tam szukasz przyczyny',
+            'Forecast (kreskowana po prawej) pokazuje czy trend się pogarsza czy stabilizuje',
+            'Action markery przed dniem spadku — jedna ze zmian mogła to uruchomić (klik → Action History)',
+            'Kliknij marker „Analiza delta" w tooltipie — średnia 7 dni przed vs 7 dni po akcji',
+        ],
+    },
+}
+
 export function loadPresets() {
     try {
         const raw = localStorage.getItem(PRESETS_KEY)
@@ -135,12 +203,14 @@ export function loadPresets() {
 }
 
 export function savePreset(name, preset) {
+    if (BUILT_IN_PRESETS[name]) return  // never overwrite built-ins
     const all = loadPresets()
     all[name] = preset
     try { localStorage.setItem(PRESETS_KEY, JSON.stringify(all)) } catch {}
 }
 
 export function deletePreset(name) {
+    if (BUILT_IN_PRESETS[name]) return  // built-ins cannot be deleted
     const all = loadPresets()
     delete all[name]
     try { localStorage.setItem(PRESETS_KEY, JSON.stringify(all)) } catch {}

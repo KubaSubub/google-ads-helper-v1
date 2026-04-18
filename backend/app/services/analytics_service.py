@@ -393,6 +393,17 @@ class AnalyticsService:
             logger.warning("Returning mock trend data — no MetricDaily rows found for campaigns")
             day_map = self._mock_daily_data(target_campaign_ids, date_from, date_to)
 
+        # Forward-fill missing days with zeros so the chart is a continuous series.
+        # Matters for action markers (Recharts ReferenceLine on a categorical axis
+        # disappears when the x-value doesn't exist in data) and for honest visuals:
+        # a weekend gap should show as zero, not as an interpolated line.
+        from datetime import timedelta as _td
+        cursor = date_from
+        while cursor <= date_to:
+            if cursor not in day_map:
+                day_map[cursor] = _fresh()
+            cursor += _td(days=1)
+
         data = []
         for d in sorted(day_map.keys()):
             agg = day_map[d]

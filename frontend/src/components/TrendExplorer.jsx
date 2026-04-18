@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { memo, useState, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
     ComposedChart, Line, XAxis, YAxis, Tooltip,
     ResponsiveContainer, CartesianGrid, ReferenceLine, Brush,
 } from 'recharts'
-import { Plus, X, TrendingUp, Settings, Save, Layers } from 'lucide-react'
+import { Plus, X, TrendingUp, Settings, Save, Layers, ChevronDown, ChevronUp, Maximize2, Minimize2, ArrowRight } from 'lucide-react'
 import { getCorrelationMatrix, getTrends, getTrendsByDevice, getUnifiedTimeline } from '../api'
 import { useFilter } from '../contexts/FilterContext'
 import { useApp } from '../contexts/AppContext'
@@ -17,6 +18,7 @@ import {
     loadPresets,
     savePreset,
     deletePreset,
+    BUILT_IN_PRESETS,
 } from './trendExplorerUtils'
 
 const METRIC_COLORS = [C.accentBlue, C.accentPurple, C.success, C.warning, C.danger, '#06B6D4', '#EC4899']
@@ -135,6 +137,143 @@ function shiftDate(dateStr, deltaDays) {
     return d.toISOString().slice(0, 10)
 }
 
+// Full list of actions in the selected period. Shown under the chart as an
+// expandable panel so users aren't capped at the 3 events shown in the tooltip.
+function ActionsDrawer({ events, eventsByDate, actionsFilter, setActionsFilter, onRowClick }) {
+    const opTypes = useMemo(() => {
+        const set = new Set()
+        events.forEach(e => { const op = e.operation || e.action_type; if (op) set.add(op) })
+        return Array.from(set).sort()
+    }, [events])
+
+    const filteredDates = useMemo(() => {
+        const dates = Object.keys(eventsByDate).sort((a, b) => b.localeCompare(a))
+        if (actionsFilter === 'ALL') return dates
+        return dates
+            .map(d => [d, eventsByDate[d].filter(e => (e.operation || e.action_type) === actionsFilter)])
+            .filter(([, list]) => list.length > 0)
+            .map(([d]) => d)
+    }, [eventsByDate, actionsFilter])
+
+    const rowsForDate = (d) => {
+        const list = eventsByDate[d] || []
+        return actionsFilter === 'ALL' ? list : list.filter(e => (e.operation || e.action_type) === actionsFilter)
+    }
+
+    return (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: B.subtle }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                <button
+                    onClick={() => setActionsFilter('ALL')}
+                    style={{
+                        fontSize: 10, padding: '3px 10px', borderRadius: 999,
+                        background: actionsFilter === 'ALL' ? 'rgba(79,142,247,0.15)' : C.w04,
+                        border: actionsFilter === 'ALL' ? '1px solid rgba(79,142,247,0.4)' : B.subtle,
+                        color: actionsFilter === 'ALL' ? C.accentBlue : C.w60,
+                        cursor: 'pointer',
+                    }}
+                >
+                    Wszystkie ({events.length})
+                </button>
+                {opTypes.map(op => {
+                    const count = events.filter(e => (e.operation || e.action_type) === op).length
+                    const active = actionsFilter === op
+                    return (
+                        <button
+                            key={op}
+                            onClick={() => setActionsFilter(op)}
+                            style={{
+                                fontSize: 10, padding: '3px 10px', borderRadius: 999,
+                                background: active ? 'rgba(79,142,247,0.15)' : C.w04,
+                                border: active ? '1px solid rgba(79,142,247,0.4)' : B.subtle,
+                                color: active ? C.accentBlue : C.w60,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {getOperationLabel(op)} ({count})
+                        </button>
+                    )
+                })}
+            </div>
+
+            <div style={{ maxHeight: 220, overflowY: 'auto', fontSize: 11 }}>
+                {filteredDates.length === 0 ? (
+                    <div style={{ padding: '20px 0', textAlign: 'center', color: C.w30, fontStyle: 'italic' }}>
+                        Brak akcji dla tego filtra
+                    </div>
+                ) : filteredDates.map(d => (
+                    <div key={d} style={{ marginBottom: 10 }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            fontSize: 10, color: C.w40, textTransform: 'uppercase',
+                            letterSpacing: '0.05em', marginBottom: 4, fontWeight: 600,
+                        }}>
+                            {d}
+                            <button
+                                onClick={() => onRowClick(d)}
+                                title="Otwórz w Action History"
+                                style={{
+                                    fontSize: 10, color: C.accentBlue,
+                                    background: 'transparent', border: 'none', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 3,
+                                }}
+                            >
+                                Historia <ArrowRight size={10} />
+                            </button>
+                        </div>
+                        {rowsForDate(d).map((e, i) => {
+                            const op = e.operation || e.action_type
+                            const isHelper = e.source !== 'external'
+                            const beforeAfter = formatBeforeAfter(e)
+                            const ts = e.timestamp || e.executed_at
+                            return (
+                                <div
+                                    key={i}
+                                    onClick={() => onRowClick(d)}
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '50px 1fr auto',
+                                        gap: 10, alignItems: 'center',
+                                        padding: '6px 8px', borderRadius: 6,
+                                        background: C.w03, marginBottom: 3,
+                                        cursor: 'pointer',
+                                    }}
+                                    className="hover:bg-white/5"
+                                >
+                                    <span style={{
+                                        fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 999,
+                                        background: isHelper ? 'rgba(79,142,247,0.2)' : 'rgba(251,191,36,0.2)',
+                                        color: isHelper ? '#4F8EF7' : '#FBBF24',
+                                        textAlign: 'center',
+                                    }}>
+                                        {isHelper ? 'HELPER' : 'ZEWN.'}
+                                    </span>
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ color: C.textPrimary, fontWeight: 500, fontSize: 11 }}>
+                                            {getOperationLabel(op)}
+                                        </div>
+                                        {e.entity_name && (
+                                            <div style={{ color: C.w40, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {e.entity_name}
+                                            </div>
+                                        )}
+                                        {beforeAfter && beforeAfter.map((line, j) => (
+                                            <div key={j} style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'monospace' }}>{line}</div>
+                                        ))}
+                                    </div>
+                                    <span style={{ fontSize: 9, color: C.w30, whiteSpace: 'nowrap' }}>
+                                        {ts ? formatTimestamp(ts) : ''}
+                                    </span>
+                                </div>
+                            )
+                        })}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
 /**
  * Unified Trend Explorer — used in both Dashboard (aggregated) and Campaigns (scoped).
  *
@@ -143,7 +282,7 @@ function shiftDate(dateStr, deltaDays) {
  *   campaignType?: string    — non-SEARCH hides search-only metrics
  *   campaignName?: string    — filter action markers to that campaign
  */
-export default function TrendExplorer({ campaignIds = [], campaignType = null, campaignName = null }) {
+function TrendExplorer({ campaignIds = [], campaignType = null, campaignName = null }) {
     const navigate = useNavigate()
     const { selectedClientId, showToast } = useApp()
     const { filters } = useFilter()
@@ -162,6 +301,27 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
     const [actionEvents, setActionEvents] = useState([])
     const [deltaPopup, setDeltaPopup] = useState(null) // { date, metrics, delta }
     const [presetsVersion, setPresetsVersion] = useState(0)
+    const [showActionsDrawer, setShowActionsDrawer] = useState(false)
+    const [actionsFilter, setActionsFilter] = useState('ALL') // operation filter
+    const [fullscreen, setFullscreen] = useState(false)
+    // When a preset is loaded we remember its name so the guidance panel stays
+    // visible. Any manual edit (metric add/remove, option toggle) clears it —
+    // a preset's guidance only makes sense while its exact combo is on screen.
+    const [activePresetName, setActivePresetName] = useState(null)
+
+    // Lock background scroll and hook ESC while fullscreen is open, so the
+    // modal feels like a real modal instead of a co-existing tall element.
+    useEffect(() => {
+        if (!fullscreen) return
+        const prev = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false) }
+        window.addEventListener('keydown', onKey)
+        return () => {
+            document.body.style.overflow = prev
+            window.removeEventListener('keydown', onKey)
+        }
+    }, [fullscreen])
 
     // Display options (persist in component state, optionally saved in preset)
     const [options, setOptions] = useState({
@@ -171,13 +331,25 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
         showPeriodOverPeriod: false,
         showZoomBrush: false,
         showDeviceSegmentation: false,
+        showActionMarkers: true,  // default on — killer feature; off when chart is crowded
     })
-    const toggleOption = (key) => setOptions(o => ({ ...o, [key]: !o[key] }))
+    const toggleOption = (key) => {
+        setOptions(o => ({ ...o, [key]: !o[key] }))
+        setActivePresetName(null)
+    }
 
     const variant = (campaignIds && campaignIds.length > 0) ? 'campaigns' : 'dashboard'
 
     const campaignIdsKey = useMemo(() => (campaignIds || []).join(','), [campaignIds])
-    const presets = useMemo(() => loadPresets(), [presetsVersion])
+    const userPresets = useMemo(() => loadPresets(), [presetsVersion])
+    // Hide Search-only built-ins for non-SEARCH campaigns to avoid presenting metrics
+    // that will be empty.
+    const builtInPresets = useMemo(() => {
+        if (!campaignType || campaignType === 'SEARCH') return BUILT_IN_PRESETS
+        return Object.fromEntries(
+            Object.entries(BUILT_IN_PRESETS).filter(([, p]) => !p.searchOnly)
+        )
+    }, [campaignType])
 
     // Filter metric options: non-SEARCH campaign type hides search-only
     const availableOptions = useMemo(() => {
@@ -316,6 +488,21 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
         return rollingCorrelation(data, activeMetrics[0], activeMetrics[1], 14)
     }, [options.showRollingCorrelation, activeMetrics, data])
 
+    // ─── Device segmentation merged series ───────────────────────────────────
+    // Precompute once per deviceData change. Without memo the IIFE in render rebuilt
+    // the Map on every unrelated re-render (options toggle, metric pill add/remove).
+    const deviceChartData = useMemo(() => {
+        if (!deviceData) return []
+        const dateMap = new Map()
+        Object.entries(deviceData).forEach(([dev, series]) => {
+            series.forEach(pt => {
+                if (!dateMap.has(pt.date)) dateMap.set(pt.date, { date: pt.date })
+                dateMap.get(pt.date)[dev] = pt.value
+            })
+        })
+        return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+    }, [deviceData])
+
     // ─── Tooltip with clickable event actions ────────────────────────────────
     const CustomTooltip = ({ active, payload, label }) => {
         if (!active || !payload?.length) return null
@@ -420,11 +607,13 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
         if (activeMetrics.length >= MAX_METRICS || activeMetrics.includes(key)) return
         setActiveMetrics(prev => [...prev, key])
         setShowDropdown(false)
+        setActivePresetName(null)
     }
 
     const removeMetric = (key) => {
         if (activeMetrics.length <= 1) return
         setActiveMetrics(prev => prev.filter(m => m !== key))
+        setActivePresetName(null)
     }
 
     // ─── Correlation ──────────────────────────────────────────────────────────
@@ -489,19 +678,37 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
     const handleSavePreset = () => {
         const name = window.prompt('Nazwa presetu:')
         if (!name) return
-        savePreset(name.trim(), { metrics: activeMetrics, options })
+        const trimmed = name.trim()
+        if (BUILT_IN_PRESETS[trimmed]) {
+            showToast?.(`Nazwa "${trimmed}" jest zarezerwowana dla presetu wbudowanego`, 'warning')
+            return
+        }
+        savePreset(trimmed, { metrics: activeMetrics, options })
         setPresetsVersion(v => v + 1)
-        showToast?.(`Preset "${name}" zapisany`, 'success')
+        showToast?.(`Preset "${trimmed}" zapisany`, 'success')
     }
     const handleLoadPreset = (name) => {
-        const preset = presets[name]
+        const preset = builtInPresets[name] || userPresets[name]
         if (!preset) return
         setActiveMetrics(preset.metrics || ['cost', 'clicks'])
-        if (preset.options) setOptions(o => ({ ...o, ...preset.options }))
+        // Reset all option toggles to the preset's desired state so loading a
+        // preset gives a predictable view (not a merge with stale flags).
+        setOptions({
+            showDots: false,
+            showForecast: false,
+            showRollingCorrelation: false,
+            showPeriodOverPeriod: false,
+            showZoomBrush: false,
+            showDeviceSegmentation: false,
+            showActionMarkers: true,
+            ...(preset.options || {}),
+        })
         setShowPresetsMenu(false)
+        setActivePresetName(name)
         showToast?.(`Preset "${name}" załadowany`, 'success')
     }
     const handleDeletePreset = (name) => {
+        if (BUILT_IN_PRESETS[name]) return  // guarded at util level too
         if (!window.confirm(`Usunąć preset "${name}"?`)) return
         deletePreset(name)
         setPresetsVersion(v => v + 1)
@@ -514,8 +721,39 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
     const dual = needsDualAxis(activeMetrics)
     const availableToAdd = availableOptions.filter(m => !activeMetrics.includes(m.key))
 
-    return (
-        <div className="v2-card" style={{ padding: '20px 24px' }}>
+    // ─── Delta grid: current vs previous totals per active metric ─────────────
+    // Shown only in fullscreen mode. Needs `showPeriodOverPeriod` to have data;
+    // otherwise we fall back to comparing first half vs second half of `data`.
+    const deltaGrid = useMemo(() => {
+        if (!data.length) return null
+        const sumFor = (rows, key) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0)
+        const avgFor = (rows, key) => rows.length ? sumFor(rows, key) / rows.length : 0
+        const usePrev = options.showPeriodOverPeriod && prevData.length > 0
+        return activeMetrics.map(key => {
+            const curRows = data
+            const prevRows = usePrev ? prevData : data.slice(0, Math.floor(data.length / 2))
+            const curRowsForAvg = usePrev ? data : data.slice(Math.floor(data.length / 2))
+            const isRate = PCT_KEYS.has(key) || ['cpc', 'cpa', 'cvr', 'roas'].includes(key)
+            const cur = isRate ? avgFor(curRowsForAvg, key) : sumFor(curRows, key)
+            const prev = isRate ? avgFor(prevRows, key) : sumFor(prevRows, key)
+            const pct = prev ? ((cur - prev) / prev) * 100 : null
+            return {
+                key,
+                label: METRIC_LABELS[key] || key,
+                cur: +cur.toFixed(2),
+                prev: +prev.toFixed(2),
+                pct: pct === null ? null : +pct.toFixed(1),
+                usePrev,
+            }
+        })
+    }, [data, prevData, activeMetrics, options.showPeriodOverPeriod])
+
+    const cardStyle = fullscreen
+        ? { padding: '24px 32px', borderRadius: 0, minHeight: '100%', boxSizing: 'border-box' }
+        : { padding: '20px 24px' }
+
+    const cardBody = (
+        <div className="v2-card" style={cardStyle} data-trend-explorer-card>
             {/* ─── Header ────────────────────────────────────────────────── */}
             <div className="flex items-center justify-between mb-4" style={{ flexWrap: 'wrap', gap: 12 }}>
                 <div className="flex items-center gap-2">
@@ -533,6 +771,18 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                         }}
                     >
                         {crossLinkLabel}
+                    </button>
+                    <button
+                        onClick={() => { setFullscreen(v => !v); if (!fullscreen) setShowActionsDrawer(true) }}
+                        title={fullscreen ? 'Zwiń widok' : 'Rozwiń na pełny ekran'}
+                        style={{
+                            fontSize: 10, padding: '3px 8px', borderRadius: 6,
+                            background: C.w04, border: B.subtle, color: C.w60,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                        }}
+                    >
+                        {fullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+                        {fullscreen ? 'Zwiń' : 'Rozwiń'}
                     </button>
                 </div>
 
@@ -567,7 +817,7 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                     {activeMetrics.length < MAX_METRICS && availableToAdd.length > 0 && (
                         <div style={{ position: 'relative' }} data-te-popup>
                             <button
-                                onClick={() => { setShowDropdown(v => !v); setShowOptions(false); setShowExportMenu(false); setShowPresetsMenu(false) }}
+                                onClick={() => { setShowDropdown(v => !v); setShowOptions(false); setShowPresetsMenu(false) }}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
                                     background: C.w04, border: B.medium, borderRadius: 999,
@@ -661,7 +911,7 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                     {/* Options gear */}
                     <div style={{ position: 'relative' }} data-te-popup>
                         <button
-                            onClick={() => { setShowOptions(v => !v); setShowDropdown(false); setShowExportMenu(false); setShowPresetsMenu(false) }}
+                            onClick={() => { setShowOptions(v => !v); setShowDropdown(false); setShowPresetsMenu(false) }}
                             title="Opcje widoku"
                             style={{
                                 display: 'flex', alignItems: 'center',
@@ -682,6 +932,7 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                                     Opcje widoku
                                 </div>
                                 {[
+                                    ['showActionMarkers', 'Znaczniki zmian na wykresie'],
                                     ['showDots', 'Kropki na linii'],
                                     ['showForecast', 'Prognoza 7 dni (linear)'],
                                     ['showRollingCorrelation', 'Korelacja krocząca (14d)'],
@@ -709,7 +960,7 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                     {/* Presets */}
                     <div style={{ position: 'relative' }} data-te-popup>
                         <button
-                            onClick={() => { setShowPresetsMenu(v => !v); setShowDropdown(false); setShowOptions(false); setShowExportMenu(false) }}
+                            onClick={() => { setShowPresetsMenu(v => !v); setShowDropdown(false); setShowOptions(false) }}
                             title="Presety"
                             style={{
                                 display: 'flex', alignItems: 'center',
@@ -724,10 +975,33 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                                 position: 'absolute', top: '100%', right: 0, marginTop: 6,
                                 background: C.surfaceElevated, border: B.hover, borderRadius: 8,
                                 boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 50,
-                                minWidth: 220, padding: '8px 0',
+                                minWidth: 260, padding: '8px 0',
                             }}>
                                 <div style={{ padding: '4px 14px 6px', fontSize: 10, fontWeight: 600, color: C.w40, textTransform: 'uppercase' }}>
-                                    Presety metryk
+                                    Wbudowane presety
+                                </div>
+                                {Object.entries(builtInPresets).map(([name, preset]) => (
+                                    <button
+                                        key={name}
+                                        onClick={() => handleLoadPreset(name)}
+                                        style={{
+                                            display: 'block', width: '100%', textAlign: 'left',
+                                            padding: '6px 14px', fontSize: 12, color: C.w70,
+                                            cursor: 'pointer', background: 'transparent', border: 'none',
+                                        }}
+                                        className="hover:bg-white/5 hover:text-white"
+                                    >
+                                        <div style={{ fontWeight: 500 }}>{name}</div>
+                                        {preset.description && (
+                                            <div style={{ fontSize: 10, color: C.w40, marginTop: 1 }}>
+                                                {preset.description}
+                                            </div>
+                                        )}
+                                    </button>
+                                ))}
+                                <div style={{ borderTop: B.subtle, marginTop: 6 }} />
+                                <div style={{ padding: '6px 14px 4px', fontSize: 10, fontWeight: 600, color: C.w40, textTransform: 'uppercase' }}>
+                                    Moje presety
                                 </div>
                                 <button
                                     onClick={handleSavePreset}
@@ -740,14 +1014,13 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                                 >
                                     + Zapisz bieżący układ
                                 </button>
-                                {Object.keys(presets).length === 0 ? (
+                                {Object.keys(userPresets).length === 0 ? (
                                     <div style={{ padding: '6px 14px', fontSize: 11, color: C.w30, fontStyle: 'italic' }}>
                                         Brak zapisanych presetów
                                     </div>
                                 ) : (
                                     <>
-                                        <div style={{ borderTop: B.subtle, marginTop: 4 }} />
-                                        {Object.keys(presets).map(name => (
+                                        {Object.keys(userPresets).map(name => (
                                             <div key={name} style={{
                                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                                 padding: '4px 14px',
@@ -806,12 +1079,14 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                         <span style={{ color: C.danger }}>⚠ Nie udało się załadować trendu</span>
                         <span style={{ fontSize: 11, color: C.w30 }}>{loadError}</span>
                     </div>
-                ) : enrichedData.length === 0 ? (
+                ) : enrichedData.length < 2 ? (
                     <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.w30, fontSize: 12 }}>
-                        Brak danych dla wybranych filtrów
+                        {enrichedData.length === 0
+                            ? 'Brak danych dla wybranych filtrów'
+                            : 'Wybierz zakres co najmniej 2 dni, aby zobaczyć trend'}
                     </div>
                 ) : (
-                    <ResponsiveContainer width="100%" height={options.showZoomBrush ? 300 : 260}>
+                    <ResponsiveContainer width="100%" height={fullscreen ? (options.showZoomBrush ? 540 : 500) : (options.showZoomBrush ? 300 : 260)}>
                         <ComposedChart data={enrichedData} margin={{ top: 4, right: dual ? 40 : 8, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                             <XAxis
@@ -824,14 +1099,44 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                             <YAxis yAxisId="left" tick={{ fontSize: 10, fill: C.w30 }} axisLine={false} tickLine={false} width={45} />
                             {dual && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: C.w30 }} axisLine={false} tickLine={false} width={40} />}
                             <Tooltip content={<CustomTooltip />} />
-                            {eventDates.map(d => {
+                            {options.showActionMarkers && eventDates.map(d => {
                                 const isHelper = eventsByDate[d].some(e => e.source !== 'external')
+                                const color = isHelper ? '#4F8EF7' : '#FBBF24'
+                                const count = eventsByDate[d].length
+                                // Clickable marker: a <text> label with onClick opens Action History
+                                // filtered to this date. A larger transparent circle behind it widens
+                                // the hit area so the 12px dot isn't frustrating to click.
+                                const clickableLabel = (labelProps) => {
+                                    const { viewBox } = labelProps
+                                    if (!viewBox) return null
+                                    const cx = viewBox.x
+                                    const cy = (viewBox.y ?? 0) + 8
+                                    return (
+                                        <g
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={(ev) => { ev.stopPropagation(); navigate(`/action-history?date=${d}`) }}
+                                        >
+                                            <title>
+                                                {`${count} ${count === 1 ? 'zmiana' : 'zmian'} ${d} — kliknij aby otworzyć Action History`}
+                                            </title>
+                                            <circle cx={cx} cy={cy} r={10} fill="transparent" />
+                                            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize={14} fontWeight={700}>
+                                                ●
+                                            </text>
+                                            {count > 1 && (
+                                                <text x={cx + 7} y={cy - 4} textAnchor="start" fill={color} fontSize={8} fontWeight={700}>
+                                                    {count}
+                                                </text>
+                                            )}
+                                        </g>
+                                    )
+                                }
                                 return (
                                     <ReferenceLine
                                         key={d} x={d} yAxisId="left"
-                                        stroke={isHelper ? '#4F8EF7' : '#FBBF24'}
+                                        stroke={color}
                                         strokeDasharray="4 3" strokeWidth={1.5}
-                                        label={{ value: '●', position: 'top', fill: isHelper ? '#4F8EF7' : '#FBBF24', fontSize: 12 }}
+                                        label={clickableLabel}
                                     />
                                 )
                             })}
@@ -942,17 +1247,7 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                     </div>
                     <ResponsiveContainer width="100%" height={120}>
                         <ComposedChart
-                            data={(() => {
-                                // Merge device series into a single keyed-by-date dataset
-                                const dateMap = new Map()
-                                Object.entries(deviceData).forEach(([dev, series]) => {
-                                    series.forEach(pt => {
-                                        if (!dateMap.has(pt.date)) dateMap.set(pt.date, { date: pt.date })
-                                        dateMap.get(pt.date)[dev] = pt.value
-                                    })
-                                })
-                                return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date))
-                            })()}
+                            data={deviceChartData}
                             margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
                         >
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -979,9 +1274,44 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                 </div>
             )}
 
-            {/* ─── Legend ─────────────────────────────────────────────── */}
+            {/* ─── Preset guidance panel ────────────────────────────────── */}
+            {activePresetName && (builtInPresets[activePresetName] || userPresets[activePresetName])?.guide && (
+                <div style={{
+                    marginTop: 12,
+                    padding: '12px 14px',
+                    background: 'rgba(79,142,247,0.06)',
+                    border: '1px solid rgba(79,142,247,0.18)',
+                    borderRadius: 8,
+                    position: 'relative',
+                }}>
+                    <button
+                        onClick={() => setActivePresetName(null)}
+                        title="Ukryj wskazówki"
+                        style={{
+                            position: 'absolute', top: 8, right: 8,
+                            color: C.w40, background: 'transparent', border: 'none', cursor: 'pointer',
+                        }}
+                        className="hover:text-white/70"
+                    >
+                        <X size={12} />
+                    </button>
+                    <div style={{
+                        fontSize: 10, color: C.accentBlue, fontWeight: 700, textTransform: 'uppercase',
+                        letterSpacing: '0.08em', marginBottom: 6,
+                    }}>
+                        Preset: {activePresetName} · Na co patrzeć
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: C.w70, lineHeight: 1.6 }}>
+                        {(builtInPresets[activePresetName] || userPresets[activePresetName]).guide.map((line, i) => (
+                            <li key={i}>{line}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* ─── Legend + Actions drawer toggle ───────────────────────── */}
             {eventDates.length > 0 && !loading && enrichedData.length > 0 && (
-                <div className="flex items-center gap-4 mt-2" style={{ fontSize: 10, color: C.w30 }}>
+                <div className="flex items-center gap-4 mt-2" style={{ fontSize: 10, color: C.w30, flexWrap: 'wrap' }}>
                     <span className="flex items-center gap-1">
                         <span style={{ width: 14, height: 0, borderTop: '1.5px dashed #4F8EF7', display: 'inline-block' }} />
                         <span style={{ color: '#4F8EF7' }}>●</span>
@@ -992,9 +1322,91 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
                         <span style={{ color: '#FBBF24' }}>●</span>
                         <span>Zmiana zewnętrzna</span>
                     </span>
-                    <span style={{ color: C.w25 }}>
+                    <button
+                        onClick={() => setOptions(o => ({ ...o, showActionMarkers: !o.showActionMarkers }))}
+                        title={options.showActionMarkers ? 'Ukryj znaczniki zmian na wykresie' : 'Pokaż znaczniki zmian na wykresie'}
+                        style={{
+                            marginLeft: 'auto',
+                            fontSize: 10, padding: '3px 10px', borderRadius: 999,
+                            background: options.showActionMarkers ? 'rgba(79,142,247,0.08)' : C.w04,
+                            border: options.showActionMarkers ? '1px solid rgba(79,142,247,0.25)' : B.subtle,
+                            color: options.showActionMarkers ? C.accentBlue : C.w50,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {options.showActionMarkers ? 'Ukryj zmiany' : 'Pokaż zmiany'}
+                    </button>
+                    <button
+                        onClick={() => setShowActionsDrawer(v => !v)}
+                        style={{
+                            fontSize: 11, padding: '3px 10px', borderRadius: 999,
+                            background: showActionsDrawer ? 'rgba(79,142,247,0.15)' : C.w04,
+                            border: showActionsDrawer ? '1px solid rgba(79,142,247,0.4)' : B.subtle,
+                            color: showActionsDrawer ? C.accentBlue : C.w50,
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 6,
+                        }}
+                    >
                         {actionEvents.length} {actionEvents.length === 1 ? 'akcja' : 'akcji'} w okresie
-                    </span>
+                        {showActionsDrawer ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    </button>
+                </div>
+            )}
+
+            {/* ─── Actions drawer (full event list below chart) ────────── */}
+            {showActionsDrawer && actionEvents.length > 0 && (
+                <ActionsDrawer
+                    events={actionEvents}
+                    eventsByDate={eventsByDate}
+                    actionsFilter={actionsFilter}
+                    setActionsFilter={setActionsFilter}
+                    onRowClick={(dateStr) => navigate(`/action-history?date=${dateStr}`)}
+                />
+            )}
+
+            {/* ─── Delta grid (fullscreen only) ──────────────────────────── */}
+            {fullscreen && deltaGrid && deltaGrid.length > 0 && enrichedData.length > 0 && (
+                <div style={{ marginTop: 16, paddingTop: 12, borderTop: B.subtle }}>
+                    <div style={{
+                        fontSize: 10, color: C.w40, textTransform: 'uppercase',
+                        letterSpacing: '0.05em', marginBottom: 8, fontWeight: 600,
+                    }}>
+                        Zmiana vs {deltaGrid[0]?.usePrev ? 'poprzedni okres' : 'pierwsza połowa zakresu'}
+                    </div>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: 8,
+                    }}>
+                        {deltaGrid.map(row => {
+                            const pct = row.pct
+                            const color = pct === null ? C.w40
+                                        : pct > 5 ? C.success
+                                        : pct < -5 ? C.danger
+                                        : C.warning
+                            return (
+                                <div key={row.key} style={{
+                                    padding: '10px 12px', borderRadius: 8,
+                                    background: C.w04, border: B.subtle,
+                                }}>
+                                    <div style={{ fontSize: 10, color: C.w50, marginBottom: 4 }}>{row.label}</div>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                                        <span style={{ fontSize: 16, fontWeight: 700, color: C.textPrimary, fontFamily: 'Syne' }}>
+                                            {row.cur.toLocaleString('pl-PL', { maximumFractionDigits: 2 })}
+                                        </span>
+                                        {pct !== null && (
+                                            <span style={{ fontSize: 11, color, fontWeight: 600 }}>
+                                                {pct > 0 ? '+' : ''}{pct.toFixed(1)}%
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: C.w30, marginTop: 2 }}>
+                                        vs {row.prev.toLocaleString('pl-PL', { maximumFractionDigits: 2 })}
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
                 </div>
             )}
 
@@ -1059,4 +1471,33 @@ export default function TrendExplorer({ campaignIds = [], campaignType = null, c
             )}
         </div>
     )
+
+    // Rendering the fullscreen layer via a portal on document.body sidesteps any
+    // ancestor `transform`, `filter`, `contain`, or `overflow:hidden` that would
+    // otherwise clip `position:fixed`. Without this, the v2-card's stacking
+    // context wins and "fullscreen" ends up sized by its original slot.
+    if (fullscreen) {
+        return createPortal(
+            <div
+                data-trend-explorer-fullscreen
+                style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 9999,
+                    background: '#0D0F14',
+                    overflowY: 'auto',
+                }}
+            >
+                {cardBody}
+            </div>,
+            document.body,
+        )
+    }
+
+    return cardBody
 }
+
+// Parent pages (Dashboard, Campaigns) pass arrays/strings that are stable across
+// unrelated re-renders. React.memo skips the chart re-render when the parent
+// re-renders for reasons unrelated to Trend Explorer inputs.
+export default memo(TrendExplorer)

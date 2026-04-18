@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { getActionHistory, revertAction, getChangeHistory, getUnifiedTimeline, getHistoryFilters, getChangeImpact, getBidStrategyImpact } from '../api';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -406,9 +406,27 @@ export default function ActionHistory() {
 
     // Filters
     const [filterOptions, setFilterOptions] = useState({ resource_types: [], user_emails: [], client_types: [], campaign_names: [] });
+    const [searchParams, setSearchParams] = useSearchParams();
+    // Seed date filter from ?date=YYYY-MM-DD (deeplink from Trend Explorer markers).
+    const initialDateParam = searchParams.get('date');
     const [filters, setFilters] = useState({
-        dateFrom: '', dateTo: '', resourceType: '', userEmail: '', clientType: '', actionType: '', campaignName: '',
+        dateFrom: initialDateParam || '', dateTo: initialDateParam || '',
+        resourceType: '', userEmail: '', clientType: '', actionType: '', campaignName: '',
     });
+    useEffect(() => {
+        const d = searchParams.get('date');
+        if (d && (filters.dateFrom !== d || filters.dateTo !== d)) {
+            setFilters(f => ({ ...f, dateFrom: d, dateTo: d }));
+            // Consume the param so a subsequent user-initiated filter change is not
+            // fought by the URL-seed on every render.
+            setSearchParams(prev => {
+                const next = new URLSearchParams(prev);
+                next.delete('date');
+                return next;
+            }, { replace: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
 
     // Impact data (GAP 6A/6B)
     const [impactData, setImpactData] = useState(null);

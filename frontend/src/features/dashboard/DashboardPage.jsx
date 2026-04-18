@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
     ChevronRight, ChevronUp, ChevronDown,
@@ -41,6 +41,17 @@ const getBulkRecommendations = (clientId, category, dryRun = true, itemIds = nul
     })
 
 const CARD = { background: C.w03, border: B.card, borderRadius: 12 }
+
+// Debounce a value so rapid filter-preset clicks don't trigger a request per tick.
+// Kept short (100 ms) so the UX still feels snappy but thunderings herds collapse.
+function useDebouncedValue(value, delay = 100) {
+    const [debounced, setDebounced] = useState(value)
+    useEffect(() => {
+        const t = setTimeout(() => setDebounced(value), delay)
+        return () => clearTimeout(t)
+    }, [value, delay])
+    return debounced
+}
 
 
 // ─── Quick script button ─────────────────────────────────────────────────────
@@ -94,12 +105,29 @@ export default function DashboardPage() {
     const fromMCC = location.state?.fromMCC
 
     // Dashboard always restricts to ENABLED campaigns; status/name filters are ignored here
-    const campaignParams = useMemo(() => {
+    const campaignParamsRaw = useMemo(() => {
         const p = { campaign_status: 'ENABLED' }
         if (filters.campaignType !== 'ALL') p.campaign_type = filters.campaignType
         return p
     }, [filters.campaignType])
-    const allParams = useMemo(() => ({ ...dateParams, ...campaignParams }), [dateParams, campaignParams])
+    const allParamsRaw = useMemo(() => ({ ...dateParams, ...campaignParamsRaw }), [dateParams, campaignParamsRaw])
+
+    // Debounce the fan-out triggers so rapid filter-preset clicks collapse into one batch.
+    // 100 ms is short enough that user-initiated single clicks still feel instant.
+    const campaignParams = useDebouncedValue(campaignParamsRaw, 100)
+    const allParams = useDebouncedValue(allParamsRaw, 100)
+    const debouncedDateParams = useDebouncedValue(dateParams, 100)
+
+    // In-flight request dedup: two effects or a double render within the debounce
+    // window shouldn't fire identical requests. Keys are endpoint + serialized params.
+    const inFlightRef = useRef(new Map())
+    const dedup = useCallback((key, factory) => {
+        const m = inFlightRef.current
+        if (m.has(key)) return m.get(key)
+        const p = Promise.resolve().then(factory).finally(() => m.delete(key))
+        m.set(key, p)
+        return p
+    }, [])
 
     const [kpis, setKpis]                       = useState(null)
     const [campaigns, setCampaigns]             = useState([])
@@ -138,10 +166,15 @@ export default function DashboardPage() {
         setHealthLoading(true)
         setError(null)
 
+        const paramsKey = JSON.stringify(allParams)
+        const campKey = JSON.stringify(campaignParams)
+        const dateKey = JSON.stringify(debouncedDateParams)
+        const k = (ep, suffix) => `${ep}|client=${selectedClientId}|${suffix}`
+
         // Primary (blocking) — needed for page skeleton
         Promise.all([
-            getDashboardKPIs(selectedClientId, allParams),
-            getCampaigns(selectedClientId, campaignParams),
+            dedup(k('dashboard-kpis', paramsKey), () => getDashboardKPIs(selectedClientId, allParams)),
+            dedup(k('campaigns', campKey), () => getCampaigns(selectedClientId, campaignParams)),
         ])
             .then(([kpiData, campData]) => {
                 if (cancelled) return
@@ -160,26 +193,26 @@ export default function DashboardPage() {
         }
 
         safe(
-            getHealthScore(selectedClientId, allParams),
+            dedup(k('health-score', paramsKey), () => getHealthScore(selectedClientId, allParams)),
             (hs) => { setHealthScore(hs); setHealthLoading(false) },
         )
         safe(
-            getRecommendations(selectedClientId, { status: 'pending', ...dateParams }),
+            dedup(k('recommendations', dateKey), () => getRecommendations(selectedClientId, { status: 'pending', ...debouncedDateParams })),
             (recs) => setRecs(recs?.recommendations || recs?.items || []),
         )
-        safe(getBudgetPacing(selectedClientId, campaignParams), setBudgetPacing)
-        safe(getDeviceBreakdown(selectedClientId, allParams), setDeviceData)
-        safe(getGeoBreakdown(selectedClientId, allParams), setGeoData)
-        safe(getWastedSpend(selectedClientId, allParams), setWastedSpend)
+        safe(dedup(k('budget-pacing', campKey), () => getBudgetPacing(selectedClientId, campaignParams)), setBudgetPacing)
+        safe(dedup(k('device', paramsKey), () => getDeviceBreakdown(selectedClientId, allParams)), setDeviceData)
+        safe(dedup(k('geo', paramsKey), () => getGeoBreakdown(selectedClientId, allParams)), setGeoData)
+        safe(dedup(k('wasted', paramsKey), () => getWastedSpend(selectedClientId, allParams)), setWastedSpend)
         safe(
-            getCampaignsSummary(selectedClientId, allParams),
+            dedup(k('campaigns-summary', paramsKey), () => getCampaignsSummary(selectedClientId, allParams)),
             (cm) => setCampaignMetrics(cm?.campaigns || null),
         )
-        safe(getImpressionShare(selectedClientId, allParams), setImpressionShare)
-        safe(getQualityScoreAudit(selectedClientId, dateParams), setQsAudit)
+        safe(dedup(k('impression-share', paramsKey), () => getImpressionShare(selectedClientId, allParams)), setImpressionShare)
+        safe(dedup(k('qs-audit', dateKey), () => getQualityScoreAudit(selectedClientId, debouncedDateParams)), setQsAudit)
 
         return () => { cancelled = true }
-    }, [selectedClientId, allParams, campaignParams, dateParams])
+    }, [selectedClientId, allParams, campaignParams, debouncedDateParams, dedup])
 
     // Scripts totals — fetch from /scripts (new date-aware engine). The legacy
     // `recommendations` feed is no longer used for the Quick Scripts slot.
@@ -191,8 +224,8 @@ export default function DashboardPage() {
         let cancelled = false
         getScriptsCounts({
             client_id: selectedClientId,
-            date_from: dateParams.date_from,
-            date_to: dateParams.date_to,
+            date_from: debouncedDateParams.date_from,
+            date_to: debouncedDateParams.date_to,
         })
             .then(res => {
                 if (cancelled) return
@@ -207,7 +240,7 @@ export default function DashboardPage() {
             })
             .catch(() => !cancelled && setScriptsTotals({ total: 0, savings: 0 }))
         return () => { cancelled = true }
-    }, [selectedClientId, dateParams])
+    }, [selectedClientId, debouncedDateParams])
 
     // Step 1: open preview — fetch dry_run result and show confirmation modal
     const openScriptPreview = async (category) => {

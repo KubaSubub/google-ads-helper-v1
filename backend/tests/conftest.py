@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import app
 from app.security import require_session
+from app.services.cache import dashboard_kpis_cache, recommendations_cache
 from app.services.google_ads import GoogleAdsService, google_ads_service
 
 
@@ -35,6 +36,17 @@ def disable_live_google_ads(monkeypatch):
     google_ads_service.client = None
     yield
     google_ads_service.client = None
+
+
+@pytest.fixture(autouse=True)
+def clear_hot_caches():
+    """Hot-path TTL caches (dashboard-kpis, recommendations) are module-level, so
+    one test's response can leak into the next. Reset before every test."""
+    dashboard_kpis_cache.clear()
+    recommendations_cache.clear()
+    yield
+    dashboard_kpis_cache.clear()
+    recommendations_cache.clear()
 
 
 @pytest.fixture(autouse=True)
