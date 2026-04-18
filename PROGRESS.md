@@ -4,7 +4,56 @@
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
 - Backend: 701 tests collected (pytest --collect-only)
-- API endpoints: 187 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 188 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+
+## TrendExplorer — Fullscreen Portal + Markers Toggle + E2E (2026-04-19)
+- `components/TrendExplorer.jsx`:
+  - Fullscreen now renders via `createPortal(document.body)` with `zIndex: 9999` and background `#0D0F14` — sidesteps ancestor `transform`/`overflow` stacking contexts that previously clipped the `position:fixed` layer
+  - Body scroll locked + ESC closes fullscreen (useEffect on `fullscreen`)
+  - New `options.showActionMarkers` (default `true`) — gated `ReferenceLine` rendering + added option to Settings menu
+  - Fast-access pill **"Ukryj zmiany" / "Pokaż zmiany"** in the legend row (left of actions-count toggle) for one-click hide when chart is crowded
+  - `data-trend-explorer-card` + `data-trend-explorer-fullscreen` attrs for E2E targeting
+- `e2e/trend-explorer.spec.js` (NEW) — 3 Playwright tests (6.2s):
+  - Fullscreen via portal covers full viewport
+  - ESC closes fullscreen
+  - "Ukryj zmiany" hides SVG `<title>` badges on markers and flips the pill label
+- Mocks use relative `daysAgoIso()` dates so the default 30-day filter always includes them
+
+## TrendExplorer — Preset Guidance Panel (2026-04-19)
+- `trendExplorerUtils.js` — every built-in preset now carries a `guide: string[]` of 4 concrete "na co patrzeć" bullets (CTR↑/CVR↓ = negatywy, Budget Lost IS > 10%, ROAS vs PoP, etc.)
+- `components/TrendExplorer.jsx`:
+  - New `activePresetName` state set on `handleLoadPreset`, cleared automatically in `addMetric`/`removeMetric`/`toggleOption` (guide stays visible only while the exact combo matches)
+  - Blue "Preset: X · Na co patrzeć" panel renders between chart and legend when `activePresetName` resolves to a preset with `guide` (dismissible via `×`)
+
+## TrendExplorer — Built-in Presets + Actions Drawer + Fullscreen (2026-04-19)
+- Backend: `analytics_service.py::get_trends` now forward-fills missing days with zero rows so action markers on no-data days render (weekends, new campaigns, data gaps).
+- Frontend `trendExplorerUtils.js` — 5 built-in presets seeded: **Daily Review**, **Weekly Review z klientem**, **Search IS Deep Dive** (SEARCH-only), **Quick Wins Hunt**, **Diagnose Drop**. Built-ins cannot be overwritten or deleted; shown in preset menu before user-saved entries.
+- Frontend `components/TrendExplorer.jsx`:
+  - Empty state "Wybierz zakres co najmniej 2 dni" when `enrichedData.length < 2`
+  - Preset menu rebuilt with two sections ("Wbudowane" with description + "Moje") and deterministic `options` reset on load
+  - **Actions drawer** below chart (toggle "N akcji w okresie ▾") — full event list grouped by date, pill-bar filter per operation type, each row clickable → `/action-history?date=YYYY-MM-DD`
+  - **Clickable action markers** — `ReferenceLine` label replaced with custom SVG `<g onClick>` opening Action History for that date; badge with event count (`●N`) when >1 action/day; 10 px transparent hitbox for easier clicks
+  - **Fullscreen mode** (`Maximize2` button in header) — fixed inset 0, chart grows to 500 px, actions drawer auto-opens
+  - **Delta grid** (fullscreen only) — per active metric: current total/avg vs previous-period (or first-half if PoP off) + color-coded ±% change
+  - Extra icons imported (`ChevronUp`, `ChevronDown`, `Maximize2`, `Minimize2`, `ArrowRight`)
+- Frontend `pages/ActionHistory.jsx`: reads `?date=YYYY-MM-DD` via `useSearchParams`, sets `dateFrom`/`dateTo` to that day, consumes the param so subsequent user filter changes don't fight the URL.
+- Tests: 800 passed (backend) + `npm run build` ✓ 0 errors.
+
+## TrendExplorer — Fix ReferenceError + React.memo (2026-04-18)
+- `components/TrendExplorer.jsx` — removed 3 calls to non-existent `setShowExportMenu` in "Dodaj metrykę", "Opcje" i "Presety" onClick handlers (relict po usunięciu export UI per "NO export buttons" rule). Clicking any of those buttons was throwing ReferenceError and crashing the component.
+- `components/TrendExplorer.jsx` — wrapped default export in `React.memo` + extracted `deviceChartData` IIFE (Map build on every render) to `useMemo(deviceData)` (audit 05 #6)
+- Build: `npm run build` ✓ 0 errors
+
+## Dashboard Audit Fixes — Composite Index + Cache + Debounce (2026-04-18)
+- Backend:
+  - `database.py::_ensure_sqlite_columns` — new composite index `ix_metrics_daily_campaign_date` on `metrics_daily(campaign_id, date)` + `ANALYZE` (audit 05 item #1: 5–10x on `/dashboard-kpis`, `/trends`, `/correlation`, `/wow-comparison`)
+  - `services/cache.py` — added `dashboard_kpis_cache` (TTL 60s) + `recommendations_cache` (TTL 120s) + `invalidate_client(client_id)` helper
+  - `routers/analytics.py::dashboard_kpis` — wraps response in 60s TTL cache keyed by client + filters
+  - `routers/recommendations.py::get_recommendations` — wraps response in 120s TTL cache; apply / dismiss / bulk-apply now call `invalidate_client` so fresh numbers show after user action
+- Frontend (`features/dashboard/DashboardPage.jsx`):
+  - New `useDebouncedValue` hook (100 ms) on `allParams` / `campaignParams` / `dateParams` — collapses the 10–12 parallel fetches during rapid filter-preset clicks into one batch
+  - In-flight request dedup via `useRef(Map)` + `dedup(key, factory)` — same key + in-flight request share one Promise
+- Tests: autouse `clear_hot_caches` fixture in `tests/conftest.py` prevents TTL-cache bleed across tests; full suite 800 passed
 
 ## ADR-020 — Sync Consolidated into MCC Overview (2026-04-18)
 - New policy (DECISIONS.md ADR-020): all sync UI lives only in MCC Overview; `incremental` is the only default; startup auto-sync in background; manual sync via modal with two options (Pełny / Ostatnie N dni)
@@ -66,7 +115,7 @@
 - Frontend: build OK, modular feature architecture + unified global filtering + Playwright E2E
 - DB: 45 models (26 original + 12 coverage expansion + ScheduledSyncConfig + AutomatedRule + AutomatedRuleLog + DsaTarget + DsaHeadline + PlacementExclusionList + PlacementExclusionListItem)
 - Sync: 37 total phases (22 prior + 14 new from Wave A-E + mcc_exclusion_lists) + scheduled sync service (asyncio-based, no external packages)
-- API endpoints: 187 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 7 auth, 7 rules, 7 mcc, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 188 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 - Models: 45 (26 original + AuctionInsight, ProductGroup, Placement, BidModifier, Audience, TopicPerformance, BiddingStrategy, SharedBudget, GoogleRecommendation, ConversionValueRule, MccLink, OfflineConversion, ScheduledSyncConfig, AutomatedRule, AutomatedRuleLog, DsaTarget, DsaHeadline, PlacementExclusionList, PlacementExclusionListItem)
 - Frontend pages: 27 routes (15 original + Shopping, PMax, Display, Video, Competitive, TaskQueue, CrossCampaign, Benchmarks, Rules, DSA, MCCOverview, Scripts) — all with enriched UX
 - Dashboard: overhaul with WoW chart, campaign summary, mini ranking (top/bottom ROAS), day-of-week heatmap, top actions widget, enriched health score with breakdown

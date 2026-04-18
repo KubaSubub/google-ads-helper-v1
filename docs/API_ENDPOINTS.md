@@ -211,7 +211,7 @@ Base API URL: `/api/v1`
 ## Analytics - Google Ads Coverage Expansion (Wave A-E)
 - `GET /analytics/auction-insights?client_id=X&campaign_id=&days=30&date_from=&date_to=` — competitor visibility metrics (IS, overlap, position above, outranking, top of page)
 - `GET /analytics/auction-insights-trend?client_id=X&window_days=14&min_outranking_delta_pp=0&trend_label=ALL|RISING_FAST|RISING|STABLE|FALLING|FALLING_FAST` — per-competitor Auction Insights trend over rolling window (current vs previous, delta in percentage points, slope, trend label)
-- `GET /analytics/shopping-product-groups?client_id=X&campaign_id=` — Shopping product group performance tree
+- `GET /analytics/shopping-product-groups?client_id=X&severity=ALL|HIGH|MEDIUM|LOW` — Shopping UNIT/SUBDIVISION findings (feed issues, zero-conv waste, low/high ROAS vs campaign avg, orphan subdivisions)
 - `GET /analytics/placement-performance?client_id=X&campaign_id=&days=30&date_from=&date_to=` — Display/Video placement performance (top 100)
 - `POST /analytics/placement-exclusion?client_id=X&campaign_id=X&placement_url=X` — add placement exclusion to campaign (`allow_demo_write` enforced)
 - `GET /analytics/bid-modifiers?client_id=X&campaign_id=&modifier_type=DEVICE|LOCATION|AD_SCHEDULE` — bid modifier list
