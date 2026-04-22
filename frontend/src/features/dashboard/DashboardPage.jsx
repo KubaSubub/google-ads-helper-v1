@@ -25,6 +25,8 @@ import QsHealthWidget from './components/QsHealthWidget'
 import TopActions from './components/TopActions'
 import CampaignMiniRanking from './components/CampaignMiniRanking'
 import DayOfWeekWidget from './components/DayOfWeekWidget'
+import HourlyDaypartingWidget from './components/HourlyDaypartingWidget'
+import DowHourHeatmapWidget from './components/DowHourHeatmapWidget'
 import ScriptRunModal from './components/ScriptRunModal'
 import BudgetPacingCard from './components/BudgetPacingCard'
 import AnomalyAlertsCard from './components/AnomalyAlertsCard'
@@ -420,6 +422,12 @@ export default function DashboardPage() {
 
             {/* ── Day of Week Performance ─────────────────────────────── */}
             <DayOfWeekWidget />
+
+            {/* ── Hourly Dayparting (0-23h) ──────────────────────────── */}
+            <HourlyDaypartingWidget />
+
+            {/* ── 7×24 Matrix (day × hour) ───────────────────────────── */}
+            <DowHourHeatmapWidget />
 
             {/* ── Campaign Mini-Ranking ───────────────────────────────── */}
             <CampaignMiniRanking campaigns={filteredCampaigns} campaignMetrics={campaignMetrics} />

@@ -1885,6 +1885,10 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             date_to = date.today() - timedelta(days=1)
 
         ga_service = self.client.get_service("GoogleAdsService")
+        # Google Ads API v23: detail_placement_view does not expose video_views /
+        # video_view_rate / average_cpv — querying them raises UNRECOGNIZED_FIELD.
+        # Video-specific metrics live on video.resource_name / video_view_rate_conversion
+        # views and would need a separate phase if needed in the future.
         query = f"""
             SELECT
                 campaign.id,
@@ -1898,10 +1902,7 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 metrics.conversions,
                 metrics.conversions_value,
                 metrics.ctr,
-                metrics.average_cpc,
-                metrics.video_views,
-                metrics.video_view_rate,
-                metrics.average_cpv
+                metrics.average_cpc
             FROM detail_placement_view
             WHERE segments.date BETWEEN '{date_from}' AND '{date_to}'
               AND campaign.status != 'REMOVED'
@@ -1947,9 +1948,9 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     "conversion_value_micros": int(conv_value * 1_000_000),
                     "ctr": round(m.ctr * 100, 2) if m.ctr else 0.0,
                     "avg_cpc_micros": int(m.average_cpc) if m.average_cpc else 0,
-                    "video_views": m.video_views if m.video_views else None,
-                    "video_view_rate": round(m.video_view_rate * 100, 2) if m.video_view_rate else None,
-                    "avg_cpv_micros": int(m.average_cpv * 1_000_000) if m.average_cpv else None,
+                    "video_views": None,
+                    "video_view_rate": None,
+                    "avg_cpv_micros": None,
                 }
 
                 if existing:
@@ -1985,6 +1986,11 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
             return 0
 
         ga_service = self.client.get_service("GoogleAdsService")
+        # Google Ads API v23: metrics.* are PROHIBITED on ad_group_criterion resource
+        # for LISTING_GROUP partitions — must go through shopping_performance_view for
+        # per-product-group metrics. This phase syncs STRUCTURE only (partition tree,
+        # bid, status, case values). Metrics stay at 0 and would need a separate
+        # sync phase to backfill from shopping_performance_view.
         query = """
             SELECT
                 campaign.id,
@@ -1998,13 +2004,7 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 ad_group_criterion.listing_group.case_value.product_channel.channel,
                 ad_group_criterion.listing_group.case_value.product_custom_attribute.value,
                 ad_group_criterion.cpc_bid_micros,
-                ad_group_criterion.status,
-                metrics.clicks,
-                metrics.impressions,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.conversions_value,
-                metrics.ctr
+                ad_group_criterion.status
             FROM ad_group_criterion
             WHERE ad_group_criterion.type = 'LISTING_GROUP'
               AND campaign.status != 'REMOVED'
@@ -2077,9 +2077,9 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                 except (AttributeError, TypeError):
                     pass
 
-                m = row.metrics
-                conv_value = float(m.conversions_value) if m.conversions_value else 0.0
-
+                # Metrics excluded — ad_group_criterion resource doesn't support
+                # them in API v23. Preserve existing metric columns on upsert by
+                # only overwriting structural fields.
                 data = {
                     "campaign_id": campaign.id,
                     "ad_group_id": ad_group.id if ad_group else None,
@@ -2090,12 +2090,6 @@ class GoogleAdsService(GoogleAdsMutationsMixin):
                     "partition_type": lg.type.name if lg.type else None,
                     "bid_micros": criterion.cpc_bid_micros if criterion.cpc_bid_micros else 0,
                     "status": criterion.status.name if criterion.status else "ENABLED",
-                    "clicks": m.clicks,
-                    "impressions": m.impressions,
-                    "cost_micros": m.cost_micros,
-                    "conversions": float(m.conversions),
-                    "conversion_value_micros": int(conv_value * 1_000_000),
-                    "ctr": round(m.ctr * 100, 2) if m.ctr else 0.0,
                 }
 
                 existing = db.query(ProductGroup).filter(

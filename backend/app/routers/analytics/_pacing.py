@@ -161,24 +161,34 @@ def dayparting_dow_suggestions(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=14, le=90, description="Lookback (>=14 to capture 2 weekly cycles)"),
     min_dow_cost: float = Query(50.0, ge=0.0, description="Minimum spend per day-of-week to warrant a suggestion"),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """Day-of-week performance + bid-schedule recommendations."""
     from app.services.dayparting_service import dow_bid_schedule_suggestions
 
-    return dow_bid_schedule_suggestions(db, client_id, days=days, min_cost=min_dow_cost)
+    return dow_bid_schedule_suggestions(
+        db, client_id, days=days, min_cost=min_dow_cost,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 @router.get("/dayparting-heatmap")
 def dayparting_heatmap(
     client_id: int = Query(..., description="Client ID"),
     days: int = Query(30, ge=14, le=90),
+    campaign_type: str = Query(None, description="Filter by campaign type"),
+    campaign_status: str = Query(None, description="Campaign status filter"),
     db: Session = Depends(get_db),
 ):
     """7×24 grid of (day_of_week × hour_of_day) performance for bid-schedule UI."""
     from app.services.dayparting_service import dow_hour_heatmap
 
-    return dow_hour_heatmap(db, client_id, days=days)
+    return dow_hour_heatmap(
+        db, client_id, days=days,
+        campaign_type=campaign_type, campaign_status=campaign_status,
+    )
 
 
 @router.get("/offline-conversion-lag")

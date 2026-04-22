@@ -77,6 +77,13 @@ def _run_client_sync(db: Session, client: Client) -> dict:
     if not diagnostics["ready"]:
         return {"status": "skipped", "reason": diagnostics["reason"]}
 
+    # Skip clients whose google_customer_id is not a valid 10-digit Google Ads ID
+    # (e.g. seed/demo placeholders like "123-456-7890"). The API call would rage
+    # with UNAUTHENTICATED on every phase. We never auto-delete — just skip.
+    normalized_raw = "".join(ch for ch in (client.google_customer_id or "") if ch.isdigit())
+    if len(normalized_raw) != 10 or normalized_raw.startswith(("1234567", "0000")):
+        return {"status": "skipped", "reason": f"Pomijam — customer_id '{client.google_customer_id}' nie wyglada na realny (demo/seed)."}
+
     cid = google_ads_service.normalize_customer_id(client.google_customer_id)
     is_new = not _has_any_coverage(db, client.id)
     mode = "fixed" if is_new else "incremental"

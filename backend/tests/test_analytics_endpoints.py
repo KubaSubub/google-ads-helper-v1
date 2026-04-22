@@ -538,6 +538,85 @@ class TestDayparting:
         resp = api_client.get(f"/api/v1/analytics/dayparting?client_id={client.id}&days=14")
         assert resp.status_code == 200
 
+    def test_dayparting_unique_route(self):
+        """Guard: ensure only one handler registered for GET /analytics/dayparting."""
+        matching = [
+            r for r in app.routes
+            if getattr(r, "path", None) == "/api/v1/analytics/dayparting"
+            and "GET" in getattr(r, "methods", set())
+        ]
+        assert len(matching) == 1, (
+            f"Expected exactly 1 handler for GET /api/v1/analytics/dayparting, got {len(matching)}. "
+            "Duplicate @router.get('/dayparting') would silently shadow the first registration."
+        )
+
+    def test_dayparting_response_shape(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(f"/api/v1/analytics/dayparting?client_id={client.id}&days=14")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "currency" in data and "campaign_type_used" in data and "period_days" in data
+        assert data["campaign_type_used"] == "ALL", "Default should be ALL (not SEARCH)"
+        assert data["days"], "expected 7 day buckets"
+        row = data["days"][0]
+        for key in [
+            "day_of_week", "day_name", "observations",
+            "cost_amount", "avg_cost_amount",
+            "conversion_value_amount", "aov",
+            "avg_cpa", "avg_roas", "avg_cvr", "avg_cpc",
+        ]:
+            assert key in row, f"missing key {key}"
+
+    def test_dayparting_dow_suggestions_returns_200(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(
+            f"/api/v1/analytics/dayparting-dow-suggestions?client_id={client.id}&days=30"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "suggestions" in body and "currency" in body
+
+    def test_dayparting_heatmap_returns_200(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(
+            f"/api/v1/analytics/dayparting-heatmap?client_id={client.id}&days=30"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body.get("cells", [])) == 7 * 24
+
+    def test_dayparting_heatmap_respects_campaign_type_filter(self, api_client, db):
+        """Passing campaign_type must exclude rows from other types (was silently ignored)."""
+        client, _, _ = _seed_full(db)
+        # Seeded data is SEARCH only; DISPLAY filter must return an empty grid
+        resp_display = api_client.get(
+            f"/api/v1/analytics/dayparting-heatmap?client_id={client.id}&days=30&campaign_type=DISPLAY"
+        )
+        assert resp_display.status_code == 200
+        cells = resp_display.json().get("cells", [])
+        assert len(cells) == 7 * 24
+        non_zero = [c for c in cells if (c.get("clicks") or 0) > 0]
+        assert non_zero == [], "DISPLAY filter must exclude SEARCH-only data"
+
+    def test_dayparting_dow_suggestions_respects_campaign_type_filter(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(
+            f"/api/v1/analytics/dayparting-dow-suggestions"
+            f"?client_id={client.id}&days=30&campaign_type=DISPLAY"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # No DISPLAY data seeded → no cost → no suggestions
+        assert body.get("suggestions") == []
+        assert body.get("overall_cpa") in (None, 0)
+
+    def test_dayparting_hourly_suggestions_returns_200(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(
+            f"/api/v1/analytics/dayparting-hourly-suggestions?client_id={client.id}&days=30"
+        )
+        assert resp.status_code == 200
+
 
 class TestRSAAnalysis:
     def test_rsa_analysis_returns_200(self, api_client, db):
@@ -602,6 +681,13 @@ class TestHourlyDayparting:
         client, _, _ = _seed_full(db)
         resp = api_client.get(f"/api/v1/analytics/hourly-dayparting?client_id={client.id}&days=7")
         assert resp.status_code == 200
+
+    def test_hourly_dayparting_response_shape(self, api_client, db):
+        client, _, _ = _seed_full(db)
+        resp = api_client.get(f"/api/v1/analytics/hourly-dayparting?client_id={client.id}&days=7")
+        data = resp.json()
+        assert "currency" in data and "campaign_type_used" in data and "period_days" in data
+        assert data["campaign_type_used"] == "ALL", "Default should be ALL (not SEARCH)"
 
 
 # ─── Forecast ────────────────────────────────────────────────────────

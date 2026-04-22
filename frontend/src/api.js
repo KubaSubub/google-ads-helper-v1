@@ -260,6 +260,12 @@ export const getBiddingAdvisor = (clientId, params = {}) =>
     api.get('/analytics/bidding-advisor', { params: { client_id: clientId, ...params } });
 export const getHourlyDayparting = (clientId, params = {}) =>
     api.get('/analytics/hourly-dayparting', { params: { client_id: clientId, ...params } });
+export const getDaypartingDowSuggestions = (clientId, params = {}) =>
+    api.get('/analytics/dayparting-dow-suggestions', { params: { client_id: clientId, ...params } });
+export const getDaypartingHourlySuggestions = (clientId, params = {}) =>
+    api.get('/analytics/dayparting-hourly-suggestions', { params: { client_id: clientId, ...params } });
+export const getDaypartingHeatmap = (clientId, params = {}) =>
+    api.get('/analytics/dayparting-heatmap', { params: { client_id: clientId, ...params } });
 
 // Analytics — new endpoints (B2, B3, A3, G2)
 export const getSearchTermTrends = (clientId, params = {}) =>

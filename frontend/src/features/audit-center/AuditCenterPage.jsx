@@ -16,12 +16,13 @@ import BentoCard from './components/BentoCard'
 
 // Section components
 import WastedSpendSection from './components/sections/WastedSpendSection'
-import DaypartingSection from './components/sections/DaypartingSection'
+import DayOfWeekWidget from '../dashboard/components/DayOfWeekWidget'
 import MatchTypeSection from './components/sections/MatchTypeSection'
 import NgramSection from './components/sections/NgramSection'
 import RsaSection from './components/sections/RsaSection'
 import LandingPageSection from './components/sections/LandingPageSection'
 import HourlyDaypartingSection from './components/sections/HourlyDaypartingSection'
+import DowHourHeatmapSection from './components/sections/DowHourHeatmapSection'
 import AccountStructureSection from './components/sections/AccountStructureSection'
 import BiddingAdvisorSection from './components/sections/BiddingAdvisorSection'
 import AdGroupHealthSection from './components/sections/AdGroupHealthSection'
@@ -117,6 +118,9 @@ export default function AuditCenterPage() {
           value: data.daypart ? 'Aktywne' : '—', sub: 'Analiza dni tygodnia', status: 'info' },
         { key: 'hourly', title: 'Harmonogram godzinowy', icon: Clock, cat: 'search', types: ['SEARCH'],
           value: data.hourly ? 'Heatmapa' : '—', sub: '0-23h', status: 'info' },
+        { key: 'heatmap', title: 'Heatmapa 7×24', icon: CalendarDays, cat: 'search', types: ['SEARCH','PERFORMANCE_MAX','SHOPPING'],
+          value: data.heatmap?.cells ? `${data.heatmap.cells.filter(c => c.cost > 0).length}/168 komorek` : '—',
+          sub: 'Dzien × godzina', status: 'info' },
         { key: 'ngram', title: 'N-gramy', icon: Hash, cat: 'search', types: ['SEARCH'],
           value: data.ngram ? `${data.ngram.total} wyników` : '—', sub: `${ngramSize}-gramy`, status: 'info' },
         { key: 'rsa', title: 'Reklamy RSA', icon: FileText, cat: 'search', types: ['SEARCH'],
@@ -178,8 +182,9 @@ export default function AuditCenterPage() {
     function renderSection(key) {
         const sectionMap = {
             waste: <WastedSpendSection data={data.waste} clientId={selectedClientId} showToast={showToast} />,
-            dayparting: <DaypartingSection data={data.daypart} />,
+            dayparting: <div style={{ padding: '0 16px 16px' }}><DayOfWeekWidget /></div>,
             hourly: <HourlyDaypartingSection data={data.hourly} />,
+            heatmap: <DowHourHeatmapSection data={data.heatmap} />,
             matchType: <MatchTypeSection data={data.matchType} />,
             ngram: <NgramSection data={data.ngram} ngramSize={ngramSize} setNgramSize={setNgramSize} />,
             rsa: <RsaSection data={data.rsa} />,

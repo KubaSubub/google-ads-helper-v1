@@ -3,6 +3,7 @@ import { TH, TD, TD_DIM } from '../../../../constants/designTokens'
 export default function HourlyDaypartingSection({ data }) {
     if (!data?.hours?.length) return null
     const maxConv = Math.max(...data.hours.map(h => h.conversions))
+    const currency = data.currency || 'PLN'
     return (
         <div style={{ padding: '0 16px 16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: 3, marginBottom: 12 }}>
@@ -10,7 +11,7 @@ export default function HourlyDaypartingSection({ data }) {
                     const intensity = maxConv > 0 ? h.conversions / maxConv : 0
                     const isBusinessHour = h.hour >= 9 && h.hour <= 18
                     return (
-                        <div key={h.hour} title={`${h.hour_label}: ${h.clicks} klik, ${h.conversions} konw, CPA ${h.cpa > 0 ? h.cpa.toFixed(0) + ' zł' : '—'}`}
+                        <div key={h.hour} title={`${h.hour_label}: ${h.clicks} klik, ${h.conversions} konw, CPA ${h.cpa > 0 ? h.cpa.toFixed(0) + ' ' + currency : '—'}`}
                             style={{
                                 height: 56, borderRadius: 6, cursor: 'default',
                                 background: `rgba(79,142,247,${0.08 + intensity * 0.72})`,
@@ -54,10 +55,10 @@ export default function HourlyDaypartingSection({ data }) {
                             }}>
                                 <td style={{ ...TD, fontFamily: 'inherit', fontWeight: 500 }}>{h.hour_label}</td>
                                 <td style={TD}>{h.clicks.toLocaleString('pl-PL')}</td>
-                                <td style={TD}>{h.cost_usd.toFixed(2)} zł</td>
+                                <td style={TD}>{h.cost_usd.toFixed(2)} {currency}</td>
                                 <td style={TD}>{h.conversions.toFixed(1)}</td>
                                 <td style={TD_DIM}>{h.ctr}%</td>
-                                <td style={TD}>{h.cpa > 0 ? `${h.cpa.toFixed(0)} zł` : '—'}</td>
+                                <td style={TD}>{h.cpa > 0 ? `${h.cpa.toFixed(0)} ${currency}` : '—'}</td>
                                 <td style={TD_DIM}>{h.cvr}%</td>
                                 <td style={TD}>{h.roas.toFixed(2)}</td>
                             </tr>

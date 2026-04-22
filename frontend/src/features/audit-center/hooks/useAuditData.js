@@ -14,6 +14,7 @@ import {
     getConversionValueRules,
     getOfflineConversions,
     getAudiencesList,
+    getDaypartingHeatmap,
 } from '../../../api'
 
 // Compute previous period date range: same length window ending 1 day before current start
@@ -41,7 +42,7 @@ export default function useAuditData(selectedClientId, allParams) {
 
     const [data, setData] = useState({
         waste: null, daypart: null, matchType: null, ngram: null,
-        rsa: null, landing: null, hourly: null, structure: null,
+        rsa: null, landing: null, hourly: null, heatmap: null, structure: null,
         bidding: null, convHealth: null, adGroupHealth: null, smartBidding: null,
         pareto: null, scaling: null, targetVsActual: null,
         learningStatus: null, portfolioHealth: null,
@@ -95,7 +96,7 @@ export default function useAuditData(selectedClientId, allParams) {
         setPrevData({})
         try {
             const _catch = (label) => (err) => { console.warn(`[AuditCenter] ${label}`, err); return null }
-            const [w, dp, mt, ng, r, lp, hr, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
+            const [w, dp, mt, ng, r, lp, hr, hm, st, bd, ch, agh, sb, pa, sc, tva, ls, ph, cq, demo,
                    pcann, aud, mex, exp,
                    bmod, grecs, cvr, oconv, audl] = await Promise.all([
                 getWastedSpend(selectedClientId, allParams).catch(_catch('wasted-spend')),
@@ -105,6 +106,7 @@ export default function useAuditData(selectedClientId, allParams) {
                 getRsaAnalysis(selectedClientId, allParams).catch(_catch('rsa')),
                 getLandingPages(selectedClientId, allParams).catch(_catch('landing-pages')),
                 getHourlyDayparting(selectedClientId, allParams).catch(_catch('hourly-dayparting')),
+                getDaypartingHeatmap(selectedClientId, { days: allParams.days || 30 }).catch(_catch('dayparting-heatmap')),
                 getAccountStructure(selectedClientId).catch(_catch('account-structure')),
                 getBiddingAdvisor(selectedClientId, allParams).catch(_catch('bidding-advisor')),
                 getConversionHealth(selectedClientId, allParams).catch(_catch('conversion-health')),
@@ -129,7 +131,7 @@ export default function useAuditData(selectedClientId, allParams) {
             ])
             setData({
                 waste: w, daypart: dp, matchType: mt, ngram: ng,
-                rsa: r, landing: lp, hourly: hr, structure: st,
+                rsa: r, landing: lp, hourly: hr, heatmap: hm, structure: st,
                 bidding: bd, convHealth: ch, adGroupHealth: agh, smartBidding: sb,
                 pareto: pa, scaling: sc, targetVsActual: tva,
                 learningStatus: ls, portfolioHealth: ph,
