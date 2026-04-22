@@ -365,7 +365,7 @@ class TestAnalyticsBudgetPacingEndpoint:
         _make_campaign(db, client.id)
         db.commit()
 
-        with patch("app.routers.analytics.date") as mock_date:
+        with patch("app.routers.analytics._pacing.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 1)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             resp = api_client.get(
@@ -387,7 +387,7 @@ class TestAnalyticsBudgetPacingEndpoint:
                       cost_micros_per_day=5_000_000)
         db.commit()
 
-        with patch("app.routers.analytics.date") as mock_date:
+        with patch("app.routers.analytics._pacing.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 10)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             resp = api_client.get(

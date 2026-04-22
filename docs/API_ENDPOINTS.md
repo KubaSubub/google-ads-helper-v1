@@ -143,6 +143,16 @@ Base API URL: `/api/v1`
 - `[PROD]` `POST /actions/revert/{action_log_id}?client_id=X` (`allow_demo_write=true` required for DEMO)
 
 ## Analytics - Core
+<!--
+  ADR-021 (2026-04-22): Analytics endpoints live in a sub-router package at
+  `backend/app/routers/analytics/` (16 modules: `_kpis`, `_health`, `_breakdown`,
+  `_quality`, `_pacing`, `_bidding`, `_waste`, `_insights`, `_pmax`, `_shopping`,
+  `_comparison`, `_dsa`, `_auction`, `_audience`, `_mcc_misc`, `_legacy`).
+  URLs are unchanged — section headings below still map 1:1 to the old flat
+  router. When editing an endpoint, modify the matching sub-router file, not
+  `_legacy.py`.
+-->
+
 - `GET /analytics/kpis?client_id=X`
 - `GET /analytics/dashboard-kpis?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=ALL&campaign_status=&status=ALL` (date_from/date_to override days; campaign_status preferred, status=alias)
 - `GET /analytics/anomalies?client_id=X&status=unresolved|resolved`
@@ -212,6 +222,7 @@ Base API URL: `/api/v1`
 - `GET /analytics/auction-insights?client_id=X&campaign_id=&days=30&date_from=&date_to=` — competitor visibility metrics (IS, overlap, position above, outranking, top of page)
 - `GET /analytics/auction-insights-trend?client_id=X&window_days=14&min_outranking_delta_pp=0&trend_label=ALL|RISING_FAST|RISING|STABLE|FALLING|FALLING_FAST` — per-competitor Auction Insights trend over rolling window (current vs previous, delta in percentage points, slope, trend label)
 - `GET /analytics/shopping-product-groups?client_id=X&severity=ALL|HIGH|MEDIUM|LOW` — Shopping UNIT/SUBDIVISION findings (feed issues, zero-conv waste, low/high ROAS vs campaign avg, orphan subdivisions)
+- `GET /analytics/shopping-product-groups-tree?client_id=X&campaign_id=Y` — raw ProductGroup performance tree (bid, cost, ROAS per partition). Renamed from a duplicate `/shopping-product-groups` in ADR-021.
 - `GET /analytics/placement-performance?client_id=X&campaign_id=&days=30&date_from=&date_to=` — Display/Video placement performance (top 100)
 - `POST /analytics/placement-exclusion?client_id=X&campaign_id=X&placement_url=X` — add placement exclusion to campaign (`allow_demo_write` enforced)
 - `GET /analytics/bid-modifiers?client_id=X&campaign_id=&modifier_type=DEVICE|LOCATION|AD_SCHEDULE` — bid modifier list

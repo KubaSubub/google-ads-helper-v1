@@ -131,3 +131,32 @@
 **Why:** Previous state had 3 sync entry points (MCC, Sidebar, Settings), 3 different default periods (30d / 30d / 90d), 4 presets, plus a background scheduler with its own hardcoded 30d path — none of them agreed. Single entry point + single default removes confusion and API quota waste.
 **Supersedes:** ADR-005 (manual-only), the F1 scheduled sync asyncio loop (`services/scheduler.py` disabled), and the multi-preset modal.
 **Removed code:** `components/SyncButton.jsx`, `hooks/useSync.js`, `handleSync` dead path in MCC, Settings "Synchronizuj teraz", Sidebar per-client sync button, `POST /sync/trigger` (replaced by `/sync/trigger-stream` everywhere).
+
+
+## ADR-021: Analytics god-object split — mixin pattern for service, sub-router package for API
+**Decision (2026-04-22):** Split two analytics trunks — `backend/app/services/analytics_service.py` (5418 lines, 51 methods) and `backend/app/routers/analytics.py` (3038 lines, 83 endpoints) — into domain modules with zero URL change and zero caller change.
+
+**Structure — service (`app/services/analytics/`):**
+- `_shared.py` owns `AnalyticsBase(__init__(db), _filter_campaigns, _filter_campaign_ids, _aggregate_metric_daily, _create_alert)` — helpers used by 5–30 domain methods
+- 11 domain mixins (`kpi`, `health`, `breakdown`, `quality`, `pacing`, `bidding`, `waste`, `insights`, `pmax`, `comparison`, `dsa`) — each a stateless mixin class requiring `self.db` from `AnalyticsBase`
+- `analytics_service.py` reduced to 37 lines: `class AnalyticsService(KPIMixin, ..., AnalyticsBase)` — pure composition, backward-compatible
+
+**Structure — router (`app/routers/analytics/`):**
+- Package with `__init__.py` aggregating 16 sub-routers (15 domain + `_legacy` stub) under `prefix="/analytics"`
+- One sub-router per domain (`_kpis`, `_health`, `_breakdown`, ...) — each `APIRouter()` without prefix, included via `router.include_router(sub)`
+- URLs unchanged; `main.py` `include_router(analytics.router, prefix=API_PREFIX)` unchanged (package exposes `router` attribute)
+
+**Why:** Both files acted as trunks, not leaves — every new analytic method or endpoint compounded tech slop because Claude reading them would mirror their style. Per-domain files cap cognitive load per edit and make it possible to co-locate tests.
+
+**Rules going forward (added to AGENTS.md):**
+- No single service file in `backend/app/services/` exceeds 1000 lines
+- No single router file in `backend/app/routers/` exceeds 600 lines
+- When adding an analytics method, extend the appropriate mixin (`app/services/analytics/<domain>.py`); don't add to `analytics_service.py`
+- When adding an analytics endpoint, add to the appropriate sub-router (`app/routers/analytics/_<domain>.py`); don't reopen `_legacy.py`
+
+**Migration:**
+- Backward compat preserved: `from app.services.analytics_service import AnalyticsService` + `from app.routers.analytics import router` both still work
+- Only one test needed updating: `test_date_boundaries.py` patched `app.routers.analytics.date` (now lives in `_pacing.date`)
+- 806 backend tests green after full split; 83 unique URLs, 0 duplicates (fixed pre-existing `/shopping-product-groups` shadow by renaming the tree variant to `/shopping-product-groups-tree`)
+
+**Trade-off accepted:** Slight increase in total line count (5418 → 5881) from repeated imports per mixin; paid for by domain-local edits and cleaner git diffs.

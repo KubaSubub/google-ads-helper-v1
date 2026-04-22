@@ -59,6 +59,10 @@ python main.py
   - Convert to float/currency only in API schema/serialization layer.
 - Every write to Google Ads API must go through action validation/circuit breaker (`validate_action()` path).
 - Credentials/tokens must be stored only via Windows Credential Manager (`keyring`), never in SQLite/logs/plain `.env`.
+- **File-size ceilings (ADR-021):** No single file in `backend/app/services/` exceeds 1000 lines; no single file in `backend/app/routers/` exceeds 600 lines. When a file approaches the ceiling, split it into a package of domain modules (mixin pattern for services, sub-router aggregation for routers) before adding more. The analytics domain is the reference implementation — see `app/services/analytics/` and `app/routers/analytics/`.
+- **Where to add analytics code:**
+  - New method → extend the right mixin in `app/services/analytics/<domain>.py`; do **not** add to `analytics_service.py` (now a 37-line facade).
+  - New endpoint → add to the right sub-router in `app/routers/analytics/_<domain>.py`; do **not** reopen `_legacy.py`.
 
 ## 6) Protected Areas and Change Policy
 

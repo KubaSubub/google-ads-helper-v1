@@ -1,10 +1,150 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-18
+# Updated: 2026-04-22
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 701 tests collected (pytest --collect-only)
-- API endpoints: 188 total across 19 routers (80 analytics, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- Backend: 806 tests passing (full suite green po Fazie 3 mixin split)
+- API endpoints: 190 total across 19 routers (82 analytics after /dayparting split, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+
+## Tech-slop refactor — Fazy 3–5 COMPLETE (2026-04-22)
+Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../../Projekt%20Obsidian/01_Projects/GAH/Tech%20slop%20audit%202026-04-21.md).
+
+### Faza 3 — Service split into 11 domain mixins
+- `analytics_service.py`: **5418 → 37 linii (146× mniejsze)**. Teraz pure composition: `class AnalyticsService(KPIMixin, HealthMixin, BreakdownMixin, QualityMixin, PacingMixin, BiddingMixin, WasteMixin, InsightsMixin, PMaxMixin, ComparisonMixin, DSAMixin, AnalyticsBase)`.
+- 11 mixin files w `app/services/analytics/`: `kpi.py` 461, `health.py` 824, `breakdown.py` 441, `quality.py` 522, `pacing.py` 505, `bidding.py` 649, `waste.py` 620, `insights.py` 391, `pmax.py` 703, `comparison.py` 332, `dsa.py` 275. Wszystkie <1000 linii. Każdy mixin zawiera 2–8 metod domeny + jeden z dwóch prywatnych helperów (`_mock_daily_data` w `kpi.py`, `_health_empty_response` w `health.py`).
+- Backward compat: `from app.services.analytics_service import AnalyticsService` działa bez zmian; 8 callerów (routery + agent/mcc services + 4 test suites) nietknięte.
+- Tests: 806/806 full suite green; 127/127 analytics-specific zielone (2:50s).
+
+### Faza 4 — Cleanup sweep
+- `analytics_service.py` zredukowany do 37 linii — tylko imports + `class AnalyticsService(*mixins, AnalyticsBase)` + docstring. Zbędne modelowe importy (15 modeli) przeniesione do odpowiednich mixinów.
+- `/quality-score-audit` (ostatni endpoint w `_legacy.py`, 200 linii SQL) przeniesiony do `_quality.py`. `_legacy.py` **pusty od dekoratorów** — zostaje tylko jako moduł ze stałymi (`TREND_METRICS`, `CORRELATION_LEGACY_ALIASES`, `FORECAST_*`, `LEGACY_COLUMN_METRICS`) używanymi przez `_breakdown.py`, `_kpis.py`, `_insights.py`.
+- Duplicate `/shopping-product-groups` naprawione: drugi endpoint (product group tree) przemianowany na `/shopping-product-groups-tree` w `_shopping.py`. 0 duplikatów w `router.routes`, 83 unique URLs.
+- Pliki do manualnego usunięcia (rm blocked przez permission hook): `backend/_split_analytics_service.py` (one-off generator), `backend/app/services/analytics_service.py.bak` (copy pre-split). Będą usunięte w `/done`.
+
+### Faza 5 — ADR-021 + docs + AGENTS.md rule
+- [DECISIONS.md](../DECISIONS.md) → **ADR-021** dodany: analytics god-object split rationale, mixin pattern for service, sub-router package for API, migration notes (806 tests green, tylko jeden test patch update).
+- [AGENTS.md](../AGENTS.md) § 5 Architecture Invariants → reguła rozmiaru plików: services <1000 linii, routers <600 linii, analytics jako reference implementation. Plus rule "where to add analytics code" wskazujący na mixiny i sub-routery, nie `analytics_service.py` ani `_legacy.py`.
+- [docs/API_ENDPOINTS.md](API_ENDPOINTS.md) → header komentarz w sekcji Analytics wskazujący na sub-router package; nowy endpoint `/shopping-product-groups-tree` udokumentowany.
+
+### Metryki finalne:
+| Metryka | Przed | Po | Zmiana |
+|---------|-------|-----|--------|
+| `analytics_service.py` linie | 5418 | 37 | **−99.3%** |
+| `analytics.py` router linie | 3038 | 0 (usunięty) | folder package |
+| Największy plik services/ | 5418 | 824 (`health.py`) | **−85%** |
+| Największy plik routers/analytics/ | 3038 | 389 (`_kpis.py`) | **−87%** |
+| Suma kodu analytics | 5418+3038 = 8456 | 5881 services + 3261 routers = 9142 | +8% (importy per moduł) |
+| Duplicate routes | 1 (`/shopping-product-groups`) | 0 | **fixed** |
+| Pliki analytics | 2 | 17 services + 17 routers = 34 | +32 |
+| Test suite | 806 passed | 806 passed | zero regresji |
+
+### Do rozliczenia w `/done`:
+- [ ] `git rm backend/_split_analytics_service.py backend/app/services/analytics_service.py.bak` (permission denied mid-session)
+- [ ] Commit wiążący całą refaktoryzację (sugeruję 1 duży commit z conventional message `refactor(analytics): split god-objects into 11 mixins + 15 sub-routers (ADR-021)`)
+
+---
+
+## Tech-slop refactor — Faza 2 COMPLETE: 15 router sub-packages (2026-04-22)
+- **82/83 endpointów zmigrowanych do 15 sub-routerów** (99%) — tylko `/quality-score-audit` zostaje w `_legacy.py` (200 linii SQL + lokalne helpery z `app/utils/quality_score`, wymaga osobnego passu)
+- Rozmiary sub-routerów (linie): `_legacy` 488 (w tym quality-score-audit), `_kpis` 389, `_insights` 325, `_mcc_misc` 304, `_health` 234, `_shopping` 218, `_pacing` 214, `_auction` 151, `_waste` 146, `_bidding` 140, `_pmax` 138, `_breakdown` 137, `_quality` 134, `_dsa` 77, `_comparison` 62, `_audience` 28
+- Wszystkie sub-routery < 500 linii; cel `< 300` osiągnięty dla 13/15 (`_kpis`, `_insights` lekko nad — czysta logika domenowa, nie slop)
+- URL-e **niezmienione** — frontend i `main.py` nie zauważyły; `prefix="/analytics"` raz, w `__init__.py`, `APIRouter` agreguje wszystkie sub-routery
+- Tests: **105/105 endpoint tests green** (2:35, po wszystkich splitach); pełny suite 806 tests → 804 passed / 2 fixed: `test_date_boundaries.py` patch'ował `app.routers.analytics.date` (stary moduł), zaktualizowany na `app.routers.analytics._pacing.date` po splicie. Po fix: 24/24 `test_date_boundaries.py` zielone.
+- Pre-existing bug: `/shopping-product-groups` 2× (83 route objects vs 82 unique URL) — oba endpointy zmigrowane do `_shopping.py` i **udokumentowane w docstringu** jako shadow; pierwszy (severity audit) wygrywa routing, drugi (product group tree) to dead code na warstwie HTTP ale reachable Python-wise. Fix-plan: rename ścieżki drugiego endpointu na `/shopping-product-groups-tree` — do decyzji po Fazie 2.
+
+### Pełna mapa sub-routerów:
+| Sub-router | Endpointy | Rola |
+|------------|-----------|------|
+| `_auction.py` | 2 | Competitor visibility (auction-insights + trend) |
+| `_audience.py` | 1 | Audience overlap / redundancy |
+| `_bidding.py` | 8 | Smart Bidding health, target-vs-actual, portfolio, learning-status |
+| `_breakdown.py` | 5 | Device, geo, demographics, impression-share, trends-by-device |
+| `_comparison.py` | 3 | Campaign/client comparison, benchmarks |
+| `_dsa.py` | 4 | Dynamic Search Ads metrics |
+| `_health.py` | 5 | Health score + anomaly detection (alerts, z-score) |
+| `_insights.py` | 6 | Correlation, forecast, Pareto, scaling, change-impact, compare-periods (numpy/scipy) |
+| `_kpis.py` | 6 | Dashboard KPIs (z cache) + trends + wow-comparison + campaigns-summary |
+| `_mcc_misc.py` | 8 | MCC, offline conversions, bid modifiers, audiences list, topics, Google recs |
+| `_pacing.py` | 8 | Budget pacing + dayparting suite (DoW, hourly, heatmap) + seasonal |
+| `_pmax.py` | 8 | PMax analytics + extensions + search cannibalization |
+| `_quality.py` | 7 | RSA, n-grams, match types, landing pages, conversion-health/quality |
+| `_shopping.py` | 4 | Shopping PG, placement-exclusion, placement-performance |
+| `_waste.py` | 7 | Wasted spend, structure, close variants, keyword expansion/overlap, budget allocation |
+| `_legacy.py` | 1 | **Pozostało: `/quality-score-audit` (200 linii, lokalne helpery)** |
+| **TOTAL** | **82** | 15 domen + legacy stub |
+
+### Pozostałe do Fazy 2 (jedno zadanie):
+- [ ] Zmigrować `/quality-score-audit` do `_quality.py` (wymaga: local helpery `_build_subcomponent_issues`, `_get_primary_issue`, `_build_recommendation` + `Keyword`/`AdGroup`/`KeywordDaily` models + `micros_to_currency`)
+- [ ] Decyzja: duplicate `/shopping-product-groups` — rename drugiego endpointu czy delete?
+
+## Tech-slop refactor — Faza 2 snapshot: 8/15 router sub-packages (2026-04-21)
+- `routers/analytics/` (NEW) — folder pakietu zastąpił `routers/analytics.py` (git mv → `_legacy.py`)
+- `routers/analytics/__init__.py` — `APIRouter(prefix="/analytics")` aggreguje `_legacy_router` + 8 sub-routerów
+- `routers/analytics/_legacy.py` — `router = APIRouter()` (prefix przeniesiony do `__init__.py`); shrinks as domains get extracted
+- `routers/analytics/_dsa.py` (NEW) — 4 endpointy: `/dsa-*`
+- `routers/analytics/_auction.py` (NEW) — 2 endpointy: `/auction-insights*`
+- `routers/analytics/_comparison.py` (NEW) — 3 endpointy: `/campaign-comparison`, `/benchmarks`, `/client-comparison`
+- `routers/analytics/_mcc_misc.py` (NEW) — 8 endpointów: `/mcc-accounts`, `/offline-conversions*`, `/conversion-value-rules`, `/bid-modifiers`, `/topic-performance`, `/audiences-list`, `/google-recommendations`
+- `routers/analytics/_breakdown.py` (NEW) — 5 endpointów: `/impression-share`, `/device-breakdown`, `/geo-breakdown`, `/trends-by-device`, `/demographics`
+- `routers/analytics/_bidding.py` (NEW) — 8 endpointów: `/bidding-advisor`, `/smart-bidding-health`, `/bid-strategy-impact`, `/bid-strategy-report`, `/target-vs-actual`, `/learning-status`, `/portfolio-health`, `/ad-group-health`
+- `routers/analytics/_waste.py` (NEW) — 7 endpointów: `/wasted-spend`, `/account-structure`, `/search-term-trends`, `/close-variants`, `/keyword-expansion`, `/keyword-overlap`, `/budget-allocation`
+- `routers/analytics/_quality.py` (NEW) — 7 endpointów: `/rsa-analysis`, `/ngram-analysis`, `/match-type-analysis`, `/landing-pages`, `/landing-page-diagnostics`, `/conversion-health`, `/conversion-quality` (`/quality-score-audit` zostaje w legacy — 200 linii SQL + lokalne helpery)
+- `routers/analytics/_pmax.py` (NEW) — 8 endpointów: `/pmax-channels`, `/pmax-channel-trends`, `/asset-group-performance`, `/pmax-search-themes`, `/audience-performance`, `/missing-extensions`, `/extension-performance`, `/pmax-search-cannibalization`
+- **52/83 endpointów zmigrowane (63%)**; URL-e niezmienione; `main.py` import bez zmian.
+- Tests: 100/100 endpoint tests green (6:06s, po ostatnim splicie); 806/806 full suite (po Fazie 1, stan z bieżącej sesji: nie re-run).
+- Pre-existing bug: **`/shopping-product-groups` występuje 2×** — 83 obiekty routes vs 82 unique URL. Do decyzji po zakończeniu Fazy 2.
+- Pozostało do Fazy 2: ~7 sub-routerów × ~31 endpointów:
+  - `_kpis.py` (5): `/kpis`, `/dashboard-kpis` (cache), `/trends`, `/campaign-trends`, `/wow-comparison`
+  - `_health.py` (5): `/health-score`, `/anomalies`, `/anomalies/{id}/resolve`, `/detect`, `/z-score-anomalies`
+  - `_pacing.py` (8): `/budget-pacing`, `/dayparting*` (×4), `/hourly-dayparting`, `/seasonal-comparison`, `/offline-conversion-lag`
+  - `_insights.py` (6): `/correlation`, `/compare-periods`, `/forecast`, `/pareto-analysis`, `/scaling-opportunities`, `/change-impact` (używa numpy/pandas/scipy)
+  - `_shopping.py` (4): `/shopping-product-groups` (×2 — dup fix), `/placement-exclusion`, `/placement-performance`
+  - `_audience.py` (1): `/audience-overlap`
+  - Inne: `/campaigns-summary`, `/quality-score-audit` (complex)
+- Commit: niewykonany — sesja kończy się, `/done` zadecyduje o commit boundary
+
+## Tech-slop refactor — Faza 1: AnalyticsBase extraction (2026-04-21)
+Background: [Tech slop audit 2026-04-21](../../Projekt%20Obsidian/01_Projects/GAH/Tech%20slop%20audit%202026-04-21.md) — `analytics_service.py` puchł do 5488 linii / 245 KB (50 metod publicznych), `analytics.py` router do 3038 linii / 125 KB (64 endpointy). Plan split na mixin pattern z zachowaniem 100% backward compat.
+- `services/analytics/__init__.py` (NEW) — re-export `AnalyticsBase`
+- `services/analytics/_shared.py` (NEW) — `class AnalyticsBase` z `__init__(db)` + 4 shared helperami (`_filter_campaigns` 9×, `_filter_campaign_ids` 24×, `_aggregate_metric_daily` 6×, `_create_alert` 5×)
+- `services/analytics_service.py` — `class AnalyticsService(AnalyticsBase)`; usunięte 4 helpery (97 linii w dół, import AnalyticsBase). Metody domen nietknięte — idą do mixinów w Fazie 3.
+- Backward compat: `from app.services.analytics_service import AnalyticsService` działa bez zmian we wszystkich 8 callerach (agent_service, mcc_service, daily_audit router, test_analytics, test_sprint2_analytics, test_sprint3_bidding, test_resolve_dates, analytics router).
+- MRO zweryfikowany: `AnalyticsService → AnalyticsBase → object`, wszystkie 4 helpery dziedziczone.
+- Tests: **806 passed** (full pytest suite, 853s / 14:13). Zero regresji od pre-Faza 1 (było 805 — wzrost o 1 z pokrewnych commits).
+- Pozostało: [ ] Faza 2 (router split 15 sub-routers) · [ ] Faza 3 (11 domain mixins) · [ ] Faza 4 (cleanup sweep) · [ ] Faza 5 (ADR-021 + docs)
+- Plan: [przeczytaj-vault-01-projects-gah-tech-sl-shimmying-horizon.md](../../.claude/plans/przeczytaj-vault-01-projects-gah-tech-sl-shimmying-horizon.md)
+
+## Dashboard audit fixes — hourly dayparting contract (2026-04-20)
+- `services/analytics_service.py::get_hourly_dayparting` — default `campaign_type` z `"SEARCH"` → `"ALL"` (ten sam silent-P0 co wcześniej w `get_dayparting`), zwraca `currency` + `campaign_type_used` + `observations` w response
+- `audit-center/components/sections/DowHourHeatmapSection.jsx` — Fragment `<>` w `DAY_NAMES.map` bez key → zamieniony na `<div key={dow} style={{display:'contents'}}>` (react key warning fix)
+- `dashboard/components/HourlyDaypartingWidget.jsx` — dodany `formatVal` helper, odczyt `data.currency`, header `campaign_type_used` label
+- `audit-center/components/sections/HourlyDaypartingSection.jsx` — hardcoded `" zł"` (2 miejsca) → `${data.currency || 'PLN'}` — fix currency mismatch dla USD accounts
+- `tests/test_analytics_endpoints.py` — nowy test `test_hourly_dayparting_response_shape` (gwarantuje `currency` i `campaign_type_used == "ALL"`)
+- Tests: 806 passed (+1) · `npm run build` ✓ 0 errors
+
+## Sync GAQL fixes — API v23 compatibility (2026-04-20)
+Diagnoza na podstawie real sync_logs z 2026-04-20 20:25 — wszystkie 7 klientów, `status: partial`, 2-3 błędy per klient.
+- `services/google_ads.py::sync_placement_metrics`: usunięto `metrics.video_views`, `metrics.video_view_rate`, `metrics.average_cpv` z SELECT i data dict — `UNRECOGNIZED_FIELD` na `detail_placement_view` w API v23 (video-specific metrics wymagałyby osobnego view, poza scope)
+- `services/google_ads.py::sync_product_groups`: usunięto wszystkie `metrics.*` (clicks, impressions, cost_micros, conversions, conversions_value, ctr) — `PROHIBITED_METRIC_IN_SELECT_OR_WHERE_CLAUSE` na `ad_group_criterion` dla LISTING_GROUP w API v23. Per-product-group metrics wymagałyby drugiej fazy z `shopping_performance_view`. Struktura drzewa (partition_type, case_value, bid, status) nadal syncowana.
+- `services/startup_sync.py::_run_client_sync`: skip dla klientów z customer_id niebędącym 10-cyfrowym lub prefiksem `1234567`/`0000` (seed/demo placeholders jak Demo Meble `123-456-7890`) — kończy spam 25 UNAUTHENTICATED błędów na każdym starcie
+- Live-verified: obie query po fixie zwracają `OK (0 rows)` na koncie Klimfix bez `INVALID_ARGUMENT`
+
+## Dzień tygodnia — Audit-Deep + Full Expansion (2026-04-19)
+Module expanded based on `docs/reviews/audit-deep-dzien-tygodnia.md` (16 findings: 5 P0, 6 P1, 5 P2).
+- Backend:
+  - `routers/analytics.py`: **fixed** duplicate `@router.get("/dayparting")` (line 1498) — renamed to `/dayparting-hourly-suggestions`; added `/dayparting-dow-suggestions` + `/dayparting-heatmap`
+  - `services/analytics_service.py::get_dayparting`: `cost_amount`+`currency` (was mis-labelled `cost_usd`/"zł"), `campaign_type_used`, default `ALL` (was `SEARCH` silently dropping PMax/Shopping), per-day `avg_cpa`/`avg_roas`/`avg_cvr`/`avg_cpc`/`avg_cpc`, `conversion_value_amount`+`aov`, `observations` count, `dates` list for windows ≤ 21d
+  - `services/dayparting_service.py`: new `dow_bid_schedule_suggestions` (per-day analogue of hourly) + `dow_hour_heatmap` (7×24 grid from `MetricSegmented.date`+`hour_of_day`)
+  - `tests/test_analytics_endpoints.py`: 5 new tests — unique-route guard, response shape (avg_*, currency, campaign_type_used), 3 new endpoints
+- Frontend:
+  - `DayOfWeekWidget.jsx`: currency-aware labels (data.currency), period header (`30d · 4 obs/dz · ALL`) + low-sample warning, added metrics (`conversion_value_amount`, `aov`), worst-day red ring + best-day green ring + legend, significance threshold (≥ 4 obs + ≥ 20% deviation from median), PoP delta per cell, skeleton loading state, dates tooltip, bid-schedule suggestions panel below heatmap
+  - `DaypartingSection.jsx` (Audit Center): dropped hardcoded weekend red (was permanent regardless of metric — bad for restaurants where Saturday = top day), 6 metrics with heat color per metric
+  - `DowHourHeatmapSection.jsx` (NEW): 7×24 heatmap with 6-metric picker + baseline CPA reference
+  - `useAuditData.js` + `AuditCenterPage.jsx`: wired new "Heatmapa 7×24" card
+  - `api.js`: 3 new functions (`getDaypartingDowSuggestions`, `getDaypartingHourlySuggestions`, `getDaypartingHeatmap`)
+  - **Reuse**: `DayOfWeekWidget` now also shown in Audit Center "Harmonogram tygodnia" card (same component, mounted in both Dashboard + Audit Center). Legacy simplified `DaypartingSection.jsx` retained but no longer rendered (kept per no-deletion policy).
+  - **Dashboard symmetry**: added `HourlyDaypartingWidget` (24-hour bars with 5-metric picker + best/worst ring + 9-18 business-hour frame) and `DowHourHeatmapWidget` (7×24 matrix, 6-metric picker, intensity legend). All three widgets now stacked on Dashboard: day-of-week → hours → 7×24 matrix.
+- Tests: 805 passed (backend) + `npm run build` ✓ 0 errors
 
 ## TrendExplorer — Fullscreen Portal + Markers Toggle + E2E (2026-04-19)
 - `components/TrendExplorer.jsx`:
