@@ -145,12 +145,14 @@ Base API URL: `/api/v1`
 ## Analytics - Core
 <!--
   ADR-021 (2026-04-22): Analytics endpoints live in a sub-router package at
-  `backend/app/routers/analytics/` (16 modules: `_kpis`, `_health`, `_breakdown`,
-  `_quality`, `_pacing`, `_bidding`, `_waste`, `_insights`, `_pmax`, `_shopping`,
-  `_comparison`, `_dsa`, `_auction`, `_audience`, `_mcc_misc`, `_legacy`).
-  URLs are unchanged — section headings below still map 1:1 to the old flat
-  router. When editing an endpoint, modify the matching sub-router file, not
-  `_legacy.py`.
+  `backend/app/routers/analytics/` (15 domain sub-routers: `_kpis`, `_health`,
+  `_breakdown`, `_quality`, `_pacing`, `_bidding`, `_waste`, `_insights`,
+  `_pmax`, `_shopping`, `_comparison`, `_dsa`, `_auction`, `_audience`,
+  `_mcc_misc`). Post-Faza 4: `_legacy.py` holds only shared constants
+  (`TREND_METRICS`, `CORRELATION_LEGACY_ALIASES`, `FORECAST_*`,
+  `LEGACY_COLUMN_METRICS`) — no endpoint decorators. URLs are unchanged —
+  section headings below still map 1:1 to the old flat router. When editing
+  an endpoint, modify the matching domain sub-router file.
 -->
 
 - `GET /analytics/kpis?client_id=X`
