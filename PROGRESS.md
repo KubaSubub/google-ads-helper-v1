@@ -4,7 +4,7 @@
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
 - Backend: 806 tests passing (full suite green po Fazie 3 mixin split)
-- API endpoints: 190 total across 19 routers (82 analytics after /dayparting split, 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- API endpoints: 191 total across 19 routers (83 analytics after ADR-021 — `/quality-score-audit` moved do `_quality.py`, `/shopping-product-groups-tree` renamed z duplikatu; 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
 
 ## Tech-slop refactor — Fazy 3–5 COMPLETE (2026-04-22)
 Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../../Projekt%20Obsidian/01_Projects/GAH/Tech%20slop%20audit%202026-04-21.md).

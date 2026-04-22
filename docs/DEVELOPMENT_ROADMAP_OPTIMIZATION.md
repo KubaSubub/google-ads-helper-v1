@@ -423,16 +423,17 @@ Brakuje: zaznaczanie wielu search terms → "Dodaj jako negative" / "Dodaj jako 
 
 ## PODSUMOWANIE
 
-**Stan na 2026-03-31: 25 DONE, 1 PARTIAL (z 26 feature'ów = 96%)**
+**Stan na 2026-04-22: 25 DONE, 1 PARTIAL przeniesiony do v1.1 (z 26 feature'ów = 96% v1.0.0 scope)**
 
-### ✅ Zrealizowane (v1 roadmap):
-- 26 feature'ów z 5 fal — od Daily Audit, przez Search Terms bulk actions, DSA, PMax, raporty AI, po automated rules engine
+### ✅ v1.0.0 scope — zamknięty:
+- 25 feature'ów z 5 fal — od Daily Audit, przez Search Terms bulk actions, DSA, PMax, raporty AI, po automated rules engine
 - Silnik rekomendacji: 17+ reguł, confidence/risk scoring, expires_at, pełny scope w dedup key
 - Action execution: dry-run → confirm → apply (Google Ads API when connected) → revert 24h
 - AI Agent (Claude) do rozmów o danych + SSE streaming reports
+- Post-v1 domieszki: MCC Overview v1.0.0, audit-deep dayparting (dzień tygodnia + hourly + 7x24 heatmap), TrendExplorer fullscreen, ADR-021 analytics split (11 mixinów + 15 sub-routerów)
 
-### 🟡 Pozostałe luki z v1:
-1. **G3 Landing Page Audit** — endpoint istnieje, brakuje: PageSpeed Insights, mobile-friendliness, message match
+### 🔮 Przeniesione do v1.1:
+1. **G3 Landing Page Audit — pełny zakres** (endpoint URL grouping już jest w v1.0.0) — brakujące: PageSpeed Insights API integration, mobile-friendliness check, message match (headline vs landing H1), bounce rate alerts. Decyzja CEO 2026-04-22: v1.0.0 domyka dayparting expansion zamiast rozpoczynać nową integrację API.
 
 ### 🔮 Otwarte kierunki rozwoju (z analizy deep-research, zweryfikowane 2026-03-31):
 

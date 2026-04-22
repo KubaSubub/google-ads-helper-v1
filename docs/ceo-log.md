@@ -202,3 +202,27 @@
   - **Skipped:** Bell→/alerts, CSV export, Health Score pillars drilldown
 - **Status:** DONE
 - **Wynik:** 678 testów pass (+5 nowych lock tests: IS_null, active_only, roas_multiplier, IS_weighted, active_only_default). Vite build OK. 5 nowych contract testów jako regression shield. Commit a03c081, push OK.
+
+## [2026-04-22] v1.0.0 Pre-release audit — Dashboard + All modules
+- **Powód:** User prosi o finalny check "zanim zamkniemy wersję 1.0.0". Po 7 dniach intensywnej pracy (audit-deep dayparting, TrendExplorer upgrade, dashboard perf fixes, tech-slop refactor ADR-021) jest 30 uncommitted plików — potrzebny sanity check przed commit boundary.
+- **Intelligence used:** NIE (audyt stanu, nie budowa nowego feature)
+- **Nakład:** S (assess only — 4 agenty równolegle)
+- **SKIP PM:** to audyt stanu, nie implementacja nowego taska
+- **Scope audytu:**
+  - Backend Scout: 191 endpointów, 34 serwisów, 46 modeli, 808/808 testów PASS, 0 TODO
+  - Frontend Scout: 35 stron, 34 komponenty, build OK, 0 TODO, 11/11 widgetów Dashboard + 21 sekcji Audit Center poprawnie podpięte
+  - Docs Verifier: roadmap 25/26 DONE + 1 PARTIAL (96%), PROGRESS.md + API_ENDPOINTS.md aktualne
+  - Visual QA: wszystkie route'y lazy-loaded OK, nowe widgety (HourlyDayparting, DowHourHeatmap, DayOfWeekWidget) renderowane
+- **Blokery v1.0.0 (do rozwiązania przed zamknięciem):**
+  1. 30 uncommitted plików — wymaga `/done` (commit + docs-sync + pm-check + push)
+  2. 2 suspicious files do `git rm`: `backend/_split_analytics_service.py` (one-off refactor ADR-021) + `backend/app/services/analytics_service.py.bak` (242KB backup)
+  3. Decyzja user: co z `backend/backfill_hourly_segments.py` (one-shot backfill hourly segments — zostawić jako utility czy usunąć po implementacji hourly phase w sync_config?)
+  4. Wave 4 G3 Landing Page PARTIAL — decyzja user: dokończyć PageSpeed/mobile/message match przed v1.0.0 czy zamknąć jako "v1.0.0 scope, PageSpeed → v1.1"?
+  5. Roadmap footer "stan na 2026-03-31" — nieaktualny (3 tygodnie), do update przy docs-sync
+  6. Martwy blok `{false && ...}` w DashboardPage.jsx (linie 439-510) — kosmetyka, nie blokuje
+- **Decyzje user (2026-04-22):**
+  - A — `backend/backfill_hourly_segments.py`: **ZOSTAJE** jako utility dla MCC klientów (do czasu dodania `hourly_metrics` phase w sync_config → v1.1)
+  - A — `backend/_split_analytics_service.py` + `analytics_service.py.bak`: `git rm` per PROGRESS.md rekomendacja (bezpieczne — skrypt odrobił swoje, backup 242KB zbędny). Plik untracked → `rm` przez `/done` flow (w tej sesji permission denied na manual `rm`).
+  - B — Wave 4 G3 Landing Page Audit (PageSpeed/mobile/message match): **PRZESUNIĘTE do v1.1**. Roadmap zaktualizowany (stopka 2026-03-31 → 2026-04-22, G3 oznaczone jako v1.1 scope).
+- **Status:** DONE (audyt zamknięty, decyzje wprowadzone do roadmap + ceo-log)
+- **Next step:** User odpala `/done` — skrypt załatwi `rm` artefaktów, commit boundary (30 plików), docs-sync, pm-check, push → v1.0.0 RELEASE

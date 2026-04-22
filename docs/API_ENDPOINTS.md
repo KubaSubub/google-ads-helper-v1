@@ -185,6 +185,9 @@ Base API URL: `/api/v1`
 - `GET /analytics/account-structure?client_id=X`
 - `GET /analytics/bidding-advisor?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
 - `GET /analytics/hourly-dayparting?client_id=X&days=7&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
+- `GET /analytics/dayparting-hourly-suggestions?client_id=X&days=30&include_suggestions=true&min_hour_cost_usd=20.0` — hour-of-day breakdown + bid-schedule recommendations (per-hour). Renamed from a duplicate `/dayparting` in the 2026-04-19 expansion.
+- `GET /analytics/dayparting-dow-suggestions?client_id=X&days=30&min_dow_cost=50.0` — day-of-week performance + bid-schedule recommendations (per-day analogue of hourly). Requires `days>=14` to capture 2 weekly cycles.
+- `GET /analytics/dayparting-heatmap?client_id=X&days=30` — 7×24 (day_of_week × hour_of_day) performance grid for bid-schedule UI.
 
 ## Analytics - Search Optimization
 - `GET /analytics/dayparting?client_id=X&days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&campaign_type=&campaign_status=`
