@@ -184,9 +184,18 @@ def get_campaign_kpis(
         total_cost_usd = total_cost_micros / 1_000_000
         total_conv_value = total_conv_value_micros / 1_000_000
 
-        def _avg_nonnull(field):
-            vals = [getattr(m, field) for m in metrics if getattr(m, field) is not None]
-            return round(sum(vals) / len(vals), 4) if vals else None
+        def _weighted_avg(field, weight_field="impressions"):
+            """Weighted average po liczbie wyswietlen — IS metryki wazy sie impresjami, nie arytmetycznie po dniach."""
+            total = 0.0
+            weight = 0
+            for m in metrics:
+                val = getattr(m, field)
+                w = getattr(m, weight_field) or 0
+                if val is None or w <= 0:
+                    continue
+                total += val * w
+                weight += w
+            return round(total / weight, 4) if weight else None
 
         return {
             "clicks": total_clicks,
@@ -199,14 +208,14 @@ def get_campaign_kpis(
             "avg_cpc": round((total_cost_usd / total_clicks) if total_clicks else 0, 2),
             "cpa": round((total_cost_usd / total_conversions) if total_conversions else 0, 2),
             "conversion_rate": round((total_conversions / total_clicks * 100) if total_clicks else 0, 2),
-            "search_impression_share": _avg_nonnull("search_impression_share"),
-            "search_top_impression_share": _avg_nonnull("search_top_impression_share"),
-            "search_abs_top_impression_share": _avg_nonnull("search_abs_top_impression_share"),
-            "search_budget_lost_is": _avg_nonnull("search_budget_lost_is"),
-            "search_rank_lost_is": _avg_nonnull("search_rank_lost_is"),
-            "search_click_share": _avg_nonnull("search_click_share"),
-            "abs_top_impression_pct": _avg_nonnull("abs_top_impression_pct"),
-            "top_impression_pct": _avg_nonnull("top_impression_pct"),
+            "search_impression_share": _weighted_avg("search_impression_share"),
+            "search_top_impression_share": _weighted_avg("search_top_impression_share"),
+            "search_abs_top_impression_share": _weighted_avg("search_abs_top_impression_share"),
+            "search_budget_lost_is": _weighted_avg("search_budget_lost_is"),
+            "search_rank_lost_is": _weighted_avg("search_rank_lost_is"),
+            "search_click_share": _weighted_avg("search_click_share", weight_field="clicks"),
+            "abs_top_impression_pct": _weighted_avg("abs_top_impression_pct"),
+            "top_impression_pct": _weighted_avg("top_impression_pct"),
         }
 
     current = _aggregate(current_start, today)
@@ -226,6 +235,198 @@ def get_campaign_kpis(
         "previous": previous,
         "change_pct": change,
         "period_days": days,
+    }
+
+
+@router.patch("/{campaign_id}/status")
+def update_campaign_status(
+    campaign_id: int,
+    new_status: str = Query(..., pattern="^(ENABLED|PAUSED)$", description="ENABLED or PAUSED"),
+    allow_demo_write: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Pause or enable a campaign.
+
+    Remote-first: tries API push first, commits locally only on success.
+    Goes through canonical safety pipeline: demo guard -> audit log.
+    """
+    from app.services.google_ads import google_ads_service
+    from app.services.write_safety import record_write_action
+    import logging
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    client = db.get(Client, campaign.client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    operation_label = "Wstrzymanie kampanii" if new_status == "PAUSED" else "Wznowienie kampanii"
+    ensure_demo_write_allowed(
+        db, client.id, allow_demo_write=allow_demo_write,
+        operation=operation_label,
+    )
+
+    old_status = campaign.status
+    if old_status == new_status:
+        return {
+            "campaign_id": campaign.id,
+            "old_status": old_status,
+            "new_status": new_status,
+            "api_synced": False,
+            "api_error": None,
+            "pending_sync": False,
+            "no_change": True,
+        }
+
+    api_synced = False
+    api_error = None
+    action_type = "PAUSE_CAMPAIGN" if new_status == "PAUSED" else "ENABLE_CAMPAIGN"
+
+    if google_ads_service.is_connected:
+        try:
+            google_ads_service._mutate_campaign_status(campaign, db, new_status)
+            api_synced = True
+        except Exception as e:
+            api_error = str(e)
+            logging.getLogger(__name__).warning(
+                f"Campaign status API push failed for {campaign_id}: {e}"
+            )
+            record_write_action(
+                db,
+                client_id=client.id,
+                action_type=action_type,
+                entity_type="campaign",
+                entity_id=campaign_id,
+                status="FAILED",
+                execution_mode="LIVE",
+                old_value={"status": old_status},
+                new_value={"status": new_status},
+                error_message=api_error,
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=502,
+                detail=f"Google Ads API rejected the change: {api_error}. Local DB NOT updated.",
+            )
+
+    campaign.status = new_status
+
+    record_write_action(
+        db,
+        client_id=client.id,
+        action_type=action_type,
+        entity_type="campaign",
+        entity_id=campaign_id,
+        status="SUCCESS",
+        execution_mode="LIVE" if api_synced else "LOCAL",
+        old_value={"status": old_status},
+        new_value={"status": new_status},
+        context={"api_synced": api_synced},
+    )
+    db.commit()
+    db.refresh(campaign)
+
+    return {
+        "campaign_id": campaign.id,
+        "old_status": old_status,
+        "new_status": campaign.status,
+        "api_synced": api_synced,
+        "api_error": api_error,
+        "pending_sync": not api_synced,
+    }
+
+
+@router.patch("/{campaign_id}/budget")
+def update_campaign_budget(
+    campaign_id: int,
+    budget_micros: int = Query(..., gt=0, description="New daily budget in micros (1 zł = 1_000_000 micros)"),
+    allow_demo_write: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """Update campaign daily budget.
+
+    Remote-first: tries API push first, commits locally only on success.
+    Goes through canonical safety pipeline: demo guard -> audit log.
+    Warning: changes >30% trigger circuit breaker downstream.
+    """
+    from app.services.google_ads import google_ads_service
+    from app.services.write_safety import record_write_action
+    import logging
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    client = db.get(Client, campaign.client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    ensure_demo_write_allowed(
+        db, client.id, allow_demo_write=allow_demo_write,
+        operation="Zmiana budzetu kampanii",
+    )
+
+    old_budget = campaign.budget_micros or 0
+    new_budget = int(budget_micros)
+    api_synced = False
+    api_error = None
+
+    # Temporarily set new value so mutator reads it (mutator takes campaign.budget_micros)
+    campaign.budget_micros = new_budget
+
+    if google_ads_service.is_connected:
+        try:
+            google_ads_service._mutate_campaign_budget(campaign, db)
+            api_synced = True
+        except Exception as e:
+            api_error = str(e)
+            # Revert local pending change
+            campaign.budget_micros = old_budget
+            logging.getLogger(__name__).warning(
+                f"Budget API push failed for campaign {campaign_id}: {e}"
+            )
+            record_write_action(
+                db,
+                client_id=client.id,
+                action_type="UPDATE_BUDGET",
+                entity_type="campaign",
+                entity_id=campaign_id,
+                status="FAILED",
+                execution_mode="LIVE",
+                old_value={"budget_micros": old_budget},
+                new_value={"budget_micros": new_budget},
+                error_message=api_error,
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=502,
+                detail=f"Google Ads API rejected the change: {api_error}. Local DB NOT updated.",
+            )
+
+    # Audit trail
+    record_write_action(
+        db,
+        client_id=client.id,
+        action_type="UPDATE_BUDGET",
+        entity_type="campaign",
+        entity_id=campaign_id,
+        status="SUCCESS",
+        execution_mode="LIVE" if api_synced else "LOCAL",
+        old_value={"budget_micros": old_budget},
+        new_value={"budget_micros": new_budget},
+        context={"api_synced": api_synced},
+    )
+    db.commit()
+    db.refresh(campaign)
+
+    return {
+        "campaign_id": campaign.id,
+        "old_budget_micros": old_budget,
+        "new_budget_micros": campaign.budget_micros,
+        "api_synced": api_synced,
+        "api_error": api_error,
+        "pending_sync": not api_synced,
     }
 
 

@@ -226,3 +226,53 @@
   - B — Wave 4 G3 Landing Page Audit (PageSpeed/mobile/message match): **PRZESUNIĘTE do v1.1**. Roadmap zaktualizowany (stopka 2026-03-31 → 2026-04-22, G3 oznaczone jako v1.1 scope).
 - **Status:** DONE (audyt zamknięty, decyzje wprowadzone do roadmap + ceo-log)
 - **Next step:** User odpala `/done` — skrypt załatwi `rm` artefaktów, commit boundary (30 plików), docs-sync, pm-check, push → v1.0.0 RELEASE
+
+## [2026-04-22] Campaigns view — pełny ads review pipeline
+- **Powód:** User prosi "sprawdzamy widok campaigns — chcę pełny pipeline". Widok Campaigns (749 linii, 6 endpointów, 36 testów, 8 sekcji UI) nigdy nie dostał dedykowanego ads-user/ads-expert review — review było tylko dla MCC Overview, TrendExplorer, dayparting. To core view dla dziennego audytu PPC specjalisty, więc brakuje pokrycia.
+- **Intelligence used:** NIE (review istniejącego widoku, nie nowy feature)
+- **Nakład:** L (6 faz: ads-user → ads-expert → ads-verify → sprint → ads-check → re-test)
+- **SKIP PM:** to pełny ads review cycle, nie implementacja nowego feature (plan powstanie z /ads-verify)
+- **Scope pipeline:**
+  - Faza A: `/ads-user Campaigns` (auto-chain `/ads-expert`) — symulacja Marek (PPC specialist) + ekspert Google Ads, raporty w `docs/reviews/`
+  - Faza B: `/ads-verify Campaigns` — konwersja raportów na actionable plan (tasks MISSING/DONE)
+  - Faza C: `/sprint Campaigns` — implementacja MISSING taskow
+  - Faza D: `/ads-check Campaigns` — weryfikacja wdrożenia vs plan
+  - Faza E: `/ads-user Campaigns` re-test (po implementacji)
+  - Faza F: `/visual-check` + update ceo-log DONE
+- **Stan wyjściowy:**
+  - Backend: `backend/app/routers/campaigns.py` — 6 endpointów (list, get, update, metrics, kpis, bidding target)
+  - Frontend: `frontend/src/features/campaigns/CampaignsPage.jsx` — 749 linii, 8 sekcji (Header + role + KPI + TrendExplorer + BudgetPacing + Device/Geo + ActionHistory)
+  - Akcje UI: role override/reset + nawigacja do Keywords/SearchTerms. **BRAK:** bid change, pauza/wznowienie, zmiana budżetu, negatives
+  - Testy Campaigns: 36 passed (test_campaign_roles + test_campaigns_clients_crud + test_campaigns_summary)
+- **Delegacja:** `/ads-user Campaigns` (start pipeline)
+- **Status:** STARTED
+
+### [2026-04-22] Campaigns — user wybral opcje C (pelny pipeline)
+- **Decyzja:** Sprint 1 (5 quick wins) + Sprint 2 (6 medium) + Sprint 3 (2 large: pause/enable + ad_groups)
+- **Rozumiane ryzyko:** nowy mutator `_mutate_campaign_status` (live write do Google Ads API), nowy router `/ad_groups`
+- **Delegacja:** /sprint Campaigns (implementacja planu ads-verify-campaigns.md)
+
+### [2026-04-22] Campaigns pipeline — ZAKONCZONY (opcja C: pelny Sprint 1+2+3)
+- **Status:** DONE
+- **Wynik:** 13/13 taskow zaimplementowanych (plan: 14 pozycji, 1 NOT_NEEDED, 1 DEFERRED P3)
+- **Czas implementacji:** ~4h (zamiast szacowanych 5-6 dni — dzieki recyklingowi mutatorow i wzorcom remote-first)
+- **Metryki:**
+  - 3 nowe endpointy: `PATCH /campaigns/{id}/status`, `PATCH /campaigns/{id}/budget`, `GET /ad_groups/`
+  - 1 nowy mutator: `_mutate_campaign_status` (CampaignService.mutate_campaigns)
+  - 1 nowy router: `backend/app/routers/ad_groups.py`
+  - 1 nowy komponent reusable: `frontend/src/components/AuctionInsightsTable.jsx` (wyciagniety z CompetitivePage)
+  - 1 nowy plik testow: `backend/tests/test_campaigns.py` (12 test cases, wszystkie PASS)
+  - Testy campaigns: 36 -> 48 passed (+12)
+  - Backend endpointow: 262 -> 265 (+3)
+  - Frontend build: OK (7.78s, 0 errors)
+- **Re-test ads-user (post-implementation):**
+  - Verdykt Marka: **"Tak, wchodziłbym tu codziennie — jedno z lepszych headline views"**
+  - Stosunek: **10 rzeczy > GAds** (było 6) vs 13 rzeczy brakuje
+  - **Zero P0** w nowym raporcie ads-expert (srednia 8.0/10)
+  - Wszystkie 3 pierwotne P0 (pause/enable, budget edit, ad groups drilldown + auction insights) — DONE
+- **Nowy plan ads-verify-campaigns.md (v2):** 10 taskow P1/P2/P3 dla v1.1 (bidding strategy switch, bulk actions, labels management, testy ad_groups, UI polish) — PRZESUNIETE do v1.1 roadmap
+- **Raporty:**
+  - [ads-user-campaigns.md](docs/reviews/ads-user-campaigns.md) (re-test)
+  - [ads-verify-campaigns.md](docs/reviews/ads-verify-campaigns.md) (v2 plan dla v1.1)
+  - [ads-check-campaigns.md](docs/reviews/ads-check-campaigns.md) (13/13 DONE)
+- **Uncommitted work:** wszystkie zmiany gotowe do `/done` (commit boundary + docs-sync + pm-check + push)

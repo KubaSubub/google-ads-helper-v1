@@ -25,8 +25,8 @@ export default function CampaignKpiRow({ kpis, campaignType }) {
         { label: 'ROAS', key: 'roas', suffix: '×', icon: BarChart3, color: '#FBBF24', tooltip: 'Return On Ad Spend' },
     ]
 
-    // IS metrics (SEARCH only)
-    const isItems = campaignType === 'SEARCH' ? [
+    // IS metrics (SEARCH + SHOPPING — Shopping też ma IS per Google Ads API)
+    const isItems = ['SEARCH', 'SHOPPING'].includes(campaignType) ? [
         { label: 'Impr. Share', key: 'search_impression_share', isPct: true, icon: ArrowUpRight, color: '#4F8EF7', tooltip: 'Udział w wyświetleniach' },
         { label: 'Top IS', key: 'search_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#7B5CE0', tooltip: 'Wyśw. na górze strony' },
         { label: 'Abs Top IS', key: 'search_abs_top_impression_share', isPct: true, icon: ArrowUpRight, color: '#7B5CE0', tooltip: 'Wyśw. na samej górze' },

@@ -636,6 +636,30 @@ class GoogleAdsMutationsMixin:
         operation.update_mask.CopyFrom(field_mask)
         budget_service.mutate_campaign_budgets(customer_id=customer_id, operations=[operation])
 
+    def _mutate_campaign_status(self, campaign, db: Session, new_status: str):
+        """Pause or enable a campaign via CampaignService."""
+        if not self.client:
+            return
+        if new_status not in ("ENABLED", "PAUSED"):
+            raise ValueError(f"Invalid campaign status: {new_status}")
+
+        client_record = db.get(Client, campaign.client_id)
+        if not client_record:
+            raise RuntimeError("Client not found for campaign status mutation")
+
+        customer_id = client_record.google_customer_id.replace("-", "")
+        service = self.client.get_service("CampaignService")
+        operation = self.client.get_type("CampaignOperation")
+        campaign_resource = service.campaign_path(customer_id, campaign.google_campaign_id)
+        campaign_obj = operation.update
+        campaign_obj.resource_name = campaign_resource
+        campaign_obj.status = getattr(self.client.enums.CampaignStatusEnum, new_status)
+
+        field_mask = self.client.get_type("FieldMask")
+        field_mask.paths.append("status")
+        operation.update_mask.CopyFrom(field_mask)
+        service.mutate_campaigns(customer_id=customer_id, operations=[operation])
+
     def _mutate_campaign_bidding_target(self, campaign, db: Session, field: str, value):
         """Update campaign target_cpa or target_roas in Google Ads."""
         if not self.client:

@@ -41,6 +41,7 @@ from app.config import settings
 from app.database import init_db
 from app.routers import (
     actions,
+    ad_groups,
     agent,
     analytics,
     auth,
@@ -112,6 +113,7 @@ protected = [Depends(require_session)]
 app.include_router(auth.router, prefix=API_PREFIX, tags=["auth"])
 app.include_router(clients.router, prefix=API_PREFIX, tags=["clients"], dependencies=protected)
 app.include_router(campaigns.router, prefix=API_PREFIX, tags=["campaigns"], dependencies=protected)
+app.include_router(ad_groups.router, prefix=API_PREFIX, tags=["ad-groups"], dependencies=protected)
 app.include_router(search_terms.router, prefix=API_PREFIX, tags=["search-terms"], dependencies=protected)
 app.include_router(keywords_ads.router, prefix=API_PREFIX, tags=["keywords", "ads"], dependencies=protected)
 app.include_router(analytics.router, prefix=API_PREFIX, tags=["analytics"], dependencies=protected)

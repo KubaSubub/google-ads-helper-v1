@@ -342,6 +342,12 @@ export const getConversionValueRules = (clientId) =>
     api.get('/analytics/conversion-value-rules', { params: { client_id: clientId } });
 export const updateBiddingTarget = (campaignId, field, value) =>
     api.patch(`/campaigns/${campaignId}/bidding-target`, null, { params: { field, value } });
+export const updateCampaignBudget = (campaignId, budgetMicros) =>
+    api.patch(`/campaigns/${campaignId}/budget`, null, { params: { budget_micros: budgetMicros } });
+export const updateCampaignStatus = (campaignId, newStatus) =>
+    api.patch(`/campaigns/${campaignId}/status`, null, { params: { new_status: newStatus } });
+export const getCampaignAdGroups = (campaignId, params = {}) =>
+    api.get('/ad_groups/', { params: { campaign_id: campaignId, ...params } });
 export const addPlacementExclusion = (clientId, campaignId, placementUrl) =>
     api.post('/analytics/placement-exclusion', null, { params: { client_id: clientId, campaign_id: campaignId, placement_url: placementUrl } });
 

@@ -68,6 +68,7 @@ def list_actions(
             "entity_type": action.entity_type,
             "entity_id": action.entity_id,
             "entity_name": None,
+            "campaign_id": None,
             "campaign_name": None,
             "status": action.status,
             "execution_mode": action.execution_mode,
@@ -94,11 +95,13 @@ def list_actions(
                 if ag:
                     camp = camp_map.get(ag.campaign_id)
                     if camp:
+                        result["campaign_id"] = camp.id
                         result["campaign_name"] = camp.name
         elif action.entity_type == "campaign":
             camp = camp_map.get(eid)
             if camp:
                 result["entity_name"] = camp.name
+                result["campaign_id"] = camp.id
                 result["campaign_name"] = camp.name
         return result
 

@@ -18,8 +18,9 @@ router = APIRouter(prefix="/history", tags=["History"])
 # ------------------------------------------------------------------
 
 def _enrich_action(action: ActionLog, db: Session) -> dict:
-    """Add entity_name and campaign_name to an action_log entry."""
+    """Add entity_name, campaign_id and campaign_name to an action_log entry."""
     entity_name = None
+    campaign_id = None
     campaign_name = None
 
     try:
@@ -31,17 +32,20 @@ def _enrich_action(action: ActionLog, db: Session) -> dict:
                 if ag:
                     camp = db.query(Campaign).filter(Campaign.id == ag.campaign_id).first()
                     if camp:
+                        campaign_id = camp.id
                         campaign_name = camp.name
         elif action.entity_type == "campaign" and action.entity_id:
             camp = db.query(Campaign).filter(Campaign.id == int(action.entity_id)).first()
             if camp:
                 entity_name = camp.name
+                campaign_id = camp.id
                 campaign_name = camp.name
     except (ValueError, TypeError):
         pass
 
     return {
         "entity_name": entity_name,
+        "campaign_id": campaign_id,
         "campaign_name": campaign_name,
     }
 
@@ -161,6 +165,14 @@ def unified_timeline(
     entries = []
     now = datetime.now(timezone.utc)
 
+    # Batch lookup: campaign_name -> campaign_id (for external ChangeEvent path)
+    camp_name_to_id = {}
+    try:
+        client_campaigns = db.query(Campaign.id, Campaign.name).filter(Campaign.client_id == client_id).all()
+        camp_name_to_id = {name: cid for cid, name in client_campaigns}
+    except Exception:
+        pass
+
     for a in actions:
         enriched = _enrich_action(a, db)
         executed_at = a.executed_at
@@ -174,6 +186,7 @@ def unified_timeline(
             "resource_type": a.entity_type or "",
             "entity_id": a.entity_id,
             "entity_name": enriched["entity_name"],
+            "campaign_id": enriched["campaign_id"],
             "campaign_name": enriched["campaign_name"],
             "user_email": None,
             "client_type": "GOOGLE_ADS_HELPER",
@@ -199,6 +212,7 @@ def unified_timeline(
             "resource_type": e.change_resource_type or "",
             "entity_id": e.entity_id,
             "entity_name": e.entity_name,
+            "campaign_id": camp_name_to_id.get(e.campaign_name),
             "campaign_name": e.campaign_name,
             "user_email": e.user_email,
             "client_type": e.client_type,

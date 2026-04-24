@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-    KeyRound, Search, Monitor, MapPin, Clock,
-    Filter, X, ArrowDownUp,
+    KeyRound, Search, Monitor, MapPin, Clock, Trophy, Pause, Play,
+    Filter, X, ArrowDownUp, Pencil, ChevronDown, ChevronUp, Layers,
 } from 'lucide-react'
 import {
     getCampaigns, getCampaignKPIs, updateCampaign,
     getDeviceBreakdown, getGeoBreakdown, getBudgetPacing,
-    getUnifiedTimeline, getCampaignsSummary,
+    getUnifiedTimeline, getCampaignsSummary, getAuctionInsights,
+    updateCampaignBudget, updateCampaignStatus, updateBiddingTarget,
+    getCampaignAdGroups,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
@@ -18,6 +20,7 @@ import { BudgetPacingModule } from '../../components/modules'
 import DarkSelect from '../../components/DarkSelect'
 import CampaignKpiRow from './components/CampaignKpiRow'
 import TrendExplorer from '../../components/TrendExplorer'
+import AuctionInsightsTable from '../../components/AuctionInsightsTable'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -47,6 +50,12 @@ const PROTECTION_CONFIG = {
     HIGH: { color: C.danger, bg: C.dangerBg },
     MEDIUM: { color: C.warning, bg: C.warningBg },
     LOW: { color: C.success, bg: C.successBg },
+}
+
+const PROTECTION_TOOLTIPS = {
+    HIGH: 'Poziom HIGH: automatyzacja nie zmienia bidów/budżetów/statusów bez potwierdzenia użytkownika. Zalecane dla kampanii Brand i PMax.',
+    MEDIUM: 'Poziom MEDIUM: drobne korekty bidów ±20% dozwolone automatycznie, większe zmiany wymagają potwierdzenia.',
+    LOW: 'Poziom LOW: pełna automatyzacja. Bidy, budżety i negatives mogą być zmieniane bez interakcji użytkownika.',
 }
 
 const ROLE_SOURCE_LABELS = {
@@ -220,11 +229,29 @@ export default function CampaignsPage() {
     // Secondary data
     const [deviceData, setDeviceData] = useState(null)
     const [geoData, setGeoData] = useState(null)
+    const [auctionData, setAuctionData] = useState(null)
     const [budgetPacing, setBudgetPacing] = useState(null)
+    const [pacingAll, setPacingAll] = useState(null)
     const [actionTimeline, setActionTimeline] = useState([])
     const [loadingSecondary, setLoadingSecondary] = useState(false)
     const [roleDraft, setRoleDraft] = useState('')
     const [savingRole, setSavingRole] = useState(false)
+
+    // Mutations state
+    const [busyAction, setBusyAction] = useState(null) // 'status' | 'budget' | 'bidding'
+    const [budgetModalOpen, setBudgetModalOpen] = useState(false)
+    const [budgetDraft, setBudgetDraft] = useState('')
+    const [biddingModalOpen, setBiddingModalOpen] = useState(false)
+    const [biddingDraft, setBiddingDraft] = useState('')
+    const [showRoleCard, setShowRoleCard] = useState(() => localStorage.getItem('campaignShowRole') !== 'false')
+
+    // Ad groups
+    const [adGroups, setAdGroups] = useState([])
+    const [loadingAdGroups, setLoadingAdGroups] = useState(false)
+
+    useEffect(() => {
+        localStorage.setItem('campaignShowRole', showRoleCard ? 'true' : 'false')
+    }, [showRoleCard])
 
     useEffect(() => {
         if (selectedClientId) loadCampaigns()
@@ -233,14 +260,16 @@ export default function CampaignsPage() {
     async function loadCampaigns() {
         setLoading(true)
         try {
-            const [data, summaryData] = await Promise.all([
+            const [data, summaryData, pacingData] = await Promise.all([
                 getCampaigns(selectedClientId, campaignParams),
                 getCampaignsSummary(selectedClientId, allParams).catch(() => ({ campaigns: {} })),
+                getBudgetPacing(selectedClientId, campaignParams).catch(() => null),
             ])
             const items = data.items || []
             setCampaigns(items)
             setCampSummary(summaryData?.campaigns || {})
-            if (items.length > 0) selectCampaign(items[0])
+            setPacingAll(pacingData)
+            if (items.length > 0) selectCampaign(items[0], pacingData)
         } catch (err) {
             setError(err.message)
         } finally {
@@ -248,11 +277,12 @@ export default function CampaignsPage() {
         }
     }
 
-    const selectCampaign = useCallback(async (campaign) => {
+    const selectCampaign = useCallback(async (campaign, pacingOverride = null) => {
         setSelected(campaign)
         setKpis(null)
         setDeviceData(null)
         setGeoData(null)
+        setAuctionData(null)
         setBudgetPacing(null)
         setActionTimeline([])
 
@@ -263,23 +293,27 @@ export default function CampaignsPage() {
             console.error('Failed to load campaign details:', err)
         }
 
+        // Pacing from cached pacingAll (loaded once in loadCampaigns per client)
+        const pacingSource = pacingOverride || pacingAll
+        const thisCampPacing = pacingSource?.campaigns?.find(c => c.campaign_id === campaign.id)
+        setBudgetPacing(thisCampPacing)
+
         // Secondary data (non-blocking)
         setLoadingSecondary(true)
         Promise.all([
             getDeviceBreakdown(selectedClientId, { ...allParams, campaign_id: campaign.id }).catch(() => null),
             getGeoBreakdown(selectedClientId, { ...allParams, campaign_id: campaign.id }).catch(() => null),
-            getBudgetPacing(selectedClientId, campaignParams).catch(() => null),
             getUnifiedTimeline(selectedClientId, { limit: 200 }).catch(() => ({ entries: [] })),
-        ]).then(([dev, geo, bp, timeline]) => {
+            getAuctionInsights(selectedClientId, { ...allParams, campaign_id: campaign.id }).catch(() => null),
+        ]).then(([dev, geo, timeline, auction]) => {
             setDeviceData(dev)
             setGeoData(geo)
-            const thisCampPacing = bp?.campaigns?.find(c => c.campaign_id === campaign.id)
-            setBudgetPacing(thisCampPacing)
-            const filtered = (timeline?.entries || []).filter(e => e.campaign_name === campaign.name)
+            setAuctionData(Array.isArray(auction) ? auction : [])
+            const filtered = (timeline?.entries || []).filter(e => e.campaign_id === campaign.id || e.campaign_name === campaign.name)
             setActionTimeline(filtered)
             setLoadingSecondary(false)
         })
-    }, [selectedClientId, allParams, dateParams, campaignParams])
+    }, [selectedClientId, allParams, dateParams, pacingAll])
 
     // Re-fetch on date change
     useEffect(() => {
@@ -327,6 +361,115 @@ export default function CampaignsPage() {
             setSavingRole(false)
         }
     }
+
+    async function handleToggleStatus() {
+        if (!selected) return
+        const newStatus = selected.status === 'ENABLED' ? 'PAUSED' : 'ENABLED'
+        const actionLabel = newStatus === 'PAUSED' ? 'Wstrzymac' : 'Wznowic'
+        const estimate = campSummary[String(selected.id)]
+        const dailyClicks = estimate?.clicks && filters.days ? Math.round(estimate.clicks / filters.days) : null
+        const confirmMsg = `${actionLabel} kampanie "${selected.name}"?${dailyClicks ? `\n\nSredni dzienny ruch: ~${dailyClicks} kliknięć.` : ''}`
+        if (!window.confirm(confirmMsg)) return
+        setBusyAction('status')
+        try {
+            const result = await updateCampaignStatus(selected.id, newStatus)
+            mergeCampaignState({ id: selected.id, status: result.new_status })
+            showToast(
+                result.api_synced
+                    ? `Kampania ${newStatus === 'PAUSED' ? 'wstrzymana' : 'wznowiona'} (API + LOCAL)`
+                    : `Kampania ${newStatus === 'PAUSED' ? 'wstrzymana' : 'wznowiona'} (LOCAL, pending sync)`,
+                'success',
+            )
+        } catch (err) {
+            showToast('Blad zmiany statusu: ' + err.message, 'error')
+        } finally {
+            setBusyAction(null)
+        }
+    }
+
+    function openBudgetModal() {
+        if (!selected) return
+        const currentBudgetZl = ((selected.budget_micros || 0) / 1_000_000).toFixed(2)
+        setBudgetDraft(currentBudgetZl)
+        setBudgetModalOpen(true)
+    }
+
+    async function handleSaveBudget() {
+        if (!selected) return
+        const budgetZl = parseFloat(budgetDraft)
+        if (isNaN(budgetZl) || budgetZl <= 0) {
+            showToast('Wprowadz dodatnia kwote budzetu', 'error')
+            return
+        }
+        const newMicros = Math.round(budgetZl * 1_000_000)
+        const oldMicros = selected.budget_micros || 0
+        const changePct = oldMicros ? Math.abs((newMicros - oldMicros) / oldMicros * 100) : 0
+        if (changePct > 30) {
+            if (!window.confirm(`Zmiana budzetu o ${changePct.toFixed(0)}% (>30%) — kontynuowac?`)) return
+        }
+        setBusyAction('budget')
+        try {
+            const result = await updateCampaignBudget(selected.id, newMicros)
+            mergeCampaignState({ id: selected.id, budget_micros: result.new_budget_micros, budget_usd: result.new_budget_micros / 1_000_000 })
+            showToast(result.api_synced ? 'Budzet zapisany (API + LOCAL)' : 'Budzet zapisany (LOCAL, pending sync)', 'success')
+            setBudgetModalOpen(false)
+        } catch (err) {
+            showToast('Blad zapisu budzetu: ' + err.message, 'error')
+        } finally {
+            setBusyAction(null)
+        }
+    }
+
+    function openBiddingModal() {
+        if (!selected) return
+        const field = selected.target_cpa_micros ? 'target_cpa_micros' : selected.target_roas ? 'target_roas' : 'target_cpa_micros'
+        const current = field === 'target_cpa_micros'
+            ? ((selected.target_cpa_micros || 0) / 1_000_000).toFixed(2)
+            : (selected.target_roas || 0).toFixed(2)
+        setBiddingDraft(current)
+        setBiddingModalOpen(true)
+    }
+
+    async function handleSaveBidding() {
+        if (!selected) return
+        const val = parseFloat(biddingDraft)
+        if (isNaN(val) || val <= 0) {
+            showToast('Wprowadz poprawna wartosc', 'error')
+            return
+        }
+        const field = selected.target_cpa_micros ? 'target_cpa_micros' : selected.target_roas ? 'target_roas' : 'target_cpa_micros'
+        const apiVal = field === 'target_cpa_micros' ? Math.round(val * 1_000_000) : val
+        setBusyAction('bidding')
+        try {
+            const result = await updateBiddingTarget(selected.id, field, apiVal)
+            const update = field === 'target_cpa_micros'
+                ? { id: selected.id, target_cpa_micros: result.new_value }
+                : { id: selected.id, target_roas: result.new_value }
+            mergeCampaignState(update)
+            showToast(result.api_synced ? 'Cel licytacji zapisany (API + LOCAL)' : 'Cel licytacji zapisany (LOCAL, pending sync)', 'success')
+            setBiddingModalOpen(false)
+        } catch (err) {
+            showToast('Blad zapisu celu licytacji: ' + err.message, 'error')
+        } finally {
+            setBusyAction(null)
+        }
+    }
+
+    // Load ad groups when campaign selected or date changes
+    useEffect(() => {
+        if (!selected) {
+            setAdGroups([])
+            return
+        }
+        setLoadingAdGroups(true)
+        const params = {}
+        if (dateParams?.date_from) params.date_from = dateParams.date_from
+        if (dateParams?.date_to) params.date_to = dateParams.date_to
+        getCampaignAdGroups(selected.id, params)
+            .then(data => setAdGroups(data?.items || []))
+            .catch(() => setAdGroups([]))
+            .finally(() => setLoadingAdGroups(false))
+    }, [selected?.id, dateParams?.date_from, dateParams?.date_to])
 
     // Campaigns filtered by backend (type/status) + in-memory name/label/metric filter + sort
     const filteredCampaigns = useMemo(() => {
@@ -521,7 +664,7 @@ export default function CampaignsPage() {
                     {selected ? (
                         <>
                             {/* Header */}
-                            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary }}>{selected.name}</span>
                                 {(() => {
                                     const sCfg = STATUS_CONFIG[selected.status] || { color: '#666', label: selected.status }
@@ -530,10 +673,60 @@ export default function CampaignsPage() {
                                 {selected.bidding_strategy && (
                                     <span style={{ fontSize: 10, color: C.w25, marginLeft: 4 }}>
                                         {selected.bidding_strategy}
-                                        {selected.target_cpa_micros ? ` · CPA ${(selected.target_cpa_micros / 1000000).toFixed(2)} zł` : ''}
-                                        {selected.target_roas ? ` · ROAS ${selected.target_roas}` : ''}
                                     </span>
                                 )}
+                                {/* Target CPA/ROAS z pencil */}
+                                {(selected.target_cpa_micros || selected.target_roas) && (
+                                    <button
+                                        onClick={openBiddingModal}
+                                        disabled={busyAction === 'bidding'}
+                                        title="Edytuj cel licytacji"
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 4,
+                                            fontSize: 10, color: C.w40, background: 'transparent',
+                                            border: `1px solid ${C.w10}`, borderRadius: 6, padding: '2px 6px',
+                                            cursor: busyAction === 'bidding' ? 'wait' : 'pointer',
+                                        }}
+                                    >
+                                        {selected.target_cpa_micros ? `CPA ${(selected.target_cpa_micros / 1_000_000).toFixed(2)} zł` : `ROAS ${selected.target_roas?.toFixed(2)}×`}
+                                        <Pencil size={9} />
+                                    </button>
+                                )}
+                                {/* Budget with pencil */}
+                                <button
+                                    onClick={openBudgetModal}
+                                    disabled={busyAction === 'budget'}
+                                    title="Edytuj budzet dzienny"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                        fontSize: 10, color: C.w40, background: 'transparent',
+                                        border: `1px solid ${C.w10}`, borderRadius: 6, padding: '2px 6px',
+                                        cursor: busyAction === 'budget' ? 'wait' : 'pointer',
+                                    }}
+                                >
+                                    Budzet {((selected.budget_micros || 0) / 1_000_000).toFixed(0)} zł/d
+                                    <Pencil size={9} />
+                                </button>
+                                {/* Pause / Enable button */}
+                                <button
+                                    onClick={handleToggleStatus}
+                                    disabled={busyAction === 'status' || selected.status === 'REMOVED'}
+                                    title={selected.status === 'ENABLED' ? 'Wstrzymaj kampanie' : 'Wznow kampanie'}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                        fontSize: 11, fontWeight: 500,
+                                        color: selected.status === 'ENABLED' ? C.warning : C.success,
+                                        background: selected.status === 'ENABLED' ? C.warningBg : C.successBg,
+                                        border: `1px solid ${selected.status === 'ENABLED' ? C.warning : C.success}40`,
+                                        borderRadius: 8, padding: '4px 10px',
+                                        cursor: busyAction === 'status' ? 'wait' : 'pointer',
+                                        marginLeft: 'auto',
+                                        opacity: busyAction === 'status' ? 0.5 : 1,
+                                    }}
+                                >
+                                    {selected.status === 'ENABLED' ? <Pause size={11} /> : <Play size={11} />}
+                                    {selected.status === 'ENABLED' ? 'Wstrzymaj' : 'Wznow'}
+                                </button>
                             </div>
                             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                                 <button
@@ -560,28 +753,61 @@ export default function CampaignsPage() {
                                 </button>
                             </div>
 
-                            <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16 }}>
-                                <div className="flex items-center justify-between flex-wrap" style={{ gap: 10, marginBottom: 12 }}>
-                                    <div>
+                            <div className="v2-card" style={{ padding: showRoleCard ? '14px 18px' : '8px 14px', marginBottom: 16 }}>
+                                <div className="flex items-center justify-between flex-wrap" style={{ gap: 10, marginBottom: showRoleCard ? 12 : 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                         <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
                                             Rola kampanii
                                         </div>
-                                        <div style={{ fontSize: 11, color: C.w40, marginTop: 2 }}>
-                                            Auto-klasyfikacja jest deterministyczna. Manual override blokuje nadpisanie przez sync.
-                                        </div>
+                                        {!showRoleCard && (
+                                            <span style={{ fontSize: 11, color: C.w60 }}>
+                                                {ROLE_LABELS[selected.campaign_role_final] || ROLE_LABELS[selected.campaign_role_auto] || 'Unknown'}
+                                                {' · '}
+                                                <span style={{ color: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).color }}>
+                                                    Protection {selected.protection_level || 'HIGH'}
+                                                </span>
+                                                {selected.role_confidence != null && (
+                                                    <span style={{ color: C.w40 }}>{' · '}Confidence {Math.round(selected.role_confidence * 100)}%</span>
+                                                )}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(79,142,247,0.12)', color: C.accentBlue }}>
-                                            {ROLE_SOURCE_LABELS[selected.role_source] || selected.role_source || 'Auto'}
-                                        </span>
-                                        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).bg, color: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).color }}>
-                                            Protection {selected.protection_level || 'HIGH'}
-                                        </span>
-                                        <span style={{ fontSize: 10, color: C.textPlaceholder }}>
-                                            Confidence {selected.role_confidence != null ? `${Math.round(selected.role_confidence * 100)}%` : '—'}
-                                        </span>
+                                        {showRoleCard && (
+                                            <>
+                                                <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(79,142,247,0.12)', color: C.accentBlue }}>
+                                                    {ROLE_SOURCE_LABELS[selected.role_source] || selected.role_source || 'Auto'}
+                                                </span>
+                                                <span
+                                                    title={PROTECTION_TOOLTIPS[selected.protection_level] || PROTECTION_TOOLTIPS.HIGH}
+                                                    style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).bg, color: (PROTECTION_CONFIG[selected.protection_level] || PROTECTION_CONFIG.HIGH).color, cursor: 'help' }}
+                                                >
+                                                    Protection {selected.protection_level || 'HIGH'}
+                                                </span>
+                                                <span style={{ fontSize: 10, color: C.textPlaceholder }}>
+                                                    Confidence {selected.role_confidence != null ? `${Math.round(selected.role_confidence * 100)}%` : '—'}
+                                                </span>
+                                            </>
+                                        )}
+                                        <button
+                                            onClick={() => setShowRoleCard(v => !v)}
+                                            title={showRoleCard ? 'Zwin sekcje roli' : 'Rozwin sekcje roli'}
+                                            style={{
+                                                background: 'transparent', border: `1px solid ${C.w10}`,
+                                                borderRadius: 6, padding: '3px 6px', cursor: 'pointer', color: C.w40,
+                                                display: 'flex', alignItems: 'center',
+                                            }}
+                                        >
+                                            {showRoleCard ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                        </button>
                                     </div>
                                 </div>
+                                {showRoleCard && (
+                                <div style={{ fontSize: 11, color: C.w40, marginBottom: 10 }}>
+                                    Auto-klasyfikacja jest deterministyczna. Manual override blokuje nadpisanie przez sync.
+                                </div>
+                                )}
+                                {showRoleCard && (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 220px auto auto', gap: 10, alignItems: 'end' }}>
                                     <div>
                                         <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>
@@ -639,10 +865,63 @@ export default function CampaignsPage() {
                                         Reset to auto
                                     </button>
                                 </div>
+                                )}
                             </div>
 
                             {/* 1. KPI Tiles (ALL metrics) */}
                             <CampaignKpiRow kpis={kpis} campaignType={selected.campaign_type} />
+
+                            {/* 1b. Ad Groups table */}
+                            <div className="v2-card" style={{ padding: '14px 18px', marginBottom: 16 }}>
+                                <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+                                    <div className="flex items-center gap-2">
+                                        <Layers size={14} style={{ color: C.accentPurple }} />
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
+                                            Grupy reklam ({adGroups.length})
+                                        </span>
+                                    </div>
+                                </div>
+                                {loadingAdGroups ? (
+                                    <div style={{ fontSize: 11, color: C.w30, padding: '12px 0', textAlign: 'center' }}>Ładowanie…</div>
+                                ) : adGroups.length === 0 ? (
+                                    <div style={{ fontSize: 11, color: C.w30, padding: '12px 0', textAlign: 'center' }}>Brak grup reklam (lub brak metryk w zakresie dat)</div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr>
+                                                {['Nazwa', 'Status', 'Kliknięcia', 'Koszt', 'Konw.', 'CPA', 'ROAS'].map(h => (
+                                                    <th key={h} style={{
+                                                        padding: '4px 6px', fontSize: 10, fontWeight: 500,
+                                                        color: C.textMuted, textTransform: 'uppercase',
+                                                        letterSpacing: '0.08em', textAlign: h === 'Nazwa' || h === 'Status' ? 'left' : 'right',
+                                                    }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {adGroups.map(ag => {
+                                                const sCfg = STATUS_CONFIG[ag.status] || { color: '#666', label: ag.status }
+                                                return (
+                                                    <tr
+                                                        key={ag.id}
+                                                        onClick={() => navigate(`/keywords?campaign_id=${selected.id}&ad_group_id=${ag.id}&campaign_name=${encodeURIComponent(selected.name)}`)}
+                                                        style={{ borderTop: `1px solid ${C.w04}`, cursor: 'pointer' }}
+                                                        className="hover:bg-white/[0.03]"
+                                                    >
+                                                        <td style={{ padding: '8px 6px', fontSize: 12, color: C.textPrimary }}>{ag.name}</td>
+                                                        <td style={{ padding: '8px 6px', fontSize: 11, color: sCfg.color }}>● {sCfg.label}</td>
+                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.clicks.toLocaleString('pl-PL')}</td>
+                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.cost.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł</td>
+                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.conversions.toFixed(1)}</td>
+                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.cpa ? `${ag.cpa.toFixed(2)} zł` : '—'}</td>
+                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: ag.roas >= 3 ? C.success : ag.roas >= 1 ? C.warning : C.danger }}>{ag.roas.toFixed(2)}×</td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
 
                             {/* 2. Trend Explorer — unified component scoped to this campaign */}
                             <div style={{ marginBottom: 16 }}>
@@ -659,75 +938,102 @@ export default function CampaignsPage() {
                                 title="Pacing budżetu"
                             />
 
-                            {/* 4. Device + Geo Breakdown */}
-                            {(deviceData?.devices?.length > 0 || geoData?.cities?.length > 0) && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                                    {/* Device */}
-                                    {deviceData?.devices?.length > 0 && (
-                                        <div className="v2-card" style={{ padding: '16px 20px' }}>
-                                            <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                                                <Monitor size={14} style={{ color: C.accentBlue }} />
-                                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>Urządzenia</span>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                                {deviceData.devices.map(d => {
-                                                    const color = d.device === 'MOBILE' ? C.accentBlue : d.device === 'DESKTOP' ? C.accentPurple : C.warning
-                                                    return (
-                                                        <div key={d.device}>
-                                                            <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                                                                <span style={{ fontSize: 12, fontWeight: 500, color: C.textPrimary }}>{d.device}</span>
-                                                                <span style={{ fontSize: 11, color: C.w40 }}>{d.share_clicks_pct}% kliknięć</span>
-                                                            </div>
-                                                            <div style={{ height: 4, borderRadius: 2, background: C.w06 }}>
-                                                                <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
-                                                            </div>
-                                                            <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: C.textMuted }}>
-                                                                <span>CTR {d.ctr}% · CPC {d.cpc?.toFixed(2)} zł</span>
-                                                                <span>ROAS {d.roas}×</span>
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
+                            {/* 4. Device + Geo Breakdown — zawsze renderowane (empty-state gdy brak danych) */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                                {/* Device */}
+                                <div className="v2-card" style={{ padding: '16px 20px' }}>
+                                    <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                                        <Monitor size={14} style={{ color: C.accentBlue }} />
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>Urządzenia</span>
+                                    </div>
+                                    {loadingSecondary && !deviceData ? (
+                                        <div style={{ fontSize: 11, color: C.w30, padding: '12px 0', textAlign: 'center' }}>
+                                            Ładowanie…
                                         </div>
-                                    )}
-
-                                    {/* Geo */}
-                                    {geoData?.cities?.length > 0 && (
-                                        <div className="v2-card" style={{ padding: '16px 20px' }}>
-                                            <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                                                <MapPin size={14} style={{ color: C.accentPurple }} />
-                                                <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>Top miasta</span>
-                                            </div>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                                <thead>
-                                                    <tr>
-                                                        {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
-                                                            <th key={h} style={{
-                                                                padding: '4px 6px', fontSize: 10, fontWeight: 500,
-                                                                color: C.textMuted, textTransform: 'uppercase',
-                                                                letterSpacing: '0.08em', textAlign: h === 'Miasto' ? 'left' : 'right',
-                                                            }}>{h}</th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {geoData.cities.slice(0, 8).map(c => (
-                                                        <tr key={c.city} style={{ borderTop: `1px solid ${C.w04}` }}>
-                                                            <td style={{ padding: '6px', fontSize: 12, color: C.textPrimary }}>{c.city}</td>
-                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.clicks}</td>
-                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.cost_usd?.toFixed(0)} zł</td>
-                                                            <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? C.success : c.roas >= 1 ? C.warning : C.danger }}>{c.roas?.toFixed(2)}×</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                    ) : !deviceData?.devices?.length ? (
+                                        <div style={{ fontSize: 11, color: C.w30, padding: '12px 0', textAlign: 'center' }}>
+                                            Brak danych urządzeń w wybranym okresie
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                            {deviceData.devices.map(d => {
+                                                const color = d.device === 'MOBILE' ? C.accentBlue : d.device === 'DESKTOP' ? C.accentPurple : C.warning
+                                                return (
+                                                    <div key={d.device}>
+                                                        <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                                                            <span style={{ fontSize: 12, fontWeight: 500, color: C.textPrimary }}>{d.device}</span>
+                                                            <span style={{ fontSize: 11, color: C.w40 }}>{d.share_clicks_pct}% kliknięć</span>
+                                                        </div>
+                                                        <div style={{ height: 4, borderRadius: 2, background: C.w06 }}>
+                                                            <div style={{ height: '100%', borderRadius: 2, background: color, width: `${d.share_clicks_pct}%`, transition: 'width 0.3s' }} />
+                                                        </div>
+                                                        <div className="flex items-center justify-between" style={{ marginTop: 4, fontSize: 10, color: C.textMuted }}>
+                                                            <span>CTR {d.ctr}% · CPC {d.cpc?.toFixed(2)} zł</span>
+                                                            <span>ROAS {d.roas}×</span>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Geo */}
+                                <div className="v2-card" style={{ padding: '16px 20px' }}>
+                                    <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                                        <MapPin size={14} style={{ color: C.accentPurple }} />
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>Top miasta</span>
+                                    </div>
+                                    {loadingSecondary && !geoData ? (
+                                        <div style={{ fontSize: 11, color: C.w30, padding: '12px 0', textAlign: 'center' }}>
+                                            Ładowanie…
+                                        </div>
+                                    ) : !geoData?.cities?.length ? (
+                                        <div style={{ fontSize: 11, color: C.w30, padding: '12px 0', textAlign: 'center' }}>
+                                            Brak danych geograficznych w wybranym okresie
+                                        </div>
+                                    ) : (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr>
+                                                    {['Miasto', 'Kliknięcia', 'Koszt', 'ROAS'].map(h => (
+                                                        <th key={h} style={{
+                                                            padding: '4px 6px', fontSize: 10, fontWeight: 500,
+                                                            color: C.textMuted, textTransform: 'uppercase',
+                                                            letterSpacing: '0.08em', textAlign: h === 'Miasto' ? 'left' : 'right',
+                                                        }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {geoData.cities.slice(0, 8).map(c => (
+                                                    <tr key={c.city} style={{ borderTop: `1px solid ${C.w04}` }}>
+                                                        <td style={{ padding: '6px', fontSize: 12, color: C.textPrimary }}>{c.city}</td>
+                                                        <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.clicks}</td>
+                                                        <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{c.cost_usd?.toFixed(0)} zł</td>
+                                                        <td style={{ padding: '6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: c.roas >= 3 ? C.success : c.roas >= 1 ? C.warning : C.danger }}>{c.roas?.toFixed(2)}×</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 5. Auction Insights (konkurencja dla tej kampanii) */}
+                            {auctionData && auctionData.length > 0 && (
+                                <div className="v2-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+                                    <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                                        <Trophy size={14} style={{ color: C.accentBlue }} />
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
+                                            Auction Insights — konkurencja
+                                        </span>
+                                    </div>
+                                    <AuctionInsightsTable rows={auctionData} compact={true} limit={8} />
+                                </div>
                             )}
 
-                            {/* 5. Action History Timeline */}
+                            {/* 6. Action History Timeline */}
                             <ActionHistoryTimeline entries={actionTimeline} />
 
                             {/* Loading secondary */}
@@ -744,6 +1050,142 @@ export default function CampaignsPage() {
                     )}
                 </div>
             </div>
+
+            {/* Budget edit modal */}
+            {budgetModalOpen && selected && (
+                <div
+                    onClick={() => setBudgetModalOpen(false)}
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        className="v2-card"
+                        style={{ padding: 24, minWidth: 360, maxWidth: 440 }}
+                    >
+                        <h3 style={{ fontSize: 16, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne', marginBottom: 12 }}>
+                            Edytuj budzet dzienny
+                        </h3>
+                        <div style={{ fontSize: 11, color: C.w40, marginBottom: 16 }}>
+                            Kampania: <span style={{ color: C.textPrimary }}>{selected.name}</span>
+                        </div>
+                        <label style={{ display: 'block', fontSize: 11, color: C.w60, marginBottom: 6 }}>Budzet dzienny (zł)</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            value={budgetDraft}
+                            onChange={e => setBudgetDraft(e.target.value)}
+                            autoFocus
+                            style={{
+                                width: '100%', background: C.w06, border: `1px solid ${C.w10}`,
+                                borderRadius: 8, padding: '8px 10px', fontSize: 13, color: C.textPrimary, marginBottom: 12,
+                            }}
+                        />
+                        <div className="flex items-center gap-2" style={{ marginBottom: 16 }}>
+                            {[10, 20, 50].map(pct => {
+                                const oldZl = (selected.budget_micros || 0) / 1_000_000
+                                const newZl = oldZl * (1 + pct / 100)
+                                return (
+                                    <button
+                                        key={pct}
+                                        onClick={() => setBudgetDraft(newZl.toFixed(2))}
+                                        style={{
+                                            background: C.infoBg, border: `1px solid ${C.infoBorder}`,
+                                            borderRadius: 6, padding: '4px 10px', fontSize: 11,
+                                            color: C.accentBlue, cursor: 'pointer',
+                                        }}
+                                    >
+                                        +{pct}%
+                                    </button>
+                                )
+                            })}
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => setBudgetModalOpen(false)}
+                                style={{ background: 'transparent', border: `1px solid ${C.w10}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, color: C.w60, cursor: 'pointer' }}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                onClick={handleSaveBudget}
+                                disabled={busyAction === 'budget'}
+                                style={{
+                                    background: C.accentBlue, border: 'none', borderRadius: 8,
+                                    padding: '6px 14px', fontSize: 12, fontWeight: 600, color: 'white',
+                                    cursor: busyAction === 'budget' ? 'wait' : 'pointer',
+                                    opacity: busyAction === 'budget' ? 0.5 : 1,
+                                }}
+                            >
+                                Zapisz
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bidding target edit modal */}
+            {biddingModalOpen && selected && (
+                <div
+                    onClick={() => setBiddingModalOpen(false)}
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        className="v2-card"
+                        style={{ padding: 24, minWidth: 360, maxWidth: 440 }}
+                    >
+                        <h3 style={{ fontSize: 16, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne', marginBottom: 12 }}>
+                            Edytuj cel licytacji
+                        </h3>
+                        <div style={{ fontSize: 11, color: C.w40, marginBottom: 16 }}>
+                            Kampania: <span style={{ color: C.textPrimary }}>{selected.name}</span>
+                            {' · '}Strategia: <span style={{ color: C.textPrimary }}>{selected.bidding_strategy}</span>
+                        </div>
+                        <label style={{ display: 'block', fontSize: 11, color: C.w60, marginBottom: 6 }}>
+                            {selected.target_cpa_micros ? 'Target CPA (zł)' : selected.target_roas ? 'Target ROAS (×)' : 'Target CPA (zł)'}
+                        </label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={biddingDraft}
+                            onChange={e => setBiddingDraft(e.target.value)}
+                            autoFocus
+                            style={{
+                                width: '100%', background: C.w06, border: `1px solid ${C.w10}`,
+                                borderRadius: 8, padding: '8px 10px', fontSize: 13, color: C.textPrimary, marginBottom: 16,
+                            }}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => setBiddingModalOpen(false)}
+                                style={{ background: 'transparent', border: `1px solid ${C.w10}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, color: C.w60, cursor: 'pointer' }}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                onClick={handleSaveBidding}
+                                disabled={busyAction === 'bidding'}
+                                style={{
+                                    background: C.accentBlue, border: 'none', borderRadius: 8,
+                                    padding: '6px 14px', fontSize: 12, fontWeight: 600, color: 'white',
+                                    cursor: busyAction === 'bidding' ? 'wait' : 'pointer',
+                                    opacity: busyAction === 'bidding' ? 0.5 : 1,
+                                }}
+                            >
+                                Zapisz
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
