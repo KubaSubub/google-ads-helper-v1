@@ -79,6 +79,8 @@ Base API URL: `/api/v1`
 - `GET /campaigns/?client_id=X&page=1&page_size=50&campaign_type=&status=`
 - `GET /campaigns/{id}`
 - `PATCH /campaigns/{id}` -> patch campaign role override / reset (`allow_demo_write=true` required for DEMO)
+- `PATCH /campaigns/{id}/status?new_status=ENABLED|PAUSED&allow_demo_write=` -> pause/enable a campaign (remote-first: API push → local commit; goes through demo guard + audit log; returns `pending_sync: true` when local-only)
+- `PATCH /campaigns/{id}/budget?budget_micros=X&allow_demo_write=` -> update daily budget in micros (remote-first: API push → local commit; reverts local change on API failure; goes through demo guard + audit log; >30% changes hit the circuit breaker downstream)
 - `PATCH /campaigns/{id}/bidding-target?field=target_cpa_micros|target_roas&value=X` -> update bidding target (remote-first: API push → local commit; falls back to local-only if API disconnected; returns `pending_sync: true` when local-only; `allow_demo_write` enforced)
 - `GET /campaigns/{id}/kpis?days=30&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` (date_from/date_to override days)
 - `GET /campaigns/{id}/metrics?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
@@ -88,7 +90,8 @@ Base API URL: `/api/v1`
 - `GET /negative-keywords/?client_id=X&campaign_id=&ad_group_id=&status=&negative_scope=&include_removed=false&search=&page=&page_size=50`
 - `POST /negative-keywords/` — create one or more negative keywords (body: `NegativeKeywordCreate`; `allow_demo_write` enforced)
 - `DELETE /negative-keywords/{negative_keyword_id}` — soft-delete (sets status to REMOVED; `allow_demo_write` enforced)
-- `GET /ad-groups/?client_id=X&campaign_id=` — lightweight ad group list for dropdowns
+- `GET /ad-groups/?client_id=X&campaign_id=` — lightweight ad group list for dropdowns (snapshot, no metrics; from `keywords_ads.py`)
+- `GET /ad_groups/?campaign_id=X&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — ad groups for a campaign with aggregated KPI from KeywordDaily (clicks/impressions/cost/conversions + derived CTR/CPC/CPA/ROAS); separate `ad_groups.py` router under `/ad_groups/` (underscore), not the `/ad-groups/` hyphen variant above
 - `GET /ads/?client_id=X&campaign_id=&ad_group_id=&status=&sort_by=cost&sort_order=desc&page=1&page_size=50`
 - `GET /rsa-health?client_id=X&severity=ALL|HIGH|MEDIUM|LOW|OK` — per-ad-group RSA health report (SEARCH only); flags single-RSA ad groups, groups without any GOOD/EXCELLENT ad, under-filled RSAs
 - `GET /cannibalization?client_id=X&severity=ALL&limit=100&min_combined_cost_usd=0` — keyword pair cannibalization (duplicate EXACT same ad group HIGH, EXACT vs PHRASE MEDIUM, cross-ad-group same text MEDIUM); sorted by combined spend desc

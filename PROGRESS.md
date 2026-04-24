@@ -1,10 +1,34 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-22
+# Updated: 2026-04-24
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 806 tests passing (full suite green po Fazie 3 mixin split)
-- API endpoints: 191 total across 19 routers (83 analytics after ADR-021 — `/quality-score-audit` moved do `_quality.py`, `/shopping-product-groups-tree` renamed z duplikatu; 16 keywords/ads, 11 sync, 11 clients, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 campaigns, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 daily-audit, 1 semantic) + /health
+- Backend: 806 tests passing (full suite green po Fazie 3 mixin split) + 77/77 nowe testy kampanii
+- API endpoints: 194 total across 20 routers (83 analytics after ADR-021 — `/quality-score-audit` moved do `_quality.py`, `/shopping-product-groups-tree` renamed z duplikatu; 16 keywords/ads, 11 sync, 11 clients, 8 campaigns, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 ad_groups, 1 daily-audit, 1 semantic) + /health
+
+## Campaigns — Ads Review Pipeline COMPLETE (2026-04-24)
+Sprint 1+2+3 zamknięty (13/13 tasków z `docs/reviews/ads-verify-campaigns.md`, 1 NOT_NEEDED, 1 DEFERRED P3).
+
+### Backend (3 nowe endpointy + 1 router + 1 mutator)
+- `PATCH /campaigns/{id}/status` — pause/enable kampanii (remote-first, audit log, demo guard)
+- `PATCH /campaigns/{id}/budget` — zmiana dziennego budżetu (revert local on API fail, circuit breaker >30%)
+- `GET /ad_groups/?campaign_id&date_from&date_to` — nowy router `ad_groups.py`, agregacja z KeywordDaily (CTR/CPC/CPA/ROAS per ad group)
+- `_mutate_campaign_status` w `google_ads_mutations.py` via `CampaignService.mutate_campaigns`
+- Weighted avg dla 8 IS metryk w `campaigns.py` (impressions/clicks jako waga, nie arytmetyczna avg)
+- `campaign_id` dodany do response w `actions.py` i `history.py` (timeline filtering)
+
+### Frontend (CampaignsPage rozbudowany)
+- Pause/enable button w headerze kampanii z confirm modal + estymacja dziennego ruchu
+- Budget edit modal z quick buttons (+10/+20/+50%), warning gdy zmiana >30%
+- Bidding target pencil icon (Target CPA/ROAS inline edit)
+- `AuctionInsightsTable.jsx` (NEW) — tabela Auction Insights na zakładce kampanii
+- Ad Groups drill-down z agregowanymi KPI z KeywordDaily
+
+### Testy i review
+- `backend/tests/test_campaigns.py` — 12 nowych test cases (bidding/budget/status, happy/error/404/422 + mock LIVE API)
+- 77/77 PASS (campaigns + actions + history + write_actions_flow modules)
+- `docs/reviews/ads-{user,expert,verify,check}-campaigns.md` — pełne raporty
+- Ads-user re-test: "wchodziłbym tu codziennie" — 10 rzeczy > Google Ads UI (było 6), zero P0 w ads-expert
 
 ## Tech-slop refactor — Fazy 3–5 COMPLETE (2026-04-22)
 Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../../Projekt%20Obsidian/01_Projects/GAH/Tech%20slop%20audit%202026-04-21.md).
@@ -40,7 +64,7 @@ Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../.
 
 ### Do rozliczenia w `/done`:
 - [ ] `git rm backend/_split_analytics_service.py backend/app/services/analytics_service.py.bak` (permission denied mid-session)
-- [ ] Commit wiążący całą refaktoryzację (sugeruję 1 duży commit z conventional message `refactor(analytics): split god-objects into 11 mixins + 15 sub-routers (ADR-021)`)
+- [x] Commit wiążący całą refaktoryzację — `5d1a1a8` refactor(analytics): split god-objects into 11 mixins + 15 sub-routers (ADR-021) (2026-04-22)
 
 ---
 
