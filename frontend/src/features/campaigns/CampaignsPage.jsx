@@ -19,6 +19,7 @@ import { LoadingSpinner, ErrorMessage } from '../../components/UI'
 import { BudgetPacingModule } from '../../components/modules'
 import DarkSelect from '../../components/DarkSelect'
 import CampaignKpiRow from './components/CampaignKpiRow'
+import AdDetailDrawer from './components/AdDetailDrawer'
 import TrendExplorer from '../../components/TrendExplorer'
 import AuctionInsightsTable from '../../components/AuctionInsightsTable'
 
@@ -250,6 +251,7 @@ export default function CampaignsPage() {
     const [loadingAdGroups, setLoadingAdGroups] = useState(false)
     const [expandedAdGroupId, setExpandedAdGroupId] = useState(null)
     const [adsByGroup, setAdsByGroup] = useState({}) // { [adGroupId]: { loading, items } }
+    const [drawerAdId, setDrawerAdId] = useState(null)
 
     useEffect(() => {
         localStorage.setItem('campaignShowRole', showRoleCard ? 'true' : 'false')
@@ -971,7 +973,13 @@ export default function CampaignsPage() {
                                                                                         : ad.approval_status === 'APPROVED_LIMITED' ? C.warning
                                                                                         : ad.approval_status === 'DISAPPROVED' ? C.danger : C.w40
                                                                                     return (
-                                                                                        <div key={ad.id} className="v2-card" style={{ padding: '8px 12px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto auto auto', gap: 12, alignItems: 'center' }}>
+                                                                                        <div
+                                                                                            key={ad.id}
+                                                                                            onClick={() => setDrawerAdId(ad.id)}
+                                                                                            title="Klik = szczegóły reklamy"
+                                                                                            className="v2-card hover:bg-white/[0.04]"
+                                                                                            style={{ padding: '8px 12px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto auto auto', gap: 12, alignItems: 'center', cursor: 'pointer' }}
+                                                                                        >
                                                                                             <div style={{ minWidth: 0 }}>
                                                                                                 <div style={{ fontSize: 11, color: C.textPrimary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                                                                     {ad.headline_1 || '(brak nagłówka)'}{ad.headline_2 ? ` · ${ad.headline_2}` : ''}
@@ -1214,6 +1222,9 @@ export default function CampaignsPage() {
                     </div>
                 </div>
             )}
+
+            {/* Ad Detail Drawer (slide-in 640px) */}
+            <AdDetailDrawer adId={drawerAdId} onClose={() => setDrawerAdId(null)} />
 
             {/* Bidding target edit modal */}
             {biddingModalOpen && selected && (

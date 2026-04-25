@@ -350,6 +350,8 @@ export const getCampaignAdGroups = (campaignId, params = {}) =>
     api.get('/ad_groups/', { params: { campaign_id: campaignId, ...params } });
 export const getAdGroupAds = (adGroupId) =>
     api.get(`/ad_groups/${adGroupId}/ads`);
+export const getAdDetail = (adId) =>
+    api.get(`/ads/${adId}`);
 export const addPlacementExclusion = (clientId, campaignId, placementUrl) =>
     api.post('/analytics/placement-exclusion', null, { params: { client_id: clientId, campaign_id: campaignId, placement_url: placementUrl } });
 
