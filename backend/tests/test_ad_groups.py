@@ -127,3 +127,27 @@ def test_list_ads_in_group_empty_when_no_ads(api_client, seeded_campaign):
     data = resp.json()
     assert data["total"] == 0
     assert data["items"] == []
+
+
+# ─── Smoke tests: route registration ─────────────────────────────────────────
+# Łapie regresje typu "endpoint w kodzie ale brak w main.py include_router"
+# albo source/runtime drift (np. uvicorn bez --reload nie widzi nowych routes).
+
+def test_ad_groups_routes_registered():
+    """Wszystkie ad_groups endpoints muszą być w app.routes."""
+    from app.main import app
+    paths = {r.path for r in app.routes}
+    assert "/api/v1/ad_groups/" in paths, "GET /ad_groups/ not registered"
+    assert "/api/v1/ad_groups/{ad_group_id}/ads" in paths, "GET /ad_groups/{id}/ads not registered"
+
+
+def test_ad_groups_router_included_in_main():
+    """Router ad_groups musi być włączony w main.py z prefix /api/v1."""
+    from app.main import app
+    from app.routers import ad_groups
+    # Sprawdź że router jest w app.router.routes (nie tylko że plik istnieje)
+    found_paths = []
+    for route in app.routes:
+        if hasattr(route, "endpoint") and getattr(route.endpoint, "__module__", "").endswith("ad_groups"):
+            found_paths.append(route.path)
+    assert len(found_paths) >= 2, f"Expected ≥2 ad_groups routes registered, found: {found_paths}"

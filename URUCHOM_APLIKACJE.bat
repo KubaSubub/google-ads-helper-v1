@@ -24,7 +24,7 @@ if not exist "frontend\package.json" (
 
 REM Uruchom backend w tle
 echo [1/3] Uruchamiam backend...
-start /min "Google Ads - Backend" cmd /c "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+start /min "Google Ads - Backend" cmd /c "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 
 REM Poczekaj 5 sekund na start backendu
 timeout /t 5 /nobreak > nul
