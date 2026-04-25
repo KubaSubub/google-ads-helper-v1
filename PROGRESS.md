@@ -43,7 +43,7 @@ Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../.
 - `analytics_service.py` zredukowany do 37 linii — tylko imports + `class AnalyticsService(*mixins, AnalyticsBase)` + docstring. Zbędne modelowe importy (15 modeli) przeniesione do odpowiednich mixinów.
 - `/quality-score-audit` (ostatni endpoint w `_legacy.py`, 200 linii SQL) przeniesiony do `_quality.py`. `_legacy.py` **pusty od dekoratorów** — zostaje tylko jako moduł ze stałymi (`TREND_METRICS`, `CORRELATION_LEGACY_ALIASES`, `FORECAST_*`, `LEGACY_COLUMN_METRICS`) używanymi przez `_breakdown.py`, `_kpis.py`, `_insights.py`.
 - Duplicate `/shopping-product-groups` naprawione: drugi endpoint (product group tree) przemianowany na `/shopping-product-groups-tree` w `_shopping.py`. 0 duplikatów w `router.routes`, 83 unique URLs.
-- Pliki do manualnego usunięcia (rm blocked przez permission hook): `backend/_split_analytics_service.py` (one-off generator), `backend/app/services/analytics_service.py.bak` (copy pre-split). Będą usunięte w `/done`.
+- Pliki orphan usunięte 2026-04-22: `backend/_split_analytics_service.py` (one-off generator) + `backend/app/services/analytics_service.py.bak` (copy pre-split). Backup zachowany na `~/Desktop/gah-backup-2026-04-22/`.
 
 ### Faza 5 — ADR-021 + docs + AGENTS.md rule
 - [DECISIONS.md](../DECISIONS.md) → **ADR-021** dodany: analytics god-object split rationale, mixin pattern for service, sub-router package for API, migration notes (806 tests green, tylko jeden test patch update).
@@ -63,7 +63,7 @@ Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../.
 | Test suite | 806 passed | 806 passed | zero regresji |
 
 ### Do rozliczenia w `/done`:
-- [ ] `git rm backend/_split_analytics_service.py backend/app/services/analytics_service.py.bak` (permission denied mid-session)
+- [x] `rm backend/_split_analytics_service.py backend/app/services/analytics_service.py.bak` (DONE 2026-04-22, backup na ~/Desktop/gah-backup-2026-04-22/)
 - [x] Commit wiążący całą refaktoryzację — `5d1a1a8` refactor(analytics): split god-objects into 11 mixins + 15 sub-routers (ADR-021) (2026-04-22)
 
 ---
