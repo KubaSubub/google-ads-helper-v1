@@ -348,6 +348,8 @@ export const updateCampaignStatus = (campaignId, newStatus) =>
     api.patch(`/campaigns/${campaignId}/status`, null, { params: { new_status: newStatus } });
 export const getCampaignAdGroups = (campaignId, params = {}) =>
     api.get('/ad_groups/', { params: { campaign_id: campaignId, ...params } });
+export const getAdGroupAds = (adGroupId) =>
+    api.get(`/ad_groups/${adGroupId}/ads`);
 export const addPlacementExclusion = (clientId, campaignId, placementUrl) =>
     api.post('/analytics/placement-exclusion', null, { params: { client_id: clientId, campaign_id: campaignId, placement_url: placementUrl } });
 

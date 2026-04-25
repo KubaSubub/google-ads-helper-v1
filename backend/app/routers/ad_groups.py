@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AdGroup, Campaign, Keyword, KeywordDaily
+from app.models import Ad, AdGroup, Campaign, Keyword, KeywordDaily
 
 router = APIRouter(prefix="/ad_groups", tags=["Ad Groups"])
 
@@ -94,6 +94,67 @@ def list_ad_groups(
         "campaign_id": campaign_id,
         "date_from": str(date_from),
         "date_to": str(date_to),
+        "total": len(items),
+        "items": items,
+    }
+
+
+def _headline_text(headline_entry) -> str | None:
+    """Extract text from a headline entry (string or dict with 'text' key)."""
+    if not headline_entry:
+        return None
+    if isinstance(headline_entry, dict):
+        return headline_entry.get("text")
+    return str(headline_entry)
+
+
+@router.get("/{ad_group_id}/ads")
+def list_ads_in_group(
+    ad_group_id: int,
+    db: Session = Depends(get_db),
+):
+    """List ads in a single ad group with snapshot metrics + RSA preview.
+
+    Returns ad_type, status, ad_strength, approval_status, headline_1/2 (RSA preview),
+    final_url, and snapshot metrics (clicks, impressions, cost, conversions, CTR).
+    """
+    ad_group = db.query(AdGroup).filter(AdGroup.id == ad_group_id).first()
+    if not ad_group:
+        raise HTTPException(status_code=404, detail="Ad group not found")
+
+    ads = (
+        db.query(Ad)
+        .filter(Ad.ad_group_id == ad_group_id)
+        .order_by(Ad.clicks.desc().nullslast(), Ad.id)
+        .all()
+    )
+
+    items = []
+    for ad in ads:
+        cost = (ad.cost_micros or 0) / 1_000_000
+        items.append({
+            "id": ad.id,
+            "google_ad_id": ad.google_ad_id,
+            "ad_type": ad.ad_type,
+            "status": ad.status,
+            "approval_status": ad.approval_status,
+            "ad_strength": ad.ad_strength,
+            "final_url": ad.final_url,
+            "headline_1": _headline_text(ad.headlines[0] if ad.headlines else None),
+            "headline_2": _headline_text(ad.headlines[1] if ad.headlines and len(ad.headlines) > 1 else None),
+            "headlines_count": len(ad.headlines or []),
+            "descriptions_count": len(ad.descriptions or []),
+            "clicks": ad.clicks or 0,
+            "impressions": ad.impressions or 0,
+            "cost": round(cost, 2),
+            "conversions": round(ad.conversions or 0.0, 2),
+            "ctr": round(ad.ctr or 0.0, 2),
+        })
+
+    return {
+        "ad_group_id": ad_group_id,
+        "ad_group_name": ad_group.name,
+        "campaign_id": ad_group.campaign_id,
         "total": len(items),
         "items": items,
     }

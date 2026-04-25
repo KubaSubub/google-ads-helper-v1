@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     KeyRound, Search, Monitor, MapPin, Clock, Trophy, Pause, Play,
@@ -9,7 +9,7 @@ import {
     getDeviceBreakdown, getGeoBreakdown, getBudgetPacing,
     getUnifiedTimeline, getCampaignsSummary, getAuctionInsights,
     updateCampaignBudget, updateCampaignStatus, updateBiddingTarget,
-    getCampaignAdGroups,
+    getCampaignAdGroups, getAdGroupAds,
 } from '../../api'
 import { useApp } from '../../contexts/AppContext'
 import { useFilter } from '../../contexts/FilterContext'
@@ -248,6 +248,8 @@ export default function CampaignsPage() {
     // Ad groups
     const [adGroups, setAdGroups] = useState([])
     const [loadingAdGroups, setLoadingAdGroups] = useState(false)
+    const [expandedAdGroupId, setExpandedAdGroupId] = useState(null)
+    const [adsByGroup, setAdsByGroup] = useState({}) // { [adGroupId]: { loading, items } }
 
     useEffect(() => {
         localStorage.setItem('campaignShowRole', showRoleCard ? 'true' : 'false')
@@ -459,9 +461,13 @@ export default function CampaignsPage() {
     useEffect(() => {
         if (!selected) {
             setAdGroups([])
+            setExpandedAdGroupId(null)
+            setAdsByGroup({})
             return
         }
         setLoadingAdGroups(true)
+        setExpandedAdGroupId(null)
+        setAdsByGroup({})
         const params = {}
         if (dateParams?.date_from) params.date_from = dateParams.date_from
         if (dateParams?.date_to) params.date_to = dateParams.date_to
@@ -470,6 +476,21 @@ export default function CampaignsPage() {
             .catch(() => setAdGroups([]))
             .finally(() => setLoadingAdGroups(false))
     }, [selected?.id, dateParams?.date_from, dateParams?.date_to])
+
+    function toggleAdGroupExpand(adGroupId) {
+        if (expandedAdGroupId === adGroupId) {
+            setExpandedAdGroupId(null)
+            return
+        }
+        setExpandedAdGroupId(adGroupId)
+        // Lazy load ads only on first expand
+        if (!adsByGroup[adGroupId]) {
+            setAdsByGroup(prev => ({ ...prev, [adGroupId]: { loading: true, items: [] } }))
+            getAdGroupAds(adGroupId)
+                .then(data => setAdsByGroup(prev => ({ ...prev, [adGroupId]: { loading: false, items: data?.items || [] } })))
+                .catch(() => setAdsByGroup(prev => ({ ...prev, [adGroupId]: { loading: false, items: [] } })))
+        }
+    }
 
     // Campaigns filtered by backend (type/status) + in-memory name/label/metric filter + sort
     const filteredCampaigns = useMemo(() => {
@@ -889,8 +910,9 @@ export default function CampaignsPage() {
                                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                         <thead>
                                             <tr>
-                                                {['Nazwa', 'Status', 'Kliknięcia', 'Koszt', 'Konw.', 'CPA', 'ROAS'].map(h => (
-                                                    <th key={h} style={{
+                                                <th style={{ width: 28, padding: '4px 4px' }}></th>
+                                                {['Nazwa', 'Status', 'Kliknięcia', 'Koszt', 'Konw.', 'CPA', 'ROAS', ''].map((h, i) => (
+                                                    <th key={i} style={{
                                                         padding: '4px 6px', fontSize: 10, fontWeight: 500,
                                                         color: C.textMuted, textTransform: 'uppercase',
                                                         letterSpacing: '0.08em', textAlign: h === 'Nazwa' || h === 'Status' ? 'left' : 'right',
@@ -901,21 +923,87 @@ export default function CampaignsPage() {
                                         <tbody>
                                             {adGroups.map(ag => {
                                                 const sCfg = STATUS_CONFIG[ag.status] || { color: '#666', label: ag.status }
+                                                const isExpanded = expandedAdGroupId === ag.id
+                                                const adsState = adsByGroup[ag.id]
                                                 return (
-                                                    <tr
-                                                        key={ag.id}
-                                                        onClick={() => navigate(`/keywords?campaign_id=${selected.id}&ad_group_id=${ag.id}&campaign_name=${encodeURIComponent(selected.name)}`)}
-                                                        style={{ borderTop: `1px solid ${C.w04}`, cursor: 'pointer' }}
-                                                        className="hover:bg-white/[0.03]"
-                                                    >
-                                                        <td style={{ padding: '8px 6px', fontSize: 12, color: C.textPrimary }}>{ag.name}</td>
-                                                        <td style={{ padding: '8px 6px', fontSize: 11, color: sCfg.color }}>● {sCfg.label}</td>
-                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.clicks.toLocaleString('pl-PL')}</td>
-                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.cost.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł</td>
-                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.conversions.toFixed(1)}</td>
-                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.cpa ? `${ag.cpa.toFixed(2)} zł` : '—'}</td>
-                                                        <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: ag.roas >= 3 ? C.success : ag.roas >= 1 ? C.warning : C.danger }}>{ag.roas.toFixed(2)}×</td>
-                                                    </tr>
+                                                    <Fragment key={ag.id}>
+                                                        <tr style={{ borderTop: `1px solid ${C.w04}` }} className="hover:bg-white/[0.03]">
+                                                            <td
+                                                                onClick={(e) => { e.stopPropagation(); toggleAdGroupExpand(ag.id) }}
+                                                                title={isExpanded ? 'Zwin reklamy' : 'Pokaz reklamy'}
+                                                                style={{ padding: '8px 4px', cursor: 'pointer', textAlign: 'center', color: C.w40 }}
+                                                            >
+                                                                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                                            </td>
+                                                            <td
+                                                                onClick={() => navigate(`/keywords?campaign_id=${selected.id}&ad_group_id=${ag.id}&campaign_name=${encodeURIComponent(selected.name)}`)}
+                                                                style={{ padding: '8px 6px', fontSize: 12, color: C.textPrimary, cursor: 'pointer' }}
+                                                            >
+                                                                {ag.name}
+                                                            </td>
+                                                            <td style={{ padding: '8px 6px', fontSize: 11, color: sCfg.color }}>● {sCfg.label}</td>
+                                                            <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.clicks.toLocaleString('pl-PL')}</td>
+                                                            <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.cost.toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł</td>
+                                                            <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.conversions.toFixed(1)}</td>
+                                                            <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', color: C.w60, textAlign: 'right' }}>{ag.cpa ? `${ag.cpa.toFixed(2)} zł` : '—'}</td>
+                                                            <td style={{ padding: '8px 6px', fontSize: 12, fontFamily: 'monospace', textAlign: 'right', color: ag.roas >= 3 ? C.success : ag.roas >= 1 ? C.warning : C.danger }}>{ag.roas.toFixed(2)}×</td>
+                                                            <td></td>
+                                                        </tr>
+                                                        {isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={9} style={{ padding: 0, background: 'rgba(255,255,255,0.015)', borderTop: `1px solid ${C.w04}` }}>
+                                                                    <div style={{ padding: '10px 14px 14px 40px' }}>
+                                                                        {adsState?.loading ? (
+                                                                            <div style={{ fontSize: 11, color: C.w30, padding: '8px 0' }}>Ładowanie reklam…</div>
+                                                                        ) : !adsState?.items?.length ? (
+                                                                            <div style={{ fontSize: 11, color: C.w30, padding: '8px 0' }}>Brak reklam w tej grupie</div>
+                                                                        ) : (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                                                <div style={{ fontSize: 10, color: C.w40, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                                                                                    Reklamy ({adsState.items.length})
+                                                                                </div>
+                                                                                {adsState.items.map(ad => {
+                                                                                    const adStatusCfg = STATUS_CONFIG[ad.status] || { color: '#666', label: ad.status }
+                                                                                    const strengthColor = ad.ad_strength === 'EXCELLENT' || ad.ad_strength === 'GOOD' ? C.success
+                                                                                        : ad.ad_strength === 'AVERAGE' ? C.warning
+                                                                                        : ad.ad_strength === 'POOR' ? C.danger : C.w40
+                                                                                    const approvalColor = ad.approval_status === 'APPROVED' ? C.success
+                                                                                        : ad.approval_status === 'APPROVED_LIMITED' ? C.warning
+                                                                                        : ad.approval_status === 'DISAPPROVED' ? C.danger : C.w40
+                                                                                    return (
+                                                                                        <div key={ad.id} className="v2-card" style={{ padding: '8px 12px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto auto auto', gap: 12, alignItems: 'center' }}>
+                                                                                            <div style={{ minWidth: 0 }}>
+                                                                                                <div style={{ fontSize: 11, color: C.textPrimary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                                                    {ad.headline_1 || '(brak nagłówka)'}{ad.headline_2 ? ` · ${ad.headline_2}` : ''}
+                                                                                                </div>
+                                                                                                <div style={{ fontSize: 10, color: C.w40, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                                                                    <span>{ad.ad_type || '—'}</span>
+                                                                                                    {ad.headlines_count > 0 && <span>· H:{ad.headlines_count}/D:{ad.descriptions_count}</span>}
+                                                                                                    <span style={{ color: adStatusCfg.color }}>● {adStatusCfg.label}</span>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            <span title="Ad strength" style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, color: strengthColor, border: `1px solid ${strengthColor}40` }}>
+                                                                                                {ad.ad_strength || 'UNRATED'}
+                                                                                            </span>
+                                                                                            <span title="Approval" style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, color: approvalColor, border: `1px solid ${approvalColor}40` }}>
+                                                                                                {ad.approval_status || '—'}
+                                                                                            </span>
+                                                                                            <span style={{ fontSize: 11, fontFamily: 'monospace', color: C.w60 }}>
+                                                                                                {ad.clicks.toLocaleString('pl-PL')} klik · {ad.cost.toFixed(0)} zł
+                                                                                            </span>
+                                                                                            <span style={{ fontSize: 11, fontFamily: 'monospace', color: C.w60 }}>
+                                                                                                {ad.ctr.toFixed(2)}% CTR · {ad.conversions.toFixed(1)} konw.
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    )
+                                                                                })}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </Fragment>
                                                 )
                                             })}
                                         </tbody>
