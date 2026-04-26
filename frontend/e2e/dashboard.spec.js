@@ -197,6 +197,72 @@ test('InsightsFeed: scrollable gdy > 5 HIGH', async ({ page }) => {
     expect(overflowY).toBe('auto');
 });
 
+// ─── HealthScoreCard color calibration (worst-of severity) ─────────
+
+function makeHealthScore(score, issues) {
+    return {
+        score,
+        issues,
+        data_available: true,
+        breakdown: {
+            performance: { score, weight: 25, details: {} },
+            quality: { score, weight: 20, details: {} },
+            efficiency: { score, weight: 20, details: {} },
+            coverage: { score, weight: 15, details: {} },
+            stability: { score, weight: 10, details: {} },
+            structure: { score, weight: 10, details: {} },
+        },
+    };
+}
+
+async function gaugeStroke(page) {
+    // Drugi circle to gauge (pierwszy — background grey)
+    const circles = page.locator('svg circle');
+    await expect(circles.nth(1)).toBeVisible({ timeout: 10_000 });
+    return await circles.nth(1).getAttribute('stroke');
+}
+
+test('HealthScoreCard: score 80 + 0 issues → zielony gauge', async ({ page }) => {
+    await page.route(/\/api\/v1\/analytics\/health-score/, route =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(makeHealthScore(80, [])) })
+    );
+    await page.goto('/');
+    await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    expect(await gaugeStroke(page)).toBe('#4ADE80');
+});
+
+test('HealthScoreCard: score 80 + 3 HIGH issues → red gauge (severity downgrade)', async ({ page }) => {
+    await page.route(/\/api\/v1\/analytics\/health-score/, route =>
+        route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(makeHealthScore(80, [
+                { severity: 'HIGH', message: 'Pierwszy HIGH alert' },
+                { severity: 'HIGH', message: 'Drugi HIGH alert' },
+                { severity: 'HIGH', message: 'Trzeci HIGH alert' },
+            ])),
+        })
+    );
+    await page.goto('/');
+    await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    expect(await gaugeStroke(page)).toBe('#F87171');
+});
+
+test('HealthScoreCard: score 60 + 5 MEDIUM issues → yellow gauge (akumulacja)', async ({ page }) => {
+    const issues = [];
+    for (let i = 0; i < 5; i++) issues.push({ severity: 'MEDIUM', message: `MEDIUM issue ${i}` });
+    await page.route(/\/api\/v1\/analytics\/health-score/, route =>
+        route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(makeHealthScore(60, issues)),
+        })
+    );
+    await page.goto('/');
+    await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    expect(await gaugeStroke(page)).toBe('#FBBF24');
+});
+
 test('Sekcja 3.3/3.4 — Zmiana zakresu dat nie powoduje JS errors', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));

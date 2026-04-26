@@ -285,4 +285,5 @@
 - **Sciezki:**
   1. /build insights-feed-titles --spec vault/.../2026-04-25-insights-feed-titles.md
   2. /build health-score-color-calibration --spec vault/.../2026-04-25-health-score-color-calibration.md
-- **Status:** STARTED (spec 1)
+- **Status spec 1:** DONE — commits 8625073 + ff742dc, pushed. PM-check 8/10. Naprawione: InsightsFeed nie byl importowany w DashboardPage (PM-check zlapal regression przed pushem).
+- **Status spec 2:** STARTED

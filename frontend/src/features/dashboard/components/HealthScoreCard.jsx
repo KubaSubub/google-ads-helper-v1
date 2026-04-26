@@ -15,6 +15,24 @@ function pillarColor(score) {
     return '#F87171'
 }
 
+// Worst-of severity gauge: kolor uwzglednia score + wage alertow.
+// Backward compat: brak issues → score-only logic.
+// effectiveHigh = highCount + floor(medCount / 5) — 5 MEDIUM = 1 HIGH-eq.
+function gaugeColor(score, issues) {
+    if (!issues || !Array.isArray(issues)) {
+        return score > 70 ? '#4ADE80' : score > 40 ? '#FBBF24' : '#F87171'
+    }
+    const highCount = issues.filter(i => i.severity === 'HIGH').length
+    const medCount = issues.filter(i => i.severity === 'MEDIUM').length
+    const effectiveHigh = highCount + Math.floor(medCount / 5)
+
+    if (effectiveHigh >= 3) return '#F87171'
+    if (effectiveHigh >= 1) {
+        return score > 40 ? '#FBBF24' : '#F87171'
+    }
+    return score > 70 ? '#4ADE80' : score > 40 ? '#FBBF24' : '#F87171'
+}
+
 function PillarBars({ breakdown }) {
     if (!breakdown || !breakdown.performance) return null
     return (
@@ -48,17 +66,17 @@ export default function HealthScoreCard({ score, issues, loading, dataAvailable,
     const circumference = 2 * Math.PI * radius
     const safeScore = typeof score === 'number' ? score : 0
     const offset = circumference * (1 - safeScore / 100)
-    const color = safeScore > 70 ? '#4ADE80' : safeScore > 40 ? '#FBBF24' : '#F87171'
+    const color = gaugeColor(safeScore, issues)
 
-    // Aggressive background tint for alarming scores
-    const bgTint = safeScore > 70 || safeScore === 0
+    // Tint spojny z color (worst-of) — bez raw score
+    const bgTint = color === '#4ADE80' || safeScore === 0
         ? 'transparent'
-        : safeScore <= 40
+        : color === '#F87171'
             ? 'rgba(248,113,113,0.08)'
             : 'rgba(251,191,36,0.06)'
-    const borderTint = safeScore > 70 || safeScore === 0
+    const borderTint = color === '#4ADE80' || safeScore === 0
         ? undefined
-        : safeScore <= 40
+        : color === '#F87171'
             ? '1px solid rgba(248,113,113,0.18)'
             : '1px solid rgba(251,191,36,0.12)'
 
@@ -73,7 +91,10 @@ export default function HealthScoreCard({ score, issues, loading, dataAvailable,
             }}
             onClick={onClick}
         >
-            <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14 }}>
+            <div
+                title="Kolor uwzględnia score + wagę alertów. Zielony: score > 70 i brak HIGH. Żółty: score 40-70 lub 1-2 HIGH (lub ≥5 MEDIUM). Czerwony: score ≤ 40 lub ≥3 HIGH."
+                style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, cursor: 'help' }}
+            >
                 Health Score
             </div>
 
