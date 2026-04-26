@@ -19,6 +19,7 @@ import { useFilter } from '../../contexts/FilterContext'
 import TrendExplorer from '../../components/TrendExplorer'
 import WoWChart from '../../components/WoWChart'
 import EmptyState from '../../components/EmptyState'
+import InsightsFeed from '../../components/InsightsFeed'
 import HealthScoreCard from './components/HealthScoreCard'
 import MiniKpiGrid from './components/MiniKpiGrid'
 import QsHealthWidget from './components/QsHealthWidget'
@@ -357,6 +358,11 @@ export default function DashboardPage() {
 
             {/* ── Anomaly alerts (hides itself when no issues) ──────────── */}
             <AnomalyAlertsCard />
+
+            {/* ── Insights feed (compact title pills + auto-expand HIGH) ── */}
+            <div style={{ marginBottom: 16 }}>
+                <InsightsFeed recommendations={recommendations} />
+            </div>
 
             {/* ── QS Health + Top Actions (compact side-by-side) ────────── */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
