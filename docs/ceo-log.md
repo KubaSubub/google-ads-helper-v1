@@ -286,4 +286,4 @@
   1. /build insights-feed-titles --spec vault/.../2026-04-25-insights-feed-titles.md
   2. /build health-score-color-calibration --spec vault/.../2026-04-25-health-score-color-calibration.md
 - **Status spec 1:** DONE — commits 8625073 + ff742dc, pushed. PM-check 8/10. Naprawione: InsightsFeed nie byl importowany w DashboardPage (PM-check zlapal regression przed pushem).
-- **Status spec 2:** STARTED
+- **Status spec 2:** DONE — commit 21952ee + docs e5606d0, pushed. PM-check 8/10. gaugeColor() z worst-of severity, tooltip nagłówka, bgTint/borderTint spójny z color, 3 e2e testy.
