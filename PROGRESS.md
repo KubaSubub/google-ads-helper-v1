@@ -1,10 +1,30 @@
 ﻿# PROGRESS.md - Implementation Status
-# Updated: 2026-04-24
+# Updated: 2026-04-26
 
 ## Status
 - **Version: 1.0.0** (bumped from 0.1.0 on 2026-04-13 — backend/app/main.py + frontend/package.json)
-- Backend: 806 tests passing (full suite green po Fazie 3 mixin split) + 77/77 nowe testy kampanii
-- API endpoints: 194 total across 20 routers (83 analytics after ADR-021 — `/quality-score-audit` moved do `_quality.py`, `/shopping-product-groups-tree` renamed z duplikatu; 16 keywords/ads, 11 sync, 11 clients, 8 campaigns, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 1 ad_groups, 1 daily-audit, 1 semantic) + /health
+- Backend: 832 tests collected (full suite po Ad Detail Drawer + write_safety tests)
+- API endpoints: 196 total across 21 routers (83 analytics after ADR-021 — `/quality-score-audit` in `_quality.py`, 0 in `_legacy.py`, `/shopping-product-groups-tree` renamed z duplikatu; 16 keywords/ads, 11 sync, 11 clients, 8 campaigns, 8 scripts, 8 search-terms, 8 mcc, 7 auth, 7 rules, 6 export, 5 recommendations, 3 history, 3 reports, 3 scheduled-sync, 2 agent, 2 actions, 2 ad_groups, 1 ads, 1 daily-audit, 1 semantic) + /health
+- Models: 42 model files (backend/app/models/)
+- Frontend: 16 feature modules in src/features/ + legacy pages in src/pages/
+
+## Dashboard — InsightsFeed Compact Pills + Auto-Expand (2026-04-26)
+- Frontend: `InsightsFeed.jsx` — tytuły insightów wyświetlane jako kompaktowe pigułki w headerze (max 3, overflow "+N więcej"); panel auto-expanduje gdy są insighty HIGH priority; scrollowalny gdy >5 HIGH (maxHeight 320px + overflowY auto).
+- ACs: AC1+AC2 (default expanded = insights.some(HIGH)), AC4+AC5 (pills zawsze widoczne z kolorami z PRIORITY_CONFIG), AC7 (scroll przy >5 HIGH).
+- E2E: 3 nowe testy w `dashboard.spec.js` (collapsed pills visible, HIGH auto-expand, scrollable >5 HIGH).
+- Commit: `8625073` feat(dashboard): InsightsFeed compact title pills + auto-expand HIGH
+
+## Campaigns — Ad Detail Drawer (2026-04-26)
+- Backend: nowy router `backend/app/routers/ads.py` z `GET /ads/{ad_id}` — pelny detal reklamy: RSA assets z `pinned_position` + `performance_label`, ad metadata (ad_type, status, ad_strength, approval_status, final_url, long_headline, business_name), snapshot metryk + `comparison.avg` i `comparison.diff_pct` vs sibling ads w grupie. Headlines/descriptions normalizowane do `{text, pinned_position, performance_label}` (forward-compat z `asset_performance_label` sync).
+- Frontend: nowy `AdDetailDrawer.jsx` (slide-in panel 640px z prawej) + `getAdDetail()` w `api.js`. 5 sekcji: header z badges + ad strength gauge, RSA assets breakdown z pinned position badge i Google Asset Performance label, 6 KPI tiles z A/B vs grupa (CPA invertDiff), sekcja akcji z linkiem do final URL. State `drawerAdId` w `CampaignsPage`; click na karcie reklamy w expand row otwiera drawer; ESC lub backdrop-click zamyka.
+- Testy: `backend/tests/test_ads.py` — 5/5 PASS (full detail, comparison vs siblings, 404, normalizacja headlines/descriptions).
+- Commit: `4552c29` feat(campaigns): Ad Detail Drawer — RSA breakdown + comparison vs ad group
+
+## Campaigns — Ad Group Expand-Row (2026-04-25)
+- Backend: nowy `GET /ad_groups/{id}/ads` w `ad_groups.py:111` — zwraca listę reklam w grupie z `ad_type`, `status`, `ad_strength`, `approval_status`, RSA preview (`headline_1/2` + counts), `final_url` i snapshot metryk (clicks, impressions, cost, conv, CTR).
+- Frontend: chevron w pierwszej kolumnie tabelki Ad Groups w `CampaignsPage.jsx`; klikniecie laduje reklamy on-demand (lazy, cache w `adsByGroup`) i rozwija ekspand row pod wierszem. Karty reklam pokazują nagłówki RSA, ad type, H/D counts, status dot, ad_strength badge, approval badge, metryki. Klikniecie nazwy grupy nadal nawiguje do Keywords (zachowane).
+- Testy: `backend/tests/test_ad_groups.py` — 7 cases (5 functional: list metryk, 404 campaign, ads list, 404 ad_group, empty ads + 2 smoke: routes_registered, router_included_in_main). Wszystkie PASS.
+- Commits: `c32367d` feat(campaigns): expand ad group row to show ads list · `b2a8c72` fix(devops): add --reload to URUCHOM_APLIKACJE.bat + smoke tests for ad_groups routes (regresja: endpoint registered ale .bat launcher bez --reload nie podchwycil → 404 w UI)
 
 ## Campaigns — Ads Review Pipeline COMPLETE (2026-04-24)
 Sprint 1+2+3 zamknięty (13/13 tasków z `docs/reviews/ads-verify-campaigns.md`, 1 NOT_NEEDED, 1 DEFERRED P3).
@@ -91,15 +111,15 @@ Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../.
 | `_mcc_misc.py` | 8 | MCC, offline conversions, bid modifiers, audiences list, topics, Google recs |
 | `_pacing.py` | 8 | Budget pacing + dayparting suite (DoW, hourly, heatmap) + seasonal |
 | `_pmax.py` | 8 | PMax analytics + extensions + search cannibalization |
-| `_quality.py` | 7 | RSA, n-grams, match types, landing pages, conversion-health/quality |
+| `_quality.py` | 8 | RSA, n-grams, match types, landing pages, conversion-health/quality, quality-score-audit |
 | `_shopping.py` | 4 | Shopping PG, placement-exclusion, placement-performance |
 | `_waste.py` | 7 | Wasted spend, structure, close variants, keyword expansion/overlap, budget allocation |
-| `_legacy.py` | 1 | **Pozostało: `/quality-score-audit` (200 linii, lokalne helpery)** |
-| **TOTAL** | **82** | 15 domen + legacy stub |
+| `_legacy.py` | 0 | Tylko stałe (TREND_METRICS, CORRELATION_LEGACY_ALIASES, FORECAST_*, LEGACY_COLUMN_METRICS) — brak endpointów |
+| **TOTAL** | **83** | 15 domen + legacy stub (bez dekoratorów) |
 
 ### Pozostałe do Fazy 2 (jedno zadanie):
-- [ ] Zmigrować `/quality-score-audit` do `_quality.py` (wymaga: local helpery `_build_subcomponent_issues`, `_get_primary_issue`, `_build_recommendation` + `Keyword`/`AdGroup`/`KeywordDaily` models + `micros_to_currency`)
-- [ ] Decyzja: duplicate `/shopping-product-groups` — rename drugiego endpointu czy delete?
+- [x] Zmigrować `/quality-score-audit` do `_quality.py` — DONE w Fazie 4 (2026-04-22)
+- [x] Decyzja: duplicate `/shopping-product-groups` — przemianowany na `/shopping-product-groups-tree` w Fazie 4 (2026-04-22)
 
 ## Tech-slop refactor — Faza 2 snapshot: 8/15 router sub-packages (2026-04-21)
 - `routers/analytics/` (NEW) — folder pakietu zastąpił `routers/analytics.py` (git mv → `_legacy.py`)
@@ -135,7 +155,7 @@ Background: [Tech slop audit 2026-04-21](../../Projekt%20Obsidian/01_Projects/GA
 - Backward compat: `from app.services.analytics_service import AnalyticsService` działa bez zmian we wszystkich 8 callerach (agent_service, mcc_service, daily_audit router, test_analytics, test_sprint2_analytics, test_sprint3_bidding, test_resolve_dates, analytics router).
 - MRO zweryfikowany: `AnalyticsService → AnalyticsBase → object`, wszystkie 4 helpery dziedziczone.
 - Tests: **806 passed** (full pytest suite, 853s / 14:13). Zero regresji od pre-Faza 1 (było 805 — wzrost o 1 z pokrewnych commits).
-- Pozostało: [ ] Faza 2 (router split 15 sub-routers) · [ ] Faza 3 (11 domain mixins) · [ ] Faza 4 (cleanup sweep) · [ ] Faza 5 (ADR-021 + docs)
+- Pozostało: [x] Faza 2 (router split 15 sub-routers) · [x] Faza 3 (11 domain mixins) · [x] Faza 4 (cleanup sweep) · [x] Faza 5 (ADR-021 + docs) — COMPLETE 2026-04-22
 - Plan: [przeczytaj-vault-01-projects-gah-tech-sl-shimmying-horizon.md](../../.claude/plans/przeczytaj-vault-01-projects-gah-tech-sl-shimmying-horizon.md)
 
 ## Dashboard audit fixes — hourly dayparting contract (2026-04-20)

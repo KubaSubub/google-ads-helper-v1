@@ -529,3 +529,54 @@ These features are done and tested. Do NOT refactor, "improve", or touch them wi
 - `zero_conv_cost_share` + `low_roas_cost_share` fields exposed on `pillars.performance.details`.
 - `primary_problem_campaigns` field on the health-score response — campaign IDs flagged by the Performance pillar are skipped by the Efficiency pillar to avoid double-counting the same root cause.
 - 3 backend tests in `test_analytics_endpoints.py`: `test_cost_weighted_penalty_smaller_for_tiny_campaign`, `test_root_cause_dedup_no_stacking_on_efficiency`, `test_primary_problem_campaigns_exposed`.
+
+## Dayparting — Full Audit + Expansion (2026-04-19)
+- Backend: 3 new analytics endpoints: `/dayparting-hourly-suggestions`, `/dayparting-dow-suggestions`, `/dayparting-heatmap` (7x24 grid via `MetricSegmented.date` + `hour_of_day`).
+- `get_dayparting` enriched: `cost_amount`+`currency`, `campaign_type_used`, default `ALL` (was SEARCH silently dropping PMax/Shopping), per-day `avg_cpa/roas/cvr/cpc`, `conversion_value_amount`+`aov`, `observations`, `dates` list.
+- `dayparting_service.py`: `dow_bid_schedule_suggestions` (per-day) + `dow_hour_heatmap` (7x24 intensity grid).
+- Frontend: `DayOfWeekWidget.jsx` — significance threshold (>=4 obs + >=20% deviation), bid-schedule suggestions panel, PoP delta per cell, skeleton loading, dates tooltip; `DowHourHeatmapWidget.jsx` (7x24 matrix, 6-metric picker); `HourlyDaypartingWidget.jsx` (24-hour bars, 5-metric picker, business-hour frame). All three stacked on Dashboard.
+- `DowHourHeatmapSection.jsx` (NEW) added to Audit Center with 6-metric picker + baseline CPA reference.
+
+## TrendExplorer — Presets + Actions Drawer + Fullscreen + Portal (2026-04-19)
+- 5 built-in presets: Daily Review, Weekly Review z klientem, Search IS Deep Dive, Quick Wins Hunt, Diagnose Drop (each with `guide` bullets panel).
+- Actions drawer below chart (toggleable) — event list grouped by date with pill-bar per operation type, clickable rows → `/action-history?date=YYYY-MM-DD`.
+- Clickable action markers — custom SVG `<g onClick>` ReferenceLine badge with event count.
+- Fullscreen via `createPortal(document.body)` with `zIndex: 9999`, body scroll lock, ESC close.
+- Delta grid in fullscreen — current vs previous-period per metric with color-coded +/- change.
+- `showActionMarkers` option toggle + fast-access "Ukryj zmiany" / "Pokaz zmiany" pill.
+- E2E: `e2e/trend-explorer.spec.js` — 3 Playwright tests (fullscreen covers viewport, ESC closes, pill hides markers).
+
+## Tech-Slop Refactor — Analytics God-Object Split (ADR-021) (2026-04-22)
+- `analytics_service.py`: 5418 → 37 lines; 11 domain mixins in `app/services/analytics/`: kpi, health, breakdown, quality, pacing, bidding, waste, insights, pmax, comparison, dsa. All <1000 lines.
+- `analytics.py` router (3038 lines) → sub-router package `routers/analytics/` with 15 domain sub-routers: `_kpis`, `_health`, `_breakdown`, `_quality`, `_pacing`, `_bidding`, `_waste`, `_insights`, `_pmax`, `_shopping`, `_comparison`, `_dsa`, `_auction`, `_audience`, `_mcc_misc`. `_legacy.py` holds only constants (no endpoint decorators).
+- `/quality-score-audit` migrated to `_quality.py`; `/shopping-product-groups-tree` renamed from duplicate `/shopping-product-groups`.
+- 806 tests — zero regressions; ADR-021 added to DECISIONS.md.
+
+## Campaigns — Ad Groups KPI Drill-Down + Write Actions (2026-04-24)
+- `PATCH /campaigns/{id}/status` — pause/enable (remote-first, audit log, demo guard).
+- `PATCH /campaigns/{id}/budget` — daily budget update (remote-first, local revert on API fail, circuit breaker >30%).
+- `GET /ad_groups/?campaign_id&date_from&date_to` — new router `ad_groups.py`; aggregated KPI from KeywordDaily (CTR/CPC/CPA/ROAS per ad group).
+- Frontend: pause/enable confirm modal, budget edit modal with +10/+20/+50% quick buttons, bidding target inline edit (pencil icon), `AuctionInsightsTable.jsx`, Ad Groups drill-down with KPI aggregation.
+
+## Campaigns — Ad Group Expand-Row (ads list) (2026-04-25)
+- `GET /ad_groups/{ad_group_id}/ads` — lists ads in a group with ad_type, status, ad_strength, approval_status, RSA preview (headline_1/2 + counts), final_url, snapshot metrics (clicks, impressions, cost, conv, CTR).
+- Frontend: chevron expand in Ad Groups table, lazy on-demand load with cache in `adsByGroup`, RSA headline cards with status dot, ad_strength badge, approval badge, metrics.
+- Tests: `test_ad_groups.py` — 7/7 PASS (5 functional + 2 smoke).
+
+## Campaigns — Ad Detail Drawer (2026-04-26)
+- `GET /ads/{ad_id}` (new `ads.py` router) — full RSA assets breakdown (headlines/descriptions with `pinned_position` + `performance_label`), ad metadata, snapshot metrics, `comparison.avg` + `comparison.diff_pct` vs sibling ads in same group.
+- Frontend: `AdDetailDrawer.jsx` — slide-in panel 640px, 5 sections: header badges + ad strength gauge, RSA assets with pinned/performance labels, 6 KPI tiles with A/B comparison (CPA invertDiff), actions + final URL. ESC or backdrop-click closes.
+- `getAdDetail()` added to `api.js`.
+- Tests: `test_ads.py` — 5/5 PASS (full detail, comparison vs siblings, 404, headline/description normalization).
+
+
+## Dashboard — InsightsFeed Compact Pills + Auto-Expand (2026-04-26)
+- Frontend: `InsightsFeed.jsx` — insight titles shown as compact pills in the header (max 3, "+N więcej" overflow); panel auto-expands when any HIGH priority insight exists; scrollable when >5 HIGH (maxHeight 320px + overflowY auto).
+- ACs: AC1+AC2 (default expanded = insights.some(HIGH)), AC4+AC5 (pills visible with priority colors from PRIORITY_CONFIG), AC7 (scroll at >5 HIGH).
+- E2E: 3 new tests in `dashboard.spec.js` (collapsed pills visible, HIGH auto-expand, scrollable >5 HIGH).
+
+## Dashboard — HealthScoreCard Severity-Aware Gauge Color (2026-04-26)
+- `HealthScoreCard.jsx`: `gaugeColor(score, issues)` function replaces score-only coloring.
+- Logic: `effectiveHigh = highCount + floor(medCount / 5)` (5 MEDIUM = 1 HIGH-equivalent).
+- Color thresholds: >=3 effectiveHigh → red; >=1 effectiveHigh + score<=40 → red, else yellow; no issues → green/yellow/red by score only.
+- Backward compat: `issues` array optional — falls back to score-only logic when absent.
