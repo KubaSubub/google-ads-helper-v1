@@ -276,3 +276,13 @@
   - [ads-verify-campaigns.md](docs/reviews/ads-verify-campaigns.md) (v2 plan dla v1.1)
   - [ads-check-campaigns.md](docs/reviews/ads-check-campaigns.md) (13/13 DONE)
 - **Uncommitted work:** wszystkie zmiany gotowe do `/done` (commit boundary + docs-sync + pm-check + push)
+
+## [2026-04-26] Dashboard polish — InsightsFeed + HealthScoreCard kalibracja
+- **Powod:** Marek przegapil konto z 3 HIGH alertami (zolty gauge, score 50) — false negative blokuje workflow Daily Audit. InsightsFeed badge "2" nie mowi nic (HIGH czy LOW?) — user wchodzi 8-10x/dzien.
+- **Intelligence used:** TAK — vault `02_Areas/AI-Building/zespol-GAH/dla-ceo-gah/` (zespol agentow Klient + Kierownik + Spec PPC + Spec API + Skryba); industry standard: SEMrush/Optmyzr worst-of severity, GAds Recommendations show titles
+- **Naklad:** 2x S (~30 linii kazdy)
+- **SKIP PM:** specy juz napisane przez zespol Obsidian (AC, edge cases, testy e2e — kompletny spec)
+- **Sciezki:**
+  1. /build insights-feed-titles --spec vault/.../2026-04-25-insights-feed-titles.md
+  2. /build health-score-color-calibration --spec vault/.../2026-04-25-health-score-color-calibration.md
+- **Status:** STARTED (spec 1)

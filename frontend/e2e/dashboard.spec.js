@@ -102,6 +102,101 @@ test('Sekcja 3.9 — Przycisk Refresh istnieje i jest klikalny', async ({ page }
     }
 });
 
+// ─── InsightsFeed (compact title pills + auto-expand HIGH) ─────────
+
+function makeInsight(id, priority, entity, message) {
+    return {
+        id,
+        type: 'GENERIC',
+        priority,
+        entity_name: entity,
+        entity_type: 'campaign',
+        campaign_name: entity,
+        reason: message,
+        recommended_action: 'Take action.',
+        source: 'ANALYTICS',
+        status: 'pending',
+        executable: false,
+        context_outcome: 'INSIGHT_ONLY',
+        confidence_score: 0.7,
+        risk_score: 0.2,
+        metadata: {},
+    };
+}
+
+test('InsightsFeed: tytuly widoczne w header gdy collapsed (3 LOW insights)', async ({ page }) => {
+    await page.route(/\/api\/v1\/recommendations/, route =>
+        route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                items: [
+                    makeInsight(701, 'LOW', 'Kampania A', 'Insight A — niski impakt'),
+                    makeInsight(702, 'LOW', 'Kampania B', 'Insight B — niski impakt'),
+                    makeInsight(703, 'LOW', 'Kampania C', 'Insight C — niski impakt'),
+                ],
+                total: 3,
+            }),
+        })
+    );
+    await page.goto('/');
+    await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    const pills = page.locator('[data-testid="insights-feed-pills"]');
+    await expect(pills).toBeVisible({ timeout: 8_000 });
+    // Panel rozwiniety NIE powinien byc widoczny (brak HIGH → collapsed default)
+    const panel = page.locator('[data-testid="insights-feed-panel"]');
+    await expect(panel).toHaveCount(0);
+    // Pigulki maja tytuly
+    await expect(pills.locator('text=/Kampania A/').first()).toBeVisible();
+});
+
+test('InsightsFeed: HIGH priority auto-expand (1 HIGH + 2 MEDIUM)', async ({ page }) => {
+    await page.route(/\/api\/v1\/recommendations/, route =>
+        route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                items: [
+                    makeInsight(801, 'HIGH', 'Kampania pilna', 'Pilny problem do rozwiazania'),
+                    makeInsight(802, 'MEDIUM', 'Kampania B', 'Sredni insight'),
+                    makeInsight(803, 'MEDIUM', 'Kampania C', 'Sredni insight 2'),
+                ],
+                total: 3,
+            }),
+        })
+    );
+    await page.goto('/');
+    await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    // Panel auto-rozwiniety bo jest HIGH
+    const panel = page.locator('[data-testid="insights-feed-panel"]');
+    await expect(panel).toBeVisible({ timeout: 8_000 });
+    // Tresc HIGH widoczna w panelu
+    await expect(panel.locator('text=/Pilny problem do rozwiazania/').first()).toBeVisible();
+});
+
+test('InsightsFeed: scrollable gdy > 5 HIGH', async ({ page }) => {
+    const items = [];
+    for (let i = 0; i < 7; i++) {
+        items.push(makeInsight(900 + i, 'HIGH', `Kampania H${i}`, `HIGH insight numer ${i}`));
+    }
+    await page.route(/\/api\/v1\/recommendations/, route =>
+        route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ items, total: items.length }),
+        })
+    );
+    await page.goto('/');
+    await expect(page.locator('text=/Pulpit/i').first()).toBeVisible({ timeout: 10_000 });
+    const panel = page.locator('[data-testid="insights-feed-panel"]');
+    await expect(panel).toBeVisible({ timeout: 8_000 });
+    // Sprawdz inline style: max-height: 320px
+    const maxHeight = await panel.evaluate(el => el.style.maxHeight);
+    expect(maxHeight).toBe('320px');
+    const overflowY = await panel.evaluate(el => el.style.overflowY);
+    expect(overflowY).toBe('auto');
+});
+
 test('Sekcja 3.3/3.4 — Zmiana zakresu dat nie powoduje JS errors', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));

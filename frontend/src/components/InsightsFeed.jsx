@@ -56,7 +56,7 @@ const PRIORITY_PILLS = ['ALL', 'HIGH', 'MEDIUM', 'LOW']
 
 export default function InsightsFeed({ recommendations }) {
     const insights = useMemo(() => mapInsights(recommendations), [recommendations])
-    const [expanded, setExpanded] = useState(insights.length > 0)
+    const [expanded, setExpanded] = useState(insights.some(i => i.priority === 'HIGH'))
     const [filterPriority, setFilterPriority] = useState('ALL')
     const hasInsights = insights.length > 0
     const navigate = useNavigate()
@@ -69,51 +69,116 @@ export default function InsightsFeed({ recommendations }) {
     return (
         <div className="v2-card" style={{ overflow: 'hidden' }}>
             <button
+                data-testid="insights-feed-header"
                 onClick={() => setExpanded(v => !v)}
                 className="w-full"
                 style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    display: 'block',
                     padding: '14px 20px',
                     background: 'transparent',
                     border: 'none',
                     cursor: 'pointer',
                     width: '100%',
+                    textAlign: 'left',
                 }}
             >
-                <div className="flex items-center gap-2">
-                    <Lightbulb size={15} style={{ color: C.warning }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
-                        Automatyczne insighty
-                    </span>
-                    {hasInsights ? (
-                        <span
-                            style={{
-                                fontSize: 10,
-                                fontWeight: 600,
-                                padding: '2px 7px',
-                                borderRadius: 999,
-                                background: 'rgba(251,191,36,0.15)',
-                                color: C.warning,
-                                border: '1px solid rgba(251,191,36,0.25)',
-                            }}
-                        >
-                            {insights.length}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="flex items-center gap-2">
+                        <Lightbulb size={15} style={{ color: C.warning }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: 'Syne' }}>
+                            Automatyczne insighty
                         </span>
-                    ) : (
-                        <span style={{ fontSize: 11, color: C.w30 }}>
-                            - wszystko wygląda dobrze
-                        </span>
-                    )}
+                        {hasInsights ? (
+                            <span
+                                style={{
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    padding: '2px 7px',
+                                    borderRadius: 999,
+                                    background: 'rgba(251,191,36,0.15)',
+                                    color: C.warning,
+                                    border: '1px solid rgba(251,191,36,0.25)',
+                                }}
+                            >
+                                {insights.length}
+                            </span>
+                        ) : (
+                            <span style={{ fontSize: 11, color: C.w30 }}>
+                                - wszystko wygląda dobrze
+                            </span>
+                        )}
+                    </div>
+                    {expanded
+                        ? <ChevronUp size={14} style={{ color: C.w30 }} />
+                        : <ChevronDown size={14} style={{ color: C.w30 }} />}
                 </div>
-                {expanded
-                    ? <ChevronUp size={14} style={{ color: C.w30 }} />
-                    : <ChevronDown size={14} style={{ color: C.w30 }} />}
+                {hasInsights && (
+                    <div
+                        data-testid="insights-feed-pills"
+                        style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 6,
+                            marginTop: 8,
+                            paddingLeft: 23,
+                        }}
+                    >
+                        {insights.slice(0, 3).map(insight => {
+                            const cfg = PRIORITY_CONFIG[insight.priority] || PRIORITY_CONFIG.LOW
+                            const entityPart = insight.entity ? `${insight.entity}: ` : ''
+                            const fullText = `${entityPart}${insight.message || ''}`
+                            const display = fullText.length > 40 ? `${fullText.slice(0, 40)}…` : fullText
+                            return (
+                                <span
+                                    key={insight.id}
+                                    title={fullText}
+                                    style={{
+                                        fontSize: 10,
+                                        fontWeight: 500,
+                                        padding: '3px 8px',
+                                        borderRadius: 999,
+                                        background: cfg.bg,
+                                        border: `1px solid ${cfg.border}`,
+                                        color: cfg.color,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        maxWidth: 280,
+                                    }}
+                                >
+                                    {display}
+                                </span>
+                            )
+                        })}
+                        {insights.length > 3 && (
+                            <span
+                                style={{
+                                    fontSize: 10,
+                                    fontWeight: 500,
+                                    padding: '3px 8px',
+                                    color: C.w40,
+                                }}
+                            >
+                                +{insights.length - 3} więcej
+                            </span>
+                        )}
+                    </div>
+                )}
             </button>
 
             {expanded && hasInsights && (
-                <div style={{ borderTop: B.card, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div
+                    data-testid="insights-feed-panel"
+                    style={{
+                        borderTop: B.card,
+                        padding: '12px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        maxHeight: insights.filter(i => i.priority === 'HIGH').length > 5 ? 320 : 'none',
+                        overflowY: insights.filter(i => i.priority === 'HIGH').length > 5 ? 'auto' : 'visible',
+                    }}
+                >
                     <div className="flex items-center gap-1" style={{ marginBottom: 4 }}>
                         {PRIORITY_PILLS.map(p => {
                             const active = filterPriority === p
