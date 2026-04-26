@@ -107,7 +107,7 @@ Zamknięcie wszystkich otwartych fazy z briefu [Tech slop audit 2026-04-21](../.
 | `_dsa.py` | 4 | Dynamic Search Ads metrics |
 | `_health.py` | 5 | Health score + anomaly detection (alerts, z-score) |
 | `_insights.py` | 6 | Correlation, forecast, Pareto, scaling, change-impact, compare-periods (numpy/scipy) |
-| `_kpis.py` | 6 | Dashboard KPIs (z cache) + trends + wow-comparison + campaigns-summary |
+| `_kpis.py` | 6 | Dashboard KPIs (z cache) + trends + campaign-trends + wow-comparison + campaigns-summary |
 | `_mcc_misc.py` | 8 | MCC, offline conversions, bid modifiers, audiences list, topics, Google recs |
 | `_pacing.py` | 8 | Budget pacing + dayparting suite (DoW, hourly, heatmap) + seasonal |
 | `_pmax.py` | 8 | PMax analytics + extensions + search cannibalization |
